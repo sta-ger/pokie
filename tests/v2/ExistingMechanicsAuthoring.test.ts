@@ -3,7 +3,8 @@ import {StudioSimulationService} from "../../cli/studio/simulation/StudioSimulat
 import {buildSimulationReportDownload} from "../../cli/studio/simulation/buildSimulationReportDownload.js";
 import {describeSimulationReport} from "../../cli/studio-client/src/domain/interpret/Simulation.js";
 import ExcelJS from "exceljs";
-import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "./fixtures/PackageExtractionFixture.js";
+import {PACKAGE_EXTRACTION_TEST_TIMEOUT} from "./fixtures/PackageExtractionFixture.js";
+import {stageCompiledTestRuntime} from "../testUtils/stageCompiledTestRuntime.js";
 import {mergeJackpotStatisticsSnapshots} from "../../src/simulation/JackpotStatisticsMerging.js";
 import {StudioHomeService} from "../../cli/studio/home/StudioHomeService.js";
 import {StudioBlueprintService} from "../../cli/studio/blueprint/StudioBlueprintService.js";
@@ -15,6 +16,7 @@ import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
 import {StudioPlayService} from "../../cli/studio/runtime/StudioPlayService.js";
 import fs from "node:fs";
+import os from "node:os";
 import {execFileSync} from "node:child_process";
 import {pathToFileURL} from "node:url";
 import path from "node:path";
@@ -45,9 +47,40 @@ it("starts a fresh completed purchase bank through direct, generated TypeScript 
 });
 
 describe("V2C-12 catalogue-driven public authored workflows", () => {
-    let restoreTemporaryDirectory: () => void;
+    let restoreTemporaryDirectory: () => void = () => undefined;
     beforeAll(() => {
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+        const cache = path.resolve(__dirname, "../../node_modules/.cache/pokie-tmp");
+        fs.mkdirSync(cache, {recursive: true});
+        let parent = cache;
+        // These fixtures are discarded after this file, not campaign evidence.
+        // Use memory only with ample process/cgroup and filesystem headroom.
+        try {
+            const available = (process as typeof process & {availableMemory?: () => number}).availableMemory?.() ?? 0;
+            const shared = fs.statfsSync("/dev/shm");
+            if (available >= 4 * 1024 ** 3 && shared.bavail * shared.bsize >= 1024 ** 3) parent = "/dev/shm";
+        } catch {
+            // Other hosts retain the ordinary private on-disk fixture.
+        }
+        const temporaryDirectory = fs.mkdtempSync(path.join(parent, "v2c12-sdk-"));
+        const previousTmpdir = os.tmpdir;
+        const previousEnvironment = process.env.TMPDIR;
+        let active = true;
+        os.tmpdir = () => active ? temporaryDirectory : previousTmpdir();
+        process.env.TMPDIR = temporaryDirectory;
+        restoreTemporaryDirectory = () => {
+            if (!active) return;
+            active = false;
+            os.tmpdir = previousTmpdir;
+            if (previousEnvironment === undefined) Reflect.deleteProperty(process.env, "TMPDIR");
+            else process.env.TMPDIR = previousEnvironment;
+            fs.rmSync(temporaryDirectory, {recursive: true, force: true});
+        };
+        try {
+            stageCompiledTestRuntime(temporaryDirectory);
+        } catch (error) {
+            restoreTemporaryDirectory();
+            throw new Error(`Mechanics SDK preparation failed: ${(error as Error).message}`);
+        }
     });
     afterAll(() => {
         restoreTemporaryDirectory();
@@ -59,14 +92,16 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
         workflow = undefined;
         jest.spyOn(console, "log").mockImplementation(() => undefined);
         jest.spyOn(console, "error").mockImplementation(() => undefined);
-        directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/v2c12-"));
+        // Keep generated packages inside the prepared SDK's resolution ancestry.
+        directory = fs.mkdtempSync(path.join(os.tmpdir(), "v2c12-"));
     });
     afterEach(async () => {
         // A Jest timeout does not cancel its async callback. Drain the owned operation
         // before removing its files or allowing the next row to install console spies.
+        const ownedDirectory = directory;
         await workflow?.catch(() => undefined);
         jest.restoreAllMocks();
-        fs.rmSync(directory, {recursive: true, force: true});
+        fs.rmSync(ownedDirectory, {recursive: true, force: true});
     });
 
     it("retains candidate authentication across the complete V2C-34 mechanics gate correction", () => {
@@ -296,6 +331,8 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
         const blueprint = existingMechanicsBlueprint(row);
         expect(errors(blueprint)).toEqual([]);
         const built = new api.GamePackageGenerator("1.3.0").generate(blueprint, directory);
+        expect((await api.resolvePokieGameDependencyRoots(built.projectRoot))["@fromstan/pokie"])
+            .toBe(fs.realpathSync(path.join(os.tmpdir(), "node_modules/@fromstan/pokie")));
         expect(fs.readFileSync(path.join(built.projectRoot, "dist/index.js"), "utf8")).toBe(api.renderBuiltGameModule(blueprint, "1.3.0"));
         const game = generatedMechanicsGame(blueprint);
         const source = path.join(directory, "source.blueprint.json");

@@ -1,3 +1,4 @@
+import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -36,12 +37,19 @@ describe("Blueprint Editor workflow (integration): validate -> save -> load -> b
     let service: StudioBlueprintService;
     let retainWorkDir: boolean;
 
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => restoreTemporaryDirectory());
+
     beforeEach(() => {
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-blueprint-editor-workflow-test-"));
         studioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-blueprint-editor-workflow-root-"));
         repository = new InMemoryRecentProjectsRepository();
         homeService = new StudioHomeService("1.3.0", repository);
-        service = new StudioBlueprintService("1.3.0", studioRoot, homeService);
+        service = new StudioBlueprintService("1.3.0", studioRoot, homeService)
+            .withRuntimePackageRoot(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"));
         retainWorkDir = false;
         jest.spyOn(console, "log").mockImplementation(() => undefined);
     });

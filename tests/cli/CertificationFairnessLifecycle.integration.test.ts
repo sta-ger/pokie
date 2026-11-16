@@ -1,4 +1,4 @@
-import {GameBlueprint} from "@fromstan/pokie";
+import {GameBlueprint, resolvePokieGameDependencyRoots} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -9,6 +9,13 @@ import {OutcomeLibraryCommand} from "../../cli/commands/OutcomeLibraryCommand.js
 import {OutcomeSourceCommand} from "../../cli/commands/OutcomeSourceCommand.js";
 import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
+import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
+
+let restoreTemporaryDirectory: () => void = () => undefined;
+beforeAll(() => {
+    restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
+});
+afterAll(() => restoreTemporaryDirectory());
 
 // One bounded, on-disk CLI lifecycle over a genuine game package. It deliberately connects the public command
 // outputs instead of fabricating any library, evidence, commitment, or proof JSON: blueprint -> package ->
@@ -67,6 +74,8 @@ describe("CLI lifecycle (integration): game -> outcome library -> engineering ev
 
         fs.writeFileSync(blueprintPath, JSON.stringify(gameBlueprint()), "utf-8");
         expect(await new BuildCommand("1.3.0").run([blueprintPath, "--target", "tsPackage", "--out", packageDir])).toBe(0);
+        expect((await resolvePokieGameDependencyRoots(packageDir))["@fromstan/pokie"])
+            .toBe(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"));
 
         // A sampled library exercises the package runtime's bounded deterministic generation path, not a
         // hand-written WeightedOutcomeLibrary. Its generated file is directly consumed by the bundle command.

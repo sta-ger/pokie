@@ -98,7 +98,7 @@ describe("canonical artifact CLI through real registration and fresh executable"
             expect(result.stderr).toBe("");
             expect(result.stdout).not.toMatch(/^ {2}export\s{2,}|\bpokie export\b/m);
         }
-        for (const flag of ["--version", "-V"]) expect(run([flag], directory).stdout.trim()).toBe("1.3.0");
+        for (const flag of ["--version", "-V"]) expect(run([flag], directory).stdout.trim()).toBe(JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version);
     });
 
     it.each(["outcomeLibrary", "stakeAdapter"] as const)("rejects invalid %s descriptor publication through registration and the fresh binary", async (target) => {

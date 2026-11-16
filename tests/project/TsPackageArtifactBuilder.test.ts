@@ -2,6 +2,7 @@ import {authoritativePaytableBlueprint, type AuthoredAwardCase} from "../fixture
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
 import {
     ArtifactBuildConflictError,
     ArtifactBuildCancelledError,
@@ -17,6 +18,14 @@ import {
     TsPackageArtifactBuilder,
     type GamePackageGenerating,
 } from "@fromstan/pokie";
+
+let runtimeRoot: string;
+let restoreTemporaryDirectory: () => void;
+beforeAll(() => {
+    restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
+    runtimeRoot = path.join(os.tmpdir(), "node_modules/@fromstan/pokie");
+});
+afterAll(() => restoreTemporaryDirectory());
 
 function blueprintProjectOf(rootPath: string): PokieProject {
     return {
@@ -64,7 +73,7 @@ describe("TsPackageArtifactBuilder", () => {
     it.each(["missing-symbol", "missing-count", "zero", "positive"] as AuthoredAwardCase[])("validates and builds an authoritative %s package", async kind => {
         const model = authoritativePaytableBlueprint(kind, 0.01, true);
         fs.writeFileSync(blueprintPath, JSON.stringify(model));
-        await new TsPackageArtifactBuilder("1.3.0").withRuntimePackageRoot(process.cwd()).build(blueprintProjectOf(blueprintPath), destinationDir);
+        await new TsPackageArtifactBuilder("1.3.0").withRuntimePackageRoot(runtimeRoot).build(blueprintProjectOf(blueprintPath), destinationDir);
         const loaded = await loadPokieGameRuntime(destinationDir, entry => require(entry));
         try {
             const screen = authoritativePaytableBlueprint(kind).reelStrips!.map(strip => [strip[0]]);
@@ -89,7 +98,7 @@ describe("TsPackageArtifactBuilder", () => {
     });
 
     it("builds a real, loadable tsPackage with file progress from a blueprint", async () => {
-        const builder = new TsPackageArtifactBuilder("1.3.0").withRuntimePackageRoot(process.cwd());
+        const builder = new TsPackageArtifactBuilder("1.3.0").withRuntimePackageRoot(runtimeRoot);
 
         const progress: ArtifactBuildProgress[] = [];
         const result = await builder.build(blueprintProjectOf(blueprintPath), destinationDir, {onProgress: event => progress.push(event)});

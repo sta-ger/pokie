@@ -1,3 +1,5 @@
+import {stageCompiledTestRuntime} from "../testUtils/stageCompiledTestRuntime.js";
+import {createPackageExtractionTestEnvironment} from "./fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import path from "path";
 import {pathToFileURL} from "url";
@@ -18,6 +20,12 @@ import {OutcomeLibraryBundleReader} from "../../src/weightedoutcome/bundle/Outco
 import {generateExactWeightedOutcomeLibrary} from "../../src/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
 import {createTunableBlueprintGame} from "../../src/optimization/createTunableBlueprintGame.js";
 import {optimizationBlueprint, optimizationRequest, stochasticOptimizationRequest} from "./fixtures/OptimizationFixture.js";
+
+let disposeRuntimeStorage: () => void;
+beforeAll(() => {
+    disposeRuntimeStorage = createPackageExtractionTestEnvironment({stageRuntime: false});
+});
+afterAll(() => disposeRuntimeStorage());
 
 let directory: string;
 let source: string;
@@ -398,26 +406,26 @@ it("reduces the declared million-outcome native support without a population-siz
     expect(nativeReturnBound(outcomes, 2)).toBe(9);
 });
 
-function writeSourceWorkerEntry(instrumentation = ""): string {
+function writeSourceWorkerEntry(instrumentation: (runtime: string) => string = () => ""): string {
+    // Native workers consume the source-bound compiled fixture. Re-transpiling
+    // the whole dependency graph independently in every worker starves cleanup.
+    const runtime = path.join(stageCompiledTestRuntime(directory), "dist/cjs");
     const entry = path.join(directory, "worker.cjs");
-    fs.writeFileSync(entry, `const fs = require('fs'); const Module = require('module'); const ts = require(${JSON.stringify(require.resolve("typescript"))});
-const original = Module._resolveFilename;
-Module._resolveFilename = function(request, ...rest) { try { return original.call(this, request, ...rest); } catch (error) { if (request.endsWith('.js')) return original.call(this, request.slice(0, -3) + '.ts', ...rest); throw error; } };
-Module._extensions['.ts'] = (module, file) => module._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true}}).outputText, file);
-${instrumentation}
-require(${JSON.stringify(path.resolve("src/simulation/parallel/internal/simulationWorkerEntry.ts"))});`);
+    fs.writeFileSync(entry, `const fs = require('fs');
+${instrumentation(runtime)}
+require(${JSON.stringify(path.join(runtime, "simulation/parallel/internal/simulationWorkerEntry.js"))});`);
     return entry;
 }
 
 
 it.each(["success", "cancel", "execution", "observer", "cancel-release"])("settles actual recipe/package hooks and snapshot leases exactly once after real-worker %s", async terminal => {
     const marker = path.join(directory, "worker-releases");
-    const instrument = `const {workerData} = require('worker_threads');
+    const instrument = (runtime: string) => `const {workerData} = require('worker_threads');
 const mark = (kind, snapshot) => fs.appendFileSync(${JSON.stringify(marker)}, JSON.stringify({kind, index: workerData.workerIndex, snapshot}) + '\\n');
-const authored = require(${JSON.stringify(path.resolve("src/generated/createAuthoredSession.ts"))});
+const authored = require(${JSON.stringify(path.join(runtime, "generated/createAuthoredSession.js"))});
 const createAuthored = authored.createAuthoredSession;
 authored.createAuthoredSession = (...args) => { const owned = createAuthored(...args); const dispose = owned.dispose; owned.dispose = () => { dispose(); mark('dispose'); }; return owned; };
-const recipes = require(${JSON.stringify(path.resolve("src/optimization/internal/createOptimizationSimulationGame.ts"))});
+const recipes = require(${JSON.stringify(path.join(runtime, "optimization/internal/createOptimizationSimulationGame.js"))});
 const create = recipes.createOptimizationSimulationGame;
 recipes.createOptimizationSimulationGame = recipe => { const game = create(recipe); const release = game.release; const session = game.createSession;
 game.createSession = context => { const result = session(context); if (${JSON.stringify(terminal)} === 'execution') { let count = 0; const play = result.play; result.play = () => { if (count++ === 1) throw Error('execution failed'); return play(); }; } return result; };

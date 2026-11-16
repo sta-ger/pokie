@@ -1,9 +1,11 @@
 import {authoritativePaytableBlueprint, type AuthoredAwardCase} from "../fixtures/math/AuthoritativePaytableFixture.js";
-import {GamePackageGenerator, loadPokieGameRuntime, SymbolsCombination, type VideoSlotSessionHandling} from "@fromstan/pokie";
 import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {execFileSync} from "child_process";
+import {pathToFileURL} from "url";
+import {stageCompiledTestRuntime} from "../testUtils/stageCompiledTestRuntime.js";
 import {GameBlueprint} from "../../src/generated/GameBlueprint.js";
 import {ParSheetExporter, inspectParSheetConversion} from "../../src/parsheet/ParSheetExporter.js";
 import {parSheetConversionReport} from "../../src/parsheet/ParSheetConversionReport.js";
@@ -13,6 +15,19 @@ import {ParSheetImporter} from "../../src/parsheet/ParSheetImporter.js";
 describe("ParSheetExporter", () => {
     let dir: string;
     let filePath: string;
+    let runtimeDirectory: string;
+    let runtimePackageRoot: string;
+
+    beforeAll(() => {
+        const cache = path.resolve(__dirname, "../../node_modules/.cache/pokie-tmp");
+        fs.mkdirSync(cache, {recursive: true});
+        runtimeDirectory = fs.mkdtempSync(path.join(cache, "parsheet-native-runtime-"));
+        runtimePackageRoot = stageCompiledTestRuntime(runtimeDirectory, ["cjs"], {runtimeFilesOnly: true});
+    });
+
+    afterAll(() => {
+        fs.rmSync(runtimeDirectory, {recursive: true, force: true});
+    });
 
     const blueprint: GameBlueprint = {
         manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
@@ -47,27 +62,111 @@ describe("ParSheetExporter", () => {
         return workbook.worksheets.map((worksheet) => worksheet.name);
     }
 
-    it.each(["missing-symbol", "missing-count", "zero", "positive"] as AuthoredAwardCase[])("round-trips and plays the authored %s table through PAR", async kind => {
-        const model = authoritativePaytableBlueprint(kind, 0.1, true);
-        const issues = await new ParSheetExporter("1.3.0").exportToFile(model, filePath);
-        expect(issues.filter(issue => issue.severity === "error")).toEqual([]);
-        const imported = await new ParSheetImporter().importFromFile(filePath);
-        expect(imported.issues.filter(issue => issue.severity === "error")).toEqual([]);
-        expect(imported.blueprint.paytable).toEqual(model.paytable);
-        const built = new GamePackageGenerator("1.3.0").generate(imported.blueprint, dir);
-        const loaded = await loadPokieGameRuntime(built.projectRoot, entry => require(entry));
-        try {
-            const screen = authoritativePaytableBlueprint(kind).reelStrips!.map(strip => [strip[0]]);
-            const session = loaded.game.createExactEnumerationSession!({generateSymbolsCombination: () => new SymbolsCombination<string>().fromMatrix(screen)}) as VideoSlotSessionHandling;
-            session.setBet(0.1);
-            session.play();
-            expect(session.getSymbolsCombination().toMatrix()).toEqual(screen);
-            expect(session.getWinAmount()).toBe(kind === "positive" ? 0.2 : 0);
-            expect(session.getWinEvaluationResult().getWinComponents()).toHaveLength(kind === "positive" ? 1 : 0);
-            expect(session.getPaytable().getWinAmountForSymbol("B", 3, 0.1)).toBe(kind === "positive" ? 0.2 : 0);
-        } finally {
-            await loaded.release();
-        }
+    it("retains pinned candidate admission through the complete saved runtime-fixture correction", () => {
+        // Synthetic handoff only: no accepted archive is rebuilt, installed or executed.
+        execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from "node:assert/strict";
+            import {mkdir, readFile, writeFile} from "node:fs/promises";
+            import {execFileSync} from "node:child_process";
+            import path from "node:path";
+            import {candidateFixture, commitP911ToolingDescendant, P911_TOOLING_DESCENDANT_PATHS} from ${JSON.stringify(pathToFileURL(path.resolve(__dirname, "../testUtils/createP911CandidateFixture.mjs")).href)};
+            import {readP911CandidateFromEnvironment} from ${JSON.stringify(pathToFileURL(path.resolve(__dirname, "../../scripts/p9-11-candidate.mjs")).href)};
+            import {authenticateP805ProductTree} from ${JSON.stringify(pathToFileURL(path.resolve(__dirname, "../../scripts/p8-05-release-handoff.mjs")).href)};
+            const fixture = await candidateFixture(${JSON.stringify(dir)});
+            const options = {repository: fixture.repository};
+            const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256};
+            const original = await readP911CandidateFromEnvironment(environment, options);
+            const correctionPaths = ["scripts/p8-05-release-handoff.mjs", "scripts/p9-11-candidate.mjs",
+                "tests/cli/studio/StudioArtifactBuildService.integration.test.ts", "tests/parsheet/ParSheetExporter.test.ts",
+                "tests/testUtils/createP911CandidateFixture.mjs", "tests/testUtils/stageCompiledTestRuntime.ts",
+                "tests/scripts/p8-05-product-readiness-campaign.test.mjs", "tests/scripts/p8-05-valera-devtools-events.test.mjs",
+                "tests/v2/CascadeCollectionAuthoring.test.ts"].sort();
+            for (const file of correctionPaths) assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "missing correction path: " + file);
+            for (const file of correctionPaths) await writeFile(path.join(fixture.repository, file), "// Saved runtime-fixture correction.");
+            execFileSync("git", ["add", "."], {cwd: fixture.repository});
+            execFileSync("git", ["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "saved fixture correction"], {cwd: fixture.repository});
+            const correctionId = execFileSync("git", ["rev-parse", "HEAD"], {cwd: fixture.repository, encoding: "utf8"}).trim();
+            assert.deepEqual(authenticateP805ProductTree(fixture.handoff.candidateId, correctionId, fixture.repository).changedToolingAndEvidencePaths, correctionPaths);
+            const corrected = await readP911CandidateFromEnvironment(environment, options);
+            assert.deepEqual(corrected.equivalence.changedEvidenceAndTooling, correctionPaths);
+            assert.deepEqual({...corrected, equivalence: original.equivalence}, original);
+            const reviewedId = await commitP911ToolingDescendant(fixture);
+            const selected = await readP911CandidateFromEnvironment(environment, options);
+            assert.deepEqual(selected.equivalence.changedEvidenceAndTooling, [...P911_TOOLING_DESCENDANT_PATHS].sort());
+            assert.deepEqual({...selected, equivalence: original.equivalence}, original);
+            for (const reference of [fixture.handoff.browserDriver, fixture.handoff.buildReceipt, fixture.handoff.installReceipt,
+                {path: fixture.handoff.archivePath}, {path: path.join(selected.packageRoot, "dist/cli/pokie.js")}]) {
+                const bytes = await readFile(reference.path);
+                try {
+                    await writeFile(reference.path, "changed pinned input");
+                    await assert.rejects(readP911CandidateFromEnvironment(environment, options),
+                        /authenticated controller browser driver required|receipt digest mismatch|archive digest mismatch|stale installed asset/);
+                } finally {
+                    await writeFile(reference.path, bytes);
+                }
+            }
+            assert.deepEqual(await readP911CandidateFromEnvironment(environment, options), selected);
+            for (const file of ["tests/parsheet/ParSheetExporter.extra.test.ts", "tests/testUtils/stageCompiledTestRuntime.extra.ts",
+                "tests/v2/CascadeCollectionAuthoring.extra.test.ts",
+                "src/index.ts", "cli/studio/StudioServer.ts", "package.json", "tsconfig.prod.json"]) {
+                const target = path.join(fixture.repository, file);
+                await mkdir(path.dirname(target), {recursive: true});
+                await writeFile(target, "changed protected input");
+                execFileSync("git", ["add", "."], {cwd: fixture.repository});
+                execFileSync("git", ["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "protected input fixture"], {cwd: fixture.repository});
+                const protectedId = execFileSync("git", ["rev-parse", "HEAD"], {cwd: fixture.repository, encoding: "utf8"}).trim();
+                try {
+                    assert.throws(() => authenticateP805ProductTree(reviewedId, protectedId, fixture.repository), /product or build inputs/);
+                    await assert.rejects(readP911CandidateFromEnvironment(environment, options), /product\\/build inputs changed/);
+                } finally {
+                    execFileSync("git", ["reset", "--hard", reviewedId], {cwd: fixture.repository, stdio: "ignore"});
+                }
+            }
+        `], {timeout: 30_000, stdio: "pipe"});
+    });
+
+    it.each(["missing-symbol", "missing-count", "zero", "positive"] as AuthoredAwardCase[])("round-trips and plays the authored %s table through PAR", kind => {
+        // The native child consumes the compiled public package, including its real
+        // XLSX and isolated loader graph. Its deadline drains worker threads before
+        // Jest can advance to the next row; each row owns its snapshot directory.
+        const stdout = execFileSync(process.execPath, ["-e", `
+            const assert = require("node:assert/strict"), fs = require("node:fs"), path = require("node:path");
+            const {createRequire} = require("node:module");
+            const {model, screen, expectedWin, filePath, dir, runtimePackageRoot} = JSON.parse(fs.readFileSync(0, "utf8"));
+            const api = createRequire(path.join(runtimePackageRoot, "consumer.cjs"))("@fromstan/pokie");
+            (async () => {
+                const started = Date.now(), phases = {};
+                const issues = await new api.ParSheetExporter("1.3.0").exportToFile(model, filePath);
+                assert.deepEqual(issues.filter(issue => issue.severity === "error"), []);
+                const imported = await new api.ParSheetImporter().importFromFile(filePath);
+                assert.deepEqual(imported.issues.filter(issue => issue.severity === "error"), []);
+                assert.deepEqual(imported.blueprint.paytable, model.paytable);
+                phases.workbookMs = Date.now() - started;
+                const built = new api.GamePackageGenerator("1.3.0").generate(imported.blueprint, dir, undefined, undefined, {runtimePackageRoot});
+                const loaded = await api.loadPokieGameRuntime(built.projectRoot);
+                phases.loadedMs = Date.now() - started;
+                try {
+                    const session = loaded.game.createExactEnumerationSession({generateSymbolsCombination: () => new api.SymbolsCombination().fromMatrix(screen)});
+                    session.setBet(0.1);
+                    session.play();
+                    assert.deepEqual(session.getSymbolsCombination().toMatrix(), screen);
+                    assert.equal(session.getWinAmount(), expectedWin);
+                    assert.equal(session.getWinEvaluationResult().getWinComponents().length, expectedWin > 0 ? 1 : 0);
+                    assert.equal(session.getPaytable().getWinAmountForSymbol("B", 3, 0.1), expectedWin);
+                } finally {
+                    await loaded.release();
+                }
+                phases.releasedMs = Date.now() - started;
+                assert.deepEqual(fs.readdirSync(dir).filter(name => name.startsWith("pokie-runtime-")), []);
+                console.log(JSON.stringify(phases));
+            })().catch(error => { console.error(error); process.exitCode = 1; });
+        `], {
+            input: JSON.stringify({model: authoritativePaytableBlueprint(kind, 0.1, true),
+                screen: authoritativePaytableBlueprint(kind).reelStrips!.map(strip => [strip[0]]),
+                expectedWin: kind === "positive" ? 0.2 : 0, filePath, dir, runtimePackageRoot}),
+            env: {...process.env, TMPDIR: dir}, encoding: "utf8", stdio: "pipe", timeout: 45000,
+        });
+        console.info(`PAR ${kind}: ${stdout.trim()}`);
     });
 
     it("retains an authored empty symbol payout map, omitted counts and explicit zeros in a real XLSX", async () => {

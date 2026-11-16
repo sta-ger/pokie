@@ -13,11 +13,19 @@ import {
     SimulationWorkerResult,
     AggregateSimulationRunner,
     SimulationReportBuilder,
+    resolvePokieGameDependencyRoots,
 } from "@fromstan/pokie";
 import {weightedBlueprint, weightedGame} from "../../v2/fixtures/WeightedWholeSequenceGame.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {createPackageExtractionTestEnvironment} from "../../v2/fixtures/PackageExtractionFixture.js";
+
+let restoreTemporaryDirectory: () => void;
+beforeAll(() => {
+    restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
+});
+afterAll(() => restoreTemporaryDirectory());
 
 const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
@@ -106,14 +114,15 @@ describe("ParallelSimulationRunner (workers=1, in-process)", () => {
         const packageName = "parallel-runtime-lease-fixture";
         fs.cpSync(path.join(__dirname, "..", "..", "cli", "fixtures", "playable-game"), packageRoot, {
             recursive: true,
-            filter: (source) => path.basename(source) !== ".pokie-runtime-cache",
+            filter: (source) => ![".pokie-runtime-cache", "node_modules"].includes(path.basename(source)),
         });
         fs.writeFileSync(
             path.join(packageRoot, "package.json"),
-            JSON.stringify({name: packageName, version: "1.0.0", pokie: {entry: "./index.js"}}),
+            JSON.stringify({name: packageName, version: "1.0.0", dependencies: {"@fromstan/pokie": "*"}, pokie: {entry: "./index.js"}}),
         );
 
         try {
+            expect(await resolvePokieGameDependencyRoots(packageRoot)).toEqual({"@fromstan/pokie": path.join(os.tmpdir(), "node_modules/@fromstan/pokie")});
             expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
             for (let run = 0; run < 3; run++) {
                 const result = await new ParallelSimulationRunner(packageRoot, 4, {seed: `lease-${run}`}).run();

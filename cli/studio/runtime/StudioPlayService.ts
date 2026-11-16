@@ -241,7 +241,10 @@ export class StudioPlayService {
         };
         let project: PokieProject | undefined;
         try {
-            project = await this.resolveProject.resolve(projectRoot);
+            // Play consumes recognition/capabilities here; its owned loader validates
+            // the executable game below. Optional conversion provenance would load
+            // and discard another complete runtime graph.
+            project = await this.resolveProject.resolve(projectRoot, {readConfigurationProvenance: false});
             assertCurrent();
         } catch (error) {
             return this.fail(error, projectRoot);

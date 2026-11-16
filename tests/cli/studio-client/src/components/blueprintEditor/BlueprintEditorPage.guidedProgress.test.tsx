@@ -185,7 +185,7 @@ describe("Guided Design Game: automatic validation", () => {
         expect(screen.getByRole("button", {name: "Build Preview"})).toBeVisible();
     });
 
-    it("withdraws rendered ok readiness when focusing Create commits a changed field", async () => {
+    it("withdraws rendered ok readiness as soon as a field changes", async () => {
         const user = userEvent.setup();
         const requests: string[] = [];
         const writes: string[] = [];
@@ -214,7 +214,7 @@ describe("Guided Design Game: automatic validation", () => {
         await user.click(id);
         fireEvent.change(id, {target: {value: "edited-slot"}});
         act(() => create.focus());
-        expect(create).toHaveFocus();
+        expect(id).toHaveFocus();
         expect(create).toHaveAttribute("data-pokie-validation-state", "stale");
         expect(create).toBeDisabled();
         await user.click(create);

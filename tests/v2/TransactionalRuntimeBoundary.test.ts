@@ -25,8 +25,12 @@ describe("public transactional runtime compositions", () => {
         wallets.push(value);
         return value;
     }
-    async function open(external?: ControllableDurableWallet): Promise<api.TransactionalRoundStore | api.ExternalRoundStore> {
-        const store = external ? await api.SqliteExternalRoundStore.open(path.join(directory, "external.sqlite"), external, {callTimeoutMs: 50, recoveryWaitMs: 1000}) :
+    // Ordinary durability/identity checks use the public store's real budgets. Only
+    // deliberate hung-provider cases shorten them; FULL SQLite commits under a
+    // parallel gate must not accidentally consume a 1.4-second ownership lease.
+    const interruptedCallBudgets = {callTimeoutMs: 50, recoveryWaitMs: 1000};
+    async function open(external?: ControllableDurableWallet, budgets?: {callTimeoutMs: number; recoveryWaitMs: number}): Promise<api.TransactionalRoundStore | api.ExternalRoundStore> {
+        const store = external ? await api.SqliteExternalRoundStore.open(path.join(directory, "external.sqlite"), external, budgets) :
             await api.SqliteTransactionalRoundStore.open(path.join(directory, "reference.sqlite"));
         stores.push(store);
         return store;
@@ -189,7 +193,7 @@ describe("public transactional runtime compositions", () => {
     });
     it.each(["before-debit", "after-debit", "before-credit", "after-credit", "hang-debit", "hang-credit"] as const)("retains original intent/candidate across %s and reopening", async fault => {
         const provider = await wallet(),
-            store = await open(provider);
+            store = await open(provider, fault.startsWith("hang-") ? interruptedCallBudgets : undefined);
         await initialize(store);
         const before = await store.readSession("s");
         provider.fault = fault;
@@ -214,7 +218,7 @@ describe("public transactional runtime compositions", () => {
     });
     it.each(["unknown", "pending", "compensated", "malformed", "throw", "hang"])("blocks unsafe dispatch for inspected %s with a retained session claim", async status => {
         const provider = await wallet(),
-            store = await open(provider);
+            store = await open(provider, status === "hang" ? interruptedCallBudgets : undefined);
         await initialize(store);
         provider.inspection = (status === "throw" || status === "hang") ? status : {status} as api.DurableWalletTransaction;
         const handler = new api.SpinCommandHandler(transactionalRoundGame(), store);
@@ -285,7 +289,7 @@ describe("public transactional runtime compositions", () => {
     });
     it("bounds a late committed debit, drains shutdown and fences its late acknowledgement", async () => {
         const provider = await wallet(),
-            store = await open(provider);
+            store = await open(provider, interruptedCallBudgets);
         await initialize(store);
         let acknowledge!: (balance: number) => void;
         const original = provider.debit.bind(provider);
@@ -324,6 +328,29 @@ describe("public transactional runtime compositions", () => {
         provider.onDispatch = undefined;
         expect(await handler.execute(intent)).toMatchObject({status: "played"});
         expect(provider.counts("s")).toEqual({debit: 1, credit: 1});
+    });
+
+    it("fences an expired preparation lease before dispatch and recovers the original identity", async () => {
+        const provider = await wallet(),
+            store = await open(provider, interruptedCallBudgets);
+        await initialize(store);
+        let now = Date.now();
+        const clock = jest.spyOn(Date, "now").mockImplementation(() => now);
+        let advance = true;
+        const game = transactionalRoundGame(() => {
+            if (advance) now += interruptedCallBudgets.callTimeoutMs * 8 + interruptedCallBudgets.recoveryWaitMs + 1;
+        });
+        const handler = new api.SpinCommandHandler(game, store);
+        try {
+            await expect(handler.handle("s", "round", 1, 0.05, "base")).rejects.toThrow("ownership expired");
+            expect(provider.counts("s")).toEqual({debit: 0, credit: 0});
+            expect(await store.readSession("s")).toMatchObject({version: 1});
+            advance = false;
+            expect(await handler.execute(intent)).toMatchObject({status: "played", version: 2});
+            expect(provider.counts("s")).toEqual({debit: 1, credit: 1});
+        } finally {
+            clock.mockRestore();
+        }
     });
 
     it.each(["bet", "mode", "version"])("binds pending and committed external identity to original %s", async field => {
@@ -503,7 +530,7 @@ describe("public transactional runtime compositions", () => {
 
     it("keeps a timed-out debit owned after insufficient rejection and not-applied until its delayed effect resolves", async () => {
         const provider = await wallet(),
-            store = await open(provider);
+            store = await open(provider, interruptedCallBudgets);
         await initialize(store);
         const original = provider.debit.bind(provider);
         let applyLate!: () => Promise<number>;

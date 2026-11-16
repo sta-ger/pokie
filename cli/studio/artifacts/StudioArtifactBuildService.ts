@@ -545,8 +545,8 @@ export class StudioArtifactBuildService {
         return this.toJobView(record);
     }
 
-    public cancelActiveForProject(projectRoot: string): void {
-        this.preflight?.cancelForProject(projectRoot);
+    public async cancelActiveForProject(projectRoot: string): Promise<void> {
+        const preflightDrain = this.preflight?.cancelForProject(projectRoot);
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
         for (const record of this.jobs.values()) {
             if (record.projectRoot === projectRoot && (record.status === "queued" || record.status === "running")) {
@@ -556,6 +556,7 @@ export class StudioArtifactBuildService {
                 this.executeRecord(record);
             }
         }
+        await preflightDrain;
     }
 
     public async cancelAll(): Promise<void> {

@@ -1,7 +1,7 @@
 import {JobObservationNotice} from "../common/JobObservationNotice";
 import {OptimizationPreview} from "./OptimizationPreview";
 import {Alert, Button, Code, Stack, Text, Textarea, TextInput, Title} from "@mantine/core";
-import {useEffect, useLayoutEffect, useRef, useState} from "react";
+import {useEffect, useId, useLayoutEffect, useRef, useState} from "react";
 import {optimizationAction} from "../../api/apiClient";
 import type {
     StudioJobView,
@@ -28,14 +28,16 @@ const initialRequest: StudioOptimizationRequest = {
     },
 };
 /** Policy form and operation cards consume the dashboard's same durable observations. */
-export function OptimizationPanel({projectRoot, jobs, sourceChange, onStarted, onApplied}: {
+export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange, onStarted, onApplied}: {
     projectRoot: string;
     jobs: ReturnType<typeof useProjectJobs>;
+    recoveryJob?: {id?: string; request: StudioJobView["request"]};
     sourceChange?: {sourceRevision?: string};
     onStarted?: (sourceRevision: string) => void;
     onApplied?: () => void;
 }) {
     const fetchImpl = useStudioApi();
+    const runExplanationId = useId();
     const [text, setText] = useState(JSON.stringify(initialRequest, null, 2));
     const [supportSnapshot, setSupportSnapshot] = useState<{value: StudioOptimizationSupport; sourceChange: typeof sourceChange}>();
     const support = supportSnapshot?.sourceChange === sourceChange ? supportSnapshot?.value : undefined;
@@ -79,7 +81,18 @@ export function OptimizationPanel({projectRoot, jobs, sourceChange, onStarted, o
     const job =
         projectJobs.find((item) => item.id === started?.id) ??
         started ??
+        projectJobs.find((item) => item.id === recoveryJob?.id) ??
         projectJobs.find((item) => item.operation === "optimization");
+    useEffect(() => {
+        if (recoveryJob === undefined) return;
+        generation.current++;
+        controller.current?.abort();
+        edited.current = true;
+        setText(JSON.stringify(recoveryJob.request.request, null, 2) ?? "");
+        setBusy(false);
+        setSupportSnapshot(undefined);
+        setStarted(undefined);
+    }, [recoveryJob]);
     useEffect(() => {
         if (!edited.current && job?.request.request) {
             setText(JSON.stringify(job.request.request, null, 2));
@@ -104,6 +117,13 @@ export function OptimizationPanel({projectRoot, jobs, sourceChange, onStarted, o
     );
     const result = matchesRequest && !stale ? retainedResult : undefined;
     const discoveryUnresolved = started === undefined && (jobs.discoveryStatus === "pending" || jobs.discoveryStatus === "failed");
+    let runDisabledReason: string | undefined;
+    if (active) runDisabledReason = "Wait for the active optimization to finish or cancel it before starting another.";
+    else if (busy) runDisabledReason = "Wait for the current optimization request to finish.";
+    else if (discoveryUnresolved) runDisabledReason = jobs.discoveryStatus === "failed"
+        ? "Reattach to retained work before starting optimization."
+        : "Checking for retained work before starting optimization.";
+    else if (!support?.supported) runDisabledReason = support ? `Optimization is unavailable: ${support.reason}` : "Check tuning support for the current targets and policy before running optimization.";
     const action = async (kind: "support" | "start" | "save" | "apply"): Promise<void> => {
         if (kind === "start" && (discoveryUnresolved || !support?.supported)) return;
         if ((kind === "save" || kind === "apply") && stale) return;
@@ -197,12 +217,14 @@ export function OptimizationPanel({projectRoot, jobs, sourceChange, onStarted, o
             )}
             <Button
                 disabled={busy || active || discoveryUnresolved || !support?.supported}
+                aria-describedby={runDisabledReason ? runExplanationId : undefined}
                 onClick={() => {
                     action("start");
                 }}
             >
                 Run optimization
             </Button>
+            {runDisabledReason && <Text id={runExplanationId} size="sm">{runDisabledReason}</Text>}
             {active && (
                 <Button
                     disabled={job.status === "cancelling" || jobs.pendingIds.includes(job.id)}

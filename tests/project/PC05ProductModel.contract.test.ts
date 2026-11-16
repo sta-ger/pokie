@@ -570,7 +570,8 @@ describe("PC-05 product-model contract", () => {
         expect(replayTab).toContain("buildReplayDownloadUrl(result.id)");
         expect(certificationTab).toContain("new Blob([JSON.stringify(data, null, 2)]");
         expect(certificationTab).toContain("Download manifest.json");
-        expect(certificationTab).toContain("certification-" + dollar + "{buildResult.manifest.game.id}-" + dollar + "{buildResult.manifest.game.version}-manifest.json");
+        expect(certificationTab).toContain('return downloadDossier("manifest.json")');
+        expect(certificationTab).toContain("downloadCertificationDossier(");
         expect(simulationRepository).toContain("a queued/running job is never evicted");
         expect(replayRepository).toContain("a queued/running replay is never evicted");
         expect(roundRecorder).toContain("private static readonly MAX_RECORDS = 20");
@@ -655,7 +656,7 @@ describe("PC-05 product-model contract", () => {
         expect(outcomeLibraryCommand).toContain("private async readStreamedOutcomes(filePath: string)");
         expect(certificationCommand).toContain("private loadDescriptor(configPath: string): BuildDescriptor");
         expect(certificationCommand).toContain('must be an object with a string "modeName"/"seed" and a number "sampleCount"');
-        expect(certificationCommand).toContain("await this.builder.buildFromBundle(bundleDir, modes, outDir, {signal})");
+        expect(certificationCommand).toContain("await this.builder.buildFromBundle(bundleDir, modes, outDir, {signal, ...(descriptor.dossier ? {dossier: descriptor.dossier} : {}), ...(descriptor.output ? {output: descriptor.output} : {})})");
         expect(materializer).toContain('const MATERIALIZED_MARKER_FILE = ".pokie-materialized.json"');
         expect(materializer).toContain("private async acquireLock(lockDir: string)");
         expect(materializer).toContain("await this.evictStale(cacheDir)");
@@ -890,7 +891,7 @@ describe("PC-05 product-model contract", () => {
             {id: "reel-apply-blueprint-default", artifactId: "blueprint", commandFile: "cli/commands/ReelCommand.ts", sourceAssertions: ["if (!failed && options.apply)", "options.out ?? blueprintPath"]},
             {id: "reel-materialize-blueprint-default", artifactId: "blueprint", commandFile: "cli/commands/ReelCommand.ts", sourceAssertions: ["const outPath = out ?? blueprintPath", "if (!resolution.success)"]},
             {id: "par-import-blueprint-default", artifactId: "blueprint", commandFile: "cli/commands/ParCommand.ts", sourceAssertions: ["options.out ?? defaultBlueprintPath(inputPath)", "this.planner.planImportOutput(source, \"blueprint\", outPath)"]},
-            {id: "import-par-blueprint-default", artifactId: "blueprint", commandFile: "cli/commands/ImportCommand.ts", sourceAssertions: ["const outputKind = source.type === \"parWorkbook\" ? \"blueprint\" : \"outcomeLibrary\"", "this.planner.planImportOutput(source, outputKind, destination)"]},
+            {id: "import-par-blueprint-default", artifactId: "blueprint", commandFile: "cli/commands/ImportCommand.ts", sourceAssertions: ["const stakeOutputKind = exactStake ? \"stakeAdapter\" : \"outcomeLibrary\"", "const outputKind = source.type === \"parWorkbook\" ? \"blueprint\" : stakeOutputKind", "this.planner.planImportOutput(source, outputKind, destination)"]},
             {id: "par-export-workbook-default", artifactId: "parWorkbook", commandFile: "cli/commands/ParCommand.ts", sourceAssertions: ["options.out ?? defaultParSheetPath(blueprintPath)", "this.assertDestinationIsAvailable(blueprintPath, outPath)"]},
             {id: "build-ts-package-default", artifactId: "tsPackage", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(project.rootPath, target)", "if (options.dryRun)", "this.registry.executePlan(plan, project, out,"]},
             {id: "build-outcome-bundle-default", artifactId: "outcomeLibrary", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(project.rootPath, target)", "this.registry.executePlan(plan, project, out,"]},
@@ -899,8 +900,8 @@ describe("PC-05 product-model contract", () => {
             {id: "export-outcome-bundle-default", artifactId: "outcomeLibrary", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(projectPath, options.target)", "prepareDescriptorBuildOperation(source, destination, signal)", "executeDescriptorOperation(prepared, dryRun)"]},
             {id: "export-stake-default", artifactId: "stakeAdapter", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(projectPath, options.target)", "prepareDescriptorExportOperation(source, destination, signal)", "executeDescriptorOperation(prepared, dryRun)"]},
             {id: "export-par-default", artifactId: "parWorkbook", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(projectPath, options.target)", "prepareDescriptorExportOperation(source, destination, signal)", "executeDescriptorOperation(prepared, dryRun)"]},
-            {id: "stake-import-library-default", artifactId: "outcomeLibrary", commandFile: "cli/commands/ImportCommand.ts", sourceAssertions: ["const outputKind = source.type === \"parWorkbook\" ? \"blueprint\" : \"outcomeLibrary\"", "this.planner.planImportOutput(source, outputKind, destination)"]},
-            {id: "certification-bundle-default", artifactId: "certificationEvidenceBundle", commandFile: "cli/commands/CertificationCommand.ts", sourceAssertions: ["options.out ?? path.join(path.dirname(configPath), \"certification\")", "await this.builder.buildFromBundle(bundleDir, modes, outDir, {signal})"]},
+            {id: "stake-import-library-default", artifactId: "outcomeLibrary", commandFile: "cli/commands/ImportCommand.ts", sourceAssertions: ["const stakeOutputKind = exactStake ? \"stakeAdapter\" : \"outcomeLibrary\"", "const outputKind = source.type === \"parWorkbook\" ? \"blueprint\" : stakeOutputKind", "this.planner.planImportOutput(source, outputKind, destination)"]},
+            {id: "certification-bundle-default", artifactId: "certificationEvidenceBundle", commandFile: "cli/commands/CertificationCommand.ts", sourceAssertions: ["options.out ?? path.join(path.dirname(configPath), \"certification\")", "await this.builder.buildFromBundle(bundleDir, modes, outDir, {signal, ...(descriptor.dossier ? {dossier: descriptor.dossier} : {}), ...(descriptor.output ? {output: descriptor.output} : {})})"]},
             {id: "init-ts-package-default", artifactId: "tsPackage", commandFile: "cli/commands/InitCommand.ts", sourceAssertions: ["directory: directory ?? \".\"", "const scaffold = this.merger.merge(projectRoot, overrides)"]},
         ];
 

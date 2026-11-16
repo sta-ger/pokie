@@ -1,5 +1,5 @@
 import {expectInconclusiveArtifactValidation} from "../testUtils/expectInconclusiveArtifactValidation.js";
-import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../v2/fixtures/PackageExtractionFixture.js";
 import {GameBlueprint, ValidationIssue} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
@@ -14,6 +14,7 @@ import {CreateCommand} from "../../cli/commands/CreateCommand.js";
 // Project (random or hand-authored) becomes a real, playable package -- proving the written blueprint is
 // genuinely a complete, buildable Blueprint Project, not just a shape-valid in-memory value.
 describe("CLI workflow (integration): first-class random game generation", () => {
+    jest.setTimeout(PACKAGE_EXTRACTION_TEST_TIMEOUT);
     let workDir: string;
 
     let restoreTemporaryDirectory: () => void;

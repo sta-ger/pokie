@@ -8,6 +8,7 @@ import {authoritativePaytableBlueprint} from "../fixtures/math/AuthoritativePayt
 import {buildSingleOutcomeStakeEngineLibrary} from "../stakeengine/StakeEngineTestFixtures.js";
 import {expectRareMetrics, rareStakeSource} from "../stakeengine/standalone/StakeProbabilityTestFixtures.js";
 import {weightedBonusBlueprint} from "./fixtures/WeightedBonusGame.js";
+import {createPackageExtractionTestEnvironment} from "./fixtures/PackageExtractionFixture.js";
 
 import {selectPackedArchive} from "../packaging/helpers/selectPackedArchive.js";
 import {CreateCommand} from "../../cli/commands/CreateCommand.js";
@@ -33,6 +34,11 @@ function generated(model: api.GameBlueprint): api.PokieGame {
 }
 
 let directory: string;
+let restoreTemporaryDirectory: () => void = () => undefined;
+beforeAll(() => {
+    restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
+});
+afterAll(() => restoreTemporaryDirectory());
 beforeEach(() => {
     directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stable-consumer-"));
 });
@@ -194,6 +200,8 @@ it("recognizes all six real artifact types and converges positive and negative p
     const blueprintPath = path.join(directory, "source.json");
     fs.writeFileSync(blueprintPath, JSON.stringify(blueprint));
     const packageRoot = new api.GamePackageGenerator(api.POKIE_VERSION).generate(blueprint, directory, "package").projectRoot;
+    expect((await api.resolvePokieGameDependencyRoots(packageRoot))["@fromstan/pokie"])
+        .toBe(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"));
     const workbook = path.join(directory, "source.xlsx");
     expect((await new api.ParSheetExporter(api.POKIE_VERSION).exportToFile(blueprint, workbook)).filter(issue => issue.severity === "error")).toEqual([]);
     const wasm = path.join(directory, "source.wasm");

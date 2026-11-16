@@ -1,6 +1,7 @@
 import {jest} from "@jest/globals";
 import fs from "node:fs";
 import path from "node:path";
+import {spawnSync} from "node:child_process";
 import {POKIE_VERSION, type GameBlueprint} from "@fromstan/pokie";
 import {StudioBlueprintService} from "../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioHomeService} from "../../cli/studio/home/StudioHomeService.js";
@@ -18,12 +19,7 @@ import {VideoSlotSession} from "../../src/session/videoslot/VideoSlotSession.js"
 import {SymbolsCombination} from "../../src/session/videoslot/combinations/SymbolsCombination.js";
 import {ProjectTargetResolver} from "../../src/project/ProjectTargetResolver.js";
 import {ProjectOptimizationService} from "../../src/optimization/ProjectOptimizationService.js";
-import type {OptimizationRequest, OptimizationResult} from "../../src/optimization/OptimizationPolicy.js";
 import {OptimizeCommand} from "../../cli/commands/OptimizeCommand.js";
-import {StudioOptimizationService} from "../../cli/studio/optimization/StudioOptimizationService.js";
-import {StudioJobService} from "../../cli/studio/jobs/StudioJobService.js";
-import {FileStudioJobRepository} from "../../cli/studio/jobs/FileStudioJobRepository.js";
-import type {StudioJobView} from "../../cli/studio/jobs/StudioJobView.js";
 import {SharedSlotMath} from "../../src/wasm/math/SharedSlotMath.js";
 import {ForcedSymbolsCombinationsGenerator} from "../../src/weightedoutcome/generate/internal/ForcedSymbolsCombinationsGenerator.js";
 import {optimizationBlueprint, optimizationRequest} from "./fixtures/OptimizationFixture.js";
@@ -314,102 +310,155 @@ describe("V2C-35 shared scratch authority and recovery", () => {
     });
 });
 
-const retainedRequest = (): OptimizationRequest => ({
-    targets: [{metric: "rtp", unit: "ratio", value: 0.95, tolerance: {kind: "absolute", value: 0.001}}],
-    policy: {strategy: "exact-finite-v1", seed: "optimization-1", budget: 100, maxOutcomes: 100000,
-        mode: "base", stake: 1, scope: "paid-entry", tunables: [{path: "/paytable/A/3", values: [1, 2, 3]}], locks: []},
-});
-
 describe("V2C-35 retained exact-finite request through public consumers", () => {
     let directory: string;
+    let preserveDirectory = false;
     beforeEach(() => {
+        preserveDirectory = false;
         directory = fs.mkdtempSync(path.resolve("node_modules/.cache/pokie-tmp/valera35-optimizer-"));
     });
-    afterEach(() => fs.rmSync(directory, {recursive: true, force: true}));
+    afterEach(() => {
+        if (!preserveDirectory) fs.rmSync(directory, {recursive: true, force: true});
+    });
 
-    it("measures the retained public fixture, explicitly retries a reachable target and durably applies only the reviewed result", async () => {
-        const source = path.join(directory, "blueprint.json");
-        const fixture = fs.readFileSync(path.resolve("tests/v2/fixtures/Valera35FeralBlazingSafari.blueprint.json"));
-        fs.writeFileSync(source, fixture);
-        const jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")));
-        const service = new StudioOptimizationService(jobs, new ProjectOptimizationService(path.join(directory, "scratch")));
-        const context = {projectRoot: source, projectId: source, isCurrent: () => true};
-        const request = retainedRequest();
-        const support = await service.handle("POST", "support", {expectedProjectRoot: source, request}, context);
-        expect(support.body).toMatchObject({supported: true});
-        const start = async (input: OptimizationRequest) => {
-            const supported = await service.handle("POST", "support", {expectedProjectRoot: source, request: input}, context);
-            const response = await service.handle("POST", "start", {expectedProjectRoot: source, request: input,
-                sourceRevision: (supported.body as {sourceRevision: string}).sourceRevision}, context);
-            expect(response.status).toBe(202);
-            const {job} = response.body as {job: StudioJobView};
-            await service.drain();
-            return jobs.get(source, job.id)!;
-        };
-        try {
-            // Use the real retained workload and the real host clock: an HTTP
-            // handler, like this timer, must run DURING a candidate's artifact
-            // execution rather than after its first full evaluation.
-            const evaluate = SharedSlotMath.prototype.evaluate;
-            let emitted = 0;
-            let emittedAtCancellation: number | undefined;
-            let observedRecord: StudioJobView | undefined;
-            let cancellationStatus: StudioJobView["status"] | undefined;
-            let timer: ReturnType<typeof setTimeout> | undefined;
-            const evaluating = jest.spyOn(SharedSlotMath.prototype, "evaluate").mockImplementation(function (this: SharedSlotMath, ...args) {
-                if (++emitted === 1) timer = setTimeout(() => {
-                    const active = jobs.list(source).find(job => job.operation === "optimization" && job.status === "running");
-                    emittedAtCancellation = emitted;
-                    if (active !== undefined) {
-                        observedRecord = new FileStudioJobRepository(path.join(directory, "jobs")).get(active.id);
-                        cancellationStatus = jobs.cancel(source, active.id)?.status;
-                    }
-                }, 0);
-                return Reflect.apply(evaluate, this, args);
+    it("measures the retained public fixture, explicitly retries a reachable target and durably applies only the reviewed result", () => {
+        // Fresh native source execution avoids Jest's cross-context hot-loop cost.
+        // No checkout dist, package preparation, npm lifecycle or ambient temp path.
+        const entry = path.resolve("tests/v2/fixtures/RetainedOptimizationProbe.ts");
+        const script = (phase: "search" | "apply") => `
+            const fs = require("node:fs"), Module = require("node:module"), ts = require("typescript");
+            const original = Module._resolveFilename;
+            Module._resolveFilename = function(request, ...rest) {
+                if (request === "@fromstan/pokie") return ${JSON.stringify(path.resolve("src/index.ts"))};
+                try { return original.call(this, request, ...rest); }
+                catch (error) {
+                    if (request.endsWith(".js")) return original.call(this, request.slice(0, -3) + ".ts", ...rest);
+                    throw error;
+                }
+            };
+            Module._extensions[".ts"] = (module, file) => module._compile(ts.transpileModule(fs.readFileSync(file, "utf8"), {
+                compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true}
+            }).outputText, file);
+            require(${JSON.stringify(entry)}).runRetainedOptimization(${JSON.stringify(directory)}, ${JSON.stringify(phase)}).catch(error => {
+                console.error(error); process.exitCode = 1;
             });
-            try {
-                const cancelled = await start(request);
-                expect(emittedAtCancellation).toBeGreaterThan(0);
-                expect(emittedAtCancellation).toBeLessThan(1000);
-                expect(observedRecord).toMatchObject({status: "running", operation: "optimization"});
-                expect(cancellationStatus).toBe("cancelling");
-                expect(cancelled).toMatchObject({status: "cancelled", result: {detail: {status: "cancelled", evidence: {evaluated: 0}}}});
-                expect(new FileStudioJobRepository(path.join(directory, "jobs")).get(cancelled.id)?.status).toBe("cancelled");
-                expect(fs.readFileSync(source)).toEqual(fixture);
-                expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
-                console.info(`V2C-35 active observation and accepted cancellation during first candidate: ${emittedAtCancellation} artifacts; durable cancelled terminal and drained scratch.`);
-            } finally {
-                clearTimeout(timer);
-                evaluating.mockRestore();
-            }
-            const terminal = await start(request);
-            expect(terminal).toMatchObject({status: "completed", result: {detail: {status: "infeasible", diagnostics: [], evidence: {evaluated: 3, consumedWork: 3, exhaustive: true}}}});
-            console.info("V2C-35 retained request completed: infeasible; all 3 candidates evaluated without OOM.");
-            expect(fs.readFileSync(source)).toEqual(fixture);
-            const result = terminal.result!.detail as unknown as OptimizationResult;
-            const measured = result.evidence!.evaluations![0].measured![0];
-            expect(Number.isFinite(measured)).toBe(true);
-            const corrected = retainedRequest();
-            corrected.targets[0].value = measured;
-            corrected.targets[0].tolerance = {kind: "absolute", value: 0};
-            const selected = await start(corrected);
-            expect(selected).toMatchObject({status: "completed", result: {detail: {status: "success", evidence: {evaluated: 1, measured: [measured], selected: {"/paytable/A/3": 1}}}}});
-            console.info("V2C-35 corrected explicit retry completed: success; candidate /paytable/A/3 = 1.");
-            expect(fs.readFileSync(source)).toEqual(fixture);
-            const body = {expectedProjectRoot: source, request: corrected, jobId: selected.id};
-            expect((await service.handle("POST", "apply", {...body, request}, context)).status).toBe(409);
-            expect(fs.readFileSync(source)).toEqual(fixture);
-            expect((await service.handle("POST", "apply", body, context)).status).toBe(200);
-            expect(JSON.parse(fs.readFileSync(source, "utf8")).paytable.A[3]).toBe(1);
-            expect(new FileStudioJobRepository(path.join(directory, "jobs")).get(selected.id)!.result).toMatchObject({provenance: {authoredApply: {path: source}}});
-            expect((await service.handle("POST", "apply", body, context)).status).toBe(409);
-            console.info("V2C-35 reviewed Apply persisted /paytable/A/3 = 1 and its durable marker; repeat Apply rejected.");
-        } finally {
-            await service.shutdown();
+        `;
+        preserveDirectory = true;
+        // The retained log completed search (432.8s) and retry (146.2s), then
+        // hit a shared 600s deadline before Apply could remeasure. Keep the same
+        // per-child bound, with separate drained search and retry/Apply hosts.
+        for (const phase of ["search", "apply"] as const) {
+            const result = spawnSync(process.execPath, ["--max-old-space-size=768", "-e", script(phase)], {
+                cwd: process.cwd(), encoding: "utf8", timeout: 600000, killSignal: "SIGKILL", maxBuffer: 2 * 1024 * 1024,
+                env: {...process.env, TMPDIR: directory},
+            });
+            fs.writeFileSync(path.join(directory, `native.${phase}.stdout.log`), result.stdout ?? "");
+            fs.writeFileSync(path.join(directory, `native.${phase}.stderr.log`), result.stderr ?? "");
+            console.info(result.stdout);
+            if (result.error || result.status !== 0) console.error(`Retained native ${phase} diagnostics: ${directory}`, result.stderr);
+            expect(result.error).toBeUndefined();
+            expect(result.signal).toBeNull();
+            expect(result.status).toBe(0);
+            expect(result.stdout).toContain(`V2C-35 native ${phase} phase:`);
+            expect(result.stdout).toContain("V2C-35 shutdown released the retained candidate workspace.");
+            expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
         }
-        expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
-        console.info("V2C-35 shutdown released the retained candidate workspace.");
-    }, 1200000);
+        preserveDirectory = false;
+    }, 1260000);
+
+    it("authenticates the complete saved gate delta without exempting product, build or receipt pins", () => {
+        const repository = path.join(directory, "handoff-repository");
+        const script = `
+            import assert from "node:assert/strict";
+            import fs from "node:fs";
+            import path from "node:path";
+            import {execFileSync} from "node:child_process";
+            import {authenticateP805ProductTree} from "./scripts/p8-05-release-handoff.mjs";
+            import {authenticateP911Tree, authenticateP911Driver, readP911Candidate,
+                readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment} from "./scripts/p9-11-candidate.mjs";
+            import {candidateFixture, V2C37_SAVED_GATE_CORRECTION_PATHS, P911_TOOLING_DESCENDANT_PATHS} from "./tests/testUtils/createP911CandidateFixture.mjs";
+            // This is the retained test/tooling-only gate delta, not a claim
+            // that subsequent production corrections can reuse its package.
+            const delta = [...new Set(execFileSync("git", ["diff", "--name-only", "b30ed0d66717342782714230f8b97f21c2feddd3", "2a4490ba53a3086e93a6a81e802bd1d90d720041"],
+                {encoding: "utf8"}).trim().split("\\n").filter(Boolean).concat([
+                    "tests/v2/Valera35Regression.test.ts", "tests/v2/fixtures/RetainedOptimizationProbe.ts"
+                ]))].sort();
+            for (const file of delta) {
+                assert.ok(V2C37_SAVED_GATE_CORRECTION_PATHS.includes(file), "saved delta omitted " + file);
+                assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "descendant fixture omitted " + file);
+            }
+            const fixtureRoot = ${JSON.stringify(repository)};
+            fs.mkdirSync(fixtureRoot);
+            const fixture = await candidateFixture(fixtureRoot);
+            const repository = fixture.repository, options = {repository};
+            const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path,
+                POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256, POKIE_P805_RELEASE_HANDOFF: ""};
+            const original = await readP911Candidate(fixture.reference, options);
+            const readers = [() => readP911Candidate(fixture.reference, options),
+                () => readP911CandidateFromEnvironment(environment, options),
+                () => readP911SmokeCandidateFromEnvironment(environment, options)];
+            const git = (...args) => execFileSync("git", args, {cwd: repository, encoding: "utf8"}).trim();
+            const write = (file, bytes) => {
+                fs.mkdirSync(path.dirname(path.join(repository, file)), {recursive: true});
+                fs.writeFileSync(path.join(repository, file), bytes);
+            };
+            const commit = () => {
+                git("add", ".");
+                git("-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "synthetic handoff contract");
+                return git("rev-parse", "HEAD");
+            };
+            const base = fixture.handoff.candidateId, tree = fixture.handoff.candidateTreeId;
+            for (const file of delta) write(file, "synthetic regression delta");
+            const reviewed = commit();
+            assert.deepEqual(authenticateP805ProductTree(base, reviewed, repository).changedToolingAndEvidencePaths, delta);
+            assert.deepEqual(authenticateP911Tree(base, tree, repository).changedEvidenceAndTooling, delta);
+            Object.assign(environment, {POKIE_PACK_SMOKE_CANDIDATE_ID: reviewed,
+                POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256: original.archiveSha256});
+            for (const read of readers) {
+                const selected = await read();
+                assert.deepEqual(selected.equivalence.changedEvidenceAndTooling, delta);
+                assert.deepEqual({...selected, equivalence: original.equivalence}, original);
+            }
+            for (const reference of [fixture.reference, fixture.handoff.browserDriver,
+                fixture.handoff.buildReceipt, fixture.handoff.installReceipt, {path: fixture.handoff.archivePath},
+                {path: path.join(original.packageRoot, "dist/cli/pokie.js")}]) {
+                const bytes = fs.readFileSync(reference.path);
+                try {
+                    fs.writeFileSync(reference.path, "substituted pinned input");
+                    for (const read of readers) await assert.rejects(read(),
+                        /receipt digest mismatch|authenticated controller browser driver|archive digest mismatch|stale installed asset/);
+                } finally { fs.writeFileSync(reference.path, bytes); }
+            }
+            for (const file of ["src/retained.ts", "cli/retained.ts", "cli/studio/StudioProjectRegistrationService.ts", "package.json", "package-lock.json",
+                "tsconfig.prod.json", "generate-barrels.js", "tests/v2/unlisted.test.ts"]) {
+                write(file, "protected drift");
+                const changed = commit();
+                assert.throws(() => authenticateP805ProductTree(base, changed, repository), /product or build inputs/);
+                assert.throws(() => authenticateP911Tree(base, tree, repository), /affected proofs must be rerun/);
+                for (const read of readers) await assert.rejects(read(), /affected proofs must be rerun/);
+                git("reset", "--hard", reviewed);
+            }
+            for (const file of delta) {
+                fs.unlinkSync(path.join(repository, file));
+                fs.symlinkSync("package.json", path.join(repository, file));
+                const changed = commit();
+                assert.throws(() => authenticateP805ProductTree(base, changed, repository), /nonregular/);
+                assert.throws(() => authenticateP911Tree(base, tree, repository), /nonregular/);
+                git("reset", "--hard", reviewed);
+            }
+            const driver = path.join(repository, "driver.mjs");
+            fs.writeFileSync(driver, "substituted driver");
+            await assert.rejects(authenticateP911Driver({path: driver, sha256: "0".repeat(64)}), /authenticated controller browser driver/);
+            console.log("Complete saved delta admitted by both readers; protected inputs and driver pin rejected.");
+        `;
+        const result = spawnSync(process.execPath, ["--input-type=module", "-e", script], {
+            cwd: process.cwd(), encoding: "utf8", timeout: 30000,
+        });
+        if (result.status !== 0) console.error(result.stdout, result.stderr);
+        expect(result.error).toBeUndefined();
+        expect(result.status).toBe(0);
+        expect(result.stdout).toContain("Complete saved delta admitted by both readers");
+    });
 
     it("keeps CLI exact results, cancellation and a corrected explicit retry reusable", async () => {
         const source = path.join(directory, "source.blueprint.json");

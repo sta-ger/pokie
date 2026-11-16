@@ -1,5 +1,13 @@
 import {PokieGamePackageValidator} from "@fromstan/pokie";
 import path from "path";
+import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
+
+let disposeRuntimeStorage: () => void;
+beforeAll(() => {
+    // Keep fixture manifests and host-runtime fallback unchanged, with private snapshot storage.
+    disposeRuntimeStorage = createPackageExtractionTestEnvironment({stageRuntime: false, memoryBacked: true});
+});
+afterAll(() => disposeRuntimeStorage());
 
 const fixturesRoot = path.join(__dirname, "fixtures");
 

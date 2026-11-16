@@ -17,6 +17,13 @@ import {instantiatePokieWasm, SeededPokieWasmHost} from "../../src/wasm/PokieWas
 import {createProductionParityFixture} from "../fixtures/wasm/createProductionParityFixture.js";
 import type {VideoSlotSession} from "../../src/session/videoslot/VideoSlotSession.js";
 import type {GameBlueprint} from "../../src/generated/GameBlueprint.js";
+import {createPackageExtractionTestEnvironment} from "./fixtures/PackageExtractionFixture.js";
+
+let disposeRuntimeStorage: () => void;
+beforeAll(() => {
+    disposeRuntimeStorage = createPackageExtractionTestEnvironment({stageRuntime: false, memoryBacked: true});
+});
+afterAll(() => disposeRuntimeStorage());
 
 it("routes positional WASM to a playable Project and hands integrity-bound math to the portable runtime and Studio jobs without prebuilt CLI output", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "v2c22-source-workflow-"));

@@ -1,3 +1,4 @@
+import ts from "typescript";
 import {ChildProcessWithoutNullStreams, execFileSync, spawnSync, type SpawnSyncReturns} from "child_process";
 import {createHash} from "crypto";
 import fs from "fs";
@@ -6,7 +7,7 @@ import path from "path";
 import {pathToFileURL} from "url";
 import {createServer} from "node:http";
 import {constants, runInThisContext} from "node:vm";
-import {BUILT_PACKAGE_FILES, type AdvancedModelValidationReport} from "@fromstan/pokie";
+import {BUILT_PACKAGE_FILES, OutcomeLibraryBundleReader, renderBuiltGameModule, type AdvancedModelValidationReport} from "@fromstan/pokie";
 import {registerCliCommands} from "../../cli/registerCliCommands.js";
 import {fractionalBetBlueprint, FRACTIONAL_MIXED_CONTINUATION} from "../fixtures/math/FractionalBetFixture.js";
 import {authoritativePaytableBlueprint} from "../fixtures/math/AuthoritativePaytableFixture.js";
@@ -152,6 +153,69 @@ it("selects the pinned P9 smoke archive/installation through native ESM without 
     }
 });
 
+it("preserves authenticated handoffs across the complete bounded prepack correction", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "p911-prepack-handoff-"));
+    try {
+        execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from "node:assert/strict";
+            import {execFileSync} from "node:child_process";
+            import {mkdir, readFile, writeFile} from "node:fs/promises";
+            import path from "node:path";
+            import {candidateFixture, P911_TOOLING_DESCENDANT_PATHS, V2C37_SAVED_GATE_CORRECTION_PATHS} from ${JSON.stringify(pathToFileURL(path.join(REPO_ROOT, "tests/testUtils/createP911CandidateFixture.mjs")).href)};
+            import {readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment} from ${JSON.stringify(pathToFileURL(path.join(REPO_ROOT, "scripts/p9-11-candidate.mjs")).href)};
+            import {authenticateP805ProductTree} from ${JSON.stringify(pathToFileURL(path.join(REPO_ROOT, "scripts/p8-05-release-handoff.mjs")).href)};
+            const fixture = await candidateFixture(${JSON.stringify(directory)});
+            const options = {repository: fixture.repository};
+            const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256};
+            // The programmer and rendered selectors use the first reader; the
+            // packaging selector additionally authenticates release context.
+            const readers = [readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment];
+            const original = await readers[0](environment, options);
+            const paths = [...new Set([...V2C37_SAVED_GATE_CORRECTION_PATHS, "scripts/p8-05-release-handoff.mjs", "scripts/p9-11-candidate.mjs", "scripts/p9-11-corrective-closeout.mjs",
+                "tests/cli/studio-client/src/components/project/ProjectDashboardPage.wasmWorkflow.test.tsx",
+                "tests/packaging/npmPackSmoke.test.ts", "tests/testUtils/createP911CandidateFixture.mjs",
+                "tests/cli/PC18RoleMissions.integration.test.ts"])].sort();
+            for (const file of paths) {
+                assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "missing correction path: " + file);
+                await writeFile(path.join(fixture.repository, file), "// Bounded prepack regression correction.");
+            }
+            const git = args => execFileSync("git", args, {cwd: fixture.repository, encoding: "utf8"}).trim();
+            const commit = () => {
+                git(["add", "."]);
+                git(["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "bounded prepack correction fixture"]);
+                return git(["rev-parse", "HEAD"]);
+            };
+            const reviewedId = commit();
+            assert.deepEqual(authenticateP805ProductTree(fixture.handoff.candidateId, reviewedId, fixture.repository).changedToolingAndEvidencePaths, paths);
+            const releaseEnvironment = {...environment, POKIE_PACK_SMOKE_CANDIDATE_ID: reviewedId, POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256: original.archiveSha256};
+            for (const reader of readers) {
+                const selected = await reader(releaseEnvironment, options);
+                assert.deepEqual(selected.equivalence.changedEvidenceAndTooling, paths);
+                assert.deepEqual({...selected, equivalence: original.equivalence}, original);
+            }
+            for (const reference of [fixture.reference, fixture.handoff.browserDriver, fixture.handoff.buildReceipt, fixture.handoff.installReceipt,
+                {path: fixture.handoff.archivePath}, {path: path.join(original.packageRoot, "dist/cli/pokie.js")}]) {
+                const bytes = await readFile(reference.path);
+                await writeFile(reference.path, "changed pinned input");
+                for (const reader of readers) await assert.rejects(reader(releaseEnvironment, options),
+                    /authenticated controller browser driver required|receipt digest mismatch|archive digest mismatch|stale installed asset/);
+                await writeFile(reference.path, bytes);
+            }
+            for (const file of ["tests/packaging/unlisted.test.ts", "src/index.ts", "package.json", "tsconfig.prod.json"]) {
+                const target = path.join(fixture.repository, file);
+                await mkdir(path.dirname(target), {recursive: true});
+                await writeFile(target, "changed protected input");
+                const changedId = commit();
+                assert.throws(() => authenticateP805ProductTree(fixture.handoff.candidateId, changedId, fixture.repository), /product or build inputs/);
+                for (const reader of readers) await assert.rejects(reader(environment, options), /product\\/build inputs changed/);
+                git(["reset", "--hard", reviewedId]);
+            }
+        `], {timeout: 30_000, stdio: ["ignore", "pipe", "pipe"]});
+    } finally {
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
+
 // The installed-binary sweep must keep a workflow row for every public parser surface.  These ids
 // deliberately mirror the public command tree rather than the private implementation commands.
 const PACKAGED_PUBLIC_WORKFLOW_SCENARIOS = [
@@ -169,36 +233,584 @@ const PACKAGED_PUBLIC_WORKFLOW_SCENARIOS = [
 // tests/cli/materialize/BlueprintProjectMaterializer.offline.integration.test.ts's own CLI command
 // coverage describe block, which spawns the built (not packed/installed) executable to prove
 // running-installation-root discovery against a spaced path, not packaging.
-function waitForListeningPort(child: ChildProcessWithoutNullStreams, timeoutMs = 60000): Promise<number> {
+const SMOKE_COMMAND_TIMEOUT_MS = 180_000;
+
+function runInstalledValidation(binary: string, project: string, cwd: string, options: {deep?: boolean; env?: NodeJS.ProcessEnv} = {}): SpawnSyncReturns<string> {
+    // Provenance, contract validation and advanced declaration extraction each
+    // acquire/release a snapshot of the resolved dependency graph, including a
+    // physically reinstalled candidate and its dependencies.
+    // Keep one finite budget for every caller rather than a second 60s cutoff.
+    return spawnSync(binary, ["validate", project, ...(options.deep ? ["--deep"] : []), "--format", "json"], {
+        cwd, env: options.env, encoding: "utf8", timeout: SMOKE_COMMAND_TIMEOUT_MS,
+    });
+}
+
+function waitForListeningPort(child: ChildProcessWithoutNullStreams, timeoutMs = SMOKE_COMMAND_TIMEOUT_MS): Promise<number> {
     return new Promise((resolve, reject) => {
         let output = "";
+        const cleanup = (): void => {
+            clearTimeout(timer);
+            child.stdout.off("data", onData);
+            child.stderr.off("data", onErrorData);
+            child.off("error", onError);
+            child.off("exit", onExit);
+        };
+        const fail = (reason: string): void => {
+            cleanup();
+            reject(new Error(`${reason}. Command: ${JSON.stringify(child.spawnargs)}. Output so far:\n${output}`));
+        };
         const timer = setTimeout(() => {
-            reject(new Error(`Timed out waiting for "pokie" to report its listening port. Output so far:\n${output}`));
+            fail(`Timed out after ${timeoutMs}ms waiting for "pokie" to report its listening port`);
         }, timeoutMs);
         const onData = (chunk: Buffer): void => {
             output += chunk.toString();
             const match = (/listening on http:\/\/[^:]+:(\d+)/).exec(output);
             if (match) {
-                clearTimeout(timer);
-                child.stdout.off("data", onData);
+                cleanup();
                 resolve(Number(match[1]));
             }
         };
-        child.stdout.on("data", onData);
-        child.stderr.on("data", (chunk: Buffer) => {
+        const onErrorData = (chunk: Buffer): void => {
             output += chunk.toString();
-        });
-        child.once("exit", (code) => {
-            clearTimeout(timer);
-            reject(new Error(`"pokie" exited early (code ${code}). Output so far:\n${output}`));
-        });
+        };
+        const onError = (error: Error): void => fail(`"pokie" failed to launch: ${error.message}`);
+        const onExit = (code: number | null, signal: NodeJS.Signals | null): void => fail(`"pokie" exited before listening (code ${code}, signal ${signal})`);
+        child.stdout.on("data", onData);
+        child.stderr.on("data", onErrorData);
+        child.once("error", onError);
+        child.once("exit", onExit);
+        if (child.exitCode !== null || child.signalCode !== null) onExit(child.exitCode, child.signalCode);
     });
+}
+
+async function waitForSmokeProjectDashboard(url: string, deadline: number): Promise<{status: string; type?: string}> {
+    let dashboard: {status: string; type?: string} = {status: "loading"};
+    while (dashboard.status === "loading") {
+        const remaining = Math.ceil(deadline - performance.now());
+        if (remaining <= 0) throw new Error("Studio dashboard remained loading at the CLI command deadline");
+        const response = await fetch(url, {headers: {Connection: "close"}, signal: AbortSignal.timeout(remaining)});
+        if (!response.ok) throw new Error(`Studio dashboard request failed: HTTP ${response.status}`);
+        dashboard = await response.json() as typeof dashboard;
+        if (dashboard.status === "loading") await new Promise(resolve => {
+            setTimeout(resolve, Math.min(50, Math.max(0, deadline - performance.now())));
+        });
+    }
+    return dashboard;
 }
 
 async function stopChild(child: ChildProcessWithoutNullStreams): Promise<void> {
     const {stopP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {stopP911Child: (owned: ChildProcessWithoutNullStreams) => Promise<void>};
     await stopP911Child(child);
 }
+
+async function runSmokeCommand(
+    command: string,
+    args: string[],
+    options: {cwd: string; env?: NodeJS.ProcessEnv; timeoutMs?: number},
+    children: Set<ChildProcessWithoutNullStreams>,
+): Promise<{exitCode: number; stdout: string; stderr: string; resourcesDrained: boolean; stdioClosed: boolean}> {
+    const {spawnP911Child, waitP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
+        spawnP911Child: (command: string, args: string[], options: {cwd: string; env?: NodeJS.ProcessEnv; timeoutMs: number}) => ChildProcessWithoutNullStreams;
+        waitP911Child: (child: ChildProcessWithoutNullStreams) => Promise<{exitCode: number; stdout: string; stderr: string; resourcesDrained: boolean; stdioClosed: boolean}>;
+    };
+    const child = spawnP911Child(command, args, {...options, timeoutMs: options.timeoutMs ?? SMOKE_COMMAND_TIMEOUT_MS});
+    children.add(child);
+    try {
+        return await waitP911Child(child);
+    } finally {
+        await stopChild(child);
+    }
+}
+
+function smokeFailure(error: unknown): Error {
+    const failure = error as {stack?: string; pc20Result?: {exitCode: number | null; timedOut: boolean; cancelled: boolean; processTreeDrained: boolean; resourcesDrained: boolean; stdioClosed: boolean; stdout: string; stderr: string}} | undefined;
+    const result = failure?.pc20Result;
+    // execFileSync launch/timeout errors can contain error.error === error;
+    // native ESM failures can also be thrown again by cleanup. Give each hook
+    // its own Error while retaining the actual child diagnostics.
+    return new Error([
+        failure?.stack ?? String(error),
+        result === undefined ? undefined : JSON.stringify({exitCode: result.exitCode, timedOut: result.timedOut, cancelled: result.cancelled, processTreeDrained: result.processTreeDrained, resourcesDrained: result.resourcesDrained, stdioClosed: result.stdioClosed}),
+        result?.stdout,
+        result?.stderr,
+    ].filter(part => part !== undefined).join("\n"));
+}
+
+function smokeNpmEnvironment(cwd: string, inherited: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+    const environment = Object.fromEntries(Object.entries(inherited).filter(([name]) => !name.startsWith("npm_") && name !== "NODE_OPTIONS"));
+    return {...environment, NODE_ENV: "production", INIT_CWD: cwd, PWD: cwd};
+}
+
+it("isolates explicit inherited npm context in the real smoke child environment and artifacts", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "p911-smoke-environment-"));
+    try {
+        const inherited = {...process.env, "npm_lifecycle_event": "caller-test", "npm_package_json": "/caller/package.json", INIT_CWD: "/caller", TMPDIR: directory};
+        const result = await runSmokeCommand(process.execPath, ["-e", `
+            const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
+            const environment = {nodeEnv: process.env.NODE_ENV, initial: process.env.INIT_CWD, pwd: process.env.PWD,
+                lifecycle: process.env.npm_lifecycle_event ?? null, packageJson: process.env.npm_package_json ?? null, tmpdir: os.tmpdir()};
+            fs.writeFileSync(path.join(os.tmpdir(), "child-environment.json"), JSON.stringify(environment));
+            process.stdout.write(JSON.stringify(environment));
+        `], {cwd: directory, env: smokeNpmEnvironment(directory, inherited), timeoutMs: 10_000}, new Set());
+        expect(result).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
+        const expected = {nodeEnv: "production", initial: directory, pwd: directory, lifecycle: null, packageJson: null, tmpdir: directory};
+        expect(JSON.parse(result.stdout)).toEqual(expected);
+        expect(JSON.parse(fs.readFileSync(path.join(directory, "child-environment.json"), "utf8"))).toEqual(expected);
+    } finally {
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
+
+it("retains native synchronous launch failures without circular Jest transport data", () => {
+    let nativeFailure: unknown;
+    try {
+        execFileSync(path.join(REPO_ROOT, "node_modules/.cache/nonexistent-pokie-smoke-command"), [], {stdio: "pipe"});
+    } catch (error) {
+        nativeFailure = error;
+    }
+    expect(nativeFailure).toMatchObject({code: "ENOENT", error: nativeFailure});
+    expect(() => JSON.stringify(nativeFailure)).toThrow(/circular/);
+    const failure = smokeFailure(nativeFailure);
+    expect(failure.message).toContain("ENOENT");
+    expect(failure.message).toContain("nonexistent-pokie-smoke-command");
+    expect(() => JSON.stringify({failureDetails: [failure]})).not.toThrow();
+});
+
+it.each(["exit-failure", "timeout"])("keeps bounded prepack %s diagnostics serializable after awaited cleanup", async mode => {
+    const {spawnP911Child, waitP911Child, stopP911Child, p911ChildrenDrained} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
+        spawnP911Child: (command: string, args: string[], options: {cwd: string; timeoutMs: number}) => ChildProcessWithoutNullStreams;
+        waitP911Child: (child: ChildProcessWithoutNullStreams) => Promise<unknown>;
+        stopP911Child: (child: ChildProcessWithoutNullStreams) => Promise<unknown>;
+        p911ChildrenDrained: (children: Iterable<ChildProcessWithoutNullStreams>) => boolean;
+    };
+    const child = spawnP911Child(process.execPath, ["-e", `
+        process.stdout.write("prepack stdout");
+        process.stderr.write("prepack stderr");
+        ${mode === "timeout" ? "setInterval(() => {}, 1000)" : "process.exitCode = 7"};
+    `], {cwd: REPO_ROOT, timeoutMs: mode === "timeout" ? 2000 : 600_000});
+    let executionFailure: unknown;
+    let cleanupFailure: unknown;
+    try {
+        await waitP911Child(child);
+    } catch (error) {
+        executionFailure = error;
+    } finally {
+        try {
+            await stopP911Child(child);
+        } catch (error) {
+            cleanupFailure = error;
+            expect(error).toBe(executionFailure);
+            const setupError = smokeFailure(executionFailure);
+            const cleanupError = smokeFailure(error);
+            expect(setupError).not.toBe(cleanupError);
+            expect(JSON.parse(JSON.stringify({setupError, cleanupError}))).toEqual({setupError: {}, cleanupError: {}});
+            for (const failure of [setupError, cleanupError]) {
+                expect(failure.message).toContain("prepack stdout");
+                expect(failure.message).toContain("prepack stderr");
+                expect(failure.message).toContain('"processTreeDrained":true');
+                expect(failure.message).toContain('"resourcesDrained":true');
+                expect(failure.message).toContain('"stdioClosed":true');
+                expect(failure.message).toContain(mode === "timeout" ? '"timedOut":true' : '"exitCode":7');
+            }
+        }
+    }
+    expect(executionFailure).toBeDefined();
+    expect(cleanupFailure).toBe(executionFailure);
+    // A drained failed command cannot authorize a successful smoke receipt.
+    expect(p911ChildrenDrained([child])).toBe(false);
+    for (const timeoutMs of [0, 600_001, Number.POSITIVE_INFINITY]) {
+        expect(() => spawnP911Child(process.execPath, [], {cwd: REPO_ROOT, timeoutMs})).toThrow("invalid packaging execution deadline");
+    }
+});
+
+it.each(["success", "exit-failure", "timeout"])("awaits owned conversion %s completion and retains its terminal diagnostics", async mode => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "p911-conversion-command-"));
+    const children = new Set<ChildProcessWithoutNullStreams>();
+    try {
+        const execution = runSmokeCommand(process.execPath, ["-e", `
+            const fs = require("node:fs");
+            process.stdout.write("conversion started");
+            ${mode === "timeout" ? "setInterval(() => {}, 1000);" : `
+                setTimeout(() => {
+                    fs.writeFileSync("conversion.json", JSON.stringify({status: "complete"}));
+                    ${mode === "exit-failure" ? 'process.stderr.write("conversion rejected"); process.exitCode = 7;' : 'process.stdout.write("; conversion completed");'}
+                }, 200);
+            `}
+        `], {cwd: directory, ...(mode === "timeout" ? {timeoutMs: 2000} : {})}, children);
+        if (mode === "success") {
+            expect(await execution).toMatchObject({exitCode: 0, stdout: "conversion started; conversion completed", stderr: "", resourcesDrained: true, stdioClosed: true});
+            expect(JSON.parse(fs.readFileSync(path.join(directory, "conversion.json"), "utf8"))).toEqual({status: "complete"});
+        } else {
+            let failure: Error | undefined;
+            try {
+                await execution;
+            } catch (error) {
+                failure = smokeFailure(error);
+            }
+            expect(failure).toBeDefined();
+            expect(failure?.message).toContain("conversion started");
+            expect(failure?.message).toContain(mode === "timeout" ? '"timedOut":true' : '"exitCode":7');
+            if (mode === "exit-failure") expect(failure?.message).toContain("conversion rejected");
+            for (const field of ["processTreeDrained", "resourcesDrained", "stdioClosed"]) expect(failure?.message).toContain(`"${field}":true`);
+            expect(fs.existsSync(path.join(directory, "conversion.json"))).toBe(mode === "exit-failure");
+        }
+        expect(children.size).toBe(1);
+        for (const child of children) expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
+    } finally {
+        await Promise.allSettled([...children].map(child => stopChild(child)));
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
+
+it.each(["success", "exit-failure", "lingering-worker"])("awaits owned worker smoke %s exit instead of accepting a result marker", async mode => {
+    const children = new Set<ChildProcessWithoutNullStreams>();
+    let output: Awaited<ReturnType<typeof runSmokeCommand>> | undefined;
+    let failure: Error | undefined;
+    try {
+        output = await runSmokeCommand(process.execPath, ["-e", `
+            const {Worker} = require("node:worker_threads");
+            const worker = new Worker(\`
+                const {parentPort} = require("node:worker_threads");
+                setTimeout(() => {
+                    parentPort.postMessage("WORKER_SMOKE_RESULT");
+                    ${mode === "lingering-worker" ? "setInterval(() => {}, 1000);" : "parentPort.close();"}
+                }, 200);
+            \`, {eval: true});
+            worker.once("message", value => process.stdout.write(value));
+            worker.once("exit", () => {
+                process.stdout.write("; worker exited");
+                ${mode === "exit-failure" ? 'process.stderr.write("worker smoke rejected"); process.exitCode = 7;' : ""}
+            });
+        `], {cwd: REPO_ROOT, ...(mode === "lingering-worker" ? {timeoutMs: 2000} : {})}, children);
+    } catch (error) {
+        failure = smokeFailure(error);
+    }
+    if (mode === "success") {
+        expect(failure).toBeUndefined();
+        expect(output).toMatchObject({exitCode: 0, stdout: "WORKER_SMOKE_RESULT; worker exited", stderr: "", resourcesDrained: true, stdioClosed: true});
+    } else {
+        expect(output).toBeUndefined();
+        expect(failure?.message).toContain("WORKER_SMOKE_RESULT");
+        expect(failure?.message).toContain(mode === "lingering-worker" ? '"timedOut":true' : '"exitCode":7');
+        if (mode === "exit-failure") expect(failure?.message).toContain("worker smoke rejected");
+        for (const field of ["processTreeDrained", "resourcesDrained", "stdioClosed"]) expect(failure?.message).toContain(`"${field}":true`);
+    }
+    expect(children.size).toBe(1);
+    for (const child of children) expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
+});
+
+describe("snapshot-backed smoke observation regressions without candidate compilation, pack or install", () => {
+    let directory: string;
+    let cli: string;
+    let game: string;
+    let preparation: string;
+    const children = new Set<ChildProcessWithoutNullStreams>();
+
+    beforeAll(() => {
+        directory = fs.mkdtempSync(path.join(os.tmpdir(), "p911-snapshot-observation-"));
+        const runtime = path.join(directory, "runtime");
+        fs.mkdirSync(runtime);
+        // Development regression only: reuse the clone's already compiled CLI
+        // and its real dependency graph. This is not installed-candidate proof.
+        // Missing compiled inputs must fail, never trigger a build or npm setup.
+        fs.cpSync(path.join(REPO_ROOT, "dist"), path.join(runtime, "dist"), {recursive: true});
+        fs.copyFileSync(path.join(REPO_ROOT, "package.json"), path.join(runtime, "package.json"));
+        fs.symlinkSync(path.join(REPO_ROOT, "node_modules"), path.join(runtime, "node_modules"), "dir");
+        cli = path.join(runtime, "dist/cli/pokie.js");
+        game = path.join(directory, "custom executable package");
+        fs.mkdirSync(path.join(game, "dist"), {recursive: true});
+        preparation = `
+            const marker = process.env.POKIE_SMOKE_PREPARATION_MARKER;
+            const fs = require("node:fs");
+            if (process.env.POKIE_SMOKE_VALIDATION_TRACE) {
+                fs.appendFileSync(process.env.POKIE_SMOKE_VALIDATION_TRACE, JSON.stringify({entry: __dirname, startedAt: Date.now()}) + "\\n");
+            }
+            if (process.env.POKIE_SMOKE_PREPARATION_DELAY_MS && !fs.existsSync(marker)) {
+                fs.writeFileSync(marker, "first initializer");
+                process.stderr.write("authored package preparation started\\n");
+                Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.env.POKIE_SMOKE_PREPARATION_DELAY_MS));
+                process.stderr.write("authored package preparation completed\\n");
+            }
+        `;
+        fs.writeFileSync(path.join(game, "dist/index.js"), preparation + fs.readFileSync(path.join(REPO_ROOT, "tests/cli/fixtures/playable-game/index.js"), "utf8"));
+        fs.writeFileSync(path.join(game, "package.json"), JSON.stringify({name: "snapshot-observation", version: "1.0.0", pokie: {entry: "dist/index.js"}}));
+    }, SMOKE_COMMAND_TIMEOUT_MS);
+
+    it.each(["initialized", "reinstalled", "moved"])("awaits real %s package validation, repeated snapshots and release", phase => {
+        const initialized = path.join(directory, `${phase} source package`);
+        const root = phase === "initialized" ? initialized : path.join(directory, `${phase} package`);
+        fs.cpSync(game, initialized, {recursive: true});
+        const authoredMetadata = JSON.parse(fs.readFileSync(path.join(initialized, "package.json"), "utf8")) as {dependencies?: Record<string, string>};
+        authoredMetadata.dependencies = {"@fromstan/pokie": "^2.0.0"};
+        fs.writeFileSync(path.join(initialized, "package.json"), JSON.stringify(authoredMetadata));
+        fs.mkdirSync(path.join(initialized, "node_modules/@fromstan"), {recursive: true});
+        fs.symlinkSync(path.join(directory, "runtime"), path.join(initialized, "node_modules/@fromstan/pokie"), "dir");
+        if (phase === "reinstalled") {
+            // Exercise the failing physical dependency topology without running
+            // npm install, build, pack or installed acceptance collection here.
+            fs.cpSync(initialized, root, {recursive: true, filter: source => path.basename(source) !== "node_modules"});
+            fs.cpSync(path.join(directory, "runtime"), path.join(root, "node_modules/@fromstan/pokie"), {recursive: true});
+            expect(fs.lstatSync(path.join(root, "node_modules/@fromstan/pokie")).isSymbolicLink()).toBe(false);
+        } else if (phase === "moved") {
+            fs.renameSync(initialized, root);
+        }
+        const metadata = fs.readFileSync(path.join(root, "package.json"));
+        const temporaryRoot = path.join(directory, `${phase}-snapshots`);
+        fs.mkdirSync(temporaryRoot);
+        const trace = path.join(directory, `${phase}-validation.ndjson`);
+        const marker = path.join(directory, `${phase}-validation-started`);
+        const started = Date.now();
+        const validation = runInstalledValidation(cli, root, directory, {env: {...process.env, TMPDIR: temporaryRoot,
+            POKIE_SMOKE_VALIDATION_TRACE: trace, POKIE_SMOKE_PREPARATION_MARKER: marker,
+            POKIE_SMOKE_PREPARATION_DELAY_MS: phase === "reinstalled" ? "61000" : ""}});
+        expectLegacyPackageValidation(validation);
+        const loads = fs.readFileSync(trace, "utf8").trim().split("\n").map(line => JSON.parse(line) as {entry: string; startedAt: number});
+        // These are separate native loads of the real game, not simulated
+        // completion markers: provenance, contract and declaration extraction
+        // acquire distinct snapshots and release all three before returning.
+        expect(loads).toHaveLength(3);
+        expect(new Set(loads.map(load => load.entry)).size).toBe(3);
+        for (const load of loads) {
+            expect(load.entry.startsWith(temporaryRoot + path.sep)).toBe(true);
+            expect(fs.existsSync(load.entry)).toBe(false);
+        }
+        if (phase === "reinstalled") {
+            expect(fs.readFileSync(marker, "utf8")).toBe("first initializer");
+            expect(loads[1].startedAt - loads[0].startedAt).toBeGreaterThan(60_000);
+        }
+        expect(fs.readdirSync(temporaryRoot)).toEqual([]);
+        expect(fs.readFileSync(path.join(root, "package.json"))).toEqual(metadata);
+        console.log(JSON.stringify({operation: `${phase} validate`, elapsedMs: Date.now() - started, status: validation.status,
+            snapshotLoads: loads.length, loadOffsetsMs: loads.map(load => load.startedAt - started), snapshotsRemoved: true}));
+    }, SMOKE_COMMAND_TIMEOUT_MS + 10_000);
+
+    it.each(["generate", "build"])("awaits real generated-package %s preflight, publication and snapshot cleanup past the old cutoff", async operation => {
+        const root = path.join(directory, `${operation} generated package`);
+        fs.mkdirSync(path.join(root, "dist"), {recursive: true});
+        const entry = preparation + renderBuiltGameModule({
+            manifest: {id: "packed-outcomelibrary-slot", name: "Packed Outcomelibrary Slot", version: "1.0.0"},
+            reels: 2, rows: 1, symbols: ["A", "B"], paytable: {A: {2: 5}}, reelStrips: [["A", "A", "B"], ["A", "B"]],
+        }, "2.0.0");
+        fs.writeFileSync(path.join(root, "dist/index.js"), entry);
+        const metadata = JSON.stringify({name: "generated-outcome-workflow", version: "1.0.0", pokie: {entry: "dist/index.js"},
+            dependencies: {"@fromstan/pokie": "^2.0.0"}});
+        fs.writeFileSync(path.join(root, "package.json"), metadata);
+        // Use existing compiled runtime bytes and production dependencies only.
+        // A link to the clone's entire dev node_modules would add unrelated
+        // compiler/test/cache inputs to generation's real source-binding hash.
+        const runtime = path.join(directory, `${operation} production runtime`);
+        fs.cpSync(path.join(directory, "runtime"), runtime, {recursive: true, filter: source => path.basename(source) !== "node_modules"});
+        const dependencies = (JSON.parse(fs.readFileSync(path.join(runtime, "package.json"), "utf8")) as {dependencies: Record<string, string>}).dependencies;
+        for (const name of Object.keys(dependencies)) {
+            const destination = path.join(runtime, "node_modules", name);
+            fs.mkdirSync(path.dirname(destination), {recursive: true});
+            fs.symlinkSync(path.join(REPO_ROOT, "node_modules", name), destination, "dir");
+        }
+        fs.mkdirSync(path.join(root, "node_modules/@fromstan"), {recursive: true});
+        fs.symlinkSync(runtime, path.join(root, "node_modules/@fromstan/pokie"), "dir");
+        const temporaryRoot = path.join(directory, `${operation}-publication-snapshots`);
+        fs.mkdirSync(temporaryRoot);
+        const trace = path.join(directory, `${operation}-publication-loads.ndjson`);
+        const marker = path.join(directory, `${operation}-publication-initializer`);
+        const output = path.join(directory, `${operation}-published`);
+        const started = Date.now();
+        const args = operation === "generate"
+            ? ["generate", root, "--stake", "1", "--out", output, "--format", "json"]
+            : ["build", root, "--target", "outcomeLibrary", "--out", output];
+        const result = await runSmokeCommand(cli, args, {cwd: directory, env: {...process.env, TMPDIR: temporaryRoot,
+            POKIE_SMOKE_VALIDATION_TRACE: trace, POKIE_SMOKE_PREPARATION_MARKER: marker, POKIE_SMOKE_PREPARATION_DELAY_MS: "61000"}}, children);
+        expect(result).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
+        expect(result.stderr).toContain("authored package preparation started");
+        expect(result.stderr).toContain("authored package preparation completed");
+        const library = operation === "generate"
+            ? JSON.parse(fs.readFileSync(output, "utf8")) as {outcomes: Array<{weight: number}>}
+            : await new OutcomeLibraryBundleReader().readLibrary(output, "base");
+        expect(library.outcomes).toHaveLength(4);
+        expect(library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(6);
+        const loads = fs.readFileSync(trace, "utf8").trim().split("\n").map(line => JSON.parse(line) as {entry: string; startedAt: number});
+        expect(loads.length).toBeGreaterThanOrEqual(2);
+        expect(new Set(loads.map(load => load.entry)).size).toBe(loads.length);
+        expect(fs.readFileSync(marker, "utf8")).toBe("first initializer");
+        expect(loads[1].startedAt - loads[0].startedAt).toBeGreaterThan(60_000);
+        for (const load of loads) {
+            expect(load.entry.startsWith(temporaryRoot + path.sep)).toBe(true);
+            expect(fs.existsSync(load.entry)).toBe(false);
+        }
+        expect(fs.readdirSync(temporaryRoot)).toEqual([]);
+        expect(fs.readFileSync(path.join(root, "package.json"), "utf8")).toBe(metadata);
+        expect(fs.readFileSync(path.join(root, "dist/index.js"), "utf8")).toBe(entry);
+        console.log(JSON.stringify({operation: `generated ${operation}`, elapsedMs: Date.now() - started,
+            snapshotLoads: loads.length, loadOffsetsMs: loads.map(load => load.startedAt - started), snapshotsRemoved: true,
+            resourcesDrained: result.resourcesDrained, stdioClosed: result.stdioClosed}));
+    }, SMOKE_COMMAND_TIMEOUT_MS + 10_000);
+
+    it("retains real invalid-package validation failure and releases temporary state", () => {
+        const root = path.join(directory, "invalid package");
+        fs.mkdirSync(root);
+        fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({name: "invalid", version: "1.0.0", pokie: {entry: "missing.js"}}));
+        const temporaryRoot = path.join(directory, "invalid-snapshots");
+        fs.mkdirSync(temporaryRoot);
+        const validation = runInstalledValidation(cli, root, directory, {env: {...process.env, TMPDIR: temporaryRoot}});
+        expect(validation.error).toBeUndefined();
+        expect(validation.signal).toBeNull();
+        expect(validation.status).toBe(1);
+        const report = JSON.parse(validation.stdout) as {valid: boolean; errors: unknown[]};
+        expect(report.valid).toBe(false);
+        expect(report.errors.length).toBeGreaterThan(0);
+        expect(fs.readdirSync(temporaryRoot)).toEqual([]);
+    }, SMOKE_COMMAND_TIMEOUT_MS + 10_000);
+
+    it("awaits the real custom-package simulation's metadata, execution and cleanup", async () => {
+        const report = path.join(directory, "simulation.json");
+        const started = Date.now();
+        const result = await runSmokeCommand(process.execPath, [cli, "sim", game, "--rounds", "4", "--seed", "custom-seed", "--out", report], {
+            cwd: directory, env: {...process.env, POKIE_SMOKE_PREPARATION_DELAY_MS: ""},
+        }, children);
+        expect(result).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
+        expect(JSON.parse(fs.readFileSync(report, "utf8"))).toMatchObject({rounds: 4, seed: "custom-seed"});
+        console.log(JSON.stringify({operation: "custom sim", elapsedMs: Date.now() - started, exitCode: result.exitCode, resourcesDrained: result.resourcesDrained, stdioClosed: result.stdioClosed}));
+    }, SMOKE_COMMAND_TIMEOUT_MS + 10_000);
+
+    it.each(["sim", "replay"])("awaits real reinstalled-package %s snapshots past the old cutoff and drains them", async operation => {
+        const root = path.join(directory, `${operation} physical package`);
+        fs.cpSync(game, root, {recursive: true});
+        const metadataPath = path.join(root, "package.json");
+        const metadata = JSON.stringify({name: "physical-round-workflow", version: "1.0.0", pokie: {entry: "dist/index.js"},
+            dependencies: {"@fromstan/pokie": "^2.0.0"}});
+        fs.writeFileSync(metadataPath, metadata);
+        // Match the failed generated package's physical dependency layout,
+        // using existing compiled bytes without build, pack or npm install.
+        const dependency = path.join(root, "node_modules/@fromstan/pokie");
+        fs.cpSync(path.join(directory, "runtime"), dependency, {recursive: true});
+        expect(fs.lstatSync(dependency).isSymbolicLink()).toBe(false);
+        const temporaryRoot = path.join(directory, `${operation}-snapshots`);
+        fs.mkdirSync(temporaryRoot);
+        const trace = path.join(directory, `${operation}-loads.ndjson`);
+        const marker = path.join(directory, `${operation}-initializer`);
+        const output = path.join(directory, `${operation}-physical.json`);
+        const started = Date.now();
+        const result = await runSmokeCommand(cli, [operation, root, operation === "sim" ? "--rounds" : "--round", "3",
+            "--seed", "0", "--out", output], {cwd: directory, env: {...process.env, TMPDIR: temporaryRoot,
+            POKIE_SMOKE_VALIDATION_TRACE: trace, POKIE_SMOKE_PREPARATION_MARKER: marker, POKIE_SMOKE_PREPARATION_DELAY_MS: "61000"}}, children);
+        expect(result).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
+        expect(result.stderr).toContain("authored package preparation started");
+        expect(result.stderr).toContain("authored package preparation completed");
+        const report = JSON.parse(fs.readFileSync(output, "utf8")) as {totalBet: number; totalWin: number; rtp?: number; screen?: unknown};
+        expect(report).toMatchObject({seed: "0", [operation === "sim" ? "rounds" : "round"]: 3, totalBet: 3});
+        expect(Number.isFinite(report.totalWin)).toBe(true);
+        if (operation === "sim") expect(report.rtp).toBe(report.totalWin / report.totalBet);
+        else expect(Array.isArray(report.screen)).toBe(true);
+        const loads = fs.readFileSync(trace, "utf8").trim().split("\n").map(line => JSON.parse(line) as {entry: string; startedAt: number});
+        expect(loads).toHaveLength(operation === "sim" ? 4 : 3);
+        expect(new Set(loads.map(load => load.entry)).size).toBe(loads.length);
+        expect(fs.readFileSync(marker, "utf8")).toBe("first initializer");
+        expect(loads[1].startedAt - loads[0].startedAt).toBeGreaterThan(60_000);
+        expect(Date.now() - started).toBeGreaterThan(60_000);
+        for (const load of loads) {
+            expect(load.entry.startsWith(temporaryRoot + path.sep)).toBe(true);
+            expect(fs.existsSync(load.entry)).toBe(false);
+        }
+        expect(fs.readdirSync(temporaryRoot)).toEqual([]);
+        expect(fs.readFileSync(metadataPath, "utf8")).toBe(metadata);
+        console.log(JSON.stringify({operation: `reinstalled ${operation}`, elapsedMs: Date.now() - started,
+            snapshotLoads: loads.length, loadOffsetsMs: loads.map(load => load.startedAt - started),
+            snapshotsRemoved: true, resourcesDrained: result.resourcesDrained, stdioClosed: result.stdioClosed}));
+    }, SMOKE_COMMAND_TIMEOUT_MS + 10_000);
+
+    it.each(["client", "serve", "dev"])("awaits real %s readiness and drains its runtime after a healthy response", async id => {
+        const {spawnP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
+            spawnP911Child: (command: string, args: string[], options: {cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number}) => ChildProcessWithoutNullStreams;
+        };
+        const args = [cli, id, game, "--port", "0"];
+        if (id === "dev") args.push("--client-port", "0");
+        if (id !== "serve") args.push("--no-open");
+        const started = Date.now();
+        // A real authored initializer crosses the former 60s observer cutoff.
+        // Delay once: both project resolvers read configuration provenance by
+        // loading snapshots, before the server acquires its final runtime.
+        // Keep the marker outside the authored package and its input identity.
+        const env = {...process.env, POKIE_SMOKE_PREPARATION_DELAY_MS: id === "serve" ? "61000" : "",
+            POKIE_SMOKE_PREPARATION_MARKER: path.join(directory, `${id}-preparation-started`)};
+        const child = spawnP911Child(process.execPath, args, {cwd: directory, env, timeoutMs: SMOKE_COMMAND_TIMEOUT_MS});
+        children.add(child);
+        try {
+            const port = await waitForListeningPort(child);
+            if (id === "serve") {
+                expect(fs.readFileSync(env.POKIE_SMOKE_PREPARATION_MARKER, "utf8")).toBe("first initializer");
+                expect(Date.now() - started).toBeGreaterThan(60_000);
+            }
+            expect((await fetch(`http://127.0.0.1:${port}${id === "client" ? "/" : "/health"}`)).status).toBe(200);
+            expect(child.exitCode).toBeNull();
+            console.log(JSON.stringify({operation: id, readinessMs: Date.now() - started}));
+        } finally {
+            await stopChild(child).catch((error: unknown) => {
+                throw smokeFailure(error);
+            });
+        }
+        expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
+    }, SMOKE_COMMAND_TIMEOUT_MS + 10_000);
+
+    afterAll(async () => {
+        try {
+            const stopped = await Promise.allSettled([...children].map(child => stopChild(child)));
+            const failure = stopped.find(result => result.status === "rejected");
+            if (failure?.status === "rejected") throw smokeFailure(failure.reason);
+            const {p911ChildrenDrained} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
+                p911ChildrenDrained: (owned: Iterable<ChildProcessWithoutNullStreams>) => boolean;
+            };
+            expect(p911ChildrenDrained(children)).toBe(true);
+        } finally {
+            if (directory) fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+});
+
+it.each(["early-exit", "timeout"])("rejects %s before readiness and removes observers before owned cleanup", async mode => {
+    const {spawnP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
+        spawnP911Child: (command: string, args: string[], options: {cwd: string; timeoutMs: number}) => ChildProcessWithoutNullStreams;
+    };
+    const child = spawnP911Child(process.execPath, ["-e", `
+        process.stderr.write("preparing without a listener");
+        ${mode === "timeout" ? "setInterval(() => {}, 1000);" : ""}
+    `], {cwd: REPO_ROOT, timeoutMs: 10_000});
+    const dataListeners = child.stdout.listenerCount("data");
+    try {
+        await expect(waitForListeningPort(child, mode === "timeout" ? 1000 : 5000)).rejects.toThrow(
+            mode === "timeout" ? "Timed out after 1000ms" : "exited before listening (code 0",
+        );
+        expect(child.stdout.listenerCount("data")).toBe(dataListeners);
+    } finally {
+        await stopChild(child);
+    }
+    expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
+});
+
+it.each(["loaded", "error", "loading", "http-error"] as const)("observes Studio dashboard %s within the remaining command deadline", async outcome => {
+    let requests = 0;
+    const server = createServer((_request, response) => {
+        requests++;
+        response.writeHead(outcome === "http-error" ? 503 : 200, {"Content-Type": "application/json"});
+        response.end(JSON.stringify({status: requests < 3 || outcome === "loading" ? "loading" : outcome, type: "tsPackage"}));
+    });
+    await new Promise<void>(resolve => {
+        server.listen(0, "127.0.0.1", resolve);
+    });
+    try {
+        const url = `http://127.0.0.1:${(server.address() as {port: number}).port}/api/project/context`;
+        const deadline = performance.now() + (outcome === "loading" ? 250 : 3000);
+        const readiness = waitForSmokeProjectDashboard(url, deadline);
+        if (outcome === "loading") await expect(readiness).rejects.toThrow(/deadline|timeout|timed out/i);
+        else if (outcome === "http-error") await expect(readiness).rejects.toThrow("HTTP 503");
+        else {
+            await expect(readiness).resolves.toEqual({status: outcome, type: "tsPackage"});
+            expect(requests).toBe(3);
+        }
+    } finally {
+        await new Promise<void>((resolve, reject) => {
+            server.close(error => error ? reject(error) : resolve());
+        });
+    }
+});
 
 describe("npm pack smoke test (real tarball, real npm install, real spawned pokie binary)", () => {
     // Real `npm pack` (which runs the full `prepack` -> `npm run build` lifecycle) plus a real
@@ -217,16 +829,23 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     const spawnedSmokeChildren = new Set<ChildProcessWithoutNullStreams>();
     const spawnSmokeChild = async (args: string[], cwd: string, env: NodeJS.ProcessEnv = process.env): Promise<ChildProcessWithoutNullStreams> => {
         const {spawnP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
-            spawnP911Child: (command: string, args: string[], options: {cwd: string; env: NodeJS.ProcessEnv}) => ChildProcessWithoutNullStreams;
+            spawnP911Child: (command: string, args: string[], options: {cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number}) => ChildProcessWithoutNullStreams;
         };
-        const child = spawnP911Child(pokieBinPath, args, {cwd, env});
+        const child = spawnP911Child(pokieBinPath, args, {cwd, env, timeoutMs: SMOKE_COMMAND_TIMEOUT_MS});
         spawnedSmokeChildren.add(child);
         return child;
+    };
+    const runSmokeNpm = async (args: string[], cwd: string, timeoutMs: number): Promise<string> => {
+        return (await runSmokeCommand("npm", args, {cwd, timeoutMs, env: smokeNpmEnvironment(cwd)}, spawnedSmokeChildren)).stdout;
     };
     const smokeIt = (name: string, implementation: () => unknown | Promise<unknown>): void => {
         registeredSmokeTests++;
         it(name, async () => {
-            await implementation();
+            try {
+                await implementation();
+            } catch (error) {
+                throw smokeFailure(error);
+            }
             completedSmokeTests.add(name);
         });
     };
@@ -284,7 +903,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         }, null, 2)}\n`, {flag: "wx"});
     }
 
-    beforeAll(async () => {
+    async function prepareSmokeCandidate(): Promise<void> {
         // Keep the real tarball and npm's output outside the candidate tree.
         // `npm pack --json` includes one record per shipped file; once the package exceeded 8,000
         // files that output crossed execFileSync's default 1 MiB buffer and failed with ENOBUFS.
@@ -315,20 +934,13 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             fs.writeFileSync(tarballPath, result.archive, {flag: "wx"});
         } else {
             packDir = createExternalSmokeDirectory("pokie-npm-pack-output-");
-            const {spawnP911Child, waitP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
-                spawnP911Child: (command: string, args: string[], options: {cwd: string; timeoutMs: number}) => ChildProcessWithoutNullStreams;
-                waitP911Child: (child: ChildProcessWithoutNullStreams) => Promise<{stdout: string}>;
-            };
             // Preserve normal prepack, with launch-time ownership of its build
             // descendants and awaited cleanup even when it fails or times out.
-            const packChild = spawnP911Child("npm", ["pack", "--silent", "--pack-destination", packDir], {cwd: REPO_ROOT, timeoutMs: 180000});
-            spawnedSmokeChildren.add(packChild);
-            let stdout: string;
-            try {
-                stdout = (await waitP911Child(packChild)).stdout;
-            } finally {
-                await stopChild(packChild);
-            }
+            // Normal prepack includes lint, all compilers and the installed help
+            // build. Give that composite its own bounded deadline; individual
+            // installed commands retain the shorter default. Match the normal
+            // producer's production context under both npm and direct Jest.
+            const stdout = await runSmokeNpm(["pack", "--silent", "--pack-destination", packDir], REPO_ROOT, 600_000);
             tarballPath = selectPackedArchive(packDir, stdout);
         }
         expect(fs.existsSync(tarballPath)).toBe(true);
@@ -357,7 +969,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         // for a cold cache), so this smoke suite cannot time out merely on registry metadata latency.
         // Always install the authenticated archive natively. A borrowed node_modules symlink
         // cannot establish clean installed-consumer acceptance, even for a shared candidate.
-        execFileSync("npm", ["install", tarballPath, "--no-audit", "--no-fund", "--prefer-offline"], {cwd: installDir, encoding: "utf-8", timeout: 120000});
+        await runSmokeNpm(["install", tarballPath, "--no-audit", "--no-fund", "--prefer-offline"], installDir, 180_000);
         const installedRoot = path.join(installDir, "node_modules", "@fromstan", "pokie");
         expect(fs.lstatSync(path.join(installDir, "node_modules")).isSymbolicLink()).toBe(false);
         expect(fs.lstatSync(installedRoot).isSymbolicLink()).toBe(false);
@@ -380,7 +992,17 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         fs.cpSync(path.join(REPO_ROOT, "tests/cli/fixtures/playable-game"), path.join(installDir, "playable-game"), {
             recursive: true, filter: (source) => path.basename(source) !== "node_modules",
         });
-    });
+    }
+
+    // Prepack and the native install have separate deadlines. The hook must
+    // allow both plus awaited process cleanup before Jest starts teardown.
+    beforeAll(async () => {
+        try {
+            await prepareSmokeCandidate();
+        } catch (error) {
+            throw smokeFailure(error);
+        }
+    }, 810_000);
 
     afterAll(async () => {
         // Jest reaches afterAll only after every real installed CLI, Studio/API/assets and worker
@@ -421,17 +1043,17 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             temporaryPackDirectoryRemoved: packDir === undefined || !fs.existsSync(packDir),
             processesDrained: smokeResults.processesDrained,
         };
-        if (stopFailure?.status === "rejected") throw stopFailure.reason;
-        if (cleanupFailure !== undefined) throw cleanupFailure;
+        if (stopFailure?.status === "rejected") throw smokeFailure(stopFailure.reason);
+        if (cleanupFailure !== undefined) throw smokeFailure(cleanupFailure);
         expect(Object.values(cleanup).every(Boolean)).toBe(true);
         if (suitePassed && archive !== undefined && smokeResults.cli && smokeResults.studioApi && smokeResults.studioAssets && smokeResults.libraryWorker && smokeResults.wasm) stageReleaseSmokeArchive(archive);
         retainP911PackagingReceipt(spawnedSmokeChildren, () => retainReleaseSmokeReceipt(suitePassed, cleanup));
     });
 
-    function installedProbe(name: string, script: string): string {
+    function installedProbe(name: string, script: string, nodeOptions: string[] = []): string {
         const file = path.join(installDir!, `${name}.mjs`);
         fs.writeFileSync(file, script);
-        const result = spawnSync(process.execPath, [file], {cwd: installDir, encoding: "utf8", timeout: 120000});
+        const result = spawnSync(process.execPath, [...nodeOptions, file], {cwd: installDir, encoding: "utf8", timeout: 120000});
         expect({status: result.status, error: result.error?.message, stderr: result.stderr}).toEqual({status: 0, error: undefined, stderr: ""});
         return result.stdout;
     }
@@ -542,199 +1164,277 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(fs.readdirSync(cwd)).toEqual([]);
     });
 
-    smokeIt("executes unchanged generated CJS and genuinely recompiled TS against the installed candidate, including numeric and compact-state regressions", () => {
+    describe("executes unchanged generated CJS and genuinely recompiled TS against the installed candidate, including numeric and compact-state regressions", () => {
         const model = fractionalBetBlueprint([0.05, 7.5, 1e-7], true);
-        const root = path.join(installDir!, "native generated package");
-        const blueprint = path.join(installDir!, "native-source.json");
-        fs.writeFileSync(blueprint, JSON.stringify(model));
-        const build = spawnSync(pokieBinPath, ["build", blueprint, "--target", "tsPackage", "--out", root], {cwd: installDir, encoding: "utf8", timeout: 60000});
-        expect({status: build.status, stderr: build.stderr}).toEqual({status: 0, stderr: ""});
-        const source = fs.readFileSync(path.join(root, "src/index.ts"));
-        const direct = fs.readFileSync(path.join(root, "dist/index.js"));
-        expect(source.toString()).toContain('from "@fromstan/pokie"');
-        expect(direct.toString()).toContain('require("@fromstan/pokie")');
-        for (const bytes of [source, direct]) {
-            expect(bytes.toString()).not.toContain(REPO_ROOT);
-            expect(bytes.toString()).not.toMatch(/(?:require\(|from\s+)["'](?:pokie|.*\/src\/index)["']/);
-        }
-        // Remove the production convenience link, then perform a real native candidate install.
-        fs.rmSync(path.join(root, "node_modules"), {recursive: true, force: true});
-        execFileSync("npm", ["install", "--no-save", "--package-lock=false", "--no-audit", "--no-fund", tarballPath!], {cwd: root, encoding: "utf8", timeout: 120000});
-        expect(fs.lstatSync(path.join(root, "node_modules/@fromstan/pokie")).isSymbolicLink()).toBe(false);
-        const runGeneratedWorkflow = (phase: string) => {
-            const sim = path.join(installDir!, `${phase}-generated-sim.json`);
-            const markdown = path.join(installDir!, `${phase}-generated-report.md`);
-            const replay = path.join(installDir!, `${phase}-generated-replay.json`);
-            const validation = spawnSync(pokieBinPath, ["validate", root, "--format", "json"], {cwd: installDir, encoding: "utf8", timeout: 60000});
-            expectGeneratedPackageValidation(validation);
-            for (const args of [
-                ["inspect", root],
-                ["sim", root, "--rounds", "3", "--seed", "0", "--out", sim],
-                ["report", sim, "--format", "markdown", "--out", markdown],
-                ["replay", root, "--round", "3", "--seed", "0", "--out", replay],
-            ]) {
-                const result = spawnSync(pokieBinPath, args, {cwd: installDir, encoding: "utf8", timeout: 60000});
-                expect({phase, args, status: result.status, error: result.error?.message, stderr: result.stderr})
-                    .toEqual({phase, args, status: 0, error: undefined, stderr: ""});
+        let root: string;
+        let source: Buffer;
+        let direct: Buffer;
+        const workflows: Record<string, {statistics: Record<string, unknown>; recorded: Record<string, unknown>}> = {};
+
+        beforeAll(() => {
+            root = path.join(installDir!, "native generated package");
+            const blueprint = path.join(installDir!, "native-source.json");
+            fs.writeFileSync(blueprint, JSON.stringify(model));
+            const build = spawnSync(pokieBinPath, ["build", blueprint, "--target", "tsPackage", "--out", root], {cwd: installDir, encoding: "utf8", timeout: 60000});
+            expect({status: build.status, stderr: build.stderr}).toEqual({status: 0, stderr: ""});
+            source = fs.readFileSync(path.join(root, "src/index.ts"));
+            direct = fs.readFileSync(path.join(root, "dist/index.js"));
+            expect(source.toString()).toContain('from "@fromstan/pokie"');
+            expect(direct.toString()).toContain('require("@fromstan/pokie")');
+            for (const bytes of [source, direct]) {
+                expect(bytes.toString()).not.toContain(REPO_ROOT);
+                expect(bytes.toString()).not.toMatch(/(?:require\(|from\s+)["'](?:pokie|.*\/src\/index)["']/);
             }
-            const statistics = JSON.parse(fs.readFileSync(sim, "utf8"));
-            const recorded = JSON.parse(fs.readFileSync(replay, "utf8"));
-            expect(statistics).toMatchObject({rounds: 3, seed: "0", totalBet: expect.closeTo(0.15, 12), totalWin: 0.1, rtp: expect.closeTo(2 / 3, 12)});
-            expect(recorded).toMatchObject({seed: "0", round: 3, totalBet: statistics.totalBet, totalWin: statistics.totalWin, screen: FRACTIONAL_MIXED_CONTINUATION[2].screen});
-            expect(fs.readFileSync(markdown, "utf8")).toContain("RTP");
-            return {statistics, recorded};
-        };
-        const originalWorkflow = runGeneratedWorkflow("original-cjs");
-        fs.writeFileSync(path.join(root, "dist/direct.cjs"), direct);
-        execFileSync("npm", ["run", "build"], {cwd: root, encoding: "utf8", timeout: 120000});
-        expect(fs.readFileSync(path.join(root, "src/index.ts"))).toEqual(source);
-        const recompiledWorkflow = runGeneratedWorkflow("recompiled-ts");
-        for (const field of ["rounds", "seed", "totalBet", "totalWin", "rtp", "hitFrequency"]) {
-            expect(recompiledWorkflow.statistics[field]).toEqual(originalWorkflow.statistics[field]);
+            // Remove the production convenience link, then perform a real native candidate install.
+            fs.rmSync(path.join(root, "node_modules"), {recursive: true, force: true});
+            execFileSync("npm", ["install", "--no-save", "--package-lock=false", "--no-audit", "--no-fund", tarballPath!], {cwd: root, encoding: "utf8", timeout: 120000});
+            expect(fs.lstatSync(path.join(root, "node_modules/@fromstan/pokie")).isSymbolicLink()).toBe(false);
+        });
+
+        for (const phase of ["original-cjs", "recompiled-ts"]) {
+            if (phase === "recompiled-ts") {
+                smokeIt("recompiles the unchanged TypeScript with the real installed compiler", async () => {
+                    fs.writeFileSync(path.join(root, "dist/direct.cjs"), direct);
+                    await runSmokeNpm(["run", "build"], root, 120_000);
+                    expect(fs.readFileSync(path.join(root, "src/index.ts"))).toEqual(source);
+                });
+            }
+            smokeIt(`${phase} validates the generated package without claiming executable fidelity`, () => {
+                expectGeneratedPackageValidation(runInstalledValidation(pokieBinPath, root, installDir!));
+            });
+            for (const operation of ["inspect", "sim", "report", "replay"]) {
+                smokeIt(`${phase} completes ${operation} and drains its runtime snapshots`, async () => {
+                    const sim = path.join(installDir!, `${phase}-generated-sim.json`);
+                    const markdown = path.join(installDir!, `${phase}-generated-report.md`);
+                    const replay = path.join(installDir!, `${phase}-generated-replay.json`);
+                    const commands: Record<string, string[]> = {
+                        inspect: ["inspect", root],
+                        sim: ["sim", root, "--rounds", "3", "--seed", "0", "--out", sim],
+                        report: ["report", sim, "--format", "markdown", "--out", markdown],
+                        replay: ["replay", root, "--round", "3", "--seed", "0", "--out", replay],
+                    };
+                    // Both commands resolve provenance twice; Sim also loads
+                    // metadata and execution snapshots. Await owned completion
+                    // under the shared command budget, including descendant drain.
+                    const started = Date.now();
+                    const result = await runSmokeCommand(pokieBinPath, commands[operation], {cwd: installDir!}, spawnedSmokeChildren);
+                    expect(result).toMatchObject({exitCode: 0, stderr: "", resourcesDrained: true, stdioClosed: true});
+                    console.log(JSON.stringify({phase, operation, elapsedMs: Date.now() - started,
+                        exitCode: result.exitCode, resourcesDrained: result.resourcesDrained, stdioClosed: result.stdioClosed}));
+                    if (operation !== "replay") return;
+                    const statistics = JSON.parse(fs.readFileSync(sim, "utf8"));
+                    const recorded = JSON.parse(fs.readFileSync(replay, "utf8"));
+                    expect(statistics).toMatchObject({rounds: 3, seed: "0", totalBet: expect.closeTo(0.15, 12), totalWin: 0.1, rtp: expect.closeTo(2 / 3, 12)});
+                    expect(recorded).toMatchObject({seed: "0", round: 3, totalBet: statistics.totalBet, totalWin: statistics.totalWin, screen: FRACTIONAL_MIXED_CONTINUATION[2].screen});
+                    expect(fs.readFileSync(markdown, "utf8")).toContain("RTP");
+                    workflows[phase] = {statistics, recorded};
+                });
+            }
         }
-        for (const field of ["game", "seed", "round", "screen", "totalBet", "totalWin"]) {
-            expect(recompiledWorkflow.recorded[field]).toEqual(originalWorkflow.recorded[field]);
-        }
-        const rare = path.join(installDir!, "rare-native-stake");
-        writeRareStakeDirectory(rare);
-        markRecognizedStakeProject(rare);
-        expect(installedProbe("native-regressions", `
-            import assert from 'node:assert/strict';
-            import fs from 'node:fs';
-            import {createRequire} from 'node:module';
-            import * as api from '@fromstan/pokie';
-            import * as portable from '@fromstan/pokie/wasm';
-            const require = createRequire(import.meta.url);
-            const packageRoot = ${JSON.stringify(root)};
-            const consumer = createRequire(packageRoot + '/package.json');
-            assert.equal(fs.realpathSync(consumer.resolve('@fromstan/pokie')), packageRoot + '/node_modules/@fromstan/pokie/dist/cjs/index.js');
-            const original = consumer('./dist/direct.cjs');
-            const recompiled = consumer('./dist/index.js');
-            const loaded = await api.loadPokieGameRuntime(packageRoot);
-            const model = ${JSON.stringify(model)};
-            const golden = ${JSON.stringify(FRACTIONAL_MIXED_CONTINUATION)};
-            try {
-                for (const seed of [0, '0', 37, '37']) {
-                    const games = [original, recompiled, loaded.game];
-                    const sessions = games.map(game => game.createSession({seed}));
-                    const oracle = new api.SeededRandomNumberGenerator(seed);
-                    for (let reel = 0; reel < 3; reel++) oracle.getRandomInt(0, 2);
-                    for (const session of sessions) {
-                        assert.equal(session.toSessionState().rngState, oracle.toSessionState());
-                        session.setCreditsAmount(1000);
-                    }
-                    const artifact = typeof seed === 'string' ? await portable.createBlueprintWasmArtifact(model) : undefined;
-                    const runtime = artifact && await portable.instantiatePokieWasm(artifact.bytes, artifact.manifest, new portable.SeededPokieWasmHost(seed));
-                    const wasm = runtime?.createSession(seed);
-                    const initialWasm = wasm?.serialize();
-                    const portableRounds = [];
-                    try {
-                        for (let round = 0; round < 12; round++) {
-                            const bet = model.availableBets[round % 3];
-                            const before = sessions[0].getCreditsAmount();
-                            for (const session of sessions) { session.setBet(bet); session.play(); }
-                            const screen = sessions[0].getSymbolsCombination().toMatrix();
-                            const expected = screen.every(reel => reel[0] === 'A') ? bet * 5 : screen.every(reel => reel[0] === 'B') ? bet * 2 : 0;
-                            if (seed === '0' && round < golden.length) {
-                                assert.deepEqual(screen, golden[round].screen);
-                                assert.equal(sessions[0].toSessionState().rngState, golden[round].rngState);
-                            }
-                            for (let index = 0; index < sessions.length; index++) {
-                                const session = sessions[index];
-                                assert.deepEqual(session.getSymbolsCombination().toMatrix(), screen);
-                                assert.equal(session.getWinAmount(), expected);
-                                assert.equal(session.getCreditsAmount(), before - bet + expected);
-                                assert.deepEqual(session.toSessionState(), sessions[0].toSessionState());
-                                const restored = games[index].createSession({seed: 'unrelated'});
-                                restored.fromSessionState(JSON.parse(JSON.stringify(session.toSessionState())));
-                                restored.setBet(bet); restored.setCreditsAmount(session.getCreditsAmount());
-                                const continuation = games[index].createSession({seed});
-                                continuation.fromSessionState(session.toSessionState());
-                                continuation.setBet(bet); continuation.setCreditsAmount(session.getCreditsAmount());
-                                restored.play(); continuation.play();
-                                assert.deepEqual(restored.toSessionState(), continuation.toSessionState());
-                                assert.equal(restored.getWinAmount(), continuation.getWinAmount());
+
+        smokeIt("preserves installed numeric, compiled-workflow and compact-state contracts", () => {
+            const originalWorkflow = workflows["original-cjs"];
+            const recompiledWorkflow = workflows["recompiled-ts"];
+            for (const field of ["rounds", "seed", "totalBet", "totalWin", "rtp", "hitFrequency"]) {
+                expect(recompiledWorkflow.statistics[field]).toEqual(originalWorkflow.statistics[field]);
+            }
+            for (const field of ["game", "seed", "round", "screen", "totalBet", "totalWin"]) {
+                expect(recompiledWorkflow.recorded[field]).toEqual(originalWorkflow.recorded[field]);
+            }
+            const finalContract = path.join(installDir!, "final-delivery-contracts.mjs");
+            fs.writeFileSync(finalContract, ts.transpileModule(fs.readFileSync(path.join(REPO_ROOT, "tests/fixtures/math/FinalDeliveryContracts.ts"), "utf8"), {
+                compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022},
+            }).outputText);
+            const rare = path.join(installDir!, "rare-native-stake");
+            writeRareStakeDirectory(rare);
+            markRecognizedStakeProject(rare);
+            expect(installedProbe("native-regressions", `
+                import assert from 'node:assert/strict';
+                import fs from 'node:fs';
+                import {createRequire} from 'node:module';
+                import * as api from '@fromstan/pokie';
+                import * as portable from '@fromstan/pokie/wasm';
+                import {verifyFinalDelivery} from './final-delivery-contracts.mjs';
+                const require = createRequire(import.meta.url);
+                const packageRoot = ${JSON.stringify(root)};
+                const consumer = createRequire(packageRoot + '/package.json');
+                assert.equal(fs.realpathSync(consumer.resolve('@fromstan/pokie')), packageRoot + '/node_modules/@fromstan/pokie/dist/cjs/index.js');
+                const original = consumer('./dist/direct.cjs');
+                const recompiled = consumer('./dist/index.js');
+                const loaded = await api.loadPokieGameRuntime(packageRoot);
+                const model = ${JSON.stringify(model)};
+                const golden = ${JSON.stringify(FRACTIONAL_MIXED_CONTINUATION)};
+                try {
+                    for (const seed of [0, '0', 37, '37']) {
+                        const games = [original, recompiled, loaded.game];
+                        const sessions = games.map(game => game.createSession({seed}));
+                        const oracle = new api.SeededRandomNumberGenerator(seed);
+                        for (let reel = 0; reel < 3; reel++) oracle.getRandomInt(0, 2);
+                        for (const session of sessions) {
+                            assert.equal(session.toSessionState().rngState, oracle.toSessionState());
+                            session.setCreditsAmount(1000);
+                        }
+                        const artifact = typeof seed === 'string' ? await portable.createBlueprintWasmArtifact(model) : undefined;
+                        const runtime = artifact && await portable.instantiatePokieWasm(artifact.bytes, artifact.manifest, new portable.SeededPokieWasmHost(seed));
+                        const wasm = runtime?.createSession(seed);
+                        const initialWasm = wasm?.serialize();
+                        const portableRounds = [];
+                        try {
+                            for (let round = 0; round < 12; round++) {
+                                const bet = model.availableBets[round % 3];
+                                const before = sessions[0].getCreditsAmount();
+                                for (const session of sessions) { session.setBet(bet); session.play(); }
+                                const screen = sessions[0].getSymbolsCombination().toMatrix();
+                                const expected = screen.every(reel => reel[0] === 'A') ? bet * 5 : screen.every(reel => reel[0] === 'B') ? bet * 2 : 0;
+                                if (seed === '0' && round < golden.length) {
+                                    assert.deepEqual(screen, golden[round].screen);
+                                    assert.equal(sessions[0].toSessionState().rngState, golden[round].rngState);
+                                }
+                                for (let index = 0; index < sessions.length; index++) {
+                                    const session = sessions[index];
+                                    assert.deepEqual(session.getSymbolsCombination().toMatrix(), screen);
+                                    assert.equal(session.getWinAmount(), expected);
+                                    assert.equal(session.getCreditsAmount(), before - bet + expected);
+                                    assert.deepEqual(session.toSessionState(), sessions[0].toSessionState());
+                                    const restored = games[index].createSession({seed: 'unrelated'});
+                                    restored.fromSessionState(JSON.parse(JSON.stringify(session.toSessionState())));
+                                    restored.setBet(bet); restored.setCreditsAmount(session.getCreditsAmount());
+                                    const continuation = games[index].createSession({seed});
+                                    continuation.fromSessionState(session.toSessionState());
+                                    continuation.setBet(bet); continuation.setCreditsAmount(session.getCreditsAmount());
+                                    restored.play(); continuation.play();
+                                    assert.deepEqual(restored.toSessionState(), continuation.toSessionState());
+                                    assert.equal(restored.getWinAmount(), continuation.getWinAmount());
+                                }
+                                if (wasm) {
+                                    const result = await wasm.play({bet});
+                                    assert.deepEqual(result.screen, screen);
+                                    assert.equal(result.stake, bet); assert.equal(result.payout, expected);
+                                    assert.equal(result.credits, sessions[0].getCreditsAmount());
+                                    portableRounds.push(result);
+                                }
                             }
                             if (wasm) {
-                                const result = await wasm.play({bet});
-                                assert.deepEqual(result.screen, screen);
-                                assert.equal(result.stake, bet); assert.equal(result.payout, expected);
-                                assert.equal(result.credits, sessions[0].getCreditsAmount());
-                                portableRounds.push(result);
+                                const replayed = await runtime.replay(initialWasm, portableRounds.map(round => ({bet: round.stake})));
+                                assert.deepEqual(replayed.rounds, portableRounds);
+                                assert.deepEqual(replayed.stateAfter, wasm.serialize());
                             }
-                        }
-                        if (wasm) {
-                            const replayed = await runtime.replay(initialWasm, portableRounds.map(round => ({bet: round.stake})));
-                            assert.deepEqual(replayed.rounds, portableRounds);
-                            assert.deepEqual(replayed.stateAfter, wasm.serialize());
-                        }
-                    } finally { runtime?.dispose(); }
-                }
-                for (const bet of model.availableBets) {
-                    for (const game of [original, recompiled, loaded.game]) {
-                        const session = game.createSession({seed: '0'});
-                        session.setCreditsAmount(1000); session.setBet(bet);
-                        const statistics = new api.AggregateSimulationRunner(session, 3).run().getStatistics();
-                        const report = new api.SimulationReportBuilder().build({manifest: game.getManifest(), statistics, requestedRounds: 3, seed: '0', durationMs: 1});
-                        assert.equal(report.rounds, 3);
-                        assert.ok(Math.abs(report.totalBet / (3 * bet) - 1) < 1e-12);
-                        assert.ok(Math.abs(report.totalWin / (2 * bet) - 1) < 1e-12);
-                        assert.ok(Math.abs(report.rtp - 2 / 3) < 1e-12);
-                        const replay = new api.ReplayRecorder().record({game, seed: '0', round: 3, entryCommands: Array.from({length: 3}, () => ({kind: 'spin', bet}))});
-                        assert.deepEqual(replay.screen, golden[2].screen);
-                        assert.equal(replay.totalBet, report.totalBet);
-                        assert.equal(replay.totalWin, report.totalWin);
+                        } finally { runtime?.dispose(); }
                     }
-                }
-                const initial0 = new api.SeededRandomNumberGenerator(0).toSessionState();
-                assert.notEqual(initial0, new api.SeededRandomNumberGenerator('0').toSessionState());
-                for (const model of ${JSON.stringify(["missing-symbol", "missing-count", "zero"].map(kind => authoritativePaytableBlueprint(kind as "zero", 0.05)))}) {
-                    const output = new api.GamePackageGenerator('2.0.0').generate(model, process.cwd(), process.cwd() + '/omission-' + model.manifest.id);
-                    const game = require(output.projectRoot + '/dist/index.js');
-                    const session = game.createSession({seed: '0'}); session.setBet(0.05); session.play();
-                    assert.equal(session.getWinAmount(), 0);
-                    assert.deepEqual(game.getModelDescriptor().model.paytable, model.paytable);
-                }
-                for (const awards of [{}, {3: 0}]) {
-                    const freeModel = {...model, symbols: ['A','S'], scatters: ['S'], reelStrips: [['S'],['S'],['S']], paytable: {A: {3: 5}, S: {3: 2}}, mechanics: {freeGames: {scatterSymbol: 'S', awardsByCount: awards}}};
-                    const output = new api.GamePackageGenerator('2.0.0').generate(freeModel, process.cwd(), process.cwd() + '/free-' + Object.keys(awards).length);
-                    const session = require(output.projectRoot + '/dist/index.js').createSession({seed: '0'});
-                    session.setBet(0.05); session.play();
-                    assert.equal(session.getWinAmount(), 0.1);
-                    assert.equal(session.getFreeGamesNum(), 0);
-                }
-                for (const feature of [false, true]) {
-                    const artifact = await portable.createBlueprintWasmArtifact(feature ? ${JSON.stringify(weightedBonusBlueprint())} : model);
-                    const runtime = await portable.instantiatePokieWasm(artifact.bytes, artifact.manifest, new portable.SeededPokieWasmHost('0'));
-                    const fresh = await portable.instantiatePokieWasm(artifact.bytes, artifact.manifest, new portable.SeededPokieWasmHost('fresh'));
-                    try {
-                        const session = runtime.createSession('0', {credits: 10000});
-                        for (let i = 0; i < 48; i++) {
-                            const state = JSON.parse(JSON.stringify(session.serialize()));
-                            assert.equal(state.schemaVersion, feature ? 'pokie.state.v4' : 'pokie.state.v3');
-                            assert.ok(JSON.stringify(state).length < (feature ? 16384 : 512));
-                            assert.ok(!('commands' in state) && !('draws' in state));
-                            const restored = fresh.restoreSession(state);
-                            const command = feature ? portable.nextPokieWasmCommand(state) : {bet: 0.05};
-                            assert.deepEqual(await restored.play(command), await session.play(command));
-                            assert.deepEqual(restored.serialize(), session.serialize()); restored.dispose();
-                            const before = session.serialize();
-                            assert.throws(() => runtime.restoreSession({...state, artifactIdentity: 'wrong'}));
-                            assert.throws(() => runtime.restoreSession({...state, rngState: -1}));
-                            assert.deepEqual(session.serialize(), before);
+                    for (const bet of model.availableBets) {
+                        for (const game of [original, recompiled, loaded.game]) {
+                            const session = game.createSession({seed: '0'});
+                            session.setCreditsAmount(1000); session.setBet(bet);
+                            const statistics = new api.AggregateSimulationRunner(session, 3).run().getStatistics();
+                            const report = new api.SimulationReportBuilder().build({manifest: game.getManifest(), statistics, requestedRounds: 3, seed: '0', durationMs: 1});
+                            assert.equal(report.rounds, 3);
+                            assert.ok(Math.abs(report.totalBet / (3 * bet) - 1) < 1e-12);
+                            assert.ok(Math.abs(report.totalWin / (2 * bet) - 1) < 1e-12);
+                            assert.ok(Math.abs(report.rtp - 2 / 3) < 1e-12);
+                            const replay = new api.ReplayRecorder().record({game, seed: '0', round: 3, entryCommands: Array.from({length: 3}, () => ({kind: 'spin', bet}))});
+                            assert.deepEqual(replay.screen, golden[2].screen);
+                            assert.equal(replay.totalBet, report.totalBet);
+                            assert.equal(replay.totalWin, report.totalWin);
                         }
-                    } finally { runtime.dispose(); fresh.dispose(); }
-                }
-                const project = await new api.ProjectTargetResolver().resolve(${JSON.stringify(rare)});
-                const report = await new api.OutcomeSourceProjectAnalyzer().analyze(project);
-                assert.equal(report.issues.filter(issue => issue.severity === 'error').length, 0);
-                const analysis = report.modes[0].analysis;
-                for (const [field, expected] of [['hitFrequency', 2 ** -64], ['maxWinProbability', 2 ** -64], ['rtp', 2 ** -63], ['variance', 2 ** -62]]) {
-                    assert.ok(analysis[field] > 0 && Math.abs(analysis[field] / expected - 1) <= 1e-12, field);
-                }
-                console.log('INSTALLED_NUMERIC_AND_COMPACT_CONTRACTS_OK');
-            } finally { await loaded.release(); }
-        `)).toContain("INSTALLED_NUMERIC_AND_COMPACT_CONTRACTS_OK");
+                    }
+                    const initial0 = new api.SeededRandomNumberGenerator(0).toSessionState();
+                    assert.notEqual(initial0, new api.SeededRandomNumberGenerator('0').toSessionState());
+                    for (const model of ${JSON.stringify(["missing-symbol", "missing-count", "zero"].map(kind => authoritativePaytableBlueprint(kind as "zero", 0.05)))}) {
+                        const output = new api.GamePackageGenerator('2.0.0').generate(model, process.cwd(), process.cwd() + '/omission-' + model.manifest.id);
+                        const game = require(output.projectRoot + '/dist/index.js');
+                        const session = game.createSession({seed: '0'}); session.setBet(0.05); session.play();
+                        assert.equal(session.getWinAmount(), 0);
+                        assert.deepEqual(game.getModelDescriptor().model.paytable, model.paytable);
+                    }
+                    // Keep the authored map valid while omitting the observed three-scatter count.
+                    for (const awards of [{2: 0}, {3: 0}]) {
+                        const freeModel = {...model, symbols: ['A','S'], scatters: ['S'], reelStrips: [['S'],['S'],['S']], paytable: {A: {3: 5}, S: {3: 2}}, mechanics: {freeGames: {scatterSymbol: 'S', awardsByCount: awards}}};
+                        const output = new api.GamePackageGenerator('2.0.0').generate(freeModel, process.cwd(), process.cwd() + '/free-' + Object.keys(awards)[0]);
+                        const game = require(output.projectRoot + '/dist/index.js');
+                        assert.deepEqual(game.getModelDescriptor().model.mechanics.freeGames.awardsByCount, awards);
+                        const session = game.createSession({seed: '0'});
+                        session.setBet(0.05); session.play();
+                        assert.equal(session.getWinAmount(), 0.1);
+                        assert.equal(session.getFreeGamesNum(), 0);
+                    }
+                    for (const feature of [false, true]) {
+                        const artifact = await portable.createBlueprintWasmArtifact(feature ? ${JSON.stringify(weightedBonusBlueprint())} : model);
+                        const runtime = await portable.instantiatePokieWasm(artifact.bytes, artifact.manifest, new portable.SeededPokieWasmHost('0'));
+                        const fresh = await portable.instantiatePokieWasm(artifact.bytes, artifact.manifest, new portable.SeededPokieWasmHost('fresh'));
+                        try {
+                            const session = runtime.createSession('0', {credits: 10000});
+                            for (let i = 0; i < 48; i++) {
+                                const state = JSON.parse(JSON.stringify(session.serialize()));
+                                assert.equal(state.schemaVersion, feature ? 'pokie.state.v4' : 'pokie.state.v3');
+                                assert.ok(JSON.stringify(state).length < (feature ? 16384 : 512));
+                                assert.ok(!('commands' in state) && !('draws' in state));
+                                const restored = fresh.restoreSession(state);
+                                const command = feature ? portable.nextPokieWasmCommand(state) : {bet: 0.05};
+                                assert.deepEqual(await restored.play(command), await session.play(command));
+                                assert.deepEqual(restored.serialize(), session.serialize()); restored.dispose();
+                                const before = session.serialize();
+                                assert.throws(() => runtime.restoreSession({...state, artifactIdentity: 'wrong'}));
+                                assert.throws(() => runtime.restoreSession({...state, rngState: -1}));
+                                assert.deepEqual(session.serialize(), before);
+                            }
+                        } finally { runtime.dispose(); fresh.dispose(); }
+                    }
+                    const project = await new api.ProjectTargetResolver().resolve(${JSON.stringify(rare)});
+                    const report = await new api.OutcomeSourceProjectAnalyzer().analyze(project);
+                    assert.equal(report.issues.filter(issue => issue.severity === 'error').length, 0);
+                    const analysis = report.modes[0].analysis;
+                    for (const [field, expected] of [['hitFrequency', 2 ** -64], ['maxWinProbability', 2 ** -64], ['rtp', 2 ** -63], ['variance', 2 ** -62]]) {
+                        assert.ok(analysis[field] > 0 && Math.abs(analysis[field] / expected - 1) <= 1e-12, field);
+                    }
+                    let finalIndex = 0;
+                    for (const host of [api, consumer('@fromstan/pokie')]) {
+                        const completed = await verifyFinalDelivery(host, blueprint => {
+                            const file = packageRoot + '/dist/final-' + finalIndex++ + '.cjs';
+                            fs.writeFileSync(file, host.renderBuiltGameModule(blueprint, '2.0.0'));
+                            return consumer(file);
+                        }, packageRoot + '/final-' + finalIndex + '.sqlite');
+                        assert.equal(completed.length, 4);
+                    }
+                    console.log('INSTALLED_NUMERIC_AND_COMPACT_CONTRACTS_OK');
+                } finally { await loaded.release(); }
+            `)).toContain("INSTALLED_NUMERIC_AND_COMPACT_CONTRACTS_OK");
+        });
+    });
+
+    smokeIt("bounds installed continuation in a real Node Worker and awaits its exit", () => {
+        const fixture = path.join(installDir!, "final-worker-continuation.mjs");
+        fs.writeFileSync(fixture, ts.transpileModule(fs.readFileSync(path.join(REPO_ROOT, "tests/fixtures/math/FinalWorkerContinuation.ts"), "utf8"), {
+            compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022},
+        }).outputText);
+        const entry = path.join(installDir!, "final-node-worker.mjs");
+        fs.writeFileSync(entry, `
+            import {parentPort} from 'node:worker_threads';
+            import * as api from '@fromstan/pokie/wasm';
+            import {measureFinalWorkerContinuation} from './final-worker-continuation.mjs';
+            // Measure retained heap at every checkpoint, independently of V8's
+            // allocation-driven collection schedule and the Jest launch flags.
+            if (typeof globalThis.gc !== 'function') throw new Error('Worker requires explicit GC for retained-heap samples');
+            try {parentPort.postMessage(await measureFinalWorkerContinuation(api, 100000, () => {globalThis.gc(); return process.memoryUsage().heapUsed;}));}
+            finally {parentPort.close();}
+        `);
+        const output = installedProbe("final-node-worker-parent", `
+            import assert from 'node:assert/strict';
+            import {Worker} from 'node:worker_threads';
+            const worker = new Worker(new URL('./final-node-worker.mjs', import.meta.url));
+            let result;
+            const timer = setTimeout(() => worker.terminate(), 45000);
+            try {
+                await new Promise((resolve, reject) => {
+                    worker.once('message', value => {result = value});
+                    worker.once('error', reject);
+                    worker.once('exit', code => code === 0 && result ? resolve() : reject(new Error('Worker failed or timed out: ' + code)));
+                });
+                assert.equal(result.rounds, 100000);
+                assert.deepEqual(result.snapshots.map(sample => sample.rounds), [0, 10000, 100000]);
+                console.log('INSTALLED_FINAL_WORKER_OK ' + JSON.stringify(result));
+            } finally {clearTimeout(timer); await worker.terminate();}
+        `, ["--expose-gc"]);
+        expect(output).toContain("INSTALLED_FINAL_WORKER_OK");
     });
 
     smokeIt("executes delivered portable exports and executable WASM through a real browser and module Worker", async () => {
@@ -743,6 +1443,9 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const imports = Object.fromEntries(["browser", "wasm", "client/player"].map(name => [
             `@fromstan/pokie/${name}`, `/installed/${metadata.exports[`./${name}`].import.default.slice(2)}`,
         ]));
+        const continuationFixture = ts.transpileModule(fs.readFileSync(path.join(REPO_ROOT, "tests/fixtures/math/FinalWorkerContinuation.ts"), "utf8"), {
+            compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022},
+        }).outputText;
         const profile = path.join(installDir!, "browser profile");
         let finish!: (value: unknown) => void;
         const completed = new Promise<unknown>(resolve => {
@@ -755,6 +1458,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             const check = (condition, message) => {if (!condition) throw new Error(message)};
             let worker;
             let runtime;
+            let continuation;
             try {
                 check(typeof player.renderPlayerRound === 'function', 'player export');
                 check(new browser.VideoSlotConfig().getAvailableBets().length > 0, 'browser runtime');
@@ -774,10 +1478,27 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                 await worker.request({type: 'dispose'});
                 worker.dispose();
                 check(worker.getDiagnostics().disposed && worker.getDiagnostics().pending === 0, 'Worker drained');
-                await fetch('/result', {method: 'POST', body: JSON.stringify({ok: true, abi: artifact.manifest.artifact.abiVersion, api: wasm.POKIE_WASM_RUNTIME_API_VERSION, worker: true})});
+                continuation = new Worker('/continuation-worker.mjs', {type: 'module'});
+                const measured = await new Promise((resolve, reject) => {
+                    continuation.onmessage = event => event.data.error ? reject(new Error(event.data.error)) : resolve(event.data);
+                    continuation.onerror = event => reject(new Error(event.message));
+                });
+                continuation.terminate(); continuation = undefined;
+                check(measured.rounds === 100000 && JSON.stringify(measured.snapshots.map(sample => sample.rounds)) === '[0,10000,100000]', 'long-lived module Worker checkpoints');
+                worker = new wasm.PokieWasmWorkerClient(() => new Worker('/worker.mjs', {type: 'module'}), {project: 'installed', generation: '2', artifact: artifact.manifest.artifact.sha256, job: 'cancel'});
+                await worker.request({type: 'instantiate', bytes: artifact.bytes, manifest: artifact.manifest, seed: '0'});
+                let observedProgress = false;
+                const cancelled = worker.request({type: 'simulate', rounds: 1000000, seed: '0', bet: 0.05}, progress => {
+                    if (progress.completed >= 128) {observedProgress = true; worker.dispose();}
+                }).then(() => false, () => true);
+                check(await cancelled && observedProgress && worker.getDiagnostics().pending === 0 && worker.getDiagnostics().disposed, 'active Worker cancellation drained pending requests');
+                worker = new wasm.PokieWasmWorkerClient(() => new Worker('/failed-worker.mjs', {type: 'module'}), {project: 'installed', generation: '3', artifact: artifact.manifest.artifact.sha256, job: 'failure'});
+                check(await worker.request({type: 'view'}).then(() => false, () => true), 'Worker load failure rejected pending request');
+                check(worker.getDiagnostics().pending === 0 && worker.getDiagnostics().disposed, 'failed Worker drained');
+                await fetch('/result', {method: 'POST', body: JSON.stringify({ok: true, abi: artifact.manifest.artifact.abiVersion, api: wasm.POKIE_WASM_RUNTIME_API_VERSION, worker: true, continuation: measured})});
             } catch (error) {
                 await fetch('/result', {method: 'POST', body: JSON.stringify({ok: false, error: String(error), stack: error.stack})});
-            } finally {worker?.dispose(); runtime?.dispose();}
+            } finally {continuation?.terminate(); worker?.dispose(); runtime?.dispose();}
         `;
         const server = createServer((request, response) => {
             const url = new URL(request.url!, "http://localhost");
@@ -795,6 +1516,24 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             response.setHeader("Content-Type", "text/javascript");
             if (url.pathname === "/probe.mjs") {
                 response.end(script);
+                return;
+            }
+            if (url.pathname === "/continuation-fixture.mjs") {
+                response.end(continuationFixture);
+                return;
+            }
+            if (url.pathname === "/continuation-worker.mjs") {
+                response.end(`
+                    import * as api from '/installed/dist/esm/wasm/browser.js';
+                    import {measureFinalWorkerContinuation} from '/continuation-fixture.mjs';
+                    try {self.postMessage(await measureFinalWorkerContinuation(api, 100000));}
+                    catch (error) {self.postMessage({error: String(error)});}
+                    finally {self.close();}
+                `);
+                return;
+            }
+            if (url.pathname === "/failed-worker.mjs") {
+                response.end("throw new Error('deliberate verifier Worker failure');");
                 return;
             }
             if (url.pathname === "/worker.mjs") {
@@ -833,7 +1572,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                     reject(new Error("Installed browser consumer did not finish within 60 seconds"));
                 }, 60000);
             });
-            expect(await Promise.race([completed, failure])).toEqual({ok: true, abi: "3.0.0", api: "2.1.0", worker: true});
+            expect(await Promise.race([completed, failure])).toMatchObject({ok: true, abi: "3.0.0", api: "2.1.0", worker: true, continuation: {rounds: 100000}});
         } finally {
             clearTimeout(timeout);
             try {
@@ -847,47 +1586,77 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         }
     });
 
-    smokeIt("preserves an independently authored installed package and its custom behavior during inspection, simulation and rejected model extraction", () => {
-        const root = path.join(installDir!, "custom executable package");
-        fs.mkdirSync(path.join(root, "dist"), {recursive: true});
-        fs.mkdirSync(path.join(root, "src"));
-        const executable = fs.readFileSync(path.join(installDir!, "playable-game/index.js"));
-        const files: Record<string, Buffer> = {
-            "src/index.js": executable,
-            "dist/index.js": executable,
-            "package.json": Buffer.from(JSON.stringify({name: "independent-custom", version: "1.0.0", pokie: {entry: "dist/index.js"}})),
-            "package-lock.json": Buffer.from('{"lockfileVersion":3,"packages":{}}\n'),
-        };
-        for (const [file, bytes] of Object.entries(files)) fs.writeFileSync(path.join(root, file), bytes);
-        const probe = `
-            import assert from 'node:assert/strict';
-            import {loadPokieGameRuntime, PackageBlueprintExtraction} from '@fromstan/pokie';
-            const runtime = await loadPokieGameRuntime(${JSON.stringify(root)});
-            try {
-                assert.equal(runtime.game.getModelDescriptor, undefined);
-                const session = runtime.game.createSession({seed: 'custom-seed'});
-                session.setCreditsAmount(1000); session.play();
-                const extraction = await new PackageBlueprintExtraction().extract(runtime.game);
-                assert.notEqual(extraction.status, 'complete'); assert.equal(extraction.blueprint, undefined);
-                console.log(JSON.stringify({manifest: runtime.game.getManifest(), screen: session.getSymbolsCombination().toMatrix(), win: session.getWinAmount(), state: session.toSessionState()}));
-            } finally {await runtime.release();}
-        `;
-        const before = JSON.parse(installedProbe("custom-before", probe));
-        const inspection = spawnSync(pokieBinPath, ["inspect", root], {cwd: installDir, encoding: "utf8", timeout: 60000});
-        expect(inspection.status).toBe(0);
-        const validation = spawnSync(pokieBinPath, ["validate", root, "--format", "json"], {cwd: installDir, encoding: "utf8", timeout: 60000});
-        expectLegacyPackageValidation(validation);
-        const simulation = spawnSync(pokieBinPath, ["sim", root, "--rounds", "4", "--seed", "custom-seed", "--out", path.join(installDir!, "custom-sim.json")], {cwd: installDir, encoding: "utf8", timeout: 60000});
-        expect(simulation.status).toBe(0);
+    describe("preserves an independently authored installed package and its custom behavior during inspection, simulation and rejected model extraction", () => {
+        let root: string;
+        let files: Record<string, Buffer>;
+        let probe: string;
+        let before: unknown;
+
+        beforeAll(() => {
+            root = path.join(installDir!, "custom executable package");
+            fs.mkdirSync(path.join(root, "dist"), {recursive: true});
+            fs.mkdirSync(path.join(root, "src"));
+            const executable = fs.readFileSync(path.join(installDir!, "playable-game/index.js"));
+            files = {
+                "src/index.js": executable,
+                "dist/index.js": executable,
+                "package.json": Buffer.from(JSON.stringify({name: "independent-custom", version: "1.0.0", pokie: {entry: "dist/index.js"}})),
+                "package-lock.json": Buffer.from('{"lockfileVersion":3,"packages":{}}\n'),
+            };
+            for (const [file, bytes] of Object.entries(files)) fs.writeFileSync(path.join(root, file), bytes);
+            probe = `
+                import assert from 'node:assert/strict';
+                import {loadPokieGameRuntime, PackageBlueprintExtraction} from '@fromstan/pokie';
+                const runtime = await loadPokieGameRuntime(${JSON.stringify(root)});
+                try {
+                    assert.equal(runtime.game.getModelDescriptor, undefined);
+                    const session = runtime.game.createSession({seed: 'custom-seed'});
+                    session.setCreditsAmount(1000); session.play();
+                    const extraction = await new PackageBlueprintExtraction().extract(runtime.game);
+                    assert.notEqual(extraction.status, 'complete'); assert.equal(extraction.blueprint, undefined);
+                    console.log(JSON.stringify({manifest: runtime.game.getManifest(), screen: session.getSymbolsCombination().toMatrix(), win: session.getWinAmount(), state: session.toSessionState()}));
+                } finally {await runtime.release();}
+            `;
+            before = JSON.parse(installedProbe("custom-before", probe));
+        });
+
+        smokeIt("inspects the authored package", () => {
+            const inspection = spawnSync(pokieBinPath, ["inspect", root], {cwd: installDir, encoding: "utf8", timeout: SMOKE_COMMAND_TIMEOUT_MS});
+            expect(inspection.error).toBeUndefined();
+            expect(inspection.status).toBe(0);
+        });
+
+        smokeIt("validates the authored package without claiming executable fidelity", () => {
+            // Validation takes several isolated runtime snapshots, including the
+            // installed dependency graph. Allow the same bounded command budget as
+            // conversions; a valid but declaration-only package must still exit 2.
+            const validation = runInstalledValidation(pokieBinPath, root, installDir!);
+            expectLegacyPackageValidation(validation);
+        });
+
+        smokeIt("simulates the authored package after metadata and execution snapshots drain", async () => {
+            const report = path.join(installDir!, "custom-sim.json");
+            // Both project resolvers load configuration-provenance snapshots;
+            // SimCommand then loads metadata and execution snapshots. Four
+            // rounds do not make those repeated dependency graph copies cheap.
+            const simulation = await runSmokeCommand(pokieBinPath, ["sim", root, "--rounds", "4", "--seed", "custom-seed", "--out", report], {cwd: installDir!}, spawnedSmokeChildren);
+            expect(simulation).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
+            expect(JSON.parse(fs.readFileSync(report, "utf8"))).toMatchObject({rounds: 4, seed: "custom-seed"});
+        });
         for (const target of ["blueprint", "tsPackage", "parWorkbook", "wasm"]) {
-            const output = path.join(installDir!, `custom-rejected-${target}`);
-            const result = spawnSync(pokieBinPath, ["build", root, "--target", target, "--out", output], {cwd: installDir, encoding: "utf8", timeout: 60000});
-            expect(result.status).toBe(1);
-            expect(result.stderr).toMatch(/descriptor|model|extract|represent/i);
-            expect(fs.existsSync(output)).toBe(false);
+            smokeIt(`rejects authored model extraction to ${target} without output`, () => {
+                const output = path.join(installDir!, `custom-rejected-${target}`);
+                const result = spawnSync(pokieBinPath, ["build", root, "--target", target, "--out", output], {cwd: installDir, encoding: "utf8", timeout: SMOKE_COMMAND_TIMEOUT_MS});
+                expect(result.error).toBeUndefined();
+                expect(result.status).toBe(1);
+                expect(result.stderr).toMatch(/descriptor|model|extract|represent/i);
+                expect(fs.existsSync(output)).toBe(false);
+            });
         }
-        expect(JSON.parse(installedProbe("custom-after", probe))).toEqual(before);
-        for (const [file, bytes] of Object.entries(files)) expect(fs.readFileSync(path.join(root, file))).toEqual(bytes);
+        smokeIt("retains the authored bytes and custom seeded behavior after every operation", () => {
+            expect(JSON.parse(installedProbe("custom-after", probe))).toEqual(before);
+            for (const [file, bytes] of Object.entries(files)) expect(fs.readFileSync(path.join(root, file))).toEqual(bytes);
+        });
     });
 
     smokeIt("runs `pokie --no-open` (Home mode): serves the app shell/assets and a healthy API", async () => {
@@ -964,7 +1733,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         }
     });
 
-    smokeIt("imports ParallelSimulationRunner from the installed \"pokie\" package and runs a workers=2 simulation, exiting cleanly with no lingering worker threads", () => {
+    smokeIt("imports ParallelSimulationRunner from the installed \"pokie\" package and runs a workers=2 simulation, exiting cleanly with no lingering worker threads", async () => {
         const fixtureRoot = path.join(installDir!, "playable-game");
         const scriptPath = path.join(installDir!, "run-parallel-simulation.mjs");
         // Deliberately not importing anything from this repo's own src/cli — this script only ever
@@ -1002,12 +1771,13 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             `,
         );
 
-        // execFileSync only returns once the child process has actually exited on its own — if a
-        // worker thread were left running (not terminated after run() resolves), Node's event loop
-        // would never drain and this would hang until Jest's own timeout killed it, failing the test.
-        const output = execFileSync("node", [scriptPath], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        // Each worker prepares an installed runtime snapshot before simulation.
+        // Allow the bounded command budget, and require natural process exit:
+        // a result marker with lingering threads still fails and drains ownership.
+        const output = await runSmokeCommand(process.execPath, [scriptPath], {cwd: installDir!}, spawnedSmokeChildren);
 
-        expect(output).toContain('PARALLEL_SIMULATION_SMOKE_OK {"workers":2,"rounds":20000}');
+        expect(output).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
+        expect(output.stdout).toContain('PARALLEL_SIMULATION_SMOKE_OK {"workers":2,"rounds":20000}');
         smokeResults.libraryWorker = true;
     });
 
@@ -1022,7 +1792,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         try {
             execFileSync(pokieBinPath, ["build", blueprintPath, "--target", "wasm", "--out", wasmPath], {cwd: workflowDir, encoding: "utf-8"});
             expect(execFileSync(pokieBinPath, ["inspect", wasmPath], {cwd: workflowDir, encoding: "utf-8"})).toContain("canonical ABI operations: play, replay");
-            const validation = spawnSync(pokieBinPath, ["validate", wasmPath, "--format", "json"], {cwd: workflowDir, encoding: "utf-8", timeout: 60000});
+            const validation = runInstalledValidation(pokieBinPath, wasmPath, workflowDir);
             expectInstalledValidation(validation, installedValidationContracts.wasm);
             expect(execFileSync(pokieBinPath, ["run", wasmPath, "--seed", "installed"], {cwd: workflowDir, encoding: "utf-8"})).toContain("POKIE WASM round 1");
 
@@ -1075,10 +1845,22 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             // Keep argv literal: adding --no-open here would exercise option-only
             // project discovery, not the no-argument global Home contract. The
             // browser launch is best-effort; suppress Linux's desktop opener only.
+            const deadline = performance.now() + SMOKE_COMMAND_TIMEOUT_MS;
             const child = await spawnSmokeChild(args, cwd, {...process.env, BROWSER: "true"});
             try {
-                const port = await waitForListeningPort(child);
-                return await (await fetch(`http://127.0.0.1:${port}/api/context`)).json();
+                const port = await waitForListeningPort(child, Math.max(1, Math.ceil(deadline - performance.now())));
+                const base = `http://127.0.0.1:${port}`;
+                const options = {headers: {Connection: "close"}};
+                const context = await (await fetch(`${base}/api/context`, options)).json() as {mode: string};
+                if (context.mode === "project") {
+                    // Listening/context precedes asynchronous package preparation.
+                    // Observe the actual terminal dashboard within the CLI's existing
+                    // launch deadline, including port startup and native snapshots.
+                    // A separate 60s poll cutoff ended a still-owned preparation early.
+                    const dashboard = await waitForSmokeProjectDashboard(`${base}/api/project/context`, deadline);
+                    expect(dashboard.status).toBe("loaded");
+                }
+                return context;
             } finally {
                 await stopChild(child);
             }
@@ -1181,7 +1963,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         }
     });
 
-    smokeIt("publishes and reads all six installed project types, follows automatic intermediates and rejects unsupported reconstruction", () => {
+    smokeIt("publishes and reads all six installed project types, follows automatic intermediates and rejects unsupported reconstruction", async () => {
         const directory = fs.mkdtempSync(path.join(installDir!, "canonical-artifacts-"));
         const blueprintPath = path.join(directory, "source.blueprint.json");
         fs.writeFileSync(blueprintPath, JSON.stringify({
@@ -1190,7 +1972,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         }));
         try {
             const sources: Record<string, string> = {blueprint: blueprintPath};
-            expectInstalledValidation(spawnSync(pokieBinPath, ["validate", blueprintPath, "--format", "json"], {cwd: directory, encoding: "utf-8", timeout: 60000}), installedValidationContracts.blueprint);
+            expectInstalledValidation(runInstalledValidation(pokieBinPath, blueprintPath, directory), installedValidationContracts.blueprint);
             const names = {tsPackage: "package", outcomeLibrary: "outcome", stakeAdapter: "stake", parWorkbook: "model.xlsx", wasm: "game.wasm"};
             for (const target of Object.keys(names) as Array<keyof typeof names>) {
                 const name = names[target];
@@ -1206,7 +1988,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                 const inspection = spawnSync(pokieBinPath, ["inspect", destination], {cwd: directory, encoding: "utf-8"});
                 expect(inspection.status).toBe(0);
                 expect(inspection.stderr).toBe("");
-                const validation = spawnSync(pokieBinPath, ["validate", destination, "--format", "json"], {cwd: directory, encoding: "utf-8", timeout: 60000});
+                const validation = runInstalledValidation(pokieBinPath, destination, directory);
                 expect(validation.stderr).toBe("");
                 if (target === "tsPackage") expectGeneratedPackageValidation(validation);
                 else expectInstalledValidation(validation, installedValidationContracts[target]);
@@ -1215,13 +1997,20 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                 const output = path.join(directory, `unsupported-${type}.json`);
                 const rejected = spawnSync(pokieBinPath, ["build", sources[type], "--target", "blueprint", "--out", output], {cwd: directory, encoding: "utf8", timeout: 60000});
                 expect(rejected.status).toBe(1);
-                expect(rejected.stderr).toMatch(/cannot|unavailable|does not preserve|unsupported|no conversion/i);
+                expect(rejected.stderr).toMatch(type === "wasm"
+                    ? /finished artifact, not a source for another POKIE conversion/
+                    : /cannot|unavailable|does not preserve|unsupported|no conversion/i);
+                if (type === "wasm") expect(rejected.stderr).toContain("use its original Blueprint or PAR workbook to build another target");
                 expect(fs.existsSync(output)).toBe(false);
             }
             for (const [source, target, name] of [["parWorkbook", "wasm", "from-par.wasm"], ["tsPackage", "blueprint", "extracted.json"], ["outcomeLibrary", "outcomeLibrary", "republished-outcome"], ["stakeAdapter", "stakeAdapter", "republished-stake"]]) {
                 const output = path.join(directory, name);
-                const result = spawnSync(pokieBinPath, ["build", sources[source], "--target", target, "--out", output], {cwd: directory, encoding: "utf8", timeout: 60000});
-                expect({source, status: result.status, stderr: result.stderr}).toEqual({source, status: 0, stderr: ""});
+                // Package extraction loads and releases isolated dependency snapshots at
+                // recognition, planning and execution. Use the owned command budget,
+                // and await the complete process tree even on failure or timeout.
+                const result = await runSmokeCommand(pokieBinPath, ["build", sources[source], "--target", target, "--out", output], {cwd: directory}, spawnedSmokeChildren);
+                expect({source, status: result.exitCode, stderr: result.stderr, resourcesDrained: result.resourcesDrained, stdioClosed: result.stdioClosed})
+                    .toEqual({source, status: 0, stderr: "", resourcesDrained: true, stdioClosed: true});
                 expect(spawnSync(pokieBinPath, ["inspect", output], {cwd: directory, encoding: "utf8", timeout: 60000}).status).toBe(0);
             }
             const parEvidence = JSON.parse(fs.readFileSync(path.join(directory, "from-par.wasm.pokie/par-import/conversion-evidence.json"), "utf8"));
@@ -1370,7 +2159,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(scaffoldedPkg.dependencies?.["@fromstan/pokie"]).toBe(`^${ownVersion}`);
         expect(fs.existsSync(path.join(projectRoot, "node_modules", "@fromstan", "pokie", "package.json"))).toBe(true);
 
-        const validate = spawnSync(pokieBinPath, ["validate", projectRoot, "--format", "json"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        const validate = runInstalledValidation(pokieBinPath, projectRoot, installDir!);
         expectLegacyPackageValidation(validate);
 
         const simFile = path.join(installDir!, "init-sim.json");
@@ -1394,7 +2183,12 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(rendered.status).toBe(0);
         expect(fs.readFileSync(markdown, "utf8")).toContain("RTP");
         const replay = path.join(installDir!, "init-replay.json");
-        expect(spawnSync(pokieBinPath, ["replay", projectRoot, "--round", "2", "--seed", "demo", "--out", replay], {cwd: installDir, encoding: "utf8", timeout: 60000}).status).toBe(0);
+        // Replay acquires the same isolated installed dependency graph as Sim.
+        // Allow its existing package-preparation budget and retain native failure diagnostics.
+        const replayed = spawnSync(pokieBinPath, ["replay", projectRoot, "--round", "2", "--seed", "demo", "--out", replay], {cwd: installDir, encoding: "utf8", timeout: 120000});
+        expect(replayed.error).toBeUndefined();
+        expect(replayed.signal).toBeNull();
+        expect({status: replayed.status, stderr: replayed.stderr}).toEqual({status: 0, stderr: expect.any(String)});
         expect(installedProbe("init-replay-agreement", `
             import assert from 'node:assert/strict';
             import fs from 'node:fs';
@@ -1464,7 +2258,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const game = require(path.join(reinstalledRoot, "dist", "index.js")) as {getManifest(): {id: string}};
         expect(game.getManifest().id).toBeDefined();
 
-        const validate = spawnSync(pokieBinPath, ["validate", reinstalledRoot, "--format", "json"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        const validate = runInstalledValidation(pokieBinPath, reinstalledRoot, installDir!);
         expectLegacyPackageValidation(validate);
     });
 
@@ -1494,104 +2288,119 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const game = require(path.join(movedRoot, "dist", "index.js")) as {getManifest(): {id: string}};
         expect(game.getManifest().id).toBeDefined();
 
-        const validate = spawnSync(pokieBinPath, ["validate", movedRoot, "--format", "json"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        const validate = runInstalledValidation(pokieBinPath, movedRoot, installDir!);
         expectLegacyPackageValidation(validate);
     });
 
-    smokeIt("runs the public outcome-library lifecycle against a package built by the installed binary itself", () => {
-        // Same small, hand-computable, exactly-enumerable blueprint as
-        // tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts's own finiteBlueprint(): 2 reels of
-        // 3/2 stops, no stateful mechanics, so "generate" resolves the exact strategy without --bounded.
-        const blueprintPath = path.join(installDir!, "outcomelibrary-blueprint.json");
-        fs.writeFileSync(
-            blueprintPath,
-            JSON.stringify({
-                manifest: {id: "packed-outcomelibrary-slot", name: "Packed Outcomelibrary Slot", version: "1.0.0"},
-                reels: 2,
-                rows: 1,
-                symbols: ["A", "B"],
-                paytable: {A: {2: 5}},
-                reelStrips: [
-                    ["A", "A", "B"],
-                    ["A", "B"],
-                ],
-            }),
-        );
-        const packageRoot = path.join(installDir!, "outcomelibrary-pkg");
-        const build = spawnSync(pokieBinPath, ["build", blueprintPath, "--target", "tsPackage", "--out", packageRoot], {
-            cwd: installDir,
-            encoding: "utf-8",
-            timeout: 60000,
-        });
-        expect(build.status).toBe(0);
+    describe("runs the public outcome-library lifecycle against a package built by the installed binary itself", () => {
+        let packageRoot: string;
+        let bundleDir: string;
+        beforeAll(() => {
+            // Same small, hand-computable, exactly-enumerable blueprint as
+            // tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts's own finiteBlueprint(): 2 reels of
+            // 3/2 stops, no stateful mechanics, so "generate" resolves the exact strategy without --bounded.
+            const blueprintPath = path.join(installDir!, "outcomelibrary-blueprint.json");
+            fs.writeFileSync(
+                blueprintPath,
+                JSON.stringify({
+                    manifest: {id: "packed-outcomelibrary-slot", name: "Packed Outcomelibrary Slot", version: "1.0.0"},
+                    reels: 2,
+                    rows: 1,
+                    symbols: ["A", "B"],
+                    paytable: {A: {2: 5}},
+                    reelStrips: [
+                        ["A", "A", "B"],
+                        ["A", "B"],
+                    ],
+                }),
+            );
+            packageRoot = path.join(installDir!, "outcomelibrary-pkg");
+            const build = spawnSync(pokieBinPath, ["build", blueprintPath, "--target", "tsPackage", "--out", packageRoot], {
+                cwd: installDir,
+                encoding: "utf-8",
+                timeout: 60000,
+            });
+            expect(build.status).toBe(0);
 
-        const libraryFile = path.join(installDir!, "outcomelibrary-base.json");
-        const generate = spawnSync(pokieBinPath, ["generate", packageRoot, "--stake", "1", "--out", libraryFile, "--format", "json"], {
-            cwd: installDir,
-            encoding: "utf-8",
-            timeout: 60000,
+            bundleDir = path.join(installDir!, "outcomelibrary-bundle");
         });
-        expect(generate.status).toBe(0);
 
-        const library = JSON.parse(fs.readFileSync(libraryFile, "utf-8")) as {outcomes: Array<{weight: number}>};
-        expect(library.outcomes).toHaveLength(4);
-        expect(library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(6);
-
-        const bundleDir = path.join(installDir!, "outcomelibrary-bundle");
-        const bundleBuild = spawnSync(pokieBinPath, ["build", packageRoot, "--target", "outcomeLibrary", "--out", bundleDir], {
-            cwd: installDir,
-            encoding: "utf-8",
-            timeout: 60000,
+        smokeIt("generates the installed package's exact raw outcome library and drains its runtime", async () => {
+            const libraryFile = path.join(installDir!, "outcomelibrary-base.json");
+            // Preflight and execution acquire separate runtime snapshots and
+            // rebind all executable inputs before publication. Await the owned
+            // command, rather than cutting off that work at spawnSync's 60s.
+            const started = Date.now();
+            const generate = await runSmokeCommand(pokieBinPath, ["generate", packageRoot, "--stake", "1", "--out", libraryFile, "--format", "json"], {cwd: installDir!}, spawnedSmokeChildren);
+            expect(generate).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
+            const library = JSON.parse(fs.readFileSync(libraryFile, "utf-8")) as {outcomes: Array<{weight: number}>};
+            expect(library.outcomes).toHaveLength(4);
+            expect(library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(6);
+            console.log(JSON.stringify({operation: "installed generate", elapsedMs: Date.now() - started,
+                exitCode: generate.exitCode, resourcesDrained: generate.resourcesDrained, stdioClosed: generate.stdioClosed}));
         });
-        expect(bundleBuild.status).toBe(0);
 
-        const bundleValidate = spawnSync(pokieBinPath, ["validate", bundleDir, "--deep", "--format", "json"], {
-            cwd: installDir,
-            encoding: "utf-8",
-            timeout: 60000,
+        smokeIt("builds the installed package's outcome bundle and drains its runtime", async () => {
+            const bundleBuild = await runSmokeCommand(pokieBinPath, ["build", packageRoot, "--target", "outcomeLibrary", "--out", bundleDir], {cwd: installDir!}, spawnedSmokeChildren);
+            expect(bundleBuild).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
         });
-        const bundleValidation = expectInstalledValidation(bundleValidate, installedValidationContracts.outcomeLibrary);
-        expect(bundleValidation.deep).toBe(true);
-        expect(bundleValidation.advanced.issues).toContainEqual(expect.objectContaining({code: "outcome-only-definition-unavailable"}));
 
-        const inspect = spawnSync(pokieBinPath, ["inspect", bundleDir], {
-            cwd: installDir,
-            encoding: "utf-8",
-            timeout: 60000,
-        });
-        expect(inspect.status).toBe(0);
+        smokeIt("validates, inspects and samples the installed package's outcome bundle", () => {
+            const bundleValidate = runInstalledValidation(pokieBinPath, bundleDir, installDir!, {deep: true});
+            const bundleValidation = expectInstalledValidation(bundleValidate, installedValidationContracts.outcomeLibrary);
+            expect(bundleValidation.deep).toBe(true);
+            expect(bundleValidation.advanced.issues).toContainEqual(expect.objectContaining({code: "outcome-only-definition-unavailable"}));
 
-        const sample = spawnSync(pokieBinPath, ["sample", bundleDir, "--mode", "base", "--seed", "packed-source-seed"], {
-            cwd: installDir,
-            encoding: "utf-8",
-            timeout: 60000,
+            const inspect = spawnSync(pokieBinPath, ["inspect", bundleDir], {
+                cwd: installDir,
+                encoding: "utf-8",
+                timeout: 60000,
+            });
+            expect(inspect.status).toBe(0);
+
+            const sample = spawnSync(pokieBinPath, ["sample", bundleDir, "--mode", "base", "--seed", "packed-source-seed"], {
+                cwd: installDir,
+                encoding: "utf-8",
+                timeout: 60000,
+            });
+            expect(sample.status).toBe(0);
         });
-        expect(sample.status).toBe(0);
     });
 
-    smokeIt("runs a data-driven, artifact-producing workflow for every public command and nested verb from the installed binary", async () => {
+    describe("runs a data-driven, artifact-producing workflow for every public command and nested verb from the installed binary", () => {
         // This is intentionally not another recursive-help assertion.  Each row below is a command the
         // tarball-installed executable actually runs with a concrete input, expected exit status, and a
         // produced/consumed artifact (or, for the non-interactive edit boundary, its actionable recovery).
         // Keep the list explicit: adding a public command or verb must add a meaningful clean-room workflow.
-        const workflowRoot = fs.mkdtempSync(path.join(installDir!, "all-public-workflows-"));
-        const blueprintPath = path.join(workflowRoot, "workflow.blueprint.json");
-        const packageRoot = path.join(workflowRoot, "workflow-package");
-        const libraryPath = path.join(workflowRoot, "workflow-library.json");
-        const bundlePath = path.join(workflowRoot, "workflow-bundle");
-        const simPath = path.join(workflowRoot, "workflow-sim.json");
-        const comparisonSimPath = path.join(workflowRoot, "workflow-sim-comparison.json");
+        let workflowRoot: string;
+        let blueprintPath: string;
+        let packageRoot: string;
+        let libraryPath: string;
+        let bundlePath: string;
+        let simPath: string;
+        let comparisonSimPath: string;
         const workflowIds: string[] = [];
         const exercisedPublicWorkflows = new Set<string>();
 
-        const run = (id: string, args: string[], expectedStatus = 0): ReturnType<typeof spawnSync> => {
-            const result = spawnSync(pokieBinPath, args, {cwd: workflowRoot, encoding: "utf-8", timeout: 120000});
+        const recordWorkflow = (id: string, args: string[]): void => {
             workflowIds.push(id);
             const nestedVerb = args.slice(0, 2).join(" ");
             exercisedPublicWorkflows.add(PACKAGED_PUBLIC_WORKFLOW_SCENARIOS.includes(nestedVerb as typeof PACKAGED_PUBLIC_WORKFLOW_SCENARIOS[number]) ? nestedVerb : args[0]);
+        };
+        const run = (id: string, args: string[], expectedStatus = 0): ReturnType<typeof spawnSync> => {
+            const result = spawnSync(pokieBinPath, args, {cwd: workflowRoot, encoding: "utf-8", timeout: 120000});
+            recordWorkflow(id, args);
             expect(result.error).toBeUndefined();
             expect(result.status).toBe(expectedStatus);
             return result;
+        };
+        const runPackageWorkflow = async (id: string, args: string[]): Promise<void> => {
+            const started = Date.now();
+            const result = await runSmokeCommand(pokieBinPath, args, {cwd: workflowRoot}, spawnedSmokeChildren);
+            recordWorkflow(id, args);
+            expect(result).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
+            console.log(JSON.stringify({operation: id, elapsedMs: Date.now() - started, exitCode: result.exitCode,
+                resourcesDrained: result.resourcesDrained, stdioClosed: result.stdioClosed}));
         };
         const expectFile = (filePath: string): void => expect(fs.existsSync(filePath)).toBe(true);
         const expectDirectory = (directoryPath: string): void => expect(fs.statSync(directoryPath).isDirectory()).toBe(true);
@@ -1608,7 +2417,17 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             }
         };
 
-        try {
+        // Share only the installed artifacts between phases. Each phase keeps the
+        // normal Jest deadline instead of charging all 35 CLI launches to one
+        // 300-second test. Every phase participates in the smoke receipt count.
+        beforeAll(() => {
+            workflowRoot = fs.mkdtempSync(path.join(installDir!, "all-public-workflows-"));
+            blueprintPath = path.join(workflowRoot, "workflow.blueprint.json");
+            packageRoot = path.join(workflowRoot, "workflow-package");
+            libraryPath = path.join(workflowRoot, "workflow-library.json");
+            bundlePath = path.join(workflowRoot, "workflow-bundle");
+            simPath = path.join(workflowRoot, "workflow-sim.json");
+            comparisonSimPath = path.join(workflowRoot, "workflow-sim-comparison.json");
             // Use a deliberately tiny source so every generated/consumed artifact is fast and inspectable.
             fs.writeFileSync(
                 blueprintPath,
@@ -1621,7 +2440,9 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                     reelStrips: [["A", "A", "B"], ["A", "B"]],
                 }),
             );
+        });
 
+        smokeIt("creates, validates and builds the installed source artifacts", () => {
             const createdBlueprintPath = path.join(workflowRoot, "created.blueprint.json");
             run("create", ["create", "Packed Workflow", "--random", "--seed", "71", "--out", createdBlueprintPath]);
             expectFile(createdBlueprintPath);
@@ -1634,27 +2455,46 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
 
             run("build", ["build", blueprintPath, "--target", "tsPackage", "--out", packageRoot]);
             expectDirectory(packageRoot);
-            run("generate", ["generate", packageRoot, "--stake", "1", "--out", libraryPath, "--format", "json"]);
+        });
+
+        smokeIt("generates the workflow package's exact raw outcomes and drains its runtime", async () => {
+            await runPackageWorkflow("generate", ["generate", packageRoot, "--stake", "1", "--out", libraryPath, "--format", "json"]);
             expectFile(libraryPath);
-            run("build-outcome-library", ["build", packageRoot, "--target", "outcomeLibrary", "--out", bundlePath]);
+        });
+
+        smokeIt("builds the workflow package's outcome bundle and drains its runtime", async () => {
+            await runPackageWorkflow("build-outcome-library", ["build", packageRoot, "--target", "outcomeLibrary", "--out", bundlePath]);
             expectDirectory(bundlePath);
             run("inspect", ["inspect", bundlePath]);
             run("sample", ["sample", bundlePath, "--mode", "base", "--seed", "workflow-seed"]);
+        });
 
-            run("sim", ["sim", packageRoot, "--rounds", "40", "--seed", "workflow-seed", "--out", simPath, "--format", "json"]);
+        smokeIt("simulates the installed workflow package and drains its runtime", async () => {
+            await runPackageWorkflow("sim", ["sim", packageRoot, "--rounds", "40", "--seed", "workflow-seed", "--out", simPath, "--format", "json"]);
             expectFile(simPath);
-            run("sim-comparison", ["sim", packageRoot, "--rounds", "40", "--seed", "comparison-seed", "--out", comparisonSimPath, "--format", "json"]);
+        });
+
+        smokeIt("simulates the installed comparison package and drains its runtime", async () => {
+            await runPackageWorkflow("sim-comparison", ["sim", packageRoot, "--rounds", "40", "--seed", "comparison-seed", "--out", comparisonSimPath, "--format", "json"]);
             expectFile(comparisonSimPath);
+        });
+
+        smokeIt("reports and compares the installed package's simulations", () => {
             const reportPath = path.join(workflowRoot, "workflow-report.md");
             run("report", ["report", simPath, "--format", "markdown", "--out", reportPath]);
             expectFile(reportPath);
             const diffPath = path.join(workflowRoot, "workflow-diff.json");
             run("diff", ["diff", simPath, comparisonSimPath, "--format", "json", "--out", diffPath]);
             expectFile(diffPath);
-            const replayPath = path.join(workflowRoot, "workflow-replay.json");
-            run("replay", ["replay", packageRoot, "--round", "1", "--seed", "workflow-seed", "--out", replayPath]);
-            expectFile(replayPath);
+        });
 
+        smokeIt("replays the installed workflow package and drains its runtime", async () => {
+            const replayPath = path.join(workflowRoot, "workflow-replay.json");
+            await runPackageWorkflow("replay", ["replay", packageRoot, "--round", "1", "--seed", "workflow-seed", "--out", replayPath]);
+            expectFile(replayPath);
+        });
+
+        smokeIt("builds and plays the installed WASM artifact", () => {
             const wasmSourcePath = path.join(workflowRoot, "wasm-source.blueprint.json");
             const wasmPath = path.join(workflowRoot, "workflow.wasm");
             fs.writeFileSync(wasmSourcePath, JSON.stringify({
@@ -1664,7 +2504,9 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             run("build-wasm", ["build", wasmSourcePath, "--target", "wasm", "--out", wasmPath]);
             expectFile(wasmPath);
             expect(run("run", ["run", wasmPath, "--seed", "workflow-wasm"]).stdout).toContain("POKIE WASM round 1");
+        });
 
+        smokeIt("round-trips installed PAR artifacts and generates reels", () => {
             const workbookPath = path.join(workflowRoot, "workflow.par.xlsx");
             run("par export", ["par", "export", blueprintPath, "--out", workbookPath]);
             expectFile(workbookPath);
@@ -1696,7 +2538,9 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             const reelOutputPath = path.join(workflowRoot, "generated-reels-output.blueprint.json");
             run("reel generate", ["reel", "generate", reelBlueprintPath, "--apply", "--out", reelOutputPath, "--format", "json"]);
             expectFile(reelOutputPath);
+        });
 
+        smokeIt("produces and verifies installed fairness and certification artifacts", () => {
             const seedPath = path.join(workflowRoot, "server-seed.txt");
             const seedCommitmentPath = path.join(workflowRoot, "server-seed-commitment.json");
             const commitmentPath = path.join(workflowRoot, "round-commitment.json");
@@ -1716,7 +2560,9 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             run("certification build", ["certification", "build", bundlePath, certificationConfigPath, "--out", certificationPath]);
             expectDirectory(certificationPath);
             run("certification verify", ["certification", "verify", certificationPath, "--source", bundlePath]);
+        });
 
+        smokeIt("initializes a package and preserves installed command recovery diagnostics", () => {
             const initializedRoot = path.join(workflowRoot, "initialized");
             run("init", ["init", initializedRoot, "--no-install", "--no-prepare"]);
             expectFile(path.join(initializedRoot, "package.json"));
@@ -1730,17 +2576,23 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                 const missingVerb = run(`${parent}-missing-verb-recovery`, [parent], 1);
                 expect(`${missingVerb.stdout}\n${missingVerb.stderr}`).toContain("Usage:");
             }
+        });
 
-            await runListeningWorkflow("client", ["client", packageRoot, "--port", "0", "--no-open"], async (baseUrl) => {
-                expect((await fetch(`${baseUrl}/`)).status).toBe(200);
+        // Each listener owns runtime preparation before announcing readiness.
+        // Keep their deadlines independent, while retaining the ordered coverage
+        // assertion and requiring health plus awaited process-tree cleanup.
+        for (const id of ["client", "serve", "dev"]) {
+            smokeIt(`serves the installed client, API and development workflows (${id})`, async () => {
+                const args = [id, packageRoot, "--port", "0"];
+                if (id === "dev") args.push("--client-port", "0");
+                if (id !== "serve") args.push("--no-open");
+                await runListeningWorkflow(id, args, async (baseUrl) => {
+                    expect((await fetch(`${baseUrl}${id === "client" ? "/" : "/health"}`)).status).toBe(200);
+                });
             });
-            await runListeningWorkflow("serve", ["serve", packageRoot, "--port", "0"], async (baseUrl) => {
-                expect((await fetch(`${baseUrl}/health`)).status).toBe(200);
-            });
-            await runListeningWorkflow("dev", ["dev", packageRoot, "--port", "0", "--client-port", "0", "--no-open"], async (baseUrl) => {
-                expect((await fetch(`${baseUrl}/health`)).status).toBe(200);
-            });
+        }
 
+        smokeIt("retains the complete ordered public command and nested verb coverage", () => {
             expect(workflowIds).toEqual([
                 "create", "validate", "build", "generate", "build-outcome-library", "inspect", "sample", "sim", "sim-comparison", "report", "diff", "replay", "build-wasm", "run",
                 "par export", "par import", "build-par-workbook", "import", "reel generate", "fairness seed-commit", "fairness commit", "fairness reveal", "fairness verify",
@@ -1748,9 +2600,11 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                 "par-missing-verb-recovery", "reel-missing-verb-recovery", "client", "serve", "dev",
             ]);
             expect([...exercisedPublicWorkflows].sort()).toEqual([...PACKAGED_PUBLIC_WORKFLOW_SCENARIOS].sort());
-        } finally {
-            fs.rmSync(workflowRoot, {recursive: true, force: true});
-        }
+        });
+
+        afterAll(() => {
+            if (workflowRoot !== undefined) fs.rmSync(workflowRoot, {recursive: true, force: true});
+        });
     });
 
     // A "pokie build" package (GamePackageGenerator's canonical output) carries none of the

@@ -19,7 +19,11 @@ describe("package.json scripts", () => {
         );
 
         expect(pkg.scripts?.["check:full"]).toBe("node scripts/run-full-check.mjs");
-        expect(pkg.scripts?.["test:targeted"]).toContain("--runInBand --runTestsByPath");
+        expect(pkg.scripts?.["test:targeted"]).toContain("scripts/run-targeted-tests.mjs");
+        const targetedRunner = fs.readFileSync(path.join(__dirname, "..", "scripts", "run-targeted-tests.mjs"), "utf-8");
+        expect(targetedRunner).toContain('["--runInBand", "--runTestsByPath", ...arguments_, "--listTests", "--json"]');
+        expect(targetedRunner).toContain('["--runInBand", "--logHeapUsage", "--runTestsByPath", ...options, testPath]');
+        expect(targetedRunner).toContain("POKIE_FAILING_TEST_FILE");
         expect(runner).toContain('{name: "unit", arguments: ["test"]}');
         expect(runner).toContain('{name: "typecheck", arguments: ["run", "typecheck"]}');
         expect(runner).toContain('{name: "integration", arguments: ["run", "test:integration"]}');

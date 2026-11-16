@@ -1,3 +1,5 @@
+import os from "node:os";
+import {createPackageExtractionTestEnvironment} from "./fixtures/PackageExtractionFixture.js";
 import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
@@ -20,6 +22,11 @@ import {StudioBlueprintService} from "../../cli/studio/blueprint/StudioBlueprint
 // Source-aware Producer prerequisites, not installed-candidate, browser or blind
 // first-contact evidence. No independent finding is closed by these tests.
 describe("V2C-34 Producer contracts", () => {
+    let disposeRuntime: () => void;
+    beforeAll(() => {
+        disposeRuntime = createPackageExtractionTestEnvironment();
+    }, 120000);
+    afterAll(() => disposeRuntime?.());
     let directory: string;
     let log: jest.SpyInstance;
     let error: jest.SpyInstance;
@@ -28,15 +35,19 @@ describe("V2C-34 Producer contracts", () => {
     const diagnostic = () => error.mock.calls.flat().join("\n");
 
     beforeEach(() => {
-        directory = fs.mkdtempSync(path.resolve("node_modules/.cache/pokie-tmp/valera34-"));
+        directory = fs.mkdtempSync(path.join(os.tmpdir(), "valera34-"));
         log = jest.spyOn(console, "log").mockImplementation(() => undefined);
         error = jest.spyOn(console, "error").mockImplementation(() => undefined);
         builds = new StudioArtifactBuildService(api.POKIE_VERSION);
     });
     afterEach(async () => {
-        await builds.cancelAll();
-        jest.restoreAllMocks();
-        fs.rmSync(directory, {recursive: true, force: true});
+        try {
+            await builds.cancelAll();
+            expect(fs.readdirSync(os.tmpdir()).filter(name => name.startsWith("pokie-runtime-"))).toEqual([]);
+        } finally {
+            jest.restoreAllMocks();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
     });
 
     async function design(): Promise<string> {

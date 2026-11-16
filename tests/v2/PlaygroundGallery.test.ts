@@ -34,6 +34,13 @@ const yieldToHost = () =>
         setTimeout(resolve, 0);
     });
 
+// Identity/Apply races need real sampled candidates, but do not remeasure the
+// gallery's published 2,048-sample policy on every rejection and recovery.
+// The numeric evidence and rendered gallery tests retain that original policy.
+const lifecyclePolicy = {...clone(galleryPolicy), policy: {...clone(galleryPolicy.policy), sampling: {
+    ...clone(galleryPolicy.policy.sampling), searchSamples: 32, searchBudget: 96, assessmentSamples: 64, chunkSize: 32,
+}}};
+
 /** Protocol-backed transport for deterministic lifecycle faults; rendered tests below use real Workers. */
 class TestPort implements PokieWasmWorkerPort {
     public terminated = false;
@@ -42,7 +49,11 @@ class TestPort implements PokieWasmWorkerPort {
     public transformOptimization?: (value: unknown) => Promise<unknown>;
     public readonly listeners = new Map<string, Set<(event: MessageEvent & ErrorEvent) => void>>();
     private progressTimer?: ReturnType<typeof setInterval>;
-    private readonly protocol = new PokieWasmWorkerProtocol(() => this.onProgress?.());
+    private readonly scopes = new Map<string, unknown>();
+    private readonly protocol = new PokieWasmWorkerProtocol((id, progress) => {
+        this.onProgress?.();
+        if (!this.terminated) this.deliver("message", {data: {scope: this.scopes.get(id), id, type: "progress", progress}});
+    });
     private readonly behavior: string;
     public constructor(behavior = "normal") {
         this.behavior = behavior;
@@ -57,10 +68,12 @@ class TestPort implements PokieWasmWorkerPort {
     public terminate(): void {
         if (this.progressTimer) clearInterval(this.progressTimer);
         this.terminated = true;
+        this.scopes.clear();
         this.protocol.handle({id: "dispose", type: "dispose"});
     }
     public postMessage(value: unknown): void {
         const data = value as {scope: unknown; request: {id: string; type: string}};
+        this.scopes.set(data.request.id, data.scope);
         if (this.behavior === "progress" && data.request.type === "simulate") {
             let completed = 0;
             this.progressTimer = setInterval(
@@ -83,6 +96,7 @@ class TestPort implements PokieWasmWorkerPort {
             }
             this.beforeResponse?.(data.request.type);
             this.deliver("message", {data: this.behavior === "malformed" ? {} : {...response, scope: data.scope, type: "response"}});
+            this.scopes.delete(data.request.id);
         });
     }
     public deliver(type: string, event: object): void {
@@ -349,13 +363,13 @@ it("binds returned candidates to submitted authority even when dependent result 
     try {
         await controller.run(draft(), "inspect");
         for (tamper of ["single", "coordinated", "presence", "request", "source"]) {
-            await expect(controller.run(draft(), "optimize", galleryPolicy)).rejects.toThrow(/identity mismatch|undeclared|Lock/);
+            await expect(controller.run(draft(), "optimize", lifecyclePolicy)).rejects.toThrow(/identity mismatch|undeclared|Lock/);
             expect(controller.diagnostics()).toEqual({workers: 0, timers: 0, pending: 0});
             tamper = undefined;
-            const run = await controller.run(draft(), "optimize", galleryPolicy);
+            const run = await controller.run(draft(), "optimize", lifecyclePolicy);
             const result = run.result as Result;
-            expect("candidate" in result).toBe(true);
-            if (result.candidate) await expect(controller.applyCandidate(draft(), galleryPolicy, result.candidate)).resolves.toEqual(result.candidate);
+            expect(result.candidate).toBeDefined();
+            await expect(controller.applyCandidate(draft(), lifecyclePolicy, result.candidate!)).resolves.toEqual(result.candidate);
             await controller.run(draft(), "play");
         }
     } finally {
@@ -395,7 +409,7 @@ it("rejects edits/reversion and asynchronous invalidation during Apply, then reu
     const b = draft();
     try {
         for (const stage of ["before", "hash", "prepare"]) {
-            const run = await controller.run(b, "optimize", galleryPolicy);
+            const run = await controller.run(b, "optimize", lifecyclePolicy);
             const candidate = (run.result as {candidate: GameBlueprint}).candidate;
             const digest = globalThis.crypto.subtle.digest.bind(globalThis.crypto.subtle);
             let hashes = 0;
@@ -407,16 +421,16 @@ it("rejects edits/reversion and asynchronous invalidation during Apply, then reu
             try {
                 if (stage === "before") controller.invalidate();
                 // Even exact restoration of every input cannot restore an accepted transition.
-                await expect(controller.applyCandidate(clone(b), clone(galleryPolicy), clone(candidate))).rejects.toThrow(/Stale preview/);
+                await expect(controller.applyCandidate(clone(b), clone(lifecyclePolicy), clone(candidate))).rejects.toThrow(/Stale preview/);
                 expect(controller.diagnostics()).toEqual({workers: 0, timers: 0, pending: 0});
                 expect(statuses[statuses.length - 1]).toBe("interrupted");
             } finally {
                 observer.mockRestore();
             }
             for (let reuse = 0; reuse < 2; reuse++) {
-                const fresh = await controller.run(b, "optimize", galleryPolicy);
+                const fresh = await controller.run(b, "optimize", lifecyclePolicy);
                 const next = (fresh.result as {candidate: GameBlueprint}).candidate;
-                await expect(controller.applyCandidate(b, galleryPolicy, next)).resolves.toEqual(next);
+                await expect(controller.applyCandidate(b, lifecyclePolicy, next)).resolves.toEqual(next);
             }
         }
     } finally {

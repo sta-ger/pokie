@@ -108,9 +108,9 @@ describe("canonical package extraction CLI", () => {
         expect(await command().run([source, "--target", "blueprint", "--dry-run"])).toBe(0);
         expect(output()).toContain(path.join(root, "blueprint.json"));
         expect(fs.readdirSync(root)).toEqual(["descriptor-package"]);
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
-    it("retains candidate authentication across the complete V2C-34 two-file gate correction", () => {
+    it("retains candidate authentication across the complete V2C-37 saved gate correction", () => {
         // Synthetic reader fixtures only: no product build/install or acceptance collection.
         execFileSync(process.execPath, ["--input-type=module", "-e", `
             import assert from "node:assert/strict";
@@ -129,8 +129,27 @@ describe("canonical package extraction CLI", () => {
                 return git(["rev-parse", "HEAD"]);
             };
             const original = await readP911Candidate(fixture.reference, options);
-            const paths = ["tests/cli/commands/BuildCommand.test.ts", "tests/cli/studio/StudioServer.test.ts",
-                "scripts/p8-05-release-handoff.mjs", "scripts/p9-11-candidate.mjs", "tests/testUtils/createP911CandidateFixture.mjs"];
+            const paths = [
+                "scripts/p8-05-release-handoff.mjs",
+                "scripts/p9-11-candidate.mjs",
+                "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts",
+                "tests/cli/CanonicalArtifactCli.integration.test.ts",
+                "tests/cli/InitCommandWorkflow.integration.test.ts",
+                "tests/cli/P805ValeraProgrammer.integration.test.ts",
+                "tests/cli/P906ValeraProgrammer.integration.test.ts",
+                "tests/cli/RandomBuildWorkflow.integration.test.ts",
+                "tests/cli/Workflow.integration.test.ts",
+                "tests/cli/commands/BuildCommand.test.ts",
+                "tests/cli/commands/DiffCommand.test.ts",
+                "tests/cli/commands/SimCommand.realWorkers.test.ts",
+                "tests/cli/studio-client/src/integration/happyPath.test.tsx",
+                "tests/cli/studio-client/src/openProjectGuard.test.tsx",
+                "tests/cli/studio/OutcomeLibraryGenerationWorkflow.integration.test.ts",
+                "tests/testUtils/createP911CandidateFixture.mjs",
+                "tests/testUtils/prepareP906Candidate.ts",
+                "tests/v2/fixtures/PackageExtractionFixture.ts",
+                "tests/v2/helpers/publicRuntime.ts",
+            ];
             for (const file of paths) {
                 assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "missing correction fixture: " + file);
                 await writeFile(path.join(fixture.repository, file), "changed bounded gate tooling");

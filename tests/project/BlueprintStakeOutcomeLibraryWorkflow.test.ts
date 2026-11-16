@@ -4,6 +4,8 @@ import {authoritativePaytableBlueprint, expectAuthoritativeEightOutcomes} from "
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {compiledTestRuntime, stageCompiledTestRuntime} from "../testUtils/stageCompiledTestRuntime.js";
+import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
 import {
     ArtifactBuildCancelledError,
     ArtifactBuilderRegistry,
@@ -98,58 +100,73 @@ describe("BlueprintStakeOutcomeLibraryWorkflow public export", () => {
         }
     });
 
-    it("releases real package snapshots after repeated preflight and compatible-reuse operations", async () => {
-        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-workflow-runtime-lease-"));
-        const packageRoot = path.join(workDir, "game");
-        const packageName = "workflow-runtime-lease-fixture";
-        fs.cpSync(path.join(__dirname, "..", "cli", "fixtures", "playable-game-with-config-hash"), packageRoot, {recursive: true});
-        fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({
-            name: packageName,
-            version: "1.0.0",
-            pokie: {entry: "./index.js"},
-        }));
-        fs.writeFileSync(path.join(packageRoot, "index.js"), `
-            const {SymbolsSequence, VideoSlotConfig, VideoSlotSession} = require("@fromstan/pokie");
-            function config() {
-                const value = new VideoSlotConfig();
-                value.setReelsNumber(1);
-                value.setReelsSymbolsNumber(1);
-                value.setAvailableSymbols(["A"]);
-                value.setAvailableBets([1]);
-                value.setSymbolsSequences([new SymbolsSequence().fromArray(["A"])]);
-                return value;
-            }
-            module.exports = {
-                getManifest: () => ({id: "workflow-runtime-lease", name: "Workflow Runtime Lease", version: "1.0.0"}),
-                getConfigHash: () => "sha256:workflow-runtime-lease",
-                createSession: () => new VideoSlotSession(config()),
-                createExactEnumerationSession: (generator) => new VideoSlotSession(config(), generator),
-            };
-        `);
-        const project: PokieProject = {
-            type: "tsPackage",
-            rootPath: packageRoot,
-            capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage,
-            provenance: "test fixture",
-        };
-        const compatibleProject: PokieProject = {...project, rootPath: path.join(workDir, "existing-outcome"), type: "outcomeLibrary", capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary};
-        const managedOutcomes = {
-            findCompatible: () => Promise.resolve(compatibleProject),
-            allocateRoot: () => path.join(workDir, "not-used"),
-            registerAndOpen: () => Promise.reject(new Error("must not generate a compatible outcome library")),
-            release: () => Promise.resolve(),
-        };
-        const workflow = new BlueprintStakeOutcomeLibraryWorkflow("1.3.0", loadGameBlueprint, undefined, managedOutcomes);
+    describe("real package snapshot leases", () => {
+        let disposeRuntimeStorage: () => void;
+        // Cold compilation has its own bounded setup lifetime. The test deadline
+        // measures the three real snapshot acquisitions and their releases.
+        beforeAll(() => {
+            disposeRuntimeStorage = createPackageExtractionTestEnvironment({stageRuntime: false, memoryBacked: true});
+            compiledTestRuntime("cjs");
+        }, 300000);
+        afterAll(() => disposeRuntimeStorage());
 
-        try {
-            expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
-            await workflow.inspectGenerationPreflight(project);
-            await workflow.inspectGenerationPreflight(project);
-            await expect(workflow.resolveOrGenerate(project, path.join(workDir, "ignored"))).resolves.toMatchObject({reused: true});
-            expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
-        } finally {
-            fs.rmSync(workDir, {recursive: true, force: true});
-        }
+        it("releases real package snapshots after repeated preflight and compatible-reuse operations", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-workflow-runtime-lease-"));
+            const packageRoot = path.join(workDir, "game");
+            const packageName = "workflow-runtime-lease-fixture";
+            fs.cpSync(path.join(__dirname, "..", "cli", "fixtures", "playable-game-with-config-hash"), packageRoot, {recursive: true});
+            // Exercise real snapshots of a private source-bound runtime, as an installed
+            // package would. The implicit host fallback would snapshot the whole checkout.
+            stageCompiledTestRuntime(packageRoot);
+            fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({
+                name: packageName,
+                version: "1.0.0",
+                pokie: {entry: "./index.js"},
+                dependencies: {"@fromstan/pokie": "*"},
+            }));
+            fs.writeFileSync(path.join(packageRoot, "index.js"), `
+                const {SymbolsSequence, VideoSlotConfig, VideoSlotSession} = require("@fromstan/pokie");
+                function config() {
+                    const value = new VideoSlotConfig();
+                    value.setReelsNumber(1);
+                    value.setReelsSymbolsNumber(1);
+                    value.setAvailableSymbols(["A"]);
+                    value.setAvailableBets([1]);
+                    value.setSymbolsSequences([new SymbolsSequence().fromArray(["A"])]);
+                    return value;
+                }
+                module.exports = {
+                    getManifest: () => ({id: "workflow-runtime-lease", name: "Workflow Runtime Lease", version: "1.0.0"}),
+                    getConfigHash: () => "sha256:workflow-runtime-lease",
+                    createSession: () => new VideoSlotSession(config()),
+                    createExactEnumerationSession: (generator) => new VideoSlotSession(config(), generator),
+                };
+            `);
+            const project: PokieProject = {
+                type: "tsPackage",
+                rootPath: packageRoot,
+                capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage,
+                provenance: "test fixture",
+            };
+            const compatibleProject: PokieProject = {...project, rootPath: path.join(workDir, "existing-outcome"), type: "outcomeLibrary", capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary};
+            const managedOutcomes = {
+                findCompatible: () => Promise.resolve(compatibleProject),
+                allocateRoot: () => path.join(workDir, "not-used"),
+                registerAndOpen: () => Promise.reject(new Error("must not generate a compatible outcome library")),
+                release: () => Promise.resolve(),
+            };
+            const workflow = new BlueprintStakeOutcomeLibraryWorkflow("1.3.0", loadGameBlueprint, undefined, managedOutcomes);
+
+            try {
+                expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
+                await workflow.inspectGenerationPreflight(project);
+                await workflow.inspectGenerationPreflight(project);
+                await expect(workflow.resolveOrGenerate(project, path.join(workDir, "ignored"))).resolves.toMatchObject({reused: true});
+                expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
     });
 
     it("uses the registry-owned managed Outcome record as the Blueprint-to-Stake prerequisite", async () => {

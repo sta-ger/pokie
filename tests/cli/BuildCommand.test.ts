@@ -12,6 +12,7 @@ import {
     PROJECT_TYPE_CAPABILITIES,
     ProjectResolving,
     ValidationIssue,
+    resolvePokieGameDependencyRoots,
 } from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
@@ -88,7 +89,7 @@ describe("BuildCommand", () => {
 
     let restoreTemporaryDirectory: () => void;
     beforeAll(() => {
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true, memoryBacked: true});
     });
     afterAll(() => {
         restoreTemporaryDirectory();
@@ -161,8 +162,9 @@ describe("BuildCommand", () => {
             const registry = new ArtifactBuilderRegistry("1.3.0");
             const validate = jest.spyOn(registry, "validate");
             const command = new BuildCommand("1.3.0", undefined, undefined, undefined, registry);
+            let running: Promise<number> | undefined;
             try {
-                const running = command.run([fixture.source, "--target", target, "--out", path.join(root, "output"), "--dry-run"]);
+                running = command.run([fixture.source, "--target", target, "--out", path.join(root, "output"), "--dry-run"]);
                 const checked = cancel ? expect(running).rejects.toBeInstanceOf(ArtifactBuildCancelledError) : expect(running).resolves.toBe(0);
                 await fixture.waitForRead(checked);
                 expect(fixture.readCount).toBe(2);
@@ -191,11 +193,13 @@ describe("BuildCommand", () => {
                 expect(fs.readFileSync(fixture.control, "utf8")).toBe("existing descriptor input");
                 expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
             } finally {
+                fixture.settle();
+                await running?.catch(() => undefined);
                 fixture.restore();
                 validate.mockRestore();
                 fs.rmSync(root, {recursive: true, force: true});
             }
-        });
+        }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
         it("retains genuine asynchronous malformed-model diagnostics without a successful preview", async () => {
             const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-cli-malformed-dry-run-"));
@@ -203,8 +207,10 @@ describe("BuildCommand", () => {
             const snapshots = runtimeSnapshotNames(fixture.source);
             const listeners = process.rawListeners("SIGINT");
             const input = fs.readFileSync(path.join(fixture.source, "index.js"));
+            let running: Promise<number> | undefined;
             try {
-                const checked = expect(new BuildCommand("1.3.0").run([fixture.source, "--target", target, "--out", path.join(root, "output"), "--dry-run"]))
+                running = new BuildCommand("1.3.0").run([fixture.source, "--target", target, "--out", path.join(root, "output"), "--dry-run"]);
+                const checked = expect(running)
                     .rejects.toThrow(/Package extraction malformed:.*manifest/);
                 await fixture.waitForRead(checked);
                 fixture.settle();
@@ -215,16 +221,20 @@ describe("BuildCommand", () => {
                 expect(fs.readFileSync(path.join(fixture.source, "index.js"))).toEqual(input);
                 expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
             } finally {
+                fixture.settle();
+                await running?.catch(() => undefined);
                 fixture.restore();
                 fs.rmSync(root, {recursive: true, force: true});
             }
-        });
+        }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
     });
 
     it("previews and builds public package models through the shared diagnosis/evidence workflow", async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-cli-extraction-"));
         try {
             const source = writeDescriptorPackage(root);
+            expect((await resolvePokieGameDependencyRoots(source))["@fromstan/pokie"])
+                .toBe(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"));
             const destination = path.join(root, "model.json");
             const command = new BuildCommand("1.3.0");
             await expect(command.run([source, "--target", "blueprint", "--out", destination, "--dry-run"])).resolves.toBe(0);
@@ -236,8 +246,23 @@ describe("BuildCommand", () => {
             await expect(command.run([source, "--target", "blueprint", "--out", destination])).resolves.toBe(0);
             expect(JSON.parse(fs.readFileSync(destination, "utf8")).manifest.id).toBe("math-probe");
             expect(fs.existsSync(`${destination}.conversion-evidence.json`)).toBe(true);
-            const legacy = writeDescriptorPackage(root, {name: "legacy", legacy: true});
-            await expect(command.run([legacy, "--target", "blueprint", "--out", path.join(root, "legacy.json"), "--dry-run"])).rejects.toThrow(/legacy-model-unavailable/);
+        } finally {
+            fs.rmSync(root, {recursive: true, force: true});
+        }
+        // Preview and build each acquire fresh recognition/extraction/validation
+        // graphs. Keep both real transactions within the shared extraction bound.
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+
+    it("rejects a legacy package preview without publishing an inferred model", async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-cli-legacy-extraction-"));
+        try {
+            const source = writeDescriptorPackage(root, {legacy: true});
+            const destination = path.join(root, "legacy.json");
+            await expect(new BuildCommand("1.3.0").run([source, "--target", "blueprint", "--out", destination, "--dry-run"]))
+                .rejects.toThrow(/legacy-model-unavailable/);
+            expect(fs.existsSync(destination)).toBe(false);
+            expect(fs.existsSync(`${destination}.conversion-evidence.json`)).toBe(false);
+            expect(runtimeSnapshotNames(source)).toEqual([]);
         } finally {
             fs.rmSync(root, {recursive: true, force: true});
         }

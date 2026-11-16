@@ -10,6 +10,7 @@ import {
     BUILD_PRODUCT_MATRIX_SOURCE_TYPES,
     BUILD_PRODUCT_MATRIX_TARGETS,
     ProjectTargetResolver,
+    PackageBlueprintExtraction,
     ProjectType,
     STUDIO_OPERATION,
 } from "@fromstan/pokie";
@@ -27,6 +28,15 @@ type SupportedCell = {readonly source: ProjectType; readonly target: ArtifactTar
 const SUPPORTED_CELLS: readonly SupportedCell[] = BUILD_PRODUCT_MATRIX_SOURCE_TYPES.flatMap((source) =>
     BUILD_PRODUCT_MATRIX_TARGETS.map((target) => BUILD_PRODUCT_MATRIX[source][target]).filter((cell) => cell.state === "supported"),
 );
+
+// A package-derived job extracts at planning, source/graph revalidation,
+// intermediate publication and final provenance checks. These are independent
+// snapshots (and releases), not one PACKAGE_EXTRACTION_TEST_TIMEOUT operation.
+const ARTIFACT_JOB_TIMEOUT = 3 * PACKAGE_EXTRACTION_TEST_TIMEOUT;
+// Source creation, CLI conversion, dashboard, preview and HTTP conversion share
+// this outer bound. Keep room for shutdown after an inner HTTP deadline fails.
+const PARITY_CELL_TIMEOUT = 3 * ARTIFACT_JOB_TIMEOUT;
+const POLL_INTERVAL_MS = 100;
 
 const BLUEPRINT = {
     manifest: {id: "pc17-parity", name: "PC-17 Parity", version: "1.0.0"},
@@ -47,31 +57,39 @@ function writeStudioAssets(root: string): void {
 async function post(baseUrl: string, route: string, body: unknown): Promise<{status: number; body: Record<string, unknown>}> {
     const response = await fetch(`${baseUrl}${route}`, {
         method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body),
+        signal: AbortSignal.timeout(ARTIFACT_JOB_TIMEOUT),
     });
     return {status: response.status, body: await response.json() as Record<string, unknown>};
 }
 
 async function waitForJob(baseUrl: string, id: string): Promise<Record<string, unknown>> {
-    const deadline = Date.now() + PACKAGE_EXTRACTION_TEST_TIMEOUT - 10_000;
+    const started = Date.now();
+    const deadline = started + ARTIFACT_JOB_TIMEOUT;
+    let lastJob: Record<string, unknown> | undefined;
     while (Date.now() < deadline) {
-        const response = await fetch(`${baseUrl}/api/project/artifacts/build/${id}`);
+        const response = await fetch(`${baseUrl}/api/project/artifacts/build/${id}`, {
+            signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+        });
         expect(response.status).toBe(200);
         const job = await response.json() as Record<string, unknown>;
+        lastJob = job;
         // Cancellation is an asynchronous cleanup boundary: a poll immediately
         // after the cancel request truthfully observes `cancelling` until the
         // builder has removed its staging output and persisted `cancelled`.
         if (job.status !== "queued" && job.status !== "running" && job.status !== "cancelling") return job;
         await new Promise<void>((resolve) => {
-            setTimeout(resolve, 10);
+            setTimeout(resolve, POLL_INTERVAL_MS);
         });
     }
-    throw new Error(`Artifact build job ${id} did not finish.`);
+    throw new Error(`Artifact build job ${id} did not finish after ${Date.now() - started}ms: ${JSON.stringify(lastJob)}.`);
 }
 
 async function waitForDashboard(baseUrl: string, projectRoot: string, source: ProjectType): Promise<void> {
     const deadline = Date.now() + PACKAGE_EXTRACTION_TEST_TIMEOUT - 10_000;
     while (Date.now() < deadline) {
-        const response = await fetch(`${baseUrl}/api/project/context`);
+        const response = await fetch(`${baseUrl}/api/project/context`, {
+            signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+        });
         expect(response.status).toBe(200);
         const context = await response.json() as {status: string};
         if (context.status !== "loading") {
@@ -82,7 +100,7 @@ async function waitForDashboard(baseUrl: string, projectRoot: string, source: Pr
             return;
         }
         await new Promise<void>(resolve => {
-            setTimeout(resolve, 10);
+            setTimeout(resolve, POLL_INTERVAL_MS);
         });
     }
     throw new Error(`Project dashboard ${projectRoot} did not finish preparing.`);
@@ -134,9 +152,28 @@ describe("PC-17 public CLI and Studio HTTP parity", () => {
     let workDir: string;
     let servers: StudioServer[];
     let logSpy: jest.SpyInstance;
+    let extractionSpy: jest.SpyInstance;
+    let phase: string;
+    let workflow: Promise<void> | undefined;
+    let originalLeases: string[];
+
+    const leases = () => fs.readdirSync(os.tmpdir()).filter(name => (/^(pokie-runtime-|pokie-preflight-)/).test(name)).sort();
+
+    async function inPhase<T>(label: string, operation: () => Promise<T>): Promise<T> {
+        phase = label;
+        const started = performance.now();
+        try {
+            const result = await operation();
+            console.info(`Parity phase: ${JSON.stringify({phase: label, status: "completed", elapsedMs: Math.round(performance.now() - started), remainingLeases: leases()})}`);
+            return result;
+        } catch (error) {
+            console.info(`Parity phase: ${JSON.stringify({phase: label, status: "failed", elapsedMs: Math.round(performance.now() - started), remainingLeases: leases()})}`);
+            throw error;
+        }
+    }
 
     beforeAll(() => {
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({memoryBacked: true});
         // Match StudioCommand's production wiring: prepare against this running
         // installation, including its real runtime, rather than registry 1.3.0.
         resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", STUDIO_OPERATION, process.cwd());
@@ -152,20 +189,51 @@ describe("PC-17 public CLI and Studio HTTP parity", () => {
         servers = [];
         writeStudioAssets(studioRoot);
         logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        phase = "source";
+        workflow = undefined;
+        originalLeases = leases();
+        const extract = PackageBlueprintExtraction.prototype.extract;
+        extractionSpy = jest.spyOn(PackageBlueprintExtraction.prototype, "extract").mockImplementation(async function(this: PackageBlueprintExtraction, ...args) {
+            const started = performance.now();
+            const extractionPhase = phase;
+            const result = await Reflect.apply(extract, this, args);
+            // extract() returns only after its invocation-owned snapshot releases.
+            // Forward actual descriptor data; timings must not replace validation.
+            console.info(`Parity extraction: ${JSON.stringify({phase: extractionPhase, status: result.status, elapsedMs: Math.round(performance.now() - started), remainingLeases: leases()})}`);
+            return result;
+        });
     });
 
     afterEach(async () => {
-        await Promise.all(servers.map((server) => server.stop()));
-        logSpy.mockRestore();
-        fs.rmSync(studioRoot, {recursive: true, force: true});
-        fs.rmSync(workDir, {recursive: true, force: true});
-    });
+        // Jest's outer deadline does not cancel its callback. Drain that callback
+        // and every server before removing sources, leases or instrumentation.
+        await workflow?.catch(() => undefined);
+        try {
+            await inPhase("shutdown", async () => {
+                const stopped = await Promise.allSettled(servers.map((server) => server.stop()));
+                const failed = stopped.find(result => result.status === "rejected");
+                if (failed?.status === "rejected") throw failed.reason;
+            });
+            expect(leases()).toEqual(originalLeases);
+            fs.rmSync(studioRoot, {recursive: true, force: true});
+            fs.rmSync(workDir, {recursive: true, force: true});
+        } finally {
+            extractionSpy.mockRestore();
+            logSpy.mockRestore();
+        }
+    }, PARITY_CELL_TIMEOUT);
 
-    it.each(SUPPORTED_CELLS)("executes $source -> $target through public CLI and retained Studio HTTP", async ({source, target}) => {
-        const sourcePath = await createSource(path.join(workDir, `${source}-${target}`), source);
+    it.each(SUPPORTED_CELLS)("executes $source -> $target through public CLI and retained Studio HTTP", (cell) => {
+        workflow = runParityCell(cell);
+        return workflow;
+    }, PARITY_CELL_TIMEOUT);
+
+    async function runParityCell({source, target}: SupportedCell): Promise<void> {
+        const sourcePath = await inPhase(`${source} -> ${target} source`, () => createSource(path.join(workDir, `${source}-${target}`), source));
         const extension = extensionFor(target);
         const cliOutput = path.join(workDir, `${source}-${target}-cli${extension}`);
-        await buildCli(sourcePath, target, cliOutput);
+        await inPhase(`${source} -> ${target} CLI`, () => buildCli(sourcePath, target, cliOutput));
+        expect(leases()).toEqual(originalLeases);
         if (target !== "blueprint") {
             await expect(new ProjectTargetResolver().resolve(cliOutput)).resolves.toMatchObject({type: target, rootPath: cliOutput});
         }
@@ -181,9 +249,9 @@ describe("PC-17 public CLI and Studio HTTP parity", () => {
         servers.push(server);
         const address = await server.start();
         const baseUrl = `http://${address.host}:${address.port}`;
-        await waitForDashboard(baseUrl, sourcePath, source);
+        await inPhase(`${source} -> ${target} dashboard`, () => waitForDashboard(baseUrl, sourcePath, source));
         const studioOutput = path.join(workDir, `${source}-${target}-studio${extension}`);
-        const preview = await post(baseUrl, "/api/project/artifacts/preview", {target, outDir: studioOutput});
+        const preview = await inPhase(`${source} -> ${target} preview`, () => post(baseUrl, "/api/project/artifacts/preview", {target, outDir: studioOutput}));
         expect(preview.status).toBe(200);
         expect(preview.body).toMatchObject({status: "ok", target, sourceType: source});
         if (source === "tsPackage" && target === "blueprint") {
@@ -192,18 +260,18 @@ describe("PC-17 public CLI and Studio HTTP parity", () => {
             expect(fs.existsSync(studioOutput)).toBe(false);
             expect(preview.body.preparedOperationId).toEqual(expect.any(String));
         }
+        phase = `${source} -> ${target} HTTP build`;
         const build = await post(baseUrl, "/api/project/artifacts/build", {
             target, outDir: studioOutput, ...(preview.body.preparedOperationId === undefined ? {} : {preparedOperationId: preview.body.preparedOperationId}),
         });
         expect(build.status).toBe(202);
         const job = build.body.job as {id: string};
-        const terminal = await waitForJob(baseUrl, job.id);
+        const terminal = await inPhase(`${source} -> ${target} HTTP build`, () => waitForJob(baseUrl, job.id));
         expect(terminal).toMatchObject({status: "completed", result: {status: "ok", target, sourceType: source, outputPath: studioOutput}});
         expect(fs.existsSync(studioOutput)).toBe(true);
-        await server.stop();
-    // A cell generates its source, converts it through CLI, previews it, and
-    // converts it again through HTTP. Each job remains bounded independently.
-    }, 300000);
+        await inPhase(`${source} -> ${target} stop`, () => server.stop());
+        expect(leases()).toEqual(originalLeases);
+    }
 
     it("preserves authenticated handoffs across the complete saved five-file gate repair", () => {
         execFileSync(process.execPath, ["--input-type=module", "-e", `
@@ -260,7 +328,12 @@ describe("PC-17 public CLI and Studio HTTP parity", () => {
         `], {stdio: "pipe", timeout: 20_000});
     });
 
-    it("keeps an HTTP conflict caller-owned and cancellation free of partial output", async () => {
+    it("keeps an HTTP conflict caller-owned and cancellation free of partial output", () => {
+        workflow = runConflictAndCancellation();
+        return workflow;
+    }, PARITY_CELL_TIMEOUT);
+
+    async function runConflictAndCancellation(): Promise<void> {
         const blueprint = await createSource(workDir, "blueprint");
         const destination = path.join(workDir, "occupied-package");
         fs.mkdirSync(destination);
@@ -304,19 +377,29 @@ describe("PC-17 public CLI and Studio HTTP parity", () => {
         const started = await post(cancellationBaseUrl, "/api/project/artifacts/build", {target: "outcomeLibrary", outDir: cancellationOutput});
         expect(started.status).toBe(202);
         const job = started.body.job as {id: string};
-        for (let attempt = 0; attempt < 1200; attempt += 1) {
-            const response = await fetch(`${cancellationBaseUrl}/api/project/artifacts/build/${job.id}`);
+        const deadline = Date.now() + ARTIFACT_JOB_TIMEOUT;
+        let writing = false;
+        while (Date.now() < deadline) {
+            const response = await fetch(`${cancellationBaseUrl}/api/project/artifacts/build/${job.id}`, {
+                signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+            });
+            expect(response.status).toBe(200);
             const current = await response.json() as {status: string; progress?: {message?: string}};
-            if (current.progress?.message?.startsWith("Writing Outcome mode")) break;
+            if (current.progress?.message?.startsWith("Writing Outcome mode")) {
+                writing = true;
+                break;
+            }
             expect(["queued", "running"]).toContain(current.status);
             await new Promise<void>((resolve) => {
+                // Preserve the fine cadence for this specific writer overlap.
                 setTimeout(resolve, 10);
             });
         }
+        expect(writing).toBe(true);
         const cancelled = await post(cancellationBaseUrl, `/api/project/artifacts/build/${job.id}/cancel`, {});
         expect(cancelled.status).toBe(200);
         const terminal = await waitForJob(cancellationBaseUrl, job.id);
         expect(terminal).toMatchObject({status: "cancelled", result: {status: "cancelled"}});
         expect(fs.existsSync(cancellationOutput)).toBe(false);
-    });
+    }
 });

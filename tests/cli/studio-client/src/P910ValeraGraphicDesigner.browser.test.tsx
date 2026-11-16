@@ -6,7 +6,7 @@ import {pathToFileURL} from "node:url";
 import {constants, runInThisContext} from "node:vm";
 import {visibleContentOverflows} from "./visibleContentGeometry";
 import {observeKeyboardTarget, reachKeyboardTarget, type KeyboardTargetState} from "./nativeKeyboardFocus";
-import {productionStudioCandidate} from "./productionStudioCandidate";
+import {createProductionStudioTestStorage, productionStudioCandidate, stageProductionStudioTestHost} from "./productionStudioCandidate";
 
 type Devtools = {
     events: Array<{method: string; params: {requestId?: string; response?: {url: string; status: number}}}>;
@@ -256,9 +256,8 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
     // Archive hashes bind installed JS/CSS and build inputs. Timestamps only
     // establish freshness for standalone controller-built checkout assets.
     if (!production.authenticated) await assertFreshAssets(candidate);
-    // Managed projects reject destinations beneath node_modules. Keep all owned fixture state
-    // in this worktree, outside the npm wrapper's TMPDIR, and remove it in finally.
-    const root = await fs.mkdtemp(path.join(candidate, ".p910-graphic-"));
+    const storage = await createProductionStudioTestStorage(candidate, "p910-graphic");
+    const {root, cache, profile} = storage;
     let studio: ChildProcess | undefined;
     let browser: ChildProcess | undefined;
     let devtools: Devtools | undefined;
@@ -267,11 +266,10 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
     let startupError: Error | undefined;
     let origin = "";
     try {
+        const host = await stageProductionStudioTestHost(production, cache);
         const documents = path.join(root, "documents");
         const workspace = path.join(root, "workspace");
-        const profile = path.join(root, "browser-profile");
-        const cache = path.join(root, "runtime-cache");
-        for (const directory of [documents, workspace, profile, cache]) await fs.mkdir(directory);
+        for (const directory of [documents, workspace, profile]) await fs.mkdir(directory);
         // The production child gets the same caller context under npm and direct Jest launches.
         const studioEnvironment = {...process.env};
         for (const key of Object.keys(studioEnvironment)) {
@@ -279,9 +277,9 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
                 Reflect.deleteProperty(studioEnvironment, key);
             }
         }
-        studio = spawn(process.execPath, [production.bin, "--no-open", "--port", "0"], {
+        studio = spawn(process.execPath, [host.bin, "--no-open", "--port", "0"], {
             cwd: workspace,
-            env: {...studioEnvironment, XDG_DOCUMENTS_DIR: documents, XDG_DATA_HOME: path.join(root, "data"), XDG_CONFIG_HOME: path.join(root, "config"), TMPDIR: cache, NPM_CONFIG_CACHE: path.join(root, "npm-cache")},
+            env: {...studioEnvironment, XDG_DOCUMENTS_DIR: documents, XDG_DATA_HOME: path.join(cache, "data"), XDG_CONFIG_HOME: path.join(cache, "config"), TMPDIR: cache, NPM_CONFIG_CACHE: path.join(cache, "npm-cache")},
             stdio: ["ignore", "pipe", "pipe"],
         });
         studio.on("error", (error) => {
@@ -738,7 +736,7 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
                         // previous project's cancellation cleanup after a confirmed transition.
                         await stop(studio);
                     } finally {
-                        await fs.rm(root, {recursive: true, force: true});
+                        await storage.dispose();
                     }
                 }
             }

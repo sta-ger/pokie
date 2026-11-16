@@ -52,10 +52,14 @@ describe("PC-17 capability-matrix parity contract", () => {
             BUILD_PRODUCT_MATRIX_TARGETS.filter((target) => BUILD_PRODUCT_MATRIX[source][target].state === "supported"),
         );
 
-        expect(supportedCells).toHaveLength(16);
+        expect(supportedCells).toHaveLength(20);
         expect(BUILD_PRODUCT_MATRIX.blueprint.wasm.state).toBe("supported");
         expect(BUILD_PRODUCT_MATRIX.parWorkbook.wasm.state).toBe("supported");
-        expect(cliDocs).toContain("The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its 16 supported cells");
+        for (const target of ["blueprint", "tsPackage", "parWorkbook", "wasm"] as const) {
+            expect(BUILD_PRODUCT_MATRIX.tsPackage[target].state).toBe("supported");
+        }
+        expect(cliDocs).toContain("when public model extraction is complete");
+        expect(cliDocs).toContain("The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its conditional supported edges are");
         expect(cliDocs).toContain("`blueprint` → `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`");
         expect(cliDocs).toContain("`parWorkbook` →\n`blueprint`/`tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`");
         expect(parity).toContain("409 conflict preservation");

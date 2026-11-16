@@ -107,19 +107,60 @@ function createRuntimePackageCopier(): {copy: RuntimePackageCopying; close(): Pr
     // their existing owners. One worker serves this invocation's entire graph, then is drained.
     const worker = new Worker(`
 const fs = require('node:fs'), path = require('node:path'), {parentPort} = require('node:worker_threads');
-parentPort.on('message', ({source, destination}) => {
+parentPort.on('message', async ({source, destination}) => {
+    const pending = new Set();
+    let failure;
+    // Parallelize independent file I/O, but bound both libuv work and retained promises.
+    // Observe failures immediately and drain every started write before replying: the
+    // owner may remove the snapshot as soon as it receives a rejection.
+    const schedule = async operation => {
+        if (failure) throw failure;
+        const task = operation().catch(error => { failure ??= error; }).finally(() => pending.delete(task));
+        pending.add(task);
+        if (pending.size >= 32) await Promise.race(pending);
+        if (failure) throw failure;
+    };
     try {
         fs.mkdirSync(destination, {recursive: true});
-        // TMPDIR may be below the host's node_modules. Exclude installations before recursion.
-        for (const name of fs.readdirSync(source)) {
-            if (['node_modules', '.git', '.pokie-runtime-cache'].includes(name)) continue;
-            fs.cpSync(path.join(source, name), path.join(destination, name), {
-                recursive: true, preserveTimestamps: true, mode: fs.constants.COPYFILE_FICLONE,
-                filter: file => !['node_modules', '.git', '.pokie-runtime-cache'].includes(path.basename(file)),
-            });
-        }
+        const realSource = fs.realpathSync(source), realDestination = fs.realpathSync(destination);
+        // The destination is private and new. cpSync's per-file source/destination
+        // ancestry and overwrite checks repeat thousands of filesystem operations
+        // for every SDK acquisition. Walk each directory once; copy regular files
+        // directly, retaining their bytes, modes and timestamps (including stale-
+        // build checks). Keep cpSync's link/special-file semantics at that boundary.
+        const copyDirectory = async (from, to) => {
+            for (const entry of fs.readdirSync(from, {withFileTypes: true})) {
+                // TMPDIR may be below node_modules. Exclude before recursion.
+                if (['node_modules', '.git', '.pokie-runtime-cache'].includes(entry.name)) continue;
+                const input = path.join(from, entry.name), output = path.join(to, entry.name);
+                if (entry.isDirectory()) {
+                    const nestedDestination = path.relative(path.join(realSource, path.relative(source, input)), realDestination);
+                    if (nestedDestination === '' || (nestedDestination !== '..' && !nestedDestination.startsWith('..' + path.sep) && !path.isAbsolute(nestedDestination))) {
+                        throw new Error('Cannot copy a runtime package into its own source directory: ' + input);
+                    }
+                    const mode = fs.statSync(input).mode | 0o700;
+                    fs.mkdirSync(output, {mode});
+                    // Read-only installations stay untouched; only owned directories
+                    // become writable for dependency links and recursive release.
+                    fs.chmodSync(output, mode);
+                    await copyDirectory(input, output);
+                } else if (entry.isFile() && process.platform !== 'win32') {
+                    const stats = fs.statSync(input);
+                    await schedule(async () => {
+                        await fs.promises.copyFile(input, output, fs.constants.COPYFILE_FICLONE);
+                        await fs.promises.utimes(output, stats.atime, stats.mtime);
+                    });
+                } else {
+                    await schedule(() => fs.promises.cp(input, output, {recursive: true, preserveTimestamps: true, mode: fs.constants.COPYFILE_FICLONE}));
+                }
+            }
+        };
+        await copyDirectory(source, destination);
+        await Promise.all(pending);
+        if (failure) throw failure;
         parentPort.postMessage({});
     } catch (error) {
+        await Promise.all(pending);
         parentPort.postMessage({error: {message: error.message, name: error.name, code: error.code}});
     }
 });`, {eval: true, execArgv: []});

@@ -18,11 +18,18 @@ import {screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
+import {createPackageExtractionTestEnvironment} from "../../../../../v2/fixtures/PackageExtractionFixture.js";
 
 const game = {id: "wasm-slot", name: "wasm-slot", version: "1.0.0"};
 type WorkerEventListener = (event: MessageEvent & ErrorEvent) => void;
 
 describe("ProjectDashboardPage canonical WASM workflow", () => {
+    let restoreRuntimeEnvironment: () => void;
+    beforeAll(() => {
+        restoreRuntimeEnvironment = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => restoreRuntimeEnvironment());
+
     it("renders the ordinary capability-driven play, simulation, and replay navigation", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
@@ -172,8 +179,16 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
                 await user.clear(rounds);
                 await user.type(rounds, "10");
                 await user.click(screen.getByRole("button", {name: "Run Simulation"}));
-                await user.click(await screen.findByRole("button", {name: "View results"}));
-                expect(await screen.findByRole("button", {name: "Open full report"})).toBeVisible();
+                // This port dispatches in-process: avoid repeatedly walking the entire
+                // jsdom accessibility tree while the Worker and HTTP publication settle.
+                // Assert the actual retained terminal result before opening it in the UI.
+                await waitFor(() => {
+                    const terminal = responses.find(({url}) => (/\/wasm\/jobs\/[^/]+\/finish$/).test(url));
+                    expect(terminal).toMatchObject({status: 200, body: {status: "completed"}});
+                }, {timeout: 30_000});
+                // Completion automatically advances Run to Review. "View results"
+                // belongs to the previous step and need not survive that render.
+                expect(await screen.findByRole("button", {name: "Open full report"}, {timeout: 30_000})).toBeVisible();
                 expect(screen.queryByText(/Historical simulation result/)).not.toBeInTheDocument();
                 expect(screen.queryByText(/Run a new simulation/)).not.toBeInTheDocument();
                 await user.click(screen.getByRole("button", {name: "Open full report"}));
@@ -207,16 +222,22 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
         } finally {
             unmount?.();
             owner.dispose();
-            await server.stop();
-            expect(liveWorkers).toBe(0);
-            await fixture.release();
-            fs.rmSync(directory, {recursive: true, force: true});
-            if (crypto === undefined) Reflect.deleteProperty(globalThis, "crypto");
-            else Reflect.defineProperty(globalThis, "crypto", crypto);
-            if (encoder === undefined) Reflect.deleteProperty(globalThis, "TextEncoder");
-            else Reflect.defineProperty(globalThis, "TextEncoder", encoder);
-            if (decoder === undefined) Reflect.deleteProperty(globalThis, "TextDecoder");
-            else Reflect.defineProperty(globalThis, "TextDecoder", decoder);
+            try {
+                await server.stop();
+                expect(liveWorkers).toBe(0);
+            } finally {
+                try {
+                    await fixture.release();
+                } finally {
+                    fs.rmSync(directory, {recursive: true, force: true});
+                    if (crypto === undefined) Reflect.deleteProperty(globalThis, "crypto");
+                    else Reflect.defineProperty(globalThis, "crypto", crypto);
+                    if (encoder === undefined) Reflect.deleteProperty(globalThis, "TextEncoder");
+                    else Reflect.defineProperty(globalThis, "TextEncoder", encoder);
+                    if (decoder === undefined) Reflect.deleteProperty(globalThis, "TextDecoder");
+                    else Reflect.defineProperty(globalThis, "TextDecoder", decoder);
+                }
+            }
         }
     });
 

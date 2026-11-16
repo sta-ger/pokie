@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** Execute one isolated, packed-CLI and rendered-Studio P8-05 persona audit. */
-import {P805_MAX_EVIDENCE_BYTES, hasP805PackedOutputManifest, preserveP805PackedCliOutput} from "./p8-05-packed-output-evidence.mjs";
+import {P805_MAX_EVIDENCE_BYTES, hasP805PackedOutputManifest, preserveP805PackedCliOutput, preserveP805Log} from "./p8-05-packed-output-evidence.mjs";
 import {p805OperationPerformance} from "./p8-05-persona-projection.mjs";
 import {createHash, randomBytes} from "node:crypto";
 import {spawn, spawnSync} from "node:child_process";
@@ -57,6 +57,54 @@ export function p805CandidatePackageRoot(installationRoot, candidateManifest) {
 const now = () => new Date().toISOString();
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const fail = (message) => { throw new Error(`P8-05 Valera browser audit is invalid: ${message}`); };
+// Failed tuples never publish an acceptance receipt. Preserve the observations
+// already made before their disposable context disappears, so a pending browser
+// request can be compared with completed sibling requests and CLI preparation.
+export async function preserveP805FailedWorkflow({error, transcript, events, api, errors, timings, observations, save}) {
+    const references = {};
+    const saveText = async (kind, name, lines) => {
+        const bytes = Buffer.from(lines.join("\n") || "No output captured.\n"), ids = [];
+        for (let offset = 0; offset < bytes.length; offset += P805_MAX_EVIDENCE_BYTES) {
+            ids.push(await save(kind, `${name}-${ids.length}.txt`, bytes.subarray(offset, offset + P805_MAX_EVIDENCE_BYTES), observations));
+        }
+        return ids;
+    };
+    references.transcript = await saveText("cli-transcript", "failure-packed-cli", transcript);
+    references.browser = await preserveP805Log("browser-log", "failure-browser.json", [...events], observations, save);
+    references.api = await preserveP805Log("api-log", "failure-api.json", [...api], observations, save);
+    references.errors = await saveText("error", "failure-errors", errors);
+    references.timings = await save("timing", "failure-timings.json", JSON.stringify(timings), observations);
+    references.failure = await save("error", "workflow-failure.json", JSON.stringify({
+        kind:"p8-05-workflow-failure", status:"failed", message:String(error?.stack ?? error), references:{...references},
+    }), observations);
+    return references;
+}
+// The seeded audit model exceeds the public validator's exact-analysis budget.
+// Record that diagnostic explicitly; it is structural acceptance, never a math proof.
+export function describeP805InconclusiveValidation(result, format = "text") {
+    const limitation = "Analysis outcomes limit exhausted.";
+    if (result?.exitCode !== 2 || result.signal !== null || result.stderr !== "") fail("expected a clean inconclusive validation terminal");
+    if (format === "json") {
+        let report;
+        try { report = JSON.parse(result.stdout); } catch { fail("inconclusive validation report is not JSON"); }
+        const advanced = report?.advanced;
+        if (report?.valid !== true || !Array.isArray(report.errors) || report.errors.length !== 0
+            || advanced?.structuralValid !== true || advanced.scope !== "declared-model"
+            || advanced.status !== "budget-exhausted" || advanced.verdict !== "inconclusive"
+            || !Array.isArray(advanced.issues) || advanced.issues.some(issue => issue.severity === "error")
+            || !Array.isArray(advanced.limitations) || !advanced.limitations.includes(limitation)
+            || !Array.isArray(advanced.checks) || advanced.checks.some(check => check.status === "violation")
+            || !advanced.checks.some(check => check.id === "analysis.completion" && check.status === "unknown" && check.message === limitation)) fail("validation did not retain the expected structural acceptance and analysis limitation");
+    } else if (format === "text") {
+        const lines = result.stdout.split(/\r?\n/).map(line => line.trim());
+        if (!lines.includes("valid           yes (structural/contract validation)")
+            || !lines.includes("advanced        budget-exhausted: inconclusive (declared-model)")
+            || !lines.includes(`unknown analysis.completion [$]: ${limitation}`)
+            || !lines.includes(`Limit: ${limitation}`) || !lines.includes("No structural issues found.")
+            || lines.some(line => /^(?:violation|error)\b/.test(line))) fail("validation text does not retain the expected structural acceptance and analysis limitation");
+    } else fail("unknown validation report format");
+    return {exitCode:2, structuralValid:true, status:"inconclusive", advancedStatus:"budget-exhausted", limitation};
+}
 // Reveal the named public Build/Export form before reading or editing it.
 // Keep the runner on the product's disclosure path and require its visible result.
 export async function ensureP805ExportDisclosure({evaluate, focusRenderedControl, activateFocusedControl, waitFor}, cardId, label, observation) {
@@ -84,6 +132,74 @@ export async function ensureP805ExportDisclosure({evaluate, focusRenderedControl
         return next?.expanded === 'true' && next.revealed ? next : false;
     }, `${observation} revealed ${label} form`);
 }
+// Preflight acquires the package and plans publication, then the card fills
+// server defaults and prepares a second, option-bound token. This is separate
+// from the ordinary rendered-control deadline. Share one preparation budget
+// across defaults and the explicit sampled choice; never retry the request or
+// accept a loading/disabled/error card as an enabled submission.
+export async function requireP805OutcomeLibraryCard({evaluate, focusRenderedControl, activateFocusedControl, events = [], now = Date.now, pause = wait}, observation) {
+    const outcomeLibraryCardState = () => evaluate(`(() => {
+        const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
+        const card = document.querySelector('[data-pokie-lifecycle-card="outcome-library"]');
+        const control = document.getElementById('outcome-library-generate');
+        const preflight = document.querySelector('[data-pokie-lifecycle-preflight="outcome-library"]');
+        if (!(card instanceof HTMLElement) || !visible(card)) return {state:'missing-card'};
+        if (!(control instanceof HTMLButtonElement) || !visible(control)) return {state:'missing-control'};
+        if (control.getAttribute('data-pokie-lifecycle') !== 'operation' || control.getAttribute('data-pokie-lifecycle-operation') !== 'outcome-library' || control.getAttribute('data-pokie-transaction-state') !== 'editable-submission') return {state:'stale-control'};
+        if (!(preflight instanceof HTMLElement) || !visible(preflight) || preflight.getAttribute('data-pokie-lifecycle-preflight-control') !== control.id) return {state:'missing-preflight'};
+        const status = preflight.getAttribute('data-pokie-lifecycle-preflight-status');
+        if (status === 'loading') return {state:'loading', status};
+        if (status !== 'ok') return {state:status === 'error' ? 'unsupported-preflight' : 'stale-preflight', status, diagnostic:(preflight.innerText || preflight.textContent || '').trim()};
+        if (control.disabled) return {state:'disabled-control', status, disabledExplanation:control.getAttribute('title') || null};
+        return {state:'ready', status, controlId:control.id, cardLabel:[...card.querySelectorAll('*')].find((item) => item.textContent?.trim() === 'Outcome library generator')?.textContent?.trim() ?? null, enabled:true, disabled:false};
+    })()`);
+    let state;
+    try {
+        await ensureP805ExportDisclosure({evaluate, focusRenderedControl, activateFocusedControl, waitFor}, "outcome-library", "Outcome library generator", observation);
+        await waitFor(async () => {
+            state = await outcomeLibraryCardState();
+            return ['missing-card', 'missing-control', 'missing-preflight'].includes(state?.state) ? false : state;
+        }, `${observation} rendered Outcome Library card`);
+        const until = now() + 120_000;
+        const boundedExplanation = 'Choose sampled or conditional bounded coverage before generating this Outcome Library.';
+        const settlePreflight = async (sampledChoicePending = false) => {
+            for (;;) {
+                state = await outcomeLibraryCardState();
+                if (now() >= until) throw new Error(`Timed out waiting for ${observation} Outcome Library preparation`);
+                // Native input can return before React commits the choice.
+                // The previous bounded-choice guard remains pending in that
+                // frame; neither it nor the next loading state renews time.
+                if (state?.state !== 'loading' && !(sampledChoicePending && state?.state === 'disabled-control' && state.disabledExplanation === boundedExplanation)) return;
+                await pause(125);
+            }
+        };
+        await settlePreflight();
+        if (state?.state === 'disabled-control' && state.disabledExplanation === boundedExplanation) {
+            const sampled = await focusRenderedControl('button', "(item, name) => name === 'Sampled' && item.closest('[data-pokie-lifecycle-card=\"outcome-library\"]') !== null");
+            if (!sampled?.keyboardFocused) fail(`${observation} did not expose its rendered sampled Outcome Library coverage control`);
+            await activateFocusedControl('precondition', sampled);
+            await settlePreflight(true);
+        }
+        if (state?.state !== 'ready' || state.controlId !== 'outcome-library-generate' || state.cardLabel !== 'Outcome library generator') {
+            fail(`${observation} rendered Outcome Library card is ${state?.state ?? 'unreadable'}${state?.disabledExplanation ? `: ${state.disabledExplanation}` : ''}`);
+        }
+        return state;
+    } catch (error) {
+        // Failed tuples previously retained only cleanup, hiding whether this
+        // was DOM mounting, repeated default preparation, or a blocked request.
+        // Preserve exact browser identities and completed nested timings in
+        // the supervisor's existing failure receipt without starting any work.
+        const requests = events.filter(event => event.method === 'Network.requestWillBeSent'
+            && new URL(event.params.request.url).pathname === '/api/project/outcome-libraries/generate/estimate').slice(-8).map(event => {
+            const response = events.find(item => item.method === 'Network.responseReceived' && item.params.requestId === event.params.requestId);
+            const finished = events.find(item => ['Network.loadingFinished', 'Network.loadingFailed'].includes(item.method) && item.params.requestId === event.params.requestId);
+            return {requestId:event.params.requestId, options:event.params.request.postData, status:response?.params.response.status,
+                completion:finished?.method ?? 'pending', elapsedMs:finished ? Math.round((finished.params.timestamp - event.params.timestamp) * 1000) : null,
+                error:finished?.params.errorText};
+        });
+        throw new Error(`${error.message}; last Outcome Library preparation: ${JSON.stringify({state, requests})}`, {cause:error});
+    }
+}
 const P805_ACTIVE_JOB_STATUSES = new Set(["queued", "running"]);
 const P805_OUTCOME_LIBRARY_ACTIVE_JOB_STATUSES = new Set(["queued", "running", "cancelling", "pending"]);
 class OutcomeLibraryTerminalBoundaryError extends Error {
@@ -94,6 +210,57 @@ class OutcomeLibraryTerminalBoundaryError extends Error {
         this.details = details;
     }
 }
+/** Observe the first exact-job terminal from browser-owned operation polls.
+ * Outcome generation includes preparation, durable writes and both analysis
+ * passes. The retained 10,000-record run was still advancing in pass two at
+ * 120s; give that whole operation one fixed five-minute budget, without
+ * renewing it on progress or changing the ordinary control deadline. */
+export async function readP805RenderedOperationTerminal({cdp, cursor, contract, entry, jobId, progressSnapshots, readBrowserResponseBody, observation, api}) {
+    const observedPolls = new Set();
+    let lastObserved;
+    let terminalEvent;
+    try { terminalEvent = await waitFor(async () => {
+        const expectedPath = contract.poll.replace("{id}", encodeURIComponent(jobId));
+        const events = cdp.events.slice(cursor).filter((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === expectedPath);
+        // Process responses in browser order. The first non-active
+        // durable record is the terminal truth; a later rerender or
+        // recovery read may never replace it.
+        for (const event of events) {
+            if (observedPolls.has(event.params.requestId)) continue;
+            observedPolls.add(event.params.requestId);
+            if (event.params.response.status < 200 || event.params.response.status >= 300) {
+                throw new OutcomeLibraryTerminalBoundaryError("server-error", {
+                    requestId:entry.browserRequestId,
+                    jobId,
+                    lastObserved:{browserRequestId:event.params.requestId, httpStatus:event.params.response.status},
+                });
+            }
+            let result;
+            try {
+                const body = await readBrowserResponseBody(event.params.requestId, observation);
+                result = JSON.parse(body.body || "{}");
+            } catch (error) {
+                lastObserved = {browserRequestId:event.params.requestId, httpStatus:event.params.response.status, readError:String(error)};
+                continue;
+            }
+            const snapshot = {source:"rendered-poll", browserRequestId:event.params.requestId, jobId:result?.id, durableStatus:result?.status, lifecycleStage:result?.lifecycleStage, durableProgress:result?.durableProgress ?? result?.progress, httpStatus:event.params.response.status, responseSha256:digest(JSON.stringify(result))};
+            if (progressSnapshots !== undefined) progressSnapshots.push(snapshot);
+            lastObserved = snapshot;
+            if (result?.id !== jobId) throw new OutcomeLibraryTerminalBoundaryError("uncorrelated-poll", {requestId:entry.browserRequestId, jobId, lastObserved});
+            if (!P805_OUTCOME_LIBRARY_ACTIVE_JOB_STATUSES.has(result?.status)) return {event, result};
+        }
+        return false;
+    }, `${observation} rendered terminal job`, contract.body === "outcome-library" ? 300_000 : renderedTerminalTimeout(["completed"], contract.poll)); }
+    catch (error) {
+        if (error instanceof OutcomeLibraryTerminalBoundaryError) throw error;
+        const kind = lastObserved === undefined ? "missing-poll" : P805_OUTCOME_LIBRARY_ACTIVE_JOB_STATUSES.has(lastObserved.durableStatus) ? "slow-job" : "poll-read-failure";
+        throw new OutcomeLibraryTerminalBoundaryError(kind, {requestId:entry.browserRequestId, jobId, lastObserved, progressSnapshots});
+    }
+    api.push({observation, method:"GET", path:new URL(terminalEvent.event.params.response.url).pathname, status:terminalEvent.event.params.response.status, payload:terminalEvent.result, browserRequestId:terminalEvent.event.params.requestId, initiator:"rendered-poll"});
+    if (!["completed", "success", "ok", "valid", "partial"].includes(terminalEvent.result?.status) || ["failed", "error", "cancelled", "incomplete", "load-error", "invalid"].includes(terminalEvent.result?.result?.status)) throw new OutcomeLibraryTerminalBoundaryError("terminal-failure", {requestId:entry.browserRequestId, jobId, firstTerminal:{browserRequestId:terminalEvent.event.params.requestId, durableStatus:terminalEvent.result?.status, result:terminalEvent.result}, progressSnapshots});
+    return terminalEvent;
+}
+
 const auditTuples = (audit) => audit?.tuple ? [audit.tuple] : (audit?.workflowPersonas ?? [audit?.persona]).flatMap((persona) => (P805_REQUIRED_OBSERVATIONS[persona] ?? []).flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
 
 /** Persist the observed page independently of the control/request receipt.
@@ -296,9 +463,10 @@ export function hasP805NativeActivation(activation, controlId) {
             && activation.dispatch.keyDownCount === 1 && activation.dispatch.keyUpCount === 1 && ["Enter", " "].includes(activation.dispatch.key)
             && activation.dispatch.focus?.controlId === controlId && activation.dispatch.focus.native === true && activation.dispatch.focus.trusted === true && activation.dispatch.focus.targetMatchesCapturedControl === true;
         if (!focused) return false;
-        // Open and the narrow disclosure bind all three events to one Button.
+        // Open, import confirmations and the narrow disclosure bind all three events to one Button.
         const navigationToggle = controlId === "studio-navigation-toggle";
-        if (!controlId.startsWith("project-open:") && !navigationToggle) return true;
+        const projectImport = ["project-import-check", "project-import-add"].includes(controlId);
+        if (!controlId.startsWith("project-open:") && !navigationToggle && !projectImport) return true;
         const disclosure = activation.dispatch.disclosure;
         if (navigationToggle && (disclosure?.expandedBefore !== "false" || disclosure.expandedAfter !== "true"
             || disclosure.panelId !== "studio-navigation-panel" || disclosure.panelConnected !== true
@@ -312,7 +480,7 @@ export function hasP805NativeActivation(activation, controlId) {
                 && event.targetId === controlId && event.targetMatchesCapturedControl === true && event.nativeFocus === true
                 && event.capturedControlConnected === true && event.identityPreserved === true && event.enabled === true
                 && (navigationToggle ? event.accessibleName === "Toggle navigation" && event.panelId === "studio-navigation-panel" && event.expanded === "false"
-                    : event.projectLocation === controlId.slice("project-open:".length))
+                    : projectImport || event.projectLocation === controlId.slice("project-open:".length))
                 && (event.eventType === "click" ? event.detail === 0 : event.key === " " && event.repeat === false));
     }
     return activation.kind === "pointer" && activation.capturedControlId === controlId && typeof activation.captureKey === "string" && activation.captureKey.length > 0
@@ -511,6 +679,35 @@ async function waitFor(predicate, label, timeout = 30000) {
         await wait(125);
     }
 }
+/** CLI package preparation has the same bounded budget as the other packed
+ * commands, independently of the shorter rendered-control deadline. Retain the
+ * child's own diagnostic and require both its listener marker and real HTTP. */
+export async function waitForP805PackedServer(child, origin, {timeoutMs = 120_000, fetchImpl = fetch, now = Date.now, pause = wait} = {}) {
+    const until = now() + timeoutMs;
+    let output = "", launchError;
+    const capture = chunk => { output += chunk.toString(); };
+    const failedLaunch = error => { launchError = error; };
+    child.stdout?.on("data", capture); child.stderr?.on("data", capture); child.on("error", failedLaunch);
+    try {
+        for (;;) {
+            if (launchError || child.exitCode != null || child.signalCode != null) throw new Error(`packed CLI serve stopped before readiness: ${launchError?.message ?? child.signalCode ?? child.exitCode}`);
+            if (now() >= until) throw new Error("Timed out waiting for packed CLI serve");
+            if (/POKIE dev server listening/.test(output)) {
+                try {
+                    // A package without an index page correctly responds 404.
+                    const response = await fetchImpl(origin, {signal: AbortSignal.timeout(Math.max(1, Math.min(1000, until - now())))});
+                    await response.body?.cancel();
+                    if (response.status < 500) return output;
+                } catch { /* Keep polling within the same startup deadline. */ }
+            }
+            await pause(125);
+        }
+    } catch (error) {
+        throw new Error(`${error.message}\n${output}`, {cause: error});
+    } finally {
+        child.stdout?.off("data", capture); child.stderr?.off("data", capture); child.off("error", failedLaunch);
+    }
+}
 export async function reloadP805Page(cdp, timeout = 30_000) {
     const {frameTree:{frame}} = await cdp.send("Page.getFrameTree");
     await cdp.send("Page.setLifecycleEventsEnabled", {enabled:true});
@@ -525,6 +722,10 @@ export async function reloadP805Page(cdp, timeout = 30_000) {
 
 export async function readP805RenderedResponse(cdp, cursor, pathname, accept, label, timeout = 30_000) {
     let lastObservation = "no matching response";
+    // A successful body read is immutable for this request. Re-reading every
+    // prior poll on each pass makes long preparation/cleanup quadratic and can
+    // starve the next rendered poll. Failed reads stay eligible for recovery.
+    const inspected = new Set();
     try {
         return await waitFor(async () => {
             // Reload/restart can leave an old response whose body expired.
@@ -532,6 +733,7 @@ export async function readP805RenderedResponse(cdp, cursor, pathname, accept, la
             const events = cdp.events.slice(cursor).filter((value) => value.method === "Network.responseReceived"
                 && new URL(value.params.response.url).pathname === pathname).reverse();
             for (const event of events) {
+                if (inspected.has(event.params.requestId)) continue;
                 let timer;
                 try {
                     const body = await Promise.race([
@@ -539,6 +741,7 @@ export async function readP805RenderedResponse(cdp, cursor, pathname, accept, la
                         new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("response-body deadline exceeded")), 1_250); }),
                     ]);
                     const payload = JSON.parse(body.body || "{}");
+                    inspected.add(event.params.requestId);
                     lastObservation = `HTTP ${event.params.response.status}, job ${payload?.id ?? "list"}, status ${payload?.status ?? "list"}`;
                     if (accept(payload)) return {event, payload};
                 } catch (error) { lastObservation = String(error); }
@@ -549,11 +752,63 @@ export async function readP805RenderedResponse(cdp, cursor, pathname, accept, la
     } catch (error) { throw new Error(`${error.message}; ${pathname}: ${lastObservation}`, {cause:error}); }
 }
 
+// Simulation and Replay recovery consume the same captured public job identity.
+// An unexpected terminal is a failure, rather than an apparent observation timeout.
+function renderedTerminalTimeout(statuses, pathname) {
+    // Cancellation during preparation must drain snapshot validation and its
+    // owned files before Studio may publish cancelled. Reload recovery needs
+    // the same bounded cleanup window as the cooperative cancellation probe,
+    // independently of the shorter deadline for an ordinary rendered control.
+    // Simulation and Replay also prepare a runtime before executing rounds.
+    // The retained one-round simulation was still preparing at 30s. Both the
+    // persona and recovery readers need one fixed preparation/execution budget;
+    // progress never renews it, and unrelated controls keep their short bound.
+    return (statuses.length === 1 && statuses[0] === "cancelled")
+        || /^\/api\/project\/(?:simulations|replays)\/[^/]+$/.test(pathname ?? "") ? 120_000 : 30_000;
+}
+
+export async function readP805RenderedTerminal(cdp, cursor, pathname, statuses, label, timeout = renderedTerminalTimeout(statuses, pathname)) {
+    const jobId = decodeURIComponent(pathname.split("/").at(-1));
+    let observedJob;
+    let terminal;
+    try {
+        terminal = await readP805RenderedResponse(cdp, cursor, pathname, payload => {
+            if (payload?.id !== jobId) return false;
+            observedJob = {id:payload.id, status:payload.status, progress:payload.progress, roundsCompleted:payload.roundsCompleted, requestedRounds:payload.requestedRounds, error:payload.error ?? payload.message};
+            return typeof payload.status === "string" && !["queued", "running", "cancelling", "pending"].includes(payload.status);
+        }, label, timeout);
+    } catch (error) {
+        throw new Error(`${error.message}; observed job: ${JSON.stringify(observedJob)}`, {cause:error});
+    }
+    if (terminal.event.params.response.status < 200 || terminal.event.params.response.status >= 300
+        || !statuses.includes(terminal.payload.status)) fail(`${label} unexpected terminal: ${JSON.stringify(observedJob)}`);
+    return terminal;
+}
+
 export function readP805RenderedJobDiscovery(cdp, cursor, jobId, label, timeout = 30_000) {
     return readP805RenderedResponse(cdp, cursor, "/api/project/jobs", (payload) => {
         const jobs = Array.isArray(payload) ? payload : payload?.jobs;
         return Array.isArray(jobs) && jobs.some((job) => job?.id === jobId);
     }, label, timeout);
+}
+
+// A replacement document can finish loading before React restores its project.
+// In particular, direct-entry restoration may open/materialize the saved design
+// before useProjectJobs has a scope. Do not spend the jobs-response budget on
+// that prerequisite, or accept an older project's list as restart evidence.
+export async function readP805RestartJobDiscovery(cdp, cursor, projectRoot, jobId, timeout = 90_000) {
+    const deadline = Date.now() + timeout;
+    const context = await readP805RenderedResponse(cdp, cursor, "/api/project/context", payload =>
+        payload?.projectRoot === projectRoot && ["loaded", "error"].includes(payload?.status),
+        "restored restart project context", timeout);
+    if (context.event.params.response.status !== 200 || context.payload.status !== "loaded") {
+        fail(`restart project restoration failed: ${JSON.stringify(context.payload)}`);
+    }
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) fail("restart project restoration exhausted the recovery deadline");
+    // Keep the pre-reload cursor: discovery can finish in the same browser turn
+    // as context restoration, before the observer has read the context bytes.
+    return readP805RenderedJobDiscovery(cdp, cursor, jobId, "rendered restart job recovery", Math.min(30_000, remaining));
 }
 
 function descendants(pid) { const listing = process.platform === "win32" ? "" : (spawnSync("ps", ["-eo", "pid=,ppid=,pgid="], {encoding:"utf8"}).stdout || ""), processes = new Map(); let rootGroup; for (const line of listing.split("\n")) { const match = /^\s*(\d+)\s+(\d+)\s+(\d+)/.exec(line); if (match) { const details = {parent:Number(match[2]), group:Number(match[3])}; processes.set(Number(match[1]), details); if (Number(match[1]) === pid && details.group === pid) rootGroup = details.group; } } const owned = new Map(); if (Number.isInteger(pid) && pid > 0) owned.set(pid, processIdentity(pid)); let changed = true; while (changed) { changed = false; for (const [child, details] of processes) if ((owned.has(details.parent) || (rootGroup !== undefined && details.group === rootGroup)) && !owned.has(child)) { owned.set(child, processIdentity(child)); changed = true; } } return owned; }
@@ -571,6 +826,13 @@ export function createP805OwnedProcessRecord(label, child, ownerOptions, spawned
         // first failed tuple and stranded the parent until its 75-minute cap.
         operationId:ownerOptions.operationId,
     };
+}
+/** Reconcile signed releases/acquisitions made during the actual process drain. */
+export async function drainP805TrackedOwner(owner, graceMs = 5_000, drain = drainProcessTree) {
+    const result = await drain(owner.child, graceMs, owner.tracker?.ownedProcesses ?? owner.ownedProcesses, owner.tracker?.ownedResources);
+    if (!result.processTreeDrained || !owner.tracker) return result;
+    owner.tracker.capture({final:true});
+    return drain(owner.child, 0, owner.tracker.ownedProcesses, owner.tracker.ownedResources);
 }
 const supervisorEnvironment = (environment) => ({POKIE_PC20_RESOURCE_REGISTRY:environment.POKIE_P805_SUPERVISOR_REGISTRY, POKIE_PC20_RESOURCE_REGISTRY_SECRET:environment.POKIE_P805_SUPERVISOR_SECRET, POKIE_PC20_OPERATION_ID:environment.POKIE_P805_SUPERVISOR_OPERATION});
 function releaseP805BrowserOwner(owner) {
@@ -892,22 +1154,25 @@ export async function observeP805CreatorValidation(cdp, evaluate, readBrowserRes
 // tabs render. Overview also validates independently after opening a project:
 // its diagnostics can add a scrollbar while the shell already says "ready".
 // Wait for that rendered terminal before capturing navigation's viewport.
-export async function observeP805NavigationReadiness(evaluate, route) {
-    return evaluate(`(()=>{
+export async function observeP805NavigationReadiness(evaluate, route, diagnostics = {}) {
+    const observation = await evaluate(`(()=>{
         const item=[...document.querySelectorAll('[data-pokie-lifecycle="navigation"]')].find((candidate)=>candidate.getAttribute('data-pokie-lifecycle-route')===${JSON.stringify(route)});
-        if(!(item instanceof HTMLElement)||!item.id||('disabled' in item&&item.disabled)||item.getClientRects().length===0)return false;
         const currentRoute=location.hash;
+        const state={currentRoute,controlId:item?.id??null,terminal:null,validationTerminals:[]};
+        const pending=(phase,details={})=>({ready:false,state:{...state,phase,...details}});
+        if(!(item instanceof HTMLElement)||!item.id||('disabled' in item&&item.disabled)||item.getClientRects().length===0)return pending('target-control');
         let terminal=null;
         if(currentRoute.startsWith('#/project/')){
             const selectedRoute=currentRoute.split('?')[0].split('/').at(-1);
             const result=[...document.querySelectorAll('[data-pokie-lifecycle-result="navigation"]')].find((candidate)=>candidate.getAttribute('data-pokie-lifecycle-route')===selectedRoute&&candidate.getAttribute('data-pokie-lifecycle-result-control')==='project-tab:'+selectedRoute);
-            if(!(result instanceof HTMLElement)||result.getClientRects().length===0)return false;
+            if(!(result instanceof HTMLElement)||result.getClientRects().length===0)return pending('project-context');
             terminal=result.getAttribute('data-pokie-lifecycle-terminal');
-            if(!['rendered','error'].includes(terminal))return false;
+            if(!['rendered','error'].includes(terminal))return pending('project-context',{terminal});
             if(selectedRoute==='overview'){
-                const validations=[...document.querySelectorAll('[data-pokie-lifecycle-result="project-validation"]')]
-                    .filter((candidate)=>candidate instanceof HTMLElement&&candidate.getClientRects().length>0);
-                if(validations.some((candidate)=>!['completed','error'].includes(candidate.getAttribute('data-pokie-lifecycle-terminal'))))return false;
+                const validationTerminals=[...document.querySelectorAll('[data-pokie-lifecycle-result="project-validation"]')]
+                    .filter((candidate)=>candidate instanceof HTMLElement&&candidate.getClientRects().length>0)
+                    .map((candidate)=>candidate.getAttribute('data-pokie-lifecycle-terminal'));
+                if(validationTerminals.some((value)=>!['completed','error'].includes(value)))return pending('project-validation',{terminal,validationTerminals});
             }
         }else if(currentRoute.startsWith('#/home/')){
             // Home retains both bodies. A changed hash alone can precede the
@@ -917,14 +1182,26 @@ export async function observeP805NavigationReadiness(evaluate, route) {
             const panel=document.getElementById(selected?.getAttribute('aria-controls'));
             if(!(selected instanceof HTMLElement)||selected.getAttribute('aria-current')!=='page'
                 ||selected.getAttribute('data-pokie-lifecycle-route')!==selectedRoute
-                ||!(panel instanceof HTMLElement)||!panel.isConnected||panel.getClientRects().length===0)return false;
+                ||!(panel instanceof HTMLElement)||!panel.isConnected||panel.getClientRects().length===0)return pending('home-panel');
             terminal='rendered';
         }
-        return {controlId:item.id,currentRoute,terminal};
+        return {ready:{controlId:item.id,currentRoute,terminal},state:{...state,phase:'ready',terminal}};
     })()`);
+    Object.assign(diagnostics, observation.state);
+    return observation.ready;
 }
 export async function revealP805RenderedNavigationControl(cdp, evaluate, route, observation) {
-    await waitFor(() => observeP805NavigationReadiness(evaluate, route), `${observation} rendered ${route} navigation context`);
+    const readiness = {};
+    try {
+        // Imported code packages run Overview validation after Open completes.
+        // That acquisition is independent of the context response and can
+        // outlast the ordinary 30s control budget under the changed-test gate.
+        // Keep the terminal/viewport guard; give preparation its own bounded
+        // budget, as for imported Open and durable recovery.
+        await waitFor(() => observeP805NavigationReadiness(evaluate, route, readiness), `${observation} rendered ${route} navigation context`, 120_000);
+    } catch (error) {
+        throw new Error(`${error.message}; last navigation readiness: ${JSON.stringify(readiness)}`, {cause:error});
+    }
     const disclosureKey = randomBytes(16).toString("hex");
     // Retain the product disclosure and its actual controlled panel across
     // settling and activation. A new node with the same id is not this drawer.
@@ -1090,12 +1367,13 @@ export async function navigateP805RenderedControl(cdp, evaluate, route, expected
 }
 
 // Space delivers keyup to the retained Button before its native click changes
-// the product state. Both Open and the narrow disclosure need that ordering.
+// the product state. Open, import and the narrow disclosure need that ordering.
 export async function activateP805KeyboardControl(cdp, evaluate, controlId, focusControl = false) {
-    const captureKey = randomBytes(16).toString("hex"), projectOpen = controlId.startsWith("project-open:"), navigationToggle = controlId === "studio-navigation-toggle";
+    const captureKey = randomBytes(16).toString("hex"), projectOpen = controlId.startsWith("project-open:"), navigationToggle = controlId === "studio-navigation-toggle", projectImport = ["project-import-check", "project-import-add"].includes(controlId);
     const captured = await evaluate(`(()=>{
-        const item=document.getElementById(${JSON.stringify(controlId)}),projectOpen=${projectOpen},navigationToggle=${navigationToggle},boundButton=projectOpen||navigationToggle;
+        const item=document.getElementById(${JSON.stringify(controlId)}),projectOpen=${projectOpen},navigationToggle=${navigationToggle},projectImport=${projectImport},boundButton=projectOpen||navigationToggle||projectImport;
         if(!(item instanceof HTMLElement)||!item.isConnected||item.disabled)return null;
+        if(projectImport&&(!(item instanceof HTMLButtonElement)||item.type!=='button'||item.getClientRects().length===0))return null;
         if(projectOpen&&(!(item instanceof HTMLButtonElement)||item.type!=='button'||item.getClientRects().length===0||item.dataset.pokieProjectLocation!==${JSON.stringify(controlId.slice("project-open:".length))}))return null;
         if(navigationToggle&&(!(item instanceof HTMLButtonElement)||item.type!=='button'||item.getClientRects().length===0||item.getAttribute('aria-label')!=='Toggle navigation'||item.getAttribute('aria-controls')!=='studio-navigation-panel'||item.getAttribute('aria-expanded')!=='false'||!document.getElementById('studio-navigation-panel')?.isConnected))return null;
         if(${focusControl}){item.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});item.focus({preventScroll:true});}
@@ -1115,7 +1393,7 @@ export async function activateP805KeyboardControl(cdp, evaluate, controlId, focu
                     ...(navigationToggle?{accessibleName:item.getAttribute('aria-label'),panelId:item.getAttribute('aria-controls'),expanded:item.getAttribute('aria-expanded')}:{})};
                 receipt.eventBindings.push(binding);
                 receipt.invalid ||= !binding.trusted||!binding.targetMatchesCapturedControl||!binding.nativeFocus||!binding.capturedControlConnected||!binding.identityPreserved||!binding.enabled
-                    ||(navigationToggle?binding.accessibleName!=='Toggle navigation'||binding.panelId!=='studio-navigation-panel'||binding.expanded!=='false':binding.projectLocation!==${JSON.stringify(controlId.slice("project-open:".length))})
+                    ||(navigationToggle?binding.accessibleName!=='Toggle navigation'||binding.panelId!=='studio-navigation-panel'||binding.expanded!=='false':projectOpen&&binding.projectLocation!==${JSON.stringify(controlId.slice("project-open:".length))})
                     ||binding.repeat||event.type!==['keydown','keyup','click'][receipt.eventBindings.length-1];
                 if(receipt.invalid){
                     event.preventDefault();event.stopImmediatePropagation();
@@ -1148,7 +1426,7 @@ export async function activateP805KeyboardControl(cdp, evaluate, controlId, focu
         }window.__p805KeyboardReceipts?.delete(${JSON.stringify(captureKey)});return record?.receipt;})()`);
     }
     const activation = {kind:"keyboard", controlId, count:1, nativeFocus:true, preDispatchFocus:captured.preDispatchFocus, dispatch,
-        ...(projectOpen || navigationToggle ? {capturedControlId:controlId, captureKey} : {})};
+        ...(projectOpen || navigationToggle || projectImport ? {capturedControlId:controlId, captureKey} : {})};
     if (!hasP805NativeActivation(activation, controlId)) fail(`rendered ${controlId} did not receive one native keyboard activation`);
     return activation;
 }
@@ -1195,30 +1473,103 @@ export async function activateP805FocusedControl(cdp, evaluate, lifecycle = "ope
     const pointer = await clickP805CapturedControl(cdp, evaluate, stableControlId, requiresViewportHit, ["precondition", "navigation", "navigation-drawer", "operation", "recovery"].includes(lifecycle), !["navigation", "navigation-drawer"].includes(lifecycle), retainCapturedControl);
     return {kind:"pointer", controlId:stableControlId, count:1, ...pointer};
 }
-export async function openP805ImportedProject(cdp, evaluate, projectLocation) {
+// Check and Add each own a browser request. A preview is not registration,
+// response headers are not completed bytes, and successful registration is not
+// yet a rendered Open control. Keep those boundaries separate for every caller.
+export async function registerP805ImportedProject(cdp, evaluate, projectLocation, readBrowserResponseBody, observation,
+    {responseTimeout = 120_000, renderTimeout = 30_000} = {}) {
+    const cursor = cdp.events.length, stages = [];
+    let phase = "preview", location = projectLocation;
+    const requests = pathname => cdp.events.slice(cursor).filter(event => event.method === "Network.requestWillBeSent"
+        && event.params.request.method === "POST" && new URL(event.params.request.url).pathname === pathname);
+    try {
+        for (const [controlId, pathname, expectedStatus, expectedResult] of [
+            ["project-import-check", "/api/home/projects/registry/preview", 200, "recognized"],
+            ["project-import-add", "/api/home/projects/registry/register", 201, "ok"],
+        ]) {
+            phase = controlId === "project-import-check" ? "preview" : "registration";
+            const stage = {phase, pathname};
+            stages.push(stage);
+            await waitFor(() => evaluate(`(() => { const item = document.getElementById(${JSON.stringify(controlId)}); return item instanceof HTMLButtonElement && !item.disabled; })()`), `${observation} enabled ${controlId}`, renderTimeout);
+            // Space binds keydown, keyup and the ensuing native click before
+            // React can replace/disable the submitting Button. Never retry input.
+            stage.activation = await activateP805KeyboardControl(cdp, evaluate, controlId, true);
+            const request = await waitFor(() => requests(pathname)[0], `${observation} ${phase} request`, renderTimeout);
+            stage.requestId = request.params.requestId;
+            if (requests(pathname).length !== 1 || JSON.parse(request.params.request.postData).location !== location) fail(`${observation} ${phase} did not submit exactly one request for ${location}`);
+            const response = await waitFor(() => cdp.events.slice(cursor).find(event => event.method === "Network.responseReceived" && event.params.requestId === stage.requestId), `${observation} ${phase} response`, responseTimeout);
+            stage.status = response.params.response.status;
+            const body = await readBrowserResponseBody(stage.requestId, `${observation} ${phase}`);
+            const payload = JSON.parse(body.base64Encoded ? Buffer.from(body.body, "base64").toString("utf8") : body.body);
+            stage.result = payload;
+            if (stage.status !== expectedStatus || payload.status !== expectedResult) fail(`${observation} ${phase} HTTP ${stage.status}: ${JSON.stringify(payload)}`);
+            const canonicalLocation = phase === "preview" ? payload.location : payload.entry?.location;
+            if (typeof canonicalLocation !== "string" || !canonicalLocation || phase === "registration" && canonicalLocation !== location) fail(`${observation} ${phase} returned an unrelated project location`);
+            location = canonicalLocation;
+            phase = `${phase} rendered control`;
+            await waitFor(() => evaluate(controlId === "project-import-check"
+                ? `(() => { const item = document.getElementById('project-import-add'); return item instanceof HTMLButtonElement && !item.disabled && document.body.innerText.includes('Found a'); })()`
+                : `(() => { const item = document.getElementById(${JSON.stringify(`project-open:${location}`)}); return item instanceof HTMLButtonElement && !item.disabled && item.dataset.pokieProjectLocation === ${JSON.stringify(location)}; })()`), `${observation} ${phase}`, renderTimeout);
+            if (requests(pathname).length !== 1) fail(`${observation} ${phase} submitted duplicate requests`);
+        }
+        return {projectLocation:location, stages};
+    } catch (error) {
+        const transactions = cdp.events.slice(cursor).filter(event => event.method === "Network.requestWillBeSent"
+            && /\/api\/home\/projects\/registry\/(preview|register)$/.test(new URL(event.params.request.url).pathname)).map(event => {
+            const response = cdp.events.slice(cursor).find(item => item.method === "Network.responseReceived" && item.params.requestId === event.params.requestId);
+            const finished = cdp.events.slice(cursor).find(item => ["Network.loadingFinished", "Network.loadingFailed"].includes(item.method) && item.params.requestId === event.params.requestId);
+            return {requestId:event.params.requestId, body:event.params.request.postData, status:response?.params.response.status,
+                completion:finished?.method ?? "pending", elapsedMs:finished ? Math.round((finished.params.timestamp - event.params.timestamp) * 1000) : null, error:finished?.params.errorText};
+        });
+        const rendered = await evaluate("({route:location.hash, text:document.body.innerText.slice(0,2400)})");
+        throw new Error(`${error.message}; imported project: ${JSON.stringify({phase, projectLocation, location, stages, transactions, rendered})}`, {cause:error});
+    }
+}
+export async function openP805ImportedProject(cdp, evaluate, projectLocation, readBrowserResponseBody) {
     const controlId = `project-open:${projectLocation}`;
     const priorRoute = await evaluate("location.hash");
     const cursor = cdp.events.length;
     // Focus and retain the exact Button in the same browser turn. A separate
     // lookup after focus could silently capture an intervening replacement.
     const activation = await activateP805KeyboardControl(cdp, evaluate, controlId, true);
-    const route = await waitFor(async () => {
-        const current = await evaluate("location.hash");
-        return current !== priorRoute && /^#\/project\/[^/]+\/overview$/.test(current) ? current : false;
-    }, "keyboard imported-project Open dashboard");
+    const observed = await observeP805ImportedProjectOpen(cdp, evaluate, priorRoute, cursor, readBrowserResponseBody);
+    const opened = {projectLocation, controlId, activation, priorRoute, ...observed};
+    validateP805ImportedProjectOpen(opened);
+    return opened;
+}
+// Observe only the browser request emitted by the retained native activation.
+// Preparation and dashboard rendering have distinct bounded lifetimes.
+export async function observeP805ImportedProjectOpen(cdp, evaluate, priorRoute, cursor,
+    readBrowserResponseBody = (requestId) => cdp.send("Network.getResponseBody", {requestId}),
+    {responseTimeout = 120_000, dashboardTimeout = 30_000} = {}) {
+    // Observe the request before waiting for navigation: a preparation error
+    // must retain its real response rather than masquerade as a route timeout.
+    // Package opening can prepare/copy a real SDK graph, unlike a metadata read.
+    await waitFor(() => cdp.events.slice(cursor).some((event) => event.method === "Network.requestWillBeSent"
+        && event.params.request.method === "POST" && new URL(event.params.request.url).pathname === "/api/home/projects/open"), "imported-project Open request");
     const requests = cdp.events.slice(cursor).filter((event) => event.method === "Network.requestWillBeSent"
         && event.params.request.method === "POST" && new URL(event.params.request.url).pathname === "/api/home/projects/open");
     if (requests.length !== 1) fail("imported-project Open did not submit exactly one public Open request");
     const request = requests[0].params;
     const response = await waitFor(() => cdp.events.slice(cursor).find((event) => event.method === "Network.responseReceived"
-        && event.params.requestId === request.requestId), "imported-project Open response");
-    const body = await cdp.send("Network.getResponseBody", {requestId:request.requestId});
+        && event.params.requestId === request.requestId), "imported-project Open response", responseTimeout);
+    const body = await readBrowserResponseBody(request.requestId, "imported-project Open");
     const payload = JSON.parse(body.base64Encoded ? Buffer.from(body.body, "base64").toString("utf8") : body.body);
-    const opened = {projectLocation, controlId, activation, priorRoute, route,
+    if (response.params.response.status !== 200 || typeof payload.context?.projectRoot !== "string") fail(`imported-project Open response HTTP ${response.params.response.status}: ${JSON.stringify(payload)}`);
+    const expectedRoute = `#/project/${encodeURIComponent(payload.context.projectRoot)}/overview`;
+    let route;
+    try {
+        route = await waitFor(async () => {
+            const current = await evaluate("location.hash");
+            return current !== priorRoute && current === expectedRoute ? current : false;
+        }, "keyboard imported-project Open dashboard", dashboardTimeout);
+    } catch (error) {
+        throw new Error(`${error.message}; expected ${expectedRoute}; rendered: ${JSON.stringify(await evaluate("({route:location.hash, text:document.body.innerText.slice(0,2400)})"))}`, {cause:error});
+    }
+    if (cdp.events.slice(cursor).filter((event) => event.method === "Network.requestWillBeSent" && event.params.request.method === "POST" && new URL(event.params.request.url).pathname === "/api/home/projects/open").length !== 1) fail("imported-project Open submitted duplicate public requests");
+    return {route,
         request:{browserRequestId:request.requestId, method:request.request.method, path:new URL(request.request.url).pathname, body:request.request.postData},
         response:{browserRequestId:response.params.requestId, status:response.params.response.status, projectRoot:payload.context?.projectRoot}};
-    validateP805ImportedProjectOpen(opened);
-    return opened;
 }
 export function validateP805ImportedProjectOpen(opened) {
     // A Blueprint may resolve to a generated runtime directory. Bind the
@@ -1805,7 +2156,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // command for the full server/browser grace period makes the packed
         // public workflow itself exceed its measured budget.
         const graceMs = owner.child.exitCode === null && owner.child.signalCode === null ? 5_000 : 250;
-        owner.drain = await drainProcessTree(owner.child, graceMs, owner.tracker?.ownedProcesses ?? owner.ownedProcesses, owner.tracker?.ownedResources);
+        owner.drain = await drainP805TrackedOwner(owner, graceMs);
         if (!owner.drain.processTreeDrained || !owner.drain.resourcesDrained) fail(`owned ${owner.label} resources could not be drained`);
         owner.tracker?.stop(); owner.settled = true;
         if (ownershipError) throw ownershipError;
@@ -1840,7 +2191,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             priorStudioShutdown:{kind:"abrupt-service-loss", gracefulShutdownReceived:false, requestedSignal:"SIGKILL", observedSignal:child.signalCode},
         };
     };
-    let studio, browser, cdp, audit, thrown, installedPackageBytes, candidatePackageJsonBytes, candidateExecutable;
+    let studio, browser, cdp, audit, thrown, failureEvidence, installedPackageBytes, candidatePackageJsonBytes, candidateExecutable;
     try {
         await services.mkdir(options.output, {recursive:true}); await Promise.all([context.workspace, context.configurationRoot, context.documents, context.browserProfile, ...(options.runtime ? [] : [installationRoot])].map((directory) => services.mkdir(directory, {recursive:true}))); const packageBytes = await services.readFile(options.packedPackage); if (digest(packageBytes) !== options.candidatePackageSha256) fail("packed package archive digest differs from declared candidate package identity");
         // Tuple workers use the parent's authenticated read-only runtime.
@@ -1875,6 +2226,12 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             if (timingName && !args.includes("--help")) timings[timingName] = Math.max(timings[timingName] ?? 0, Date.now() - commandStarted);
             if (args.includes("--help") && (!options.tuple || options.tuple.observation === "recursive-help")) timings.recursiveHelpMs = (timings.recursiveHelpMs ?? 0) + Date.now() - commandStarted;
             process.stderr.write(`P805_CLI command=${label} phase=complete\n`); return result; };
+        const runInconclusiveValidation = async (label, source, format = "text") => {
+            const result = await runPackedCli(label, ["validate", source, ...(format === "json" ? ["--format", "json"] : [])], 2);
+            const boundary = describeP805InconclusiveValidation(result, format);
+            transcript.push(`[${services.now()}] ${label} validation boundary ${JSON.stringify(boundary)}\n`);
+            return result;
+        };
         const blueprint = path.join(context.workspace, "Valera audit blueprint.json"), workbook = path.join(context.workspace, "Valera audit.xlsx"), importedBlueprint = path.join(context.workspace, "Valera imported blueprint.json"), wasm = path.join(context.workspace, "Valera audit.wasm"), packageRoot = path.join(context.workspace, "Valera audit package"), simulationReport = path.join(context.workspace, "Valera simulation report.json"), renderedReport = path.join(context.workspace, "Valera simulation report.md"), diffReport = path.join(context.workspace, "Valera simulation diff.json"), replayArtifact = path.join(context.workspace, "Valera replay.json"), outcomeBundle = path.join(context.workspace, "Valera outcomes"), certificationConfig = path.join(context.workspace, "Valera certification config.json"), certificationBundle = path.join(context.workspace, "Valera certification"), serverSeed = path.join(context.workspace, "Valera server seed.txt"), seedCommitment = path.join(context.workspace, "Valera seed commitment.json"), roundCommitment = path.join(context.workspace, "Valera round commitment.json"), fairnessProof = path.join(context.workspace, "Valera fairness proof.json");
         const requireOutput = async (label, target) => { if (!services.exists(target)) fail(`${label} did not create its declared output ${target}`); };
         // The compound mathematician tuple has five public CLI results in
@@ -1917,20 +2274,18 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 }
                 if (observation === "validate-sim-report-diff-replay-serve-wasm") {
                     await runPackedCli("packed CLI WASM build", ["build", blueprint, "--target", "wasm", "--out", wasm]); await requireOutput("packed CLI WASM build", wasm);
-                    await runPackedCli("packed CLI WASM inspect", ["inspect", wasm]); await runPackedCli("packed CLI WASM validate", ["validate", wasm]); await runPackedCli("packed CLI WASM run", ["run", wasm, "--seed", "p8-05-wasm"]);
+                    await runPackedCli("packed CLI WASM inspect", ["inspect", wasm]); await runInconclusiveValidation("packed CLI WASM validate", wasm); await runPackedCli("packed CLI WASM run", ["run", wasm, "--seed", "p8-05-wasm"]);
                     await runPackedCli("packed CLI package build", ["build", blueprint, "--target", "tsPackage", "--out", packageRoot]); await requireOutput("packed CLI package build", packageRoot);
                     await runPackedCli("packed CLI sim", ["sim", packageRoot, "--rounds", "10", "--seed", "p8-05", "--out", simulationReport]); await requireOutput("packed CLI sim", simulationReport);
                     await runPackedCli("packed CLI report", ["report", simulationReport, "--format", "markdown", "--out", renderedReport]); await requireOutput("packed CLI report", renderedReport);
                     await runPackedCli("packed CLI diff", ["diff", simulationReport, simulationReport, "--out", diffReport]); await requireOutput("packed CLI diff", diffReport);
                     await runPackedCli("packed CLI replay", ["replay", packageRoot, "--seed", "p8-05", "--round", "1", "--out", replayArtifact]); await requireOutput("packed CLI replay", replayArtifact);
                     const servePort = await freeLoopbackPort(), serveOwnership = ownershipEnvironment("packed-cli-serve"), serveChild = own("packed CLI serve", services.spawn(installedCli, ["serve", packageRoot, "--host", "127.0.0.1", "--port", String(servePort)], {cwd:context.workspace, env:{...packedEnvironment, ...serveOwnership.env}, stdio:"pipe"}), serveOwnership);
-                    let serveOutput = "";
-                    serveChild.stdout?.on("data", (chunk) => { serveOutput += chunk.toString(); }); serveChild.stderr?.on("data", (chunk) => { serveOutput += chunk.toString(); });
-                    await waitFor(async () => { try { return (await fetch(`http://127.0.0.1:${servePort}`)).status < 500 && /POKIE dev server listening/.test(serveOutput); } catch { return false; } }, "packed CLI serve");
-                    transcript.push(`[${services.now()}] packed CLI serve ${packageRoot} --port ${servePort}`); await settleChild(serveChild);
+                    const serveOutput = await waitForP805PackedServer(serveChild, `http://127.0.0.1:${servePort}`);
+                    transcript.push(`[${services.now()}] packed CLI serve ${packageRoot} --port ${servePort}\n${serveOutput}`); await settleChild(serveChild);
                 }
                 if (observation === "spaces-invalid-inputs-exit-codes-ci-recovery") {
-                    await runPackedCli("packed CLI CI validate", ["validate", blueprint, "--format", "json"]);
+                    await runInconclusiveValidation("packed CLI CI validate", blueprint, "json");
                     await runPackedCli("packed CLI invalid-input recovery", ["validate", path.join(context.workspace, "missing blueprint.json")], 1);
                 }
                 if (observation === "build-export-output-folder") {
@@ -1942,7 +2297,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                     await runPackedCli("packed CLI PAR build", ["build", blueprint, "--target", "parWorkbook", "--out", workbook]); await requireOutput("packed CLI PAR build", workbook);
                     await runPackedCli("packed CLI PAR import", ["par", "import", workbook, "--out", importedBlueprint]); await requireOutput("packed CLI PAR import", importedBlueprint);
                 }
-                if (observation === "reels-paytable-modes-mechanics") { await runPackedCli("packed CLI validate", ["validate", blueprint]); await runPackedCli("packed CLI reels", ["reel", "generate", blueprint, "--format", "json"]); }
+                if (observation === "reels-paytable-modes-mechanics") { await runInconclusiveValidation("packed CLI validate", blueprint); await runPackedCli("packed CLI reels", ["reel", "generate", blueprint, "--format", "json"]); }
                 if (observation === "outcome-library-report-diff-replay") {
                     await runPackedCli("packed CLI package build for report/diff/replay", ["build", blueprint, "--target", "tsPackage", "--out", packageRoot]); await requireOutput("packed CLI package build for report/diff/replay", packageRoot);
                     await runPackedCli("packed CLI Outcome Library export", ["build", blueprint, "--target", "outcomeLibrary", "--out", outcomeBundle]); await requireOutput("packed CLI Outcome Library export", outcomeBundle);
@@ -1971,7 +2326,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             }
             if (options.tuple) await runTupleCliWorkflow();
         } else {
-        await runPackedCli("packed CLI validate", ["validate", blueprint]); await runPackedCli("packed CLI reels", ["reel", "generate", blueprint, "--format", "json"]);
+        await runInconclusiveValidation("packed CLI validate", blueprint); await runPackedCli("packed CLI reels", ["reel", "generate", blueprint, "--format", "json"]);
 
         await runPackedCli("packed CLI PAR build", ["build", blueprint, "--target", "parWorkbook", "--out", workbook]); await requireOutput("packed CLI PAR build", workbook);
         await runPackedCli("packed CLI PAR export", ["par", "export", blueprint, "--out", path.join(context.workspace, "Valera direct.xlsx")]);
@@ -1980,7 +2335,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         await runPackedCli("packed CLI WASM build", ["build", blueprint, "--target", "wasm", "--out", wasm]); await requireOutput("packed CLI WASM build", wasm);
         await runPackedCli("packed CLI inspect", ["inspect", packageRoot]);
         await runPackedCli("packed CLI WASM inspect", ["inspect", wasm]);
-        await runPackedCli("packed CLI WASM validate", ["validate", wasm]);
+        await runInconclusiveValidation("packed CLI WASM validate", wasm);
         await runPackedCli("packed CLI WASM run", ["run", wasm, "--seed", "p8-05-wasm"]);
         await runPackedCli("packed CLI sim", ["sim", packageRoot, "--rounds", "10", "--seed", "p8-05", "--out", simulationReport]); await requireOutput("packed CLI sim", simulationReport);
         await runPackedCli("packed CLI report", ["report", simulationReport, "--format", "markdown", "--out", renderedReport]); await requireOutput("packed CLI report", renderedReport);
@@ -1996,18 +2351,10 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         await runPackedCli("packed CLI fairness reveal", ["fairness", "reveal", roundCommitment, "--server-seed", serverSeed, "--source", outcomeBundle, "--out", fairnessProof]); await requireOutput("packed CLI fairness reveal", fairnessProof);
         await runPackedCli("packed CLI fairness verify", ["fairness", "verify", fairnessProof, "--commitment", roundCommitment, "--source", outcomeBundle]);
         const servePort = await freeLoopbackPort(), serveOwnership = ownershipEnvironment("packed-cli-serve"), serveChild = own("packed CLI serve", services.spawn(installedCli, ["serve", packageRoot, "--host", "127.0.0.1", "--port", String(servePort)], {cwd:context.workspace, env:{...packedEnvironment, ...serveOwnership.env}, stdio:"pipe"}), serveOwnership);
-        let serveOutput = "";
-        serveChild.stdout?.on("data", (chunk) => { serveOutput += chunk.toString(); });
-        serveChild.stderr?.on("data", (chunk) => { serveOutput += chunk.toString(); });
-        // `serve` is a package development server, not a web-site generator:
-        // a package without an index page correctly answers 404 at `/`.  Its
-        // listener transcript plus any non-5xx loopback response proves the
-        // installed public command is serving instead of mistaking that 404
-        // for a semantic command failure.
-        await waitFor(async () => { try { const response = await fetch(`http://127.0.0.1:${servePort}`); return response.status < 500 && /POKIE dev server listening/.test(serveOutput); } catch { return false; } }, "packed CLI serve");
-        transcript.push(`[${services.now()}] packed CLI serve ${packageRoot} --port ${servePort}`);
+        const serveOutput = await waitForP805PackedServer(serveChild, `http://127.0.0.1:${servePort}`);
+        transcript.push(`[${services.now()}] packed CLI serve ${packageRoot} --port ${servePort}\n${serveOutput}`);
         await settleChild(serveChild);
-        await runPackedCli("packed CLI CI validate", ["validate", blueprint, "--format", "json"]);
+        await runInconclusiveValidation("packed CLI CI validate", blueprint, "json");
         await runPackedCli("packed CLI invalid-input recovery", ["validate", path.join(context.workspace, "missing blueprint.json")], 1);
         for (const args of P805_PUBLIC_HELP_ARGUMENTS) await runPackedCli(`packed CLI help ${args.join("-")}`, args);
         const npxOwnership = ownershipEnvironment("packed-npx-help"), npxCli = path.join(path.dirname(path.dirname(process.execPath)), "lib", "node_modules", "npm", "bin", "npx-cli.js"); if (!services.exists(npxCli)) fail("the installed Node npx launcher is unavailable"); const npxChild = own("packed npx help", services.spawn(process.execPath, [npxCli, "--no-install", "--prefix", installationRoot, "pokie", "--help"], {cwd:installationRoot, env:{...packedEnvironment, ...npxOwnership.env}, stdio:"pipe"}), npxOwnership), npx = await childResult(npxChild, "packed npx help"); await settleChild(npxChild); transcript.push(`[${services.now()}] PACKED_NPX_HELP\n${npx.stdout}${npx.stderr}`);
@@ -2132,48 +2479,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             // or cancelled one.  Polling only for a success used to turn a
             // useful terminal result into a timeout and let callers lose the
             // actual diagnostic that a persona saw.
-            const observedPolls = new Set();
-            let lastObserved;
-            let terminalEvent;
-            try { terminalEvent = await waitFor(async () => {
-                const expectedPath = contract.poll.replace("{id}", encodeURIComponent(jobId));
-                const events = cdp.events.slice(activationCursor).filter((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === expectedPath);
-                // Process responses in browser order. The first non-active
-                // durable record is the terminal truth; a later rerender or
-                // recovery read may never replace it.
-                for (const event of events) {
-                    if (observedPolls.has(event.params.requestId)) continue;
-                    observedPolls.add(event.params.requestId);
-                    if (event.params.response.status < 200 || event.params.response.status >= 300) {
-                        throw new OutcomeLibraryTerminalBoundaryError("server-error", {
-                            requestId:entry.browserRequestId,
-                            jobId,
-                            lastObserved:{browserRequestId:event.params.requestId, httpStatus:event.params.response.status},
-                        });
-                    }
-                    let result;
-                    try {
-                        const body = await readBrowserResponseBody(event.params.requestId, observation);
-                        result = JSON.parse(body.body || "{}");
-                    } catch (error) {
-                        lastObserved = {browserRequestId:event.params.requestId, httpStatus:event.params.response.status, readError:String(error)};
-                        continue;
-                    }
-                    const snapshot = {source:"rendered-poll", browserRequestId:event.params.requestId, jobId:result?.id, durableStatus:result?.status, lifecycleStage:result?.lifecycleStage, durableProgress:result?.durableProgress ?? result?.progress, httpStatus:event.params.response.status, responseSha256:digest(JSON.stringify(result))};
-                    if (progressSnapshots !== undefined) progressSnapshots.push(snapshot);
-                    lastObserved = snapshot;
-                    if (result?.id !== jobId) throw new OutcomeLibraryTerminalBoundaryError("uncorrelated-poll", {requestId:entry.browserRequestId, jobId, lastObserved});
-                    if (!P805_OUTCOME_LIBRARY_ACTIVE_JOB_STATUSES.has(result?.status)) return {event, result};
-                }
-                return false;
-            }, `${observation} rendered terminal job`, contract.body === "outcome-library" ? 120_000 : 30_000); }
-            catch (error) {
-                if (error instanceof OutcomeLibraryTerminalBoundaryError) throw error;
-                const kind = lastObserved === undefined ? "missing-poll" : P805_OUTCOME_LIBRARY_ACTIVE_JOB_STATUSES.has(lastObserved.durableStatus) ? "slow-job" : "poll-read-failure";
-                throw new OutcomeLibraryTerminalBoundaryError(kind, {requestId:entry.browserRequestId, jobId, lastObserved, progressSnapshots});
-            }
-            api.push({observation, method:"GET", path:new URL(terminalEvent.event.params.response.url).pathname, status:terminalEvent.event.params.response.status, payload:terminalEvent.result, browserRequestId:terminalEvent.event.params.requestId, initiator:"rendered-poll"});
-            if (!["completed", "success", "ok", "valid", "partial"].includes(terminalEvent.result?.status) || ["failed", "error", "cancelled", "incomplete", "load-error", "invalid"].includes(terminalEvent.result?.result?.status)) throw new OutcomeLibraryTerminalBoundaryError("terminal-failure", {requestId:entry.browserRequestId, jobId, firstTerminal:{browserRequestId:terminalEvent.event.params.requestId, durableStatus:terminalEvent.result?.status, result:terminalEvent.result}, progressSnapshots});
+            const terminalEvent = await readP805RenderedOperationTerminal({cdp, cursor:activationCursor, contract, entry, jobId, progressSnapshots, readBrowserResponseBody, observation, api});
             const terminal = {status:terminalEvent.result.status, result:terminalEvent.result, resultSha256:digest(JSON.stringify(terminalEvent.result)), jobId, pollPath:contract.poll.replace("{id}", encodeURIComponent(jobId)), browserRequestId:terminalEvent.event.params.requestId, source:"rendered-poll"};
             transaction.terminal = {status:terminal.status, resultSha256:terminal.resultSha256, source:terminal.source, pollPath:terminal.pollPath, browserRequestId:terminal.browserRequestId, causedByRequestId:entry.browserRequestId};
             return {...entry, terminal};
@@ -2181,14 +2487,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // Recovery uses the very same operation transaction as the persona
         // matrix.  Its initial response may intentionally be a 202, but its
         // final browser poll must still close the original control's receipt.
-        const browserTerminal = async (pathname, observation, cursor, statuses, transactions = [], timeout = 30_000, capturePointerTransition = false) => {
-            const terminal = await waitFor(async () => {
-                // As above, retain the most recent durable state rather than
-                // pinning this recovery path to its first queued response.
-                const event = cdp.events.slice(cursor).findLast((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === pathname);
-                if (!event) return false;
-                try { const response = await readBrowserResponseBody(event.params.requestId, observation), payload = JSON.parse(response.body || "{}"); return statuses.includes(payload?.status) ? {event, payload} : false; } catch { return false; }
-            }, `${observation} rendered terminal result`, timeout);
+        const browserTerminal = async (pathname, observation, cursor, statuses, transactions = [], timeout = renderedTerminalTimeout(statuses, pathname), capturePointerTransition = false) => {
+            const terminal = await readP805RenderedTerminal(cdp, cursor, pathname, statuses, `${observation} rendered terminal result`, timeout);
             api.push({observation, method:"GET", path:pathname, status:terminal.event.params.response.status, payload:terminal.payload, browserRequestId:terminal.event.params.requestId, initiator:"rendered-poll"});
             const receipt = {status:terminal.payload.status, jobId:terminal.payload.id, result:terminal.payload, resultSha256:digest(JSON.stringify(terminal.payload)), source:"rendered-poll", pollPath:pathname, browserRequestId:terminal.event.params.requestId};
             for (const transaction of Array.isArray(transactions) ? transactions : [transactions]) {
@@ -2603,61 +2903,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             input.dispatchEvent(new Event('change', {bubbles:true}));
             return input.value === value;
         })()`);
-        // Outcome Library generation is the one Build/Export transaction
-        // whose availability is determined by a separate asynchronous
-        // preflight.  Read that product-owned card before the control is
-        // activated so a missing, stale, loading, unsupported, or disabled
-        // card fails at its own public boundary instead of later timing out
-        // while some unrelated route happens to settle.
-        const outcomeLibraryCardState = async () => evaluate(`(() => {
-            const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
-            const card = document.querySelector('[data-pokie-lifecycle-card="outcome-library"]');
-            const control = document.getElementById('outcome-library-generate');
-            const preflight = document.querySelector('[data-pokie-lifecycle-preflight="outcome-library"]');
-            if (!(card instanceof HTMLElement) || !visible(card)) return {state:'missing-card'};
-            if (!(control instanceof HTMLButtonElement) || !visible(control)) return {state:'missing-control'};
-            if (control.getAttribute('data-pokie-lifecycle') !== 'operation' || control.getAttribute('data-pokie-lifecycle-operation') !== 'outcome-library' || control.getAttribute('data-pokie-transaction-state') !== 'editable-submission') return {state:'stale-control'};
-            if (!(preflight instanceof HTMLElement) || !visible(preflight) || preflight.getAttribute('data-pokie-lifecycle-preflight-control') !== control.id) return {state:'missing-preflight'};
-            const status = preflight.getAttribute('data-pokie-lifecycle-preflight-status');
-            if (status === 'loading') return {state:'loading', status};
-            if (status !== 'ok') return {state:status === 'error' ? 'unsupported-preflight' : 'stale-preflight', status};
-            if (control.disabled) return {state:'disabled-control', status, disabledExplanation:control.getAttribute('title') || null};
-            return {state:'ready', status, controlId:control.id, cardLabel:[...card.querySelectorAll('*')].find((item) => item.textContent?.trim() === 'Outcome library generator')?.textContent?.trim() ?? null, enabled:true, disabled:false};
-        })()`);
-        const requireOutcomeLibraryCard = async (observation) => {
-            await ensureP805ExportDisclosure({evaluate, focusRenderedControl, activateFocusedControl, waitFor}, "outcome-library", "Outcome library generator", observation);
-            let state = await outcomeLibraryCardState();
-            // The route and its navigation receipt can render before the
-            // Build/Export card subtree has committed.  In particular the
-            // first artifact-target request is started by that subtree, so a
-            // one-shot query here used to call a real, just-entered route a
-            // missing Outcome Library card.  Wait for the public card and
-            // its preflight as one rendered transaction boundary; do not
-            // replace it with a route-level or API-only shortcut.
-            if (['missing-card', 'missing-control', 'missing-preflight', 'loading'].includes(state?.state)) state = await waitFor(async () => {
-                const next = await outcomeLibraryCardState();
-                return ['missing-card', 'missing-control', 'missing-preflight', 'loading'].includes(next?.state) ? false : next;
-            }, `${observation} rendered Outcome Library card and preflight`);
-            // Bounded coverage is an explicit product choice.  When a real
-            // project's outcome space requires it, make that choice through
-            // the visible strategy control before accepting the Generate
-            // button as an enabled submission.  This keeps the audit on the
-            // same first-time-user path rather than weakening the product's
-            // safety gate or treating a disabled operation as a ready one.
-            if (state?.state === 'disabled-control' && state.disabledExplanation === 'Choose sampled or conditional bounded coverage before generating this Outcome Library.') {
-                const sampled = await focusRenderedControl('button', "(item, name) => name === 'Sampled' && item.closest('[data-pokie-lifecycle-card=\"outcome-library\"]') !== null");
-                if (!sampled?.keyboardFocused) fail(`${observation} did not expose its rendered sampled Outcome Library coverage control`);
-                await activateFocusedControl('precondition', sampled);
-                state = await waitFor(async () => {
-                    const next = await outcomeLibraryCardState();
-                    return ['loading', 'disabled-control'].includes(next?.state) ? false : next;
-                }, `${observation} sampled Outcome Library coverage preflight`);
-            }
-            if (state?.state !== 'ready' || state.controlId !== 'outcome-library-generate' || state.cardLabel !== 'Outcome library generator') {
-                fail(`${observation} rendered Outcome Library card is ${state?.state ?? 'unreadable'}${state?.disabledExplanation ? `: ${state.disabledExplanation}` : ''}`);
-            }
-            return state;
-        };
+        const requireOutcomeLibraryCard = observation => requireP805OutcomeLibraryCard({evaluate, focusRenderedControl, activateFocusedControl, events:cdp.events}, observation);
         const prepareScreenOperation = async (body, viewport, observation) => {
             if (body === "outcome-library") {
                 const preflight = await requireOutcomeLibraryCard(observation);
@@ -2757,27 +3003,9 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 return input.value === ${JSON.stringify(projectLocation)};
             })()`);
             if (!locationSet) fail(`${observation} could not set the rendered project import location`);
-            const activate = async (id, label) => {
-                const control = await evaluate(`(() => { const item = document.getElementById(${JSON.stringify(id)}); if (!(item instanceof HTMLElement) || ('disabled' in item && item.disabled)) return false; item.focus({preventScroll:true}); return document.activeElement === item ? {stableControlId:item.id} : false; })()`);
-                if (!control?.stableControlId) fail(`${observation} did not expose its rendered ${label} control`);
-                // Project import controls replace their own preview/card while
-                // handling the action.  Native keyboard activation keeps the
-                // focused rendered button as the event target through that
-                // React update; a pointer release can otherwise be retargeted
-                // to the reflowed panel and leave the person at a silent
-                // unchanged form.
-                await activateFocusedControl("operation", control, "keyboard");
-            };
-            await activate("project-import-check", "Check game");
-            const importState = await waitFor(() => evaluate(`(() => {
-                const registered = document.querySelector('[data-pokie-project-location=${JSON.stringify(projectLocation)}]');
-                const preview = document.body.innerText.includes('Found a') && !!document.getElementById('project-import-add');
-                return preview ? 'preview' : registered instanceof HTMLElement ? 'registered' : false;
-            })()`), `${observation} rendered project import preview or existing registered project`);
-            if (importState === "preview") await activate("project-import-add", "Add to projects");
-            await waitFor(() => evaluate(`!!document.querySelector('[data-pokie-project-location=${JSON.stringify(projectLocation)}]')`), `${observation} rendered registered project`);
-            const opened = await openP805ImportedProject(cdp, evaluate, projectLocation);
-            await save("json", `${observation.replace(/[^a-z0-9]+/gi, "-")}-${evidence.length + 1}-import-open.json`, JSON.stringify(opened, null, 2), [observation]);
+            const imported = await registerP805ImportedProject(cdp, evaluate, projectLocation, readBrowserResponseBody, observation);
+            const opened = await openP805ImportedProject(cdp, evaluate, imported.projectLocation, readBrowserResponseBody);
+            await save("json", `${observation.replace(/[^a-z0-9]+/gi, "-")}-${evidence.length + 1}-import-open.json`, JSON.stringify({...opened, imported}, null, 2), [observation]);
             const route = opened.route;
             return route.replace(/\/[^/]+$/, "");
         };
@@ -2796,7 +3024,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             fixture.reelStripGeneration = Array.from({length:6}, (_, reel) => ({type:"literal", strip:Array.from({length:reel === 0 ? 1 : reel === 1 ? 101 : 300}, (_, stop) => symbols[(reel + stop) % symbols.length])}));
             const fixturePath = path.join(context.workspace, "Bounded reel editor.json");
             await services.writeFile(fixturePath, JSON.stringify(fixture));
-            await runPackedCli("packed CLI bounded modeler validate", ["validate", fixturePath]);
+            await runInconclusiveValidation("packed CLI bounded modeler validate", fixturePath, "json");
             await cdp.send("Emulation.setDeviceMetricsOverride", {...viewportDimensions[viewport], deviceScaleFactor:1});
             const projectBaseRoute = await openImportedProject(fixturePath, observation);
             await navigateProjectTab(projectBaseRoute, "gameModel", observation);
@@ -3185,7 +3413,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             await saveCheckpoint(action);
             const observations = [observation], bootstrap = tupleBootstrapContract(options.tuple), bootstrapEvidenceId = await save("provenance", "tuple-bootstrap.json", JSON.stringify({kind:"p8-05-single-tuple-bootstrap", tuple:options.tuple, bootstrap, renderedBootstrap}), observations), scopedBootstrap = bootstrap.map((entry) => ({...entry, evidenceId:bootstrapEvidenceId})), workflowScope = {kind:"p8-05-single-tuple-workflow-scope", tuple:options.tuple, bootstrap:scopedBootstrap, recoveryRequired:false};
             workflowScope.scopeEvidenceId = await save("provenance", "workflow-scope.json", JSON.stringify(workflowScope), observations);
-            await save("cli-transcript", "packed-cli.txt", transcript.join("\n"), observations); await save("browser-log", "browser.json", JSON.stringify(cdp.events), observations); await save("api-log", "api.json", JSON.stringify(api), observations); await save("error", "errors.txt", errors.join("\n") || "no browser/API/CLI errors observed\n", observations); await save("timing", "timings.json", JSON.stringify(timings), observations); await save("reproduction", "reproduction.md", `Installed packed CLI: ${installedCli}\nPacked package: ${options.packedPackage}\nPersona: ${persona}\nObservation: ${observation}\nViewport: ${viewport}\n`, observations); await save("artifact", "candidate.json", JSON.stringify({candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, packedPackageSha256:digest(packageBytes), archiveGitHead:installedPackage.gitHead, installedCli, candidatePackageJsonSha256:digest(candidatePackageJsonBytes), installedPackageJsonSha256:digest(installedPackageBytes), declaredCandidateExecutableSha256:options.candidateExecutableSha256, candidateExecutableSha256:candidateExecutable.sha256, candidateExecutableReceiptSha256:options.candidateExecutableReceipt.sha256, candidateExecutableReceiptId:candidateReceipt.receiptId, candidateExecutableReceiptIssuer:candidateReceipt.issuer, candidateTreeManifestCandidateId:candidateTreeManifest.candidateId, candidateTreeManifestSha256:candidateTreeManifest.sha256, candidateTreeObjectId:candidateTreeManifest.tree}), observations);
+            await save("cli-transcript", "packed-cli.txt", transcript.join("\n"), observations); await preserveP805Log("browser-log", "browser.json", cdp.events, observations, save); await preserveP805Log("api-log", "api.json", api, observations, save); await save("error", "errors.txt", errors.join("\n") || "no browser/API/CLI errors observed\n", observations); await save("timing", "timings.json", JSON.stringify(timings), observations); await save("reproduction", "reproduction.md", `Installed packed CLI: ${installedCli}\nPacked package: ${options.packedPackage}\nPersona: ${persona}\nObservation: ${observation}\nViewport: ${viewport}\n`, observations); await save("artifact", "candidate.json", JSON.stringify({candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, packedPackageSha256:digest(packageBytes), archiveGitHead:installedPackage.gitHead, installedCli, candidatePackageJsonSha256:digest(candidatePackageJsonBytes), installedPackageJsonSha256:digest(installedPackageBytes), declaredCandidateExecutableSha256:options.candidateExecutableSha256, candidateExecutableSha256:candidateExecutable.sha256, candidateExecutableReceiptSha256:options.candidateExecutableReceipt.sha256, candidateExecutableReceiptId:candidateReceipt.receiptId, candidateExecutableReceiptIssuer:candidateReceipt.issuer, candidateTreeManifestCandidateId:candidateTreeManifest.candidateId, candidateTreeManifestSha256:candidateTreeManifest.sha256, candidateTreeObjectId:candidateTreeManifest.tree}), observations);
             const performance = p805OperationPerformance(timings);
             const measurements = {consoleExceptions:cdp.events.filter((event) => event.method === "Runtime.exceptionThrown").length, unhandledRequestFailures:cdp.events.filter((event) => event.method === "Network.loadingFailed").length, documentOverflow:action.overflow, inaccessiblePrimaryActions:page.state.controls.filter((control) => !control.disabled && control.accessible === false).length, unexplainedDisabledControls:action.accessibility.unexplainedDisabledControls, namedRegions:action.accessibility.namedRegions.length, visibleFocus:action.accessibility.visibleFocus};
             audit = {auditId, worker, persona, workflowPersonas:[persona], tuple:options.tuple, workflowScope, phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, packageIdentity:{archiveSha256:digest(packageBytes), archiveGitHead:installedPackage.gitHead, declaredPackedCli:options.packedCli, installedCli, sharedRuntimeReceiptSha256:options.runtime?.receipt.sha256, sharedRuntimeRoot:options.runtime?.root, candidatePackageJsonSha256:digest(candidatePackageJsonBytes), installedPackageJsonSha256:digest(installedPackageBytes), declaredCandidateExecutableSha256:options.candidateExecutableSha256, candidateExecutableSha256:candidateExecutable.sha256, candidateExecutableReceiptSha256:options.candidateExecutableReceipt.sha256, candidateExecutableReceiptId:candidateReceipt.receiptId, candidateExecutableReceiptIssuer:candidateReceipt.issuer, candidateExecutableFiles:candidateExecutable.files, candidateTreeManifestCandidateId:candidateTreeManifest.candidateId, candidateTreeManifestSha256:candidateTreeManifest.sha256, candidateTreeObjectId:candidateTreeManifest.tree}, startedAt, endedAt:undefined, cleanContext:context, observations, observationEvidence, evidence, checkpointReceipts, finalResult:{status:"passed", aggregation:"verified-checkpoint-receipts-only", chunks:1, checkpointReceiptSha256s:checkpointReceipts.map((receipt) => receipt.sha256)}, timings, performance, rendered:{execution:"packed-public-cli-built-studio-rendered-controls", viewports:[viewport], responsive:[{viewport, overflow:action.overflow, visibleFocus:action.accessibility.visibleFocus, screenshotEvidenceId:action.screenshotEvidenceId}], measurements, defects:[["console", measurements.consoleExceptions], ["request", measurements.unhandledRequestFailures], ["accessibility", measurements.inaccessiblePrimaryActions], ["disabled-control", measurements.unexplainedDisabledControls], ["overflow", measurements.documentOverflow ? 1 : 0], ["named-region", measurements.namedRegions < 1 ? 1 : 0], ["focus", measurements.visibleFocus ? 0 : 1], ["performance", Object.values(performance).some((item) => item.classification === "regression") ? 1 : 0]].filter(([, count]) => count > 0).map(([kind]) => ({kind, evidenceId:kind === "performance" ? evidence.find((item) => item.kind === "timing").evidenceId : kind === "console" || kind === "request" ? evidence.find((item) => item.kind === "browser-log").evidenceId : action.evidenceId})), actions:[action], recovery:{}, jobs:{}}};
@@ -3246,7 +3474,10 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // rendered Cancel confirmation. Small probes can finish on a fast
         // packed worker before the user reaches that control, turning a
         // genuine cancellation path into a completed-job race.
-        const retryProbeRounds = 500_000;
+        // Repeat uses this exact captured request, including its round count.
+        // Keep it below the slow-host terminal budget without weakening the
+        // separate 1.8-million-round reload/reconnect durability probe.
+        const retryProbeRounds = 50_000;
         const activeReload = await startRenderedSimulation(createdProjectBaseRoute, "active-job reload", reloadProbeRounds), reloadCursor = cdp.events.length;
         await reloadP805Page(cdp); await waitFor(() => evaluate("document.readyState === 'complete' && location.hash.includes('/project/')"), "active project reload/reconnect"); const reloadJobs = await readP805RenderedJobDiscovery(cdp, reloadCursor, activeReload.payload.id, "rendered active-job reload discovery"), jobs = Array.isArray(reloadJobs.payload) ? reloadJobs.payload : reloadJobs.payload?.jobs; api.push({path:"/api/project/jobs", method:"GET", status:reloadJobs.event.params.response.status, payload:reloadJobs.payload, browserRequestId:reloadJobs.event.params.requestId, initiator:"rendered-reload", recovery:"reload"}); if (!Array.isArray(jobs) || !jobs.some((job) => job?.id === activeReload.payload.id)) fail("Studio reload did not discover the active durable job through its rendered recovery path");
         // A running job intentionally disables sibling tab navigation. The
@@ -3384,14 +3615,14 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // but short enough that its rendered Retry can repeat the captured
         // request and reach a terminal report inside this tuple worker.
         const cancellationRounds = retryProbeRounds;
-        const cancellable = await startRenderedSimulation(projectBaseRoute, "cooperative cancellation", cancellationRounds); if (cancellable.response.status !== 202 || typeof cancellable.payload?.id !== "string") fail("Studio did not start a cancellable rendered simulation"); const cancelled = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-cancel", observation:"cooperative cancellation", cursor:cdp.events.length, method:"DELETE", confirmation:true, stateClass:"recovery-operation"}); if (cancelled.response.status !== 200 || cancelled.entry.path !== `/api/project/simulations/${encodeURIComponent(cancellable.payload.id)}` || !["cancelling", "cancelled"].includes(cancelled.payload?.status)) fail("Studio did not acknowledge cooperative simulation cancellation through its rendered control"); const cancelledTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(cancellable.payload.id)}`, "cooperative cancellation", cancellable.cursor, ["cancelled"], [cancellable.transaction, cancelled.transaction]); timings.cancellationMs = cancelled.transaction.elapsedMs;
+        const cancellable = await startRenderedSimulation(projectBaseRoute, "cooperative cancellation", cancellationRounds); if (cancellable.response.status !== 202 || typeof cancellable.payload?.id !== "string") fail("Studio did not start a cancellable rendered simulation"); const cancelled = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-cancel", observation:"cooperative cancellation", cursor:cdp.events.length, method:"DELETE", confirmation:true, stateClass:"recovery-operation"}); if (cancelled.response.status !== 200 || cancelled.entry.path !== `/api/project/simulations/${encodeURIComponent(cancellable.payload.id)}` || !["cancelling", "cancelled"].includes(cancelled.payload?.status)) fail("Studio did not acknowledge cooperative simulation cancellation through its rendered control"); const cancelledTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(cancellable.payload.id)}`, "cooperative cancellation", cancellable.cursor, ["cancelled"], [cancellable.transaction, cancelled.transaction], 120_000); timings.cancellationMs = cancelled.transaction.elapsedMs;
         // The durable terminal response can arrive one React commit before
         // Simulation switches from its Run step to Review. Observe the
         // stable Retry control before its native pointer activation. React
         // may replace it as the request begins, but the receipt keeps the
         // captured identity, native focus, hit-test, and press/release proof.
         await waitFor(() => evaluate("(()=>{const item=document.getElementById('simulation-retry'); return item instanceof HTMLButtonElement && item.getAttribute('data-pokie-lifecycle') === 'recovery' && item.getAttribute('data-pokie-lifecycle-operation') === 'simulation-retry' && item.textContent?.trim() === 'Repeat simulation' && !item.disabled;})()"), "cooperative cancellation stable rendered retry control");
-        const retryCursor = cdp.events.length, retry = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-retry", observation:"simulation retry", cursor:retryCursor, method:"POST", stateClass:"recovery-operation", capturePostTransition:true}); if (retry.response.status !== 202 || typeof retry.payload?.id !== "string") fail("Studio did not start a fresh rendered retry through its recovery control"); const retryTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(retry.payload.id)}`, "simulation retry", retryCursor, ["completed"], retry.transaction, 180_000, true), retryReceipt = {operation:"simulation-retry", controlId:retry.transaction.control.stableControlId, stateClass:"recovery-operation", transaction:retry.transaction}; validateP805RetryTerminalReceipt(retryReceipt); timings.retryMs = retry.transaction.elapsedMs; const reportsEvent = await waitFor(async () => { const event = cdp.events.slice(retryCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/reports"); if (!event) return false; try { const response = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(response.body || "[]"); return Array.isArray(payload) ? {event, payload} : false; } catch { return false; } }, "rendered simulation reports"); const reports = {response:{status:reportsEvent.event.params.response.status, ok:true}, payload:reportsEvent.payload}; api.push({observation:"simulation retry", method:"GET", path:"/api/project/reports", status:reports.response.status, payload:reports.payload, browserRequestId:reportsEvent.event.params.requestId, initiator:"rendered-poll"});
+        const retryCursor = cdp.events.length, retry = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-retry", observation:"simulation retry", cursor:retryCursor, method:"POST", stateClass:"recovery-operation", capturePostTransition:true}); if (retry.response.status !== 202 || typeof retry.payload?.id !== "string") fail("Studio did not start a fresh rendered retry through its recovery control"); if (retry.entry.bodySha256 !== cancellable.entry.bodySha256) fail("Simulation Retry changed its captured request settings"); const retryTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(retry.payload.id)}`, "simulation retry", retryCursor, ["completed"], retry.transaction, 180_000, true), retryReceipt = {operation:"simulation-retry", controlId:retry.transaction.control.stableControlId, stateClass:"recovery-operation", transaction:retry.transaction}; validateP805RetryTerminalReceipt(retryReceipt); if (retryTerminal.requestedRounds !== cancellationRounds || retryTerminal.roundsCompleted !== cancellationRounds) fail("Simulation Retry did not finish the full captured round budget"); timings.retryMs = retry.transaction.elapsedMs; const reportsEvent = await waitFor(async () => { const event = cdp.events.slice(retryCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/reports"); if (!event) return false; try { const response = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(response.body || "[]"); return Array.isArray(payload) ? {event, payload} : false; } catch { return false; } }, "rendered simulation reports"); const reports = {response:{status:reportsEvent.event.params.response.status, ok:true}, payload:reportsEvent.payload}; api.push({observation:"simulation retry", method:"GET", path:"/api/project/reports", status:reports.response.status, payload:reports.payload, browserRequestId:reportsEvent.event.params.requestId, initiator:"rendered-poll"});
         // A package project is intentionally read-only in Game Model.  The
         // first-time-user Design Game is the product-owned editable surface,
         // so use its native text field and its public Projects/Open workflow
@@ -3502,7 +3733,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             }
         }, "post-loss durable nonterminal simulation job before restart reconciliation");
         abruptStudioLosses.add(studio);
-        const priorStudio = studio, restartDrain = await settleChild(priorStudio); studio = startStudio(); await waitFor(async () => { try { return (await fetch(`${origin}/api/health`)).ok; } catch { return false; } }, "Studio server restart", 90_000); const restartRecoveryCursor = cdp.events.length; await reloadP805Page(cdp); await waitFor(() => evaluate("document.readyState === 'complete' && location.hash.includes('/project/')"), "Studio server restart recovery"); const restartedProjectBaseRoute = (await evaluate("location.hash")).replace(/\/[^/]+$/, ""); await navigateProjectTab(restartedProjectBaseRoute, "simulation", "restart recovery"); const restartJobs = await readP805RenderedJobDiscovery(cdp, restartRecoveryCursor, restartJob.payload.id, "rendered restart job recovery"), restartList = Array.isArray(restartJobs.payload) ? restartJobs.payload : restartJobs.payload?.jobs ?? [], restartTerminal = restartList.find((job) => job?.id === restartJob.payload.id && job?.status === "recovery-required"), restartRecovered = restartTerminal !== undefined; if (!restartRecovered) fail("Studio restart did not discover the durable simulation recovery-required terminal"); const restartRendered = await waitFor(() => evaluate(`(()=>{const result=[...document.querySelectorAll('[data-pokie-lifecycle-result="simulation"]')].find((item)=>item instanceof HTMLElement&&item.getAttribute('data-pokie-lifecycle-result-control')==='simulation-run'&&item.getAttribute('data-pokie-lifecycle-result-operation')==='simulation'&&item.getAttribute('data-pokie-lifecycle-result-state')==='editable-submission'&&item.getAttribute('data-pokie-lifecycle-result-job')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-result-request-id')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-terminal')==='recovery-required'&&item.getAttribute('data-pokie-lifecycle-result-receipt')==='durable-terminal'&&item.getAttribute('data-pokie-lifecycle-result-durable-job')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-result-captured-job')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-result-durable-status')==='recovery-required'&&item.getAttribute('data-pokie-lifecycle-result-recovery')==='restart-reconciled'&&item.getAttribute('data-pokie-lifecycle-result-executor')==='unavailable-after-restart'); if(!(result instanceof HTMLElement))return false; return {resultControlId:result.getAttribute('data-pokie-lifecycle-result-control'),resultOperation:result.getAttribute('data-pokie-lifecycle-result-operation'),resultStateClass:result.getAttribute('data-pokie-lifecycle-result-state'),resultReceipt:result.getAttribute('data-pokie-lifecycle-result-receipt'),capturedJobId:result.getAttribute('data-pokie-lifecycle-result-captured-job'),resultJobId:result.getAttribute('data-pokie-lifecycle-result-durable-job'),resultRequestId:result.getAttribute('data-pokie-lifecycle-result-request-id'),resultTerminal:result.getAttribute('data-pokie-lifecycle-result-durable-status'),resultRecovery:result.getAttribute('data-pokie-lifecycle-result-recovery'),resultExecutor:result.getAttribute('data-pokie-lifecycle-result-executor'),renderedTerminal:true,postRestartReplacementState:{capturedControlId:${JSON.stringify(restartJob.transaction.control.stableControlId)},captureKey:${JSON.stringify(restartJob.transaction.pointerActivations[0].captureKey)},controlState:'replaced-after-restart',currentControlId:document.getElementById('simulation-run') instanceof HTMLElement?'simulation-run':null,capturedControlConnected:false}}})()`), "rendered restart recovery terminal"), restartScreenshot = await captureScreenshot(), restartScreenshotEvidenceId = await save("screenshot", `${recoveryViewport}-restart-recovery.png`, Buffer.from(restartScreenshot.data, "base64"), [options.tuple?.observation ?? "restart recovery"]); timings.restartRecoveryMs = Date.now() - restartRecoveryStartedAt; const restartReceipt = {operation:"simulation", controlId:restartJob.transaction.control.stableControlId, stateClass:restartJob.transaction.stateClass, capturedJobId:restartJob.payload.id, transaction:restartJob.transaction, terminal:{status:restartTerminal.status, jobId:restartTerminal.id, resultSha256:digest(JSON.stringify(restartTerminal)), causedByRequestId:restartJob.transaction.request.browserRequestId}, rendered:restartRendered, timing:{elapsedMs:timings.restartRecoveryMs}, evidence:{screenshotEvidenceId:restartScreenshotEvidenceId}, ownedProcessDrain:restartDrain}; api.push({path:"/api/project/jobs", method:"GET", status:restartJobs.event.params.response.status, payload:restartJobs.payload, browserRequestId:restartJobs.event.params.requestId, initiator:"rendered-restart", recovery:"restart"}); const recovery = {reloadReconnect:activeReloadTerminal.status === "cancelled" && jobs.some((job) => job?.id === activeReload.payload.id), projectSwitch:recoveryBefore !== recoveryAfter, staleResponseIsolation, unsavedWorkProtection:unsavedWork.preserved === true, serverRestart:restartDrain.processTreeDrained && restartDrain.resourcesDrained && restartRecovered && restartTerminal.status === "recovery-required" && restartRendered.renderedTerminal === true}; if (!Object.values(recovery).every(Boolean)) fail(`Studio recovery controls did not produce measured results: ${JSON.stringify(recovery)}`);
+        const priorStudio = studio, restartDrain = await settleChild(priorStudio); studio = startStudio(); await waitFor(async () => { try { return (await fetch(`${origin}/api/health`)).ok; } catch { return false; } }, "Studio server restart", 90_000); const restartRecoveryCursor = cdp.events.length; await reloadP805Page(cdp); await waitFor(() => evaluate("document.readyState === 'complete' && location.hash.includes('/project/')"), "Studio server restart recovery"); const restartedProjectBaseRoute = (await evaluate("location.hash")).replace(/\/[^/]+$/, ""); await navigateProjectTab(restartedProjectBaseRoute, "simulation", "restart recovery"); const restartJobs = await readP805RestartJobDiscovery(cdp, restartRecoveryCursor, decodeURIComponent(restartProjectBaseRoute.split("/").at(-1)), restartJob.payload.id), restartList = Array.isArray(restartJobs.payload) ? restartJobs.payload : restartJobs.payload?.jobs ?? [], restartTerminal = restartList.find((job) => job?.id === restartJob.payload.id && job?.status === "recovery-required"), restartRecovered = restartTerminal !== undefined; if (!restartRecovered) fail("Studio restart did not discover the durable simulation recovery-required terminal"); const restartRendered = await waitFor(() => evaluate(`(()=>{const result=[...document.querySelectorAll('[data-pokie-lifecycle-result="simulation"]')].find((item)=>item instanceof HTMLElement&&item.getAttribute('data-pokie-lifecycle-result-control')==='simulation-run'&&item.getAttribute('data-pokie-lifecycle-result-operation')==='simulation'&&item.getAttribute('data-pokie-lifecycle-result-state')==='editable-submission'&&item.getAttribute('data-pokie-lifecycle-result-job')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-result-request-id')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-terminal')==='recovery-required'&&item.getAttribute('data-pokie-lifecycle-result-receipt')==='durable-terminal'&&item.getAttribute('data-pokie-lifecycle-result-durable-job')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-result-captured-job')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-result-durable-status')==='recovery-required'&&item.getAttribute('data-pokie-lifecycle-result-recovery')==='restart-reconciled'&&item.getAttribute('data-pokie-lifecycle-result-executor')==='unavailable-after-restart'); if(!(result instanceof HTMLElement))return false; return {resultControlId:result.getAttribute('data-pokie-lifecycle-result-control'),resultOperation:result.getAttribute('data-pokie-lifecycle-result-operation'),resultStateClass:result.getAttribute('data-pokie-lifecycle-result-state'),resultReceipt:result.getAttribute('data-pokie-lifecycle-result-receipt'),capturedJobId:result.getAttribute('data-pokie-lifecycle-result-captured-job'),resultJobId:result.getAttribute('data-pokie-lifecycle-result-durable-job'),resultRequestId:result.getAttribute('data-pokie-lifecycle-result-request-id'),resultTerminal:result.getAttribute('data-pokie-lifecycle-result-durable-status'),resultRecovery:result.getAttribute('data-pokie-lifecycle-result-recovery'),resultExecutor:result.getAttribute('data-pokie-lifecycle-result-executor'),renderedTerminal:true,postRestartReplacementState:{capturedControlId:${JSON.stringify(restartJob.transaction.control.stableControlId)},captureKey:${JSON.stringify(restartJob.transaction.pointerActivations[0].captureKey)},controlState:'replaced-after-restart',currentControlId:document.getElementById('simulation-run') instanceof HTMLElement?'simulation-run':null,capturedControlConnected:false}}})()`), "rendered restart recovery terminal"), restartScreenshot = await captureScreenshot(), restartScreenshotEvidenceId = await save("screenshot", `${recoveryViewport}-restart-recovery.png`, Buffer.from(restartScreenshot.data, "base64"), [options.tuple?.observation ?? "restart recovery"]); timings.restartRecoveryMs = Date.now() - restartRecoveryStartedAt; const restartReceipt = {operation:"simulation", controlId:restartJob.transaction.control.stableControlId, stateClass:restartJob.transaction.stateClass, capturedJobId:restartJob.payload.id, transaction:restartJob.transaction, terminal:{status:restartTerminal.status, jobId:restartTerminal.id, resultSha256:digest(JSON.stringify(restartTerminal)), causedByRequestId:restartJob.transaction.request.browserRequestId}, rendered:restartRendered, timing:{elapsedMs:timings.restartRecoveryMs}, evidence:{screenshotEvidenceId:restartScreenshotEvidenceId}, ownedProcessDrain:restartDrain}; api.push({path:"/api/project/jobs", method:"GET", status:restartJobs.event.params.response.status, payload:restartJobs.payload, browserRequestId:restartJobs.event.params.requestId, initiator:"rendered-restart", recovery:"restart"}); const recovery = {reloadReconnect:activeReloadTerminal.status === "cancelled" && jobs.some((job) => job?.id === activeReload.payload.id), projectSwitch:recoveryBefore !== recoveryAfter, staleResponseIsolation, unsavedWorkProtection:unsavedWork.preserved === true, serverRestart:restartDrain.processTreeDrained && restartDrain.resourcesDrained && restartRecovered && restartTerminal.status === "recovery-required" && restartRendered.renderedTerminal === true}; if (!Object.values(recovery).every(Boolean)) fail(`Studio recovery controls did not produce measured results: ${JSON.stringify(recovery)}`);
         if (JSON.stringify(restartTerminal.request) !== JSON.stringify(preCrashJob.request)) fail("Studio restart recovery did not retain the captured durable simulation request");
         restartReceipt.terminal.operation = restartTerminal.operation;
         restartReceipt.terminal.request = restartTerminal.request;
@@ -3521,7 +3752,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 durableJob: restartDrain.postLossJob,
             },
         };
-        const observations = options.tuple ? [options.tuple.observation] : P805_REQUIRED_OBSERVATIONS[options.persona]; const recoveryEvidenceId = await save("page-state", "recovery-and-jobs.json", JSON.stringify({kind:"p8-05-runtime-observation", viewport:recoveryViewport, roundsRejection, replayArtifacts:{valid:replayArtifactValid, invalid:replayFailure, recovered:replayArtifactInspection}, recovery, transactions:{projectValidation:validation.transaction, activeReloadStart:activeReload.transaction, activeReloadCancellation:activeReloadCancellation.transaction, simulationFailure:failure.transaction, simulationSuccess:simulation.transaction, replayFailure:replayFailure.transaction, replaySuccess:replay.transaction, replayRecovery:replayArtifactInspection.transaction, cancellableSimulation:cancellable.transaction, cooperativeCancellation:cancelled.transaction, simulationRetry:retry.transaction, restartSimulation:restartJob.transaction}, reload:{activeJobId:activeReload.payload.id, terminal:activeReloadTerminal, discoveredAfterReload:jobs.some((job) => job?.id === activeReload.payload.id)}, staleResponse:projectSwitchReceipt.staleResponse, projectSwitchReceipt, unsavedWork, restart:{activeJobId:restartJob.payload.id, recovered:restartRecovered, terminal:restartTerminal, receipt:restartReceipt}, jobs:{success:simulationTerminal, actionableFailure:failure.payload, cooperativeCancellation:cancelledTerminal, retryWithoutPartialArtifacts:retryTerminal, replayTerminal}, outcomes:{failureStatus:failure.response.status, cancellationStatus:cancelledTerminal.status, retryStatus:retryTerminal.status, cancelledSimulationId:cancellable.payload.id, reports:reports.payload, cancelledReportAbsent:!reports.payload.some((report) => report?.id === cancellable.payload.id)}})); await save("cli-transcript", "packed-cli.txt", transcript.join("\n"), observations); await save("browser-log", "browser.json", JSON.stringify(cdp.events), observations); await save("api-log", "api.json", JSON.stringify(api), observations); await save("error", "errors.txt", errors.join("\n") || "no browser/API/CLI errors observed\n", observations); await save("timing", "timings.json", JSON.stringify(timings), observations); await save("reproduction", "reproduction.md", `Installed packed CLI: ${installedCli}\nPacked package: ${options.packedPackage}\nPersona: ${options.persona}\n`, observations); await save("artifact", "candidate.json", JSON.stringify({candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, archiveGitHead:installedPackage.gitHead, installedCli, candidatePackageJsonSha256:digest(candidatePackageJsonBytes), installedPackageJsonSha256:digest(installedPackageBytes), declaredCandidateExecutableSha256:options.candidateExecutableSha256, candidateExecutableSha256:candidateExecutable.sha256, candidateExecutableReceiptSha256:options.candidateExecutableReceipt.sha256, candidateExecutableReceiptId:candidateReceipt.receiptId, candidateExecutableReceiptIssuer:candidateReceipt.issuer, candidateExecutableFiles:candidateExecutable.files, candidateTreeManifestCandidateId:candidateTreeManifest.candidateId, candidateTreeManifestSha256:candidateTreeManifest.sha256, candidateTreeObjectId:candidateTreeManifest.tree, candidateTreeManifestFiles:candidateTreeManifest.files.length, packedPackage:options.packedPackage, packedPackageSha256:digest(packageBytes)}), observations);
+        const observations = options.tuple ? [options.tuple.observation] : P805_REQUIRED_OBSERVATIONS[options.persona]; const recoveryEvidenceId = await save("page-state", "recovery-and-jobs.json", JSON.stringify({kind:"p8-05-runtime-observation", viewport:recoveryViewport, roundsRejection, replayArtifacts:{valid:replayArtifactValid, invalid:replayFailure, recovered:replayArtifactInspection}, recovery, transactions:{projectValidation:validation.transaction, activeReloadStart:activeReload.transaction, activeReloadCancellation:activeReloadCancellation.transaction, simulationFailure:failure.transaction, simulationSuccess:simulation.transaction, replayFailure:replayFailure.transaction, replaySuccess:replay.transaction, replayRecovery:replayArtifactInspection.transaction, cancellableSimulation:cancellable.transaction, cooperativeCancellation:cancelled.transaction, simulationRetry:retry.transaction, restartSimulation:restartJob.transaction}, reload:{activeJobId:activeReload.payload.id, terminal:activeReloadTerminal, discoveredAfterReload:jobs.some((job) => job?.id === activeReload.payload.id)}, staleResponse:projectSwitchReceipt.staleResponse, projectSwitchReceipt, unsavedWork, restart:{activeJobId:restartJob.payload.id, recovered:restartRecovered, terminal:restartTerminal, receipt:restartReceipt}, jobs:{success:simulationTerminal, actionableFailure:failure.payload, cooperativeCancellation:cancelledTerminal, retryWithoutPartialArtifacts:retryTerminal, replayTerminal}, outcomes:{failureStatus:failure.response.status, cancellationStatus:cancelledTerminal.status, retryStatus:retryTerminal.status, cancelledSimulationId:cancellable.payload.id, reports:reports.payload, cancelledReportAbsent:!reports.payload.some((report) => report?.id === cancellable.payload.id)}})); await save("cli-transcript", "packed-cli.txt", transcript.join("\n"), observations); await preserveP805Log("browser-log", "browser.json", cdp.events, observations, save); await preserveP805Log("api-log", "api.json", api, observations, save); await save("error", "errors.txt", errors.join("\n") || "no browser/API/CLI errors observed\n", observations); await save("timing", "timings.json", JSON.stringify(timings), observations); await save("reproduction", "reproduction.md", `Installed packed CLI: ${installedCli}\nPacked package: ${options.packedPackage}\nPersona: ${options.persona}\n`, observations); await save("artifact", "candidate.json", JSON.stringify({candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, archiveGitHead:installedPackage.gitHead, installedCli, candidatePackageJsonSha256:digest(candidatePackageJsonBytes), installedPackageJsonSha256:digest(installedPackageBytes), declaredCandidateExecutableSha256:options.candidateExecutableSha256, candidateExecutableSha256:candidateExecutable.sha256, candidateExecutableReceiptSha256:options.candidateExecutableReceipt.sha256, candidateExecutableReceiptId:candidateReceipt.receiptId, candidateExecutableReceiptIssuer:candidateReceipt.issuer, candidateExecutableFiles:candidateExecutable.files, candidateTreeManifestCandidateId:candidateTreeManifest.candidateId, candidateTreeManifestSha256:candidateTreeManifest.sha256, candidateTreeObjectId:candidateTreeManifest.tree, candidateTreeManifestFiles:candidateTreeManifest.files.length, packedPackage:options.packedPackage, packedPackageSha256:digest(packageBytes)}), observations);
         let workflowScope;
         if (options.tuple) {
             const bootstrap = tupleBootstrapContract(options.tuple), bootstrapEvidenceId = await save("provenance", "tuple-bootstrap.json", JSON.stringify({kind:"p8-05-single-tuple-bootstrap", tuple:options.tuple, bootstrap, completeWorkflow:true}), observations);
@@ -3532,7 +3763,19 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         const controls = await evaluate(`(${collectP805RenderedControls.toString()})(true)`), measurements = {consoleExceptions:cdp.events.filter((event) => event.method === "Runtime.exceptionThrown").length, unhandledRequestFailures:cdp.events.filter((event) => event.method === "Network.loadingFailed").length, documentOverflow:actions.some((action) => action.overflow) || responsive.some((entry) => entry.overflow), inaccessiblePrimaryActions:controls.controls.filter((control) => !control.disabled && !control.accessible).length, unexplainedDisabledControls:controls.unexplainedDisabledControls, namedRegions:controls.namedRegions, visibleFocus:controls.visibleFocus}, defects = [["console", measurements.consoleExceptions], ["request", measurements.unhandledRequestFailures], ["accessibility", measurements.inaccessiblePrimaryActions], ["disabled-control", measurements.unexplainedDisabledControls], ["overflow", measurements.documentOverflow ? 1 : 0], ["named-region", measurements.namedRegions < 1 ? 1 : 0], ["focus", measurements.visibleFocus ? 0 : 1], ["performance", Object.values(performance).some((item) => item.classification === "regression") ? 1 : 0]].filter(([, count]) => count > 0).map(([kind]) => ({kind, evidenceId:recoveryEvidenceId})); audit = {auditId, worker, persona:options.persona, workflowPersonas:options.workflowPersonas, tuple:options.tuple, phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, packageIdentity:{archiveSha256:digest(packageBytes), archiveGitHead:installedPackage.gitHead, declaredPackedCli:options.packedCli, installedCli, sharedRuntimeReceiptSha256:options.runtime?.receipt.sha256, sharedRuntimeRoot:options.runtime?.root, candidatePackageJsonSha256:digest(candidatePackageJsonBytes), installedPackageJsonSha256:digest(installedPackageBytes), declaredCandidateExecutableSha256:options.candidateExecutableSha256, candidateExecutableSha256:candidateExecutable.sha256, candidateExecutableReceiptSha256:options.candidateExecutableReceipt.sha256, candidateExecutableReceiptId:candidateReceipt.receiptId, candidateExecutableReceiptIssuer:candidateReceipt.issuer, candidateExecutableFiles:candidateExecutable.files, candidateTreeManifestCandidateId:candidateTreeManifest.candidateId, candidateTreeManifestSha256:candidateTreeManifest.sha256, candidateTreeObjectId:candidateTreeManifest.tree}, startedAt, endedAt:undefined, cleanContext:context, observations, observationEvidence, evidence, checkpointReceipts, finalResult:{status:"passed", aggregation:"verified-checkpoint-receipts-only", chunks:checkpointReceipts.length, checkpointReceiptSha256s:checkpointReceipts.map((receipt) => receipt.sha256)}, timings, performance, rendered:{execution:"packed-public-cli-built-studio-rendered-controls", viewports:options.tuple ? [options.tuple.viewport] : ["wide", "compact", "narrow"], responsive, measurements, defects, actions, recovery:Object.fromEntries(Object.entries(recovery).map(([name, observed]) => [name, {observed, evidenceId:recoveryEvidenceId}])), jobs:{success:{observed:simulationTerminal.status === "completed", evidenceId:recoveryEvidenceId}, actionableFailure:{observed:failure.response.status === 400, evidenceId:recoveryEvidenceId}, cooperativeCancellation:{observed:cancelledTerminal.status === "cancelled", evidenceId:recoveryEvidenceId}, retryWithoutPartialArtifacts:{observed:retryTerminal.status === "completed" && cancelledTerminal.status === "cancelled" && !reports.payload.some((report) => report?.id === cancellable.payload.id), evidenceId:recoveryEvidenceId, receipt:retryReceipt}, restartRecovery:{observed:restartReceipt.terminal.status === "recovery-required", evidenceId:recoveryEvidenceId, receipt:restartReceipt}}}};
         if (options.tuple) audit.workflowScope = workflowScope;
         }
-    } catch (error) { thrown = error; } finally { cdp?.close(); const drains = []; for (const owner of ownership.slice().reverse()) { try { if (!owner.settled) { clearInterval(owner.descendantSampler); if (owner.resourceId) releaseP805BrowserOwner(owner); let ownershipError; try { owner.tracker?.capture({final:true}); } catch (error) { ownershipError = error; } for (const [pid, identity] of descendants(owner.pid)) owner.ownedProcesses.set(pid, identity); owner.drain = await drainProcessTree(owner.child, 5_000, owner.tracker?.ownedProcesses ?? owner.ownedProcesses, owner.tracker?.ownedResources); if (!owner.drain.processTreeDrained || !owner.drain.resourcesDrained) fail(`owned ${owner.label} resources could not be drained`); if (ownershipError) throw ownershipError; } } catch (error) { owner.drain = {processTreeDrained:false, resourcesDrained:false, error:String(error)}; thrown ??= error; } finally { owner.tracker?.stop(); } delete owner.child; delete owner.ownedProcesses; delete owner.tracker; delete owner.descendantSampler; delete owner.resourceRegistrySecret; delete owner.operationId; drains.push(owner.drain); } await services.rm(base, {recursive:true, force:true}); const cleanup = {kind:"p8-05-cleanup", exit:thrown ? "error" : "success", processTreeDrained:drains.every((drain) => drain.processTreeDrained === true), resourcesDrained:drains.every((drain) => drain.resourcesDrained === true), contextRemoved:!services.exists(base), ownership}; const cleanupEvidenceId = await save("cleanup", "cleanup.json", JSON.stringify(cleanup), audit?.observations ?? []); if (audit) { audit.cleanup = {...cleanup, evidenceId:cleanupEvidenceId}; audit.finalResult.cleanupEvidenceId = cleanupEvidenceId; const restartReceipt = audit.rendered?.jobs?.restartRecovery?.receipt; if (restartReceipt) restartReceipt.evidence = {...restartReceipt.evidence, cleanupEvidenceId}; audit.endedAt = services.now(); } else if (thrown && typeof thrown === "object") { thrown.cleanupEvidenceId = cleanupEvidenceId; thrown.cleanup = cleanup; } if (options.tupleCleanupPath) { const tupleCleanup = {schemaVersion:1, kind:"p8-05-packed-tuple-cleanup", phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, tuple:options.tuple, worker, cleanup, cleanupEvidenceId}; const contents = `${JSON.stringify(tupleCleanup)}\n`; await services.mkdir(path.dirname(options.tupleCleanupPath), {recursive:true}); await writeImmutableReceipt(options.tupleCleanupPath, contents, services); publishedTupleCleanup = {cleanupEvidenceId, sha256:digest(contents)}; } }
+    } catch (error) {
+        thrown = error;
+        const failureEvidenceStart = evidence.length;
+        try {
+            await preserveP805FailedWorkflow({error, transcript, events:cdp?.events ?? [], api, errors, timings,
+                observations:options.tuple ? [options.tuple.observation] : P805_REQUIRED_OBSERVATIONS[options.persona], save});
+        } catch (retentionError) {
+            // Retention must never skip process drainage or replace the original
+            // product/transport failure with a successful or unrelated result.
+            process.stderr.write(`P805_FAILURE_RETENTION_ERROR ${String(retentionError)}\n`);
+        }
+        failureEvidence = evidence.slice(failureEvidenceStart);
+    } finally { cdp?.close(); const drains = []; for (const owner of ownership.slice().reverse()) { try { if (!owner.settled) { clearInterval(owner.descendantSampler); if (owner.resourceId) releaseP805BrowserOwner(owner); let ownershipError; try { owner.tracker?.capture({final:true}); } catch (error) { ownershipError = error; } for (const [pid, identity] of descendants(owner.pid)) owner.ownedProcesses.set(pid, identity); owner.drain = await drainP805TrackedOwner(owner); if (!owner.drain.processTreeDrained || !owner.drain.resourcesDrained) fail(`owned ${owner.label} resources could not be drained`); if (ownershipError) throw ownershipError; } } catch (error) { owner.drain = {processTreeDrained:false, resourcesDrained:false, error:String(error)}; thrown ??= error; } finally { owner.tracker?.stop(); } delete owner.child; delete owner.ownedProcesses; delete owner.tracker; delete owner.descendantSampler; delete owner.resourceRegistrySecret; delete owner.operationId; drains.push(owner.drain); } await services.rm(base, {recursive:true, force:true}); const cleanup = {kind:"p8-05-cleanup", exit:thrown ? "error" : "success", processTreeDrained:drains.every((drain) => drain.processTreeDrained === true), resourcesDrained:drains.every((drain) => drain.resourcesDrained === true), contextRemoved:!services.exists(base), ownership}; const cleanupEvidenceId = await save("cleanup", "cleanup.json", JSON.stringify(cleanup), audit?.observations ?? []); if (audit) { audit.cleanup = {...cleanup, evidenceId:cleanupEvidenceId}; audit.finalResult.cleanupEvidenceId = cleanupEvidenceId; const restartReceipt = audit.rendered?.jobs?.restartRecovery?.receipt; if (restartReceipt) restartReceipt.evidence = {...restartReceipt.evidence, cleanupEvidenceId}; audit.endedAt = services.now(); } else if (thrown && typeof thrown === "object") { thrown.cleanupEvidenceId = cleanupEvidenceId; thrown.cleanup = cleanup; } if (options.tupleCleanupPath) { const tupleCleanup = {schemaVersion:1, kind:"p8-05-packed-tuple-cleanup", phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, tuple:options.tuple, worker, cleanup, cleanupEvidenceId, ...(failureEvidence ? {failureEvidence} : {})}; const contents = `${JSON.stringify(tupleCleanup)}\n`; await services.mkdir(path.dirname(options.tupleCleanupPath), {recursive:true}); await writeImmutableReceipt(options.tupleCleanupPath, contents, services); publishedTupleCleanup = {cleanupEvidenceId, sha256:digest(contents)}; } }
     if (thrown) throw thrown;
     const measuredDefects = new Map();
     const retainDefect = (kind, evidenceId) => measuredDefects.set(`${kind}/${evidenceId}`, {kind, evidenceId});

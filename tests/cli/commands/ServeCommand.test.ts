@@ -27,6 +27,13 @@ import path from "path";
 import {ReplayCommand} from "../../../cli/commands/ReplayCommand.js";
 import {ServeCommand} from "../../../cli/commands/ServeCommand.js";
 import {createMaterializingRuntimePackageResolver, passthroughRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
+import {createPackageExtractionTestEnvironment} from "../../v2/fixtures/PackageExtractionFixture.js";
+
+let restoreRuntimeEnvironment: () => void;
+beforeAll(() => {
+    restoreRuntimeEnvironment = createPackageExtractionTestEnvironment();
+});
+afterAll(() => restoreRuntimeEnvironment());
 import {buildOutcomeLibraryBundleModeInput, outcomeLibraryBundleTestProvenance} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
@@ -81,11 +88,19 @@ function createStubServer(
     };
 }
 
-type SignalHandler = () => void;
+type SignalHandler = () => void | Promise<void>;
 
 class FakeProcess {
     public readonly exitCalls: number[] = [];
+    public readonly exited: Promise<void>;
+    private onExit!: () => void;
     private readonly handlers = new Map<string, SignalHandler>();
+
+    constructor() {
+        this.exited = new Promise<void>((resolve) => {
+            this.onExit = resolve;
+        });
+    }
 
     public once(event: string, handler: SignalHandler): FakeProcess {
         this.handlers.set(event, handler);
@@ -94,10 +109,12 @@ class FakeProcess {
 
     public exit(code: number): void {
         this.exitCalls.push(code);
+        this.onExit();
     }
 
-    public trigger(event: string): void {
-        this.handlers.get(event)?.();
+    public async trigger(event: string): Promise<void> {
+        await this.handlers.get(event)?.();
+        await this.exited;
     }
 }
 
@@ -133,8 +150,12 @@ describe("ServeCommand", () => {
             recursive: true,
             filter: (source) => path.basename(source) !== ".pokie-runtime-cache",
         });
-        fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({name: packageName, version: "1.0.0", pokie: {entry: "./index.js"}}));
+        fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({name: packageName, version: "1.0.0", dependencies: {"@fromstan/pokie": "*"}, pokie: {entry: "./index.js"}}));
         const server = createStubServer({host: "127.0.0.1", port: 0});
+        const readOnlyAssets = path.join(packageRoot, "read-only-assets");
+        fs.mkdirSync(readOnlyAssets);
+        fs.writeFileSync(path.join(readOnlyAssets, "asset.txt"), "immutable installed asset");
+        fs.chmodSync(readOnlyAssets, 0o555);
         const fakeProcess = new FakeProcess();
         const command = new ServeCommand(loadPokieGame, () => server, passthroughRuntimePackageResolver, new ProjectTargetResolver(), undefined, fakeProcess as unknown as NodeJS.Process);
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
@@ -143,15 +164,18 @@ describe("ServeCommand", () => {
             expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
             await command.run([packageRoot]);
             expect(runtimeSnapshotsForPackage(packageName)).toHaveLength(1);
-            fakeProcess.trigger("SIGINT");
+            await fakeProcess.trigger("SIGINT");
             await new Promise<void>((resolve) => {
                 setImmediate(resolve);
             });
             expect(server.stopCalls).toBe(1);
             expect(fakeProcess.exitCalls).toEqual([0]);
             expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
+            expect(fs.statSync(readOnlyAssets).mode & 0o222).toBe(0);
+            expect(fs.readFileSync(path.join(readOnlyAssets, "asset.txt"), "utf8")).toBe("immutable installed asset");
         } finally {
             logSpy.mockRestore();
+            fs.chmodSync(readOnlyAssets, 0o755);
             fs.rmSync(workDir, {recursive: true, force: true});
         }
     });
@@ -164,7 +188,7 @@ describe("ServeCommand", () => {
             recursive: true,
             filter: (source) => path.basename(source) !== ".pokie-runtime-cache",
         });
-        fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({name: packageName, version: "1.0.0", pokie: {entry: "./index.js"}}));
+        fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({name: packageName, version: "1.0.0", dependencies: {"@fromstan/pokie": "*"}, pokie: {entry: "./index.js"}}));
         const fakeProcess = new FakeProcess();
         let address: PokieDevServerAddress | undefined;
         let realServer: PokieDevServer | undefined;
@@ -216,13 +240,14 @@ describe("ServeCommand", () => {
             request.once("error", (error) => rejectResponse!(error));
             request.write(body.slice(0, 1));
             await accepted;
-            fakeProcess.trigger("SIGTERM");
+            const shutdown = fakeProcess.trigger("SIGTERM");
             // The listener is now closed to new work but this request was
             // accepted already. It must finish against the live snapshot
             // before ServeCommand releases that snapshot.
             request.end(body.slice(1));
 
             await expect(response).resolves.toMatchObject({status: 201, body: {sessionId: expect.any(String)}});
+            await shutdown;
             for (let tick = 0; tick < 50 && fakeProcess.exitCalls.length === 0; tick++) {
                 await new Promise<void>((resolve) => {
                     setTimeout(resolve, 10);
@@ -341,30 +366,48 @@ describe("ServeCommand", () => {
 });
 
 describe("ServeCommand (integration, real loadPokieGame + PokieDevServer + fixture game package)", () => {
-    const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game");
+    let fixtureRoot: string;
+    beforeEach(() => {
+        fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-playable-command-"));
+        fs.cpSync(path.join(__dirname, "..", "fixtures", "playable-game"), fixtureRoot, {
+            recursive: true,
+            filter: source => path.basename(source) !== ".pokie-runtime-cache",
+        });
+        const manifestPath = path.join(fixtureRoot, "package.json");
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+        // Explicitly resolve the real staged runtime, independent of the npm/Jest launcher.
+        fs.writeFileSync(manifestPath, JSON.stringify({...manifest, dependencies: {"@fromstan/pokie": "*"}}));
+    });
+    afterEach(() => fs.rmSync(fixtureRoot, {recursive: true, force: true}));
 
     it("starts a real server on an ephemeral port and serves the fixture game's manifest", async () => {
         let server: PokieDevServerHandling | undefined;
+        const fakeProcess = new FakeProcess();
+        let started = false;
         const command = new ServeCommand(loadPokieGame, (game, options) => {
             server = new PokieDevServer(game, options);
             return server;
-        });
+        }, passthroughRuntimePackageResolver, new ProjectTargetResolver(), undefined, fakeProcess as unknown as NodeJS.Process);
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run([fixtureRoot, "--port", "0"]);
+        try {
+            await command.run([fixtureRoot, "--port", "0"]);
+            started = true;
 
-        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
-        const match = printed.match(/http:\/\/127\.0\.0\.1:(\d+)/);
-        expect(match).not.toBeNull();
-        const port = Number(match![1]);
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            const match = printed.match(/http:\/\/127\.0\.0\.1:(\d+)/);
+            expect(match).not.toBeNull();
+            const port = Number(match![1]);
 
-        const response = await fetch(`http://127.0.0.1:${port}/game`);
-        const body = (await response.json()) as unknown;
+            const response = await fetch(`http://127.0.0.1:${port}/game`);
+            const body = (await response.json()) as unknown;
 
-        expect(body).toEqual({id: "playable-game", name: "Playable Game", version: "1.0.0"});
+            expect(body).toEqual({id: "playable-game", name: "Playable Game", version: "1.0.0"});
 
-        await server!.stop();
-        logSpy.mockRestore();
+        } finally {
+            if (started) await fakeProcess.trigger("SIGTERM");
+            logSpy.mockRestore();
+        }
     });
 });
 

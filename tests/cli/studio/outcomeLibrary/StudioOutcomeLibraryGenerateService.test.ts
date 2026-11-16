@@ -17,6 +17,7 @@ import os from "os";
 import path from "path";
 import {StudioOutcomeLibraryGenerateService} from "../../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
 import {buildAlternateFixtureGame, buildFixtureGame, buildUnsupportedFixtureGame} from "../../../weightedoutcome/generate/GenerateTestFixtures.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../../../v2/fixtures/PackageExtractionFixture.js";
 
 const POKIE_VERSION = "9.9.9";
 
@@ -707,24 +708,31 @@ describe("StudioOutcomeLibraryGenerateService", () => {
         });
 
         it("releases each real runtime snapshot after repeated unsupported package estimates", async () => {
-            const packageRoot = path.join(projectRoot, "unsupported-package");
-            const packageName = `studio-unsupported-estimate-${crypto.randomUUID()}`;
-            fs.cpSync(path.join(__dirname, "..", "..", "fixtures", "playable-game"), packageRoot, {
-                recursive: true,
-                filter: (source) => path.basename(source) !== ".pokie-runtime-cache",
-            });
-            fs.writeFileSync(
-                path.join(packageRoot, "package.json"),
-                JSON.stringify({name: packageName, version: "1.0.0", pokie: {entry: "./index.js"}}),
-            );
-            const studio = new StudioOutcomeLibraryGenerateService(POKIE_VERSION);
+            const restoreRuntimeEnvironment = createPackageExtractionTestEnvironment();
+            try {
+                const packageRoot = path.join(os.tmpdir(), "unsupported-package");
+                const packageName = `studio-unsupported-estimate-${crypto.randomUUID()}`;
+                fs.cpSync(path.join(__dirname, "..", "..", "fixtures", "playable-game"), packageRoot, {
+                    recursive: true,
+                    filter: source => !["node_modules", ".pokie-runtime-cache"].includes(path.basename(source)),
+                });
+                // Resolve the real compiled runtime from the isolated installation,
+                // rather than snapshotting the embedding checkout on every estimate.
+                fs.writeFileSync(
+                    path.join(packageRoot, "package.json"),
+                    JSON.stringify({name: packageName, version: "1.0.0", dependencies: {"@fromstan/pokie": "*"}, pokie: {entry: "./index.js"}}),
+                );
+                const studio = new StudioOutcomeLibraryGenerateService(POKIE_VERSION);
 
-            expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
-            for (let attempt = 0; attempt < 3; attempt++) {
-                await expect(studio.estimate(packageRoot, {generation: "exact"})).resolves.toMatchObject({status: "unsupported"});
                 expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    await expect(studio.estimate(packageRoot, {generation: "exact"})).resolves.toMatchObject({status: "unsupported"});
+                    expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
+                }
+            } finally {
+                restoreRuntimeEnvironment();
             }
-        });
+        }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
         it("reports load-error when the package fails to load", async () => {
             const failing = new StudioOutcomeLibraryGenerateService(

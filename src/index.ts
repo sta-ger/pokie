@@ -500,6 +500,7 @@ export * from "./session/GameWithFreeGamesSessionHandling.js";
 export * from "./session/JackpotStatisticsProviding.js";
 export * from "./session/JackpotStatisticsSnapshot.js";
 export * from "./session/NoWinAmount.js";
+export * from "./session/PayoutAmountDetermining.js";
 export * from "./session/PlayableGame.js";
 export * from "./session/SessionStateRestoring.js";
 export * from "./session/SimulationCategoryDetermining.js";

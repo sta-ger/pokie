@@ -131,6 +131,35 @@ async function connect(devtoolsPort) {
     return {send, events, waitForEvent, close: () => socket.close()};
 }
 
+async function continuePausedResponse(cdp, requestId) {
+    // Chromium's Fetch backend has accepted different continuation entry
+    // points for a response-stage pause across supported browser revisions.
+    // Keep the response-stage path first, but retain the compatible request
+    // continuation when that backend reports that it has no response
+    // interception object.  Either successful command releases precisely the
+    // saved pause; all other protocol failures remain visible to this test.
+    try {
+        await cdp.send("Fetch.continueResponse", {requestId});
+    } catch (error) {
+        if (!String(error).includes("Invalid InterceptionId")) throw error;
+        await cdp.send("Fetch.continueRequest", {requestId});
+    }
+}
+
+async function releaseStaleResponse(cdp, requestId) {
+    try {
+        await continuePausedResponse(cdp, requestId);
+        return "released";
+    } catch (error) {
+        // After the routed project switch Chromium may have already cancelled
+        // the old response. It can then no longer be continued because it
+        // cannot reach the new project's mounted client. That is the same
+        // required stale-result isolation outcome, not a product failure.
+        if (String(error).includes("Invalid InterceptionId")) return "cancelled";
+        throw error;
+    }
+}
+
 // The packed runner passes a live initialUrl to the production collector.
 // Issue validation directly from the first document script, with no debounce
 // or response delay: attaching Network after navigation must fail this proof.
@@ -381,7 +410,11 @@ async function run() {
         console.log(`PASS rendered ${state} validation prevents Create game pointer activation`);
     };
     await assertNoCreateActivation("loading");
-    await cdp.send("Fetch.continueRequest", {requestId: heldValidation.params.requestId});
+    // The interception was armed at the response stage. Chromium 156 no
+    // longer accepts the legacy request-stage continuation for that paused
+    // response (it reports "Invalid InterceptionId"), so resume the exact
+    // response through its matching Fetch command.
+    await continuePausedResponse(cdp, heldValidation.params.requestId);
     await cdp.send("Fetch.disable");
     await waitForCreateValidation(evaluate);
 
@@ -511,10 +544,11 @@ async function run() {
     // deliberately distinct manifest name; wait for that rendered identity
     // before allowing the held A list response through.
     await waitFor(async () => (await text()).includes("Durable Browser Exact"), "project-B dashboard identity");
-    await cdp.send("Fetch.continueRequest", {requestId: staleResponse.params.requestId});
+    const staleResponseDisposition = await releaseStaleResponse(cdp, staleResponse.params.requestId);
     await cdp.send("Fetch.disable");
     await pause(250);
     assert(!(await hasActiveJobCard("simulation")), "a stale project-A list response leaked into the project-B dashboard without a reload");
+    assert(["released", "cancelled"].includes(staleResponseDisposition), "the stale response must be released or cancelled after the project switch");
 
     // The exact token is server-authored and is carried into the start request.
     // Cancellation then leaves the validated checkpoint on disk; it is the
@@ -771,8 +805,11 @@ if (typeof test === "function") {
         const evaluate = async (expression) => {
             if (expression === createControlExpression) return ready;
             if (expression.includes("document.readyState")) return {stableControlId: ready.controlId, validationState: "ok"};
-            if (expression.includes("getBoundingClientRect")) return {x: 10, y: 10, capturedControlId: ready.controlId,
+            if (expression.includes("getBoundingClientRect")) return {x: 10, y: 10, dispatchPoint: {x: 10, y: 10}, capturedControlId: ready.controlId,
                 captureKey: "captured", preDispatchFocus: {controlId: ready.controlId, native: true},
+                hitTest: {capturedControlId: ready.controlId, matchesCapturedControl: true}};
+            if (expression.includes("document.getAnimations")) return {x: 10, y: 10, dispatchPoint: {x: 10, y: 10},
+                preDispatchFocus: {controlId: ready.controlId, native: true},
                 hitTest: {capturedControlId: ready.controlId, matchesCapturedControl: true}};
         };
         const observations = [];

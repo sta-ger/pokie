@@ -1,3 +1,4 @@
+import {createPackageExtractionTestEnvironment} from "../../../v2/fixtures/PackageExtractionFixture.js";
 import {projectRevision} from "../../../../src/optimization/internal/optimizationData.js";
 import {weightedBlueprint} from "../../../v2/fixtures/WeightedWholeSequenceGame.js";
 import {authoritativePaytableBlueprint, type AuthoredAwardCase} from "../../../fixtures/math/AuthoritativePaytableFixture.js";
@@ -118,6 +119,11 @@ function buildExactEnumerationGame(blueprint: GameBlueprint): PokieGame {
 }
 
 describe("StudioBlueprintService", () => {
+    let disposeRuntime: () => void;
+    beforeAll(() => {
+        disposeRuntime = createPackageExtractionTestEnvironment();
+    }, 120000);
+    afterAll(() => disposeRuntime?.());
     let tmpDir: string;
     let studioRoot: string;
     let homeService: StudioHomeService;
@@ -131,8 +137,12 @@ describe("StudioBlueprintService", () => {
     });
 
     afterEach(() => {
-        fs.rmSync(tmpDir, {recursive: true, force: true});
-        fs.rmSync(studioRoot, {recursive: true, force: true});
+        try {
+            expect(fs.readdirSync(os.tmpdir()).filter(name => name.startsWith("pokie-runtime-"))).toEqual([]);
+        } finally {
+            fs.rmSync(tmpDir, {recursive: true, force: true});
+            fs.rmSync(studioRoot, {recursive: true, force: true});
+        }
     });
 
     function createService(): StudioBlueprintService {

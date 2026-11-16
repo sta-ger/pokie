@@ -6,6 +6,8 @@ import {SimulationWorkerCoordinator} from "../../src/simulation/parallel/Simulat
 import {writeOptimizationWorkerEntry} from "./fixtures/OptimizationWorkerFixture.js";
 import fs from "fs";
 import path from "path";
+import os from "os";
+import {createPackageExtractionTestEnvironment} from "./fixtures/PackageExtractionFixture.js";
 import {ArtifactBuilderRegistry, computeBlueprintHash, buildGameModelProjection, ArtifactPublicationOwnership, ProjectOptimizationService, ProjectTargetResolver, ParSheetExporter, ParSheetImporter, WasmArtifactBuilder, declarePackageTuning, bindCanonicalWasmTuningSource, createTunableBlueprintGame, generateExactWeightedOutcomeLibrary, OutcomeLibraryBundleWriter, OutcomeLibraryBundleReader, StakeEngineExporter, StakeEngineOutcomeSourceReader, buildWeightedOutcomeLibrary} from "../../src/index.js";
 import {loadPokieGameRuntime} from "../../src/gamepackage/loadPokieGame.js";
 import {sourceInventory} from "../../src/optimization/internal/optimizationData.js";
@@ -18,11 +20,17 @@ import type {StudioJobView} from "../../cli/studio/jobs/StudioJobView.js";
 import type {ProjectType} from "../../src/project/ProjectType.js";
 import {optimizationBlueprint, optimizationRequest, stochasticOptimizationRequest, declaredOptimizationGameCode} from "./fixtures/OptimizationFixture.js";
 
+let restoreRuntimeEnvironment: () => void;
+beforeAll(() => {
+    restoreRuntimeEnvironment = createPackageExtractionTestEnvironment();
+});
+afterAll(() => restoreRuntimeEnvironment());
+
 let directory: string;
 let service: ProjectOptimizationService;
 const resolve = async (file: string) => (await new ProjectTargetResolver().resolve(file, {readConfigurationProvenance: false}))!;
 beforeEach(() => {
-    directory = fs.mkdtempSync(path.resolve("node_modules/.cache/optimization-public-"));
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), "optimization-public-"));
     service = new ProjectOptimizationService(path.join(directory, "scratch"));
 });
 afterEach(() => {
@@ -42,7 +50,7 @@ async function fixture(type: ProjectType) {
     } else if (type === "tsPackage") {
         file = path.join(directory, "custom");
         fs.mkdirSync(file);
-        fs.writeFileSync(path.join(file, "package.json"), JSON.stringify({name: "custom-logic", version: "1", pokie: {entry: "index.cjs"}}));
+        fs.writeFileSync(path.join(file, "package.json"), JSON.stringify({name: "custom-logic", version: "1", dependencies: {"@fromstan/pokie": "*"}, pokie: {entry: "index.cjs"}}));
         fs.writeFileSync(path.join(file, "parameters.json"), JSON.stringify(blueprint));
         // Executable custom behavior is outside the descriptor and survives apply/publication.
         fs.writeFileSync(path.join(file, "index.cjs"), declaredOptimizationGameCode.replace("module.exports = {", "module.exports = {getCustomIdentity: () => 'custom-executable-v25',"));
@@ -85,10 +93,15 @@ it("retains authenticated archive/install pins through the optimization gate-tes
             const original = await readP911Candidate(fixture.reference, options);
             for (const file of ["tests/project/ArtifactBuilderRegistry.test.ts", "tests/cli/studio/StudioArtifactBuildService.test.ts",
                 "tests/v2/fixtures/PackageExtractionFixture.ts", "tests/v2/OptimizationPublicWorkflow.test.ts",
+                "tests/cli/commands/DevCommand.test.ts", "tests/cli/commands/ServeCommand.test.ts",
+                "tests/cli/studio-client/src/components/project/ProjectDashboardPage.wasmWorkflow.test.tsx",
                 "scripts/p9-11-candidate.mjs", "scripts/p8-05-release-handoff.mjs", "tests/testUtils/createP911CandidateFixture.mjs", "docs/v2-completion/V2C-26.md"])
                 assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "missing correction path: " + file);
             // Exercise this complete correction independently of either reader's admission list.
-            const correctionPaths = ["scripts/p8-05-release-handoff.mjs", "tests/v2/OptimizationPublicWorkflow.test.ts"];
+            const correctionPaths = ["scripts/p8-05-release-handoff.mjs", "scripts/p9-11-candidate.mjs",
+                "tests/cli/commands/DevCommand.test.ts", "tests/cli/commands/ServeCommand.test.ts",
+                "tests/cli/studio-client/src/components/project/ProjectDashboardPage.wasmWorkflow.test.tsx",
+                "tests/testUtils/createP911CandidateFixture.mjs", "tests/v2/OptimizationPublicWorkflow.test.ts"];
             for (const file of correctionPaths) await writeFile(path.join(fixture.repository, file), "// Bounded optimization gate correction fixture.");
             execFileSync("git", ["add", "."], {cwd: fixture.repository});
             execFileSync("git", ["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "optimization gate correction fixture"], {cwd: fixture.repository});

@@ -52,12 +52,14 @@ export function ensureCompiledTestOutput(options: {
     // previously generated dist artifact.
     forceRebuild?: boolean;
     executionTimeoutMs?: number;
+    validateOutputs?: () => boolean;
 }): void {
     const {repositoryRoot, outputPaths, lockName, command, forceRebuild = false, executionTimeoutMs = BUILD_EXECUTION_TIMEOUT_MS} = options;
     if (!Number.isInteger(executionTimeoutMs) || executionTimeoutMs <= 0) {
         throw new Error("The test build execution timeout must be a positive integer.");
     }
-    const outputsExist = () => outputPaths.every((outputPath) => fs.existsSync(outputPath));
+    const outputsExist = () => outputPaths.every((outputPath) => fs.existsSync(outputPath)) &&
+        (options.validateOutputs?.() ?? true);
     if (!forceRebuild && outputsExist()) {
         return;
     }
@@ -66,7 +68,7 @@ export function ensureCompiledTestOutput(options: {
     // Jest necessarily has node_modules available, but the helper's own isolated tests intentionally
     // do not. Creating only the cache parent is safe: the compiler remains the sole writer of dist.
     fs.mkdirSync(path.dirname(lockDirectory), {recursive: true});
-    const deadline = Date.now() + BUILD_WAIT_TIMEOUT_MS;
+    const deadline = Date.now() + Math.max(BUILD_WAIT_TIMEOUT_MS, executionTimeoutMs + ABANDONED_LOCK_GRACE_MS);
 
     for (;;) {
         if (!forceRebuild && outputsExist()) {

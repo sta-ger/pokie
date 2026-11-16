@@ -1,9 +1,11 @@
 import {expectInconclusiveArtifactValidation} from "../testUtils/expectInconclusiveArtifactValidation.js";
-import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {loadPokieGame, type ReplayDescriptor, type SimulationReport} from "@fromstan/pokie";
+import {execFileSync} from "child_process";
+import {pathToFileURL} from "url";
+import {loadPokieGame, ParallelSimulationRunner, releasePokieGame, type ReplayDescriptor, type SimulationReport} from "@fromstan/pokie";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {CreateCommand} from "../../cli/commands/CreateCommand.js";
 import {InitCommand} from "../../cli/commands/InitCommand.js";
@@ -17,30 +19,94 @@ import {ensureCompiledTestOutput} from "../testUtils/ensureCompiledTestOutput.js
 
 const POKIE_VERSION = "1.3.0";
 
+it("preserves authenticated candidate pins across the complete role-mission fixture correction", () => {
+    const cache = path.resolve(__dirname, "../../node_modules/.cache/pokie-tmp");
+    fs.mkdirSync(cache, {recursive: true});
+    const directory = fs.mkdtempSync(path.join(cache, "pc18-role-candidate-"));
+    try {
+        // Synthetic receipts exercise the shared selectors without rebuilding,
+        // repackaging or collecting any installed/browser acceptance evidence.
+        execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from "node:assert/strict";
+            import {mkdir, readFile, writeFile} from "node:fs/promises";
+            import {execFileSync} from "node:child_process";
+            import path from "node:path";
+            import {candidateFixture, commitP911ToolingDescendant, P911_TOOLING_DESCENDANT_PATHS} from ${JSON.stringify(pathToFileURL(path.resolve("tests/testUtils/createP911CandidateFixture.mjs")).href)};
+            import {readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p9-11-candidate.mjs")).href)};
+            import {authenticateP805ProductTree} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p8-05-release-handoff.mjs")).href)};
+            const fixture = await candidateFixture(${JSON.stringify(directory)});
+            const options = {repository: fixture.repository};
+            const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256};
+            const readers = [readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment];
+            const original = await readers[0](environment, options);
+            const correctionPaths = ["scripts/p8-05-release-handoff.mjs", "scripts/p9-11-candidate.mjs",
+                "tests/cli/PC18RoleMissions.integration.test.ts", "tests/testUtils/createP911CandidateFixture.mjs"];
+            for (const file of correctionPaths) {
+                assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "missing correction path: " + file);
+                await writeFile(path.join(fixture.repository, file), "// Bounded role-mission test correction.");
+            }
+            const git = args => execFileSync("git", args, {cwd: fixture.repository, encoding: "utf8"}).trim();
+            git(["add", "."]);
+            git(["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "bounded role-mission test correction"]);
+            const correctedId = git(["rev-parse", "HEAD"]);
+            assert.deepEqual(authenticateP805ProductTree(fixture.handoff.candidateId, correctedId, fixture.repository).changedToolingAndEvidencePaths, correctionPaths);
+            for (const reader of readers) {
+                const selected = await reader({...environment, POKIE_PACK_SMOKE_CANDIDATE_ID: correctedId,
+                    POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256: original.archiveSha256}, options);
+                assert.deepEqual(selected.equivalence.changedEvidenceAndTooling, correctionPaths);
+                assert.deepEqual({...selected, equivalence: original.equivalence}, original);
+            }
+            await commitP911ToolingDescendant(fixture);
+            for (const reader of readers) {
+                const selected = await reader(environment, options);
+                assert.deepEqual(selected.equivalence.changedEvidenceAndTooling, [...P911_TOOLING_DESCENDANT_PATHS].sort());
+                assert.deepEqual({...selected, equivalence: original.equivalence}, original);
+            }
+            for (const reference of [fixture.reference, fixture.handoff.browserDriver, fixture.handoff.buildReceipt, fixture.handoff.installReceipt,
+                {path: fixture.handoff.archivePath}, {path: path.join(original.packageRoot, "dist/cli/pokie.js")}]) {
+                const bytes = await readFile(reference.path);
+                await writeFile(reference.path, "changed pinned input");
+                for (const reader of readers) await assert.rejects(reader(environment, options),
+                    /authenticated controller browser driver required|receipt digest mismatch|archive digest mismatch|stale installed asset/);
+                await writeFile(reference.path, bytes);
+            }
+            await assert.rejects(readers[1]({...environment, POKIE_PACK_SMOKE_CANDIDATE_ID: correctedId}, options), /smoke reviewed candidate identity mismatch/);
+            await assert.rejects(readers[1]({...environment, POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256: "0".repeat(64)}, options), /smoke archive digest mismatch/);
+            git(["reset", "--hard", correctedId]);
+            for (const file of ["tests/cli/PC18RoleMissions.extra.test.ts", "src/index.ts", "package.json", "tsconfig.prod.json"]) {
+                const target = path.join(fixture.repository, file);
+                await mkdir(path.dirname(target), {recursive: true});
+                await writeFile(target, "changed protected input");
+                git(["add", "."]);
+                git(["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "protected input fixture"]);
+                assert.throws(() => authenticateP805ProductTree(fixture.handoff.candidateId, git(["rev-parse", "HEAD"]), fixture.repository), /product or build inputs/);
+                for (const reader of readers) await assert.rejects(reader(environment, options), /product\\/build inputs changed/);
+                git(["reset", "--hard", correctedId]);
+            }
+        `], {timeout: 30_000, stdio: ["ignore", "pipe", "pipe"]});
+    } finally {
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
+
 // These are deliberately small, clean-destination missions.  PC-14/17 cover
 // the exhaustive conversion matrix; this file keeps the public role goals
 // together so a future change cannot make one persona depend on another one's
 // generated state.
 describe("PC-18 fresh public CLI role missions", () => {
     let workDir: string;
-
-    beforeAll(() => {
-        ensureCompiledTestOutput({
-            repositoryRoot: REPO_ROOT,
-            outputPaths: [
-                path.join(REPO_ROOT, "dist", "cjs", "index.js"),
-                path.join(REPO_ROOT, "dist", "cjs", "package.json"),
-                path.join(REPO_ROOT, "dist", "esm", "simulation", "parallel", "internal", "simulationWorkerEntry.js"),
-            ],
-            lockName: "compiled-runtime",
-            command: ["npm", "run", "build-test-runtime"],
-        });
-    });
+    let runtimePackageRoot: string;
 
     let restoreTemporaryDirectory: () => void;
     beforeAll(() => {
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
-    });
+        // These generated packages execute JS directly; none compiles against this
+        // staged dependency. Init's real install/build uses its own full dependency.
+        // The staging helper owns isolated, source-bound compilation already.
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
+        // Native package loads snapshot their dependency. Bind generated packages to
+        // the staged compiled runtime, not the checkout's docs/tests/mutable dist.
+        runtimePackageRoot = path.join(os.tmpdir(), "node_modules/@fromstan/pokie");
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
     afterAll(() => {
         restoreTemporaryDirectory();
     });
@@ -52,9 +118,14 @@ describe("PC-18 fresh public CLI role missions", () => {
     });
 
     afterEach(() => {
-        fs.rmSync(workDir, {recursive: true, force: true});
-        (console.log as jest.Mock).mockRestore();
-        (console.error as jest.Mock).mockRestore();
+        try {
+            // Observe release before deleting fixture storage can hide a leaked lease.
+            expect(fs.readdirSync(os.tmpdir()).filter(entry => entry.startsWith("pokie-runtime-"))).toEqual([]);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+            (console.log as jest.Mock).mockRestore();
+            (console.error as jest.Mock).mockRestore();
+        }
     });
 
     it("lets a math designer retain PAR conversion provenance and a game/frontend developer run the resulting package", async () => {
@@ -71,35 +142,69 @@ describe("PC-18 fresh public CLI role missions", () => {
             provenance: {blueprintHash: expect.stringMatching(/^sha256:/)}, provenanceHashMatches: true,
         });
 
-        expect(await new BuildCommand(POKIE_VERSION, undefined, undefined, undefined, undefined, undefined, process.cwd()).run([
+        expect(await new BuildCommand(POKIE_VERSION, undefined, undefined, undefined, undefined, undefined, runtimePackageRoot).run([
             imported, "--target", "tsPackage", "--out", packageRoot,
         ])).toBe(0);
-        await expect(loadPokieGame(packageRoot)).resolves.toMatchObject({getManifest: expect.any(Function)});
+        const game = await loadPokieGame(packageRoot);
+        try {
+            expect(game.getManifest()).toMatchObject({id: expect.any(String)});
+        } finally {
+            await releasePokieGame(game);
+        }
         expect(fs.existsSync(path.join(packageRoot, "dist", "index.js"))).toBe(true);
     });
 
     it("lets QA produce seeded simulation, report and replay artifacts while invalid input remains actionable", async () => {
-        const blueprint = path.join(workDir, "qa.blueprint.json");
-        const packageRoot = path.join(workDir, "qa-package");
-        const simulation = path.join(workDir, "qa-simulation.json");
-        const report = path.join(workDir, "qa-report.md");
-        const replay = path.join(workDir, "qa-replay.json");
-        fs.writeFileSync(blueprint, JSON.stringify({
-            manifest: {id: "pc18-qa", name: "PC-18 QA", version: "1.0.0"}, reels: 2, rows: 1,
-            symbols: ["A", "B"], paytable: {A: {2: 2}}, reelStrips: [["A", "B"], ["A", "B"]], availableBets: [1],
-        }));
-        expect(await new BuildCommand(POKIE_VERSION, undefined, undefined, undefined, undefined, undefined, process.cwd()).run([
-            blueprint, "--target", "tsPackage", "--out", packageRoot,
-        ])).toBe(0);
+        const started = performance.now();
+        const phases: Array<{phase: string; elapsedMs: number}> = [];
+        const record = (phase: string): void => {
+            phases.push({phase, elapsedMs: Math.round(performance.now() - started)});
+        };
+        let loads = 0;
+        const loadGame = async (root: string) => {
+            const load = ++loads;
+            record(`load-${load}-start`);
+            const game = await loadPokieGame(root);
+            record(`load-${load}-end`);
+            return game;
+        };
+        try {
+            const blueprint = path.join(workDir, "qa.blueprint.json");
+            const packageRoot = path.join(workDir, "qa-package");
+            const simulation = path.join(workDir, "qa-simulation.json");
+            const report = path.join(workDir, "qa-report.md");
+            const replay = path.join(workDir, "qa-replay.json");
+            fs.writeFileSync(blueprint, JSON.stringify({
+                manifest: {id: "pc18-qa", name: "PC-18 QA", version: "1.0.0"}, reels: 2, rows: 1,
+                symbols: ["A", "B"], paytable: {A: {2: 2}}, reelStrips: [["A", "B"], ["A", "B"]], availableBets: [1],
+            }));
+            record("build-start");
+            expect(await new BuildCommand(POKIE_VERSION, undefined, undefined, undefined, undefined, undefined, runtimePackageRoot).run([
+                blueprint, "--target", "tsPackage", "--out", packageRoot,
+            ])).toBe(0);
+            record("build-end");
+            expect(fs.realpathSync(path.join(packageRoot, "node_modules/@fromstan/pokie"))).toBe(fs.realpathSync(runtimePackageRoot));
 
-        await new SimCommand().run([packageRoot, "--rounds", "12", "--seed", "pc18", "--out", simulation]);
-        expect(JSON.parse(fs.readFileSync(simulation, "utf8")) as SimulationReport).toMatchObject({rounds: 12});
-        await new ReportCommand().run([simulation, "--format", "markdown", "--out", report]);
-        expect(fs.readFileSync(report, "utf8")).toContain("# Simulation Report:");
-        await new ReplayCommand().run([packageRoot, "--seed", "pc18", "--round", "2", "--out", replay]);
-        expect(JSON.parse(fs.readFileSync(replay, "utf8")) as ReplayDescriptor).toMatchObject({round: 2});
-        await expect(new SimCommand().run([packageRoot, "--rounds", "0"])).rejects.toThrow("--rounds must be a positive integer");
-    });
+            await new SimCommand(loadGame, undefined, undefined, undefined, (root, rounds, options) => new ParallelSimulationRunner(root, rounds, {
+                ...options, onPhase: record,
+            })).run([packageRoot, "--rounds", "12", "--seed", "pc18", "--out", simulation]);
+            record("simulation-end");
+            expect(JSON.parse(fs.readFileSync(simulation, "utf8")) as SimulationReport).toMatchObject({rounds: 12, seed: "pc18"});
+            expect(loads).toBe(2); // Metadata and execution retain the real loader boundary.
+            expect(fs.readdirSync(os.tmpdir()).filter(entry => entry.startsWith("pokie-runtime-"))).toEqual([]);
+            await new ReportCommand().run([simulation, "--format", "markdown", "--out", report]);
+            record("report-end");
+            expect(fs.readFileSync(report, "utf8")).toContain("# Simulation Report:");
+            await new ReplayCommand(loadGame).run([packageRoot, "--seed", "pc18", "--round", "2", "--out", replay]);
+            record("replay-end");
+            expect(JSON.parse(fs.readFileSync(replay, "utf8")) as ReplayDescriptor).toMatchObject({round: 2, seed: "pc18"});
+            await expect(new SimCommand(loadGame).run([packageRoot, "--rounds", "0"])).rejects.toThrow("--rounds must be a positive integer");
+            expect(loads).toBe(3); // Invalid input must not acquire a fourth lease.
+            record("invalid-input-rejected");
+        } finally {
+            console.info(`PC-18 QA phases: ${JSON.stringify(phases)}`);
+        }
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("lets an integration developer cross Outcome Library and Stake boundaries, and a new-project developer retry owned preparation", async () => {
         const blueprint = path.join(workDir, "integration.blueprint.json");
@@ -110,12 +215,24 @@ describe("PC-18 fresh public CLI role missions", () => {
             manifest: {id: "pc18-integration", name: "PC-18 Integration", version: "1.0.0"}, reels: 2, rows: 1,
             symbols: ["A", "B"], paytable: {A: {2: 2}}, reelStrips: [["A", "B"], ["A", "B"]], availableBets: [1],
         }));
-        const build = new BuildCommand(POKIE_VERSION, undefined, undefined, undefined, undefined, undefined, process.cwd());
+        const build = new BuildCommand(POKIE_VERSION, undefined, undefined, undefined, undefined, undefined, runtimePackageRoot);
         expect(await build.run([blueprint, "--target", "outcomeLibrary", "--out", outcomes])).toBe(0);
         expect(await build.run([outcomes, "--target", "stakeAdapter", "--out", stake])).toBe(0);
         expect(await new StakeEngineCommand(POKIE_VERSION).run(["import", stake, "--out", imported])).toBe(0);
         await expectInconclusiveArtifactValidation([imported, "--deep"]);
 
+        // Only the code-first Init mission compiles against the checkout's full
+        // installation. Keep that preparation out of the JS-only missions.
+        ensureCompiledTestOutput({
+            repositoryRoot: REPO_ROOT,
+            outputPaths: [
+                path.join(REPO_ROOT, "dist", "cjs", "index.js"),
+                path.join(REPO_ROOT, "dist", "cjs", "package.json"),
+                path.join(REPO_ROOT, "dist", "esm", "simulation", "parallel", "internal", "simulationWorkerEntry.js"),
+            ],
+            lockName: "compiled-runtime",
+            command: ["npm", "run", "build-test-runtime"],
+        });
         const projectRoot = path.join(workDir, "new-project");
         const runner = localPokieDependencyRunner();
         let failBuild = true;

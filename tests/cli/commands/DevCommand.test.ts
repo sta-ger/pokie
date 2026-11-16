@@ -18,6 +18,13 @@ import os from "os";
 import path from "path";
 import {DevCommand} from "../../../cli/commands/DevCommand.js";
 import {createMaterializingRuntimePackageResolver, passthroughRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
+import {createPackageExtractionTestEnvironment} from "../../v2/fixtures/PackageExtractionFixture.js";
+
+let restoreRuntimeEnvironment: () => void;
+beforeAll(() => {
+    restoreRuntimeEnvironment = createPackageExtractionTestEnvironment();
+});
+afterAll(() => restoreRuntimeEnvironment());
 
 function createFakeGame(manifest: PokieGameManifest): PokieGame {
     return {
@@ -46,11 +53,19 @@ function createStubServer<T extends {start(): Promise<PokieDevServerAddress>; st
     } as T & {startCalls: number; stopCalls: number};
 }
 
-type SignalHandler = () => void;
+type SignalHandler = () => void | Promise<void>;
 
 class FakeProcess {
     public readonly exitCalls: number[] = [];
+    public readonly exited: Promise<void>;
+    private onExit!: () => void;
     private readonly handlers = new Map<string, SignalHandler>();
+
+    constructor() {
+        this.exited = new Promise<void>((resolve) => {
+            this.onExit = resolve;
+        });
+    }
 
     public once(event: string, handler: SignalHandler): FakeProcess {
         this.handlers.set(event, handler);
@@ -59,10 +74,12 @@ class FakeProcess {
 
     public exit(code: number): void {
         this.exitCalls.push(code);
+        this.onExit();
     }
 
-    public trigger(event: string): void {
-        this.handlers.get(event)?.();
+    public async trigger(event: string): Promise<void> {
+        await this.handlers.get(event)?.();
+        await this.exited;
     }
 }
 
@@ -98,7 +115,7 @@ describe("DevCommand", () => {
             recursive: true,
             filter: (source) => path.basename(source) !== ".pokie-runtime-cache",
         });
-        fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({name: packageName, version: "1.0.0", pokie: {entry: "./index.js"}}));
+        fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({name: packageName, version: "1.0.0", dependencies: {"@fromstan/pokie": "*"}, pokie: {entry: "./index.js"}}));
         const apiServer = createStubServer<PokieDevServerHandling>({host: "127.0.0.1", port: 3000});
         const clientServer = createStubServer<PokieClientServerHandling>({host: "127.0.0.1", port: 3100});
         const fakeProcess = new FakeProcess();
@@ -120,7 +137,7 @@ describe("DevCommand", () => {
             expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
             await command.run([packageRoot, "--no-open"]);
             expect(runtimeSnapshotsForPackage(packageName)).toHaveLength(1);
-            fakeProcess.trigger("SIGTERM");
+            await fakeProcess.trigger("SIGTERM");
             await new Promise<void>((resolve) => {
                 setImmediate(resolve);
             });
@@ -368,7 +385,7 @@ describe("DevCommand", () => {
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
         await command.run(["./sample-slot", "--no-open"]);
-        fakeProcess.trigger("SIGINT");
+        await fakeProcess.trigger("SIGINT");
         await new Promise((resolve) => {
             setTimeout(resolve, 0);
         });
@@ -401,7 +418,7 @@ describe("DevCommand", () => {
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
         await command.run(["./sample-slot", "--no-open"]);
-        fakeProcess.trigger("SIGTERM");
+        await fakeProcess.trigger("SIGTERM");
         await new Promise((resolve) => {
             setTimeout(resolve, 0);
         });
@@ -475,7 +492,19 @@ describe("DevCommand", () => {
 });
 
 describe("DevCommand (integration, real loadPokieGame + PokieDevServer + PokieClientServer + fixture)", () => {
-    const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game");
+    let fixtureRoot: string;
+    beforeEach(() => {
+        fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-playable-command-"));
+        fs.cpSync(path.join(__dirname, "..", "fixtures", "playable-game"), fixtureRoot, {
+            recursive: true,
+            filter: source => path.basename(source) !== ".pokie-runtime-cache",
+        });
+        const manifestPath = path.join(fixtureRoot, "package.json");
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+        // Explicitly resolve the real staged runtime, independent of the npm/Jest launcher.
+        fs.writeFileSync(manifestPath, JSON.stringify({...manifest, dependencies: {"@fromstan/pokie": "*"}}));
+    });
+    afterEach(() => fs.rmSync(fixtureRoot, {recursive: true, force: true}));
     let clientRoot: string;
 
     beforeEach(() => {
@@ -490,6 +519,8 @@ describe("DevCommand (integration, real loadPokieGame + PokieDevServer + PokieCl
     it("runs the API and client together, and a spin through the API works", async () => {
         let apiServer: PokieDevServerHandling | undefined;
         let clientServer: PokieClientServerHandling | undefined;
+        const fakeProcess = new FakeProcess();
+        let started = false;
         const command = new DevCommand(
             loadPokieGame,
             (game, options) => {
@@ -503,41 +534,46 @@ describe("DevCommand (integration, real loadPokieGame + PokieDevServer + PokieCl
                 },
                 clientRoot,
                 openBrowser: () => undefined,
-                process: new FakeProcess() as unknown as NodeJS.Process,
+                process: fakeProcess as unknown as NodeJS.Process,
             },
         );
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run([fixtureRoot, "--port", "0", "--client-port", "0", "--no-open"]);
+        try {
+            await command.run([fixtureRoot, "--port", "0", "--client-port", "0", "--no-open"]);
+            started = true;
 
-        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
-        const apiMatch = printed.match(/POKIE dev server.*http:\/\/127\.0\.0\.1:(\d+)/);
-        const clientMatch = printed.match(/POKIE client UI.*http:\/\/127\.0\.0\.1:(\d+)/);
-        expect(apiMatch).not.toBeNull();
-        expect(clientMatch).not.toBeNull();
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            const apiMatch = printed.match(/POKIE dev server.*http:\/\/127\.0\.0\.1:(\d+)/);
+            const clientMatch = printed.match(/POKIE client UI.*http:\/\/127\.0\.0\.1:(\d+)/);
+            expect(apiMatch).not.toBeNull();
+            expect(clientMatch).not.toBeNull();
 
-        const apiPort = Number(apiMatch![1]);
-        const clientPort = Number(clientMatch![1]);
+            const apiPort = Number(apiMatch![1]);
+            const clientPort = Number(clientMatch![1]);
 
-        const health = await fetch(`http://127.0.0.1:${apiPort}/health`);
-        expect(health.status).toBe(200);
+            const health = await fetch(`http://127.0.0.1:${apiPort}/health`);
+            expect(health.status).toBe(200);
 
-        const config = await fetch(`http://127.0.0.1:${clientPort}/config`);
-        expect(await config.json()).toEqual({apiBaseUrl: `http://127.0.0.1:${apiPort}`});
+            const config = await fetch(`http://127.0.0.1:${clientPort}/config`);
+            expect(await config.json()).toEqual({apiBaseUrl: `http://127.0.0.1:${apiPort}`});
 
-        const created = await fetch(`http://127.0.0.1:${apiPort}/sessions`, {method: "POST"});
-        const createdBody = (await created.json()) as {sessionId: string};
-        const spun = await fetch(`http://127.0.0.1:${apiPort}/sessions/${createdBody.sessionId}/spin`, {method: "POST"});
-        expect(spun.status).toBe(200);
+            const created = await fetch(`http://127.0.0.1:${apiPort}/sessions`, {method: "POST"});
+            const createdBody = (await created.json()) as {sessionId: string};
+            const spun = await fetch(`http://127.0.0.1:${apiPort}/sessions/${createdBody.sessionId}/spin`, {method: "POST"});
+            expect(spun.status).toBe(200);
 
-        await apiServer!.stop();
-        await clientServer!.stop();
-        logSpy.mockRestore();
+        } finally {
+            if (started) await fakeProcess.trigger("SIGTERM");
+            logSpy.mockRestore();
+        }
     });
 
     it("persists a full RoundArtifact for a spin through the real dev runtime path, stamped with the configured POKIE version", async () => {
         let apiServer: PokieDevServerHandling | undefined;
         let clientServer: PokieClientServerHandling | undefined;
+        const fakeProcess = new FakeProcess();
+        let started = false;
         const command = new DevCommand(
             loadPokieGame,
             (game, options) => {
@@ -552,33 +588,36 @@ describe("DevCommand (integration, real loadPokieGame + PokieDevServer + PokieCl
                 clientRoot,
                 openBrowser: () => undefined,
                 pokieVersion: "7.8.9",
-                process: new FakeProcess() as unknown as NodeJS.Process,
+                process: fakeProcess as unknown as NodeJS.Process,
             },
         );
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run([fixtureRoot, "--port", "0", "--client-port", "0", "--no-open"]);
+        try {
+            await command.run([fixtureRoot, "--port", "0", "--client-port", "0", "--no-open"]);
+            started = true;
 
-        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
-        const apiMatch = printed.match(/POKIE dev server.*http:\/\/127\.0\.0\.1:(\d+)/);
-        const apiPort = Number(apiMatch![1]);
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            const apiMatch = printed.match(/POKIE dev server.*http:\/\/127\.0\.0\.1:(\d+)/);
+            const apiPort = Number(apiMatch![1]);
 
-        const created = await fetch(`http://127.0.0.1:${apiPort}/sessions`, {method: "POST"});
-        const createdBody = (await created.json()) as {sessionId: string};
-        const spun = await fetch(`http://127.0.0.1:${apiPort}/sessions/${createdBody.sessionId}/spin?debug=1`, {method: "POST"});
-        expect(spun.status).toBe(200);
-        const spunBody = (await spun.json()) as {internal: {stateAfter: Record<string, unknown>}};
+            const created = await fetch(`http://127.0.0.1:${apiPort}/sessions`, {method: "POST"});
+            const createdBody = (await created.json()) as {sessionId: string};
+            const spun = await fetch(`http://127.0.0.1:${apiPort}/sessions/${createdBody.sessionId}/spin?debug=1`, {method: "POST"});
+            expect(spun.status).toBe(200);
+            const spunBody = (await spun.json()) as {internal: {stateAfter: Record<string, unknown>}};
 
-        const stateAfter = spunBody.internal.stateAfter;
-        expect(stateAfter.capturePolicy).toEqual({version: 1, mode: "full", captureDebugPayloads: true});
-        const artifact = stateAfter.roundArtifact as Record<string, unknown>;
-        expect(artifact).toBeDefined();
-        const provenance = artifact.provenance as Record<string, unknown>;
-        expect(provenance.pokieVersion).toBe("7.8.9");
+            const stateAfter = spunBody.internal.stateAfter;
+            expect(stateAfter.capturePolicy).toEqual({version: 1, mode: "full", captureDebugPayloads: true});
+            const artifact = stateAfter.roundArtifact as Record<string, unknown>;
+            expect(artifact).toBeDefined();
+            const provenance = artifact.provenance as Record<string, unknown>;
+            expect(provenance.pokieVersion).toBe("7.8.9");
 
-        await apiServer!.stop();
-        await clientServer!.stop();
-        logSpy.mockRestore();
+        } finally {
+            if (started) await fakeProcess.trigger("SIGTERM");
+            logSpy.mockRestore();
+        }
     });
 });
 

@@ -2,6 +2,7 @@ import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT,
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {createServer} from "net";
 import {
     ArtifactBuildCancelledError,
     ArtifactBuilderRegistry,
@@ -12,6 +13,7 @@ import {
     PROJECT_TYPE_CAPABILITIES,
     computeGameBlueprintHash,
     loadPokieGameRuntime,
+    resolvePokieGameDependencyRoots,
     type GameBlueprint,
     type PackageModelDescriptor,
     type PokieGame,
@@ -46,15 +48,17 @@ function packageProject(rootPath: string): PokieProject {
     };
 }
 
-describe("PackageBlueprintExtraction", () => {
-    let restoreTemporaryDirectory: () => void;
-    beforeAll(() => {
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
-    });
-    afterAll(() => {
-        restoreTemporaryDirectory();
-    });
+// Every loader case, including the literal-extension cases below the main describe,
+// owns the same executable installation. Never fall back to the mutable checkout.
+let restoreTemporaryDirectory: () => void;
+beforeAll(() => {
+    restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true, memoryBacked: true});
+});
+afterAll(() => {
+    restoreTemporaryDirectory();
+});
 
+describe("PackageBlueprintExtraction", () => {
     let directory: string;
     const extractor = new PackageBlueprintExtraction();
     beforeEach(() => {
@@ -63,6 +67,86 @@ describe("PackageBlueprintExtraction", () => {
     afterEach(() => {
         fs.rmSync(directory, {recursive: true, force: true});
     });
+
+    it("drains asset copies on rejection and preserves private live assets through repaired extraction reuse", async () => {
+        const source = writeDescriptorPackage(directory, {descriptorBody: `
+            const fs = require('fs'), path = require('path');
+            const assets = path.join(__dirname, 'assets');
+            if (fs.readdirSync(assets).length !== 96) throw Error('incomplete assets');
+            for (let index = 0; index < 96; index++) {
+                if (fs.readFileSync(path.join(assets, index + '.bin'), 'utf8') !== 'original:' + index) throw Error('changed asset');
+            }
+            return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: 'custom', model};
+        `});
+        const assets = path.join(source, "assets");
+        fs.mkdirSync(assets);
+        const modified = new Date("2020-01-02T03:04:05Z");
+        for (let index = 0; index < 96; index++) {
+            const file = path.join(assets, `${index}.bin`);
+            fs.writeFileSync(file, `original:${index}`, {mode: 0o400});
+            fs.utimesSync(file, modified, modified);
+        }
+        fs.chmodSync(assets, 0o500);
+        let live: Awaited<ReturnType<typeof loadPokieGameRuntime>> | undefined;
+        const socket = createServer();
+        try {
+            let snapshot = "";
+            live = await loadPokieGameRuntime(source, entry => {
+                snapshot = path.dirname(entry);
+                return import(entry) as Promise<Record<string, unknown>>;
+            });
+            expect(await live.game.getModelDescriptor!()).toMatchObject({sourceKind: "custom"});
+            const copied = path.join(snapshot, "assets", "0.bin");
+            expect(fs.statSync(copied).mtimeMs).toBe(modified.getTime());
+            if (process.platform !== "win32") {
+                expect(fs.statSync(copied).mode & 0o777).toBe(0o400);
+                expect(fs.statSync(assets).mode & 0o777).toBe(0o500);
+                expect(fs.statSync(path.dirname(copied)).mode & 0o700).toBe(0o700);
+                if (process.platform === "linux") {
+                    const snapshots = runtimeSnapshotNames(source);
+                    // Unix socket names have a short byte limit; address the same owned
+                    // directory through its descriptor even in deeply nested task clones.
+                    const descriptor = fs.openSync(source, "r");
+                    try {
+                        await new Promise<void>((resolve, reject) => {
+                            socket.once("error", reject);
+                            socket.listen(`/proc/self/fd/${descriptor}/copy-rejection.sock`, resolve);
+                        });
+                        const rejected = await extractor.extract(source);
+                        expect(rejected.status).toBe("malformed");
+                        expect(rejected.diagnostics).toEqual([expect.objectContaining({path: "$", code: "package-model-read-failed", message: expect.stringContaining("socket")})]);
+                        expect(runtimeSnapshotNames(source)).toEqual(snapshots);
+                        await new Promise<void>((resolve, reject) => {
+                            socket.close(error => error ? reject(error) : resolve());
+                        });
+                    } finally {
+                        if (socket.listening) await new Promise<void>(resolve => {
+                            socket.close(() => resolve());
+                        });
+                        fs.closeSync(descriptor);
+                    }
+                }
+            }
+            for (let attempt = 0; attempt < 2; attempt++) {
+                expect(await extractor.extract(source)).toMatchObject({status: "complete", source: {kind: "custom"}});
+            }
+            fs.chmodSync(assets, 0o700);
+            fs.chmodSync(path.join(assets, "0.bin"), 0o600);
+            fs.writeFileSync(path.join(assets, "0.bin"), "edited after acquisition");
+            expect(await live.game.getModelDescriptor!()).toMatchObject({sourceKind: "custom"});
+            const rejected = await extractor.extract(source);
+            expect(JSON.stringify(rejected.diagnostics)).toContain("changed asset");
+            await Promise.all([live.release(), live.release()]);
+            expect(fs.existsSync(snapshot)).toBe(false);
+            expect(runtimeSnapshotNames(source)).toEqual([]);
+        } finally {
+            if (socket.listening) await new Promise<void>(resolve => {
+                socket.close(() => resolve());
+            });
+            await live?.release();
+            fs.chmodSync(assets, 0o700);
+        }
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("extracts an independently assembled runnable code-first source without embedded Blueprint artifacts", async () => {
         const source = writeRunnableCodeFirstPackage(directory);
@@ -108,6 +192,8 @@ describe("PackageBlueprintExtraction", () => {
 
     async function roundTrip(blueprint: GameBlueprint, seed: string | number): Promise<void> {
         const first = new GamePackageGenerator("1.3.0").generate(blueprint, directory, path.join(directory, "first"));
+        expect((await resolvePokieGameDependencyRoots(first.projectRoot))["@fromstan/pokie"])
+            .toBe(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"));
         const originalBytes = fs.readFileSync(path.join(first.projectRoot, "dist/index.js"));
         const extraction = await extractor.extract(first.projectRoot);
         expect({status: extraction.status, diagnostics: extraction.diagnostics}).toMatchObject({status: "complete"});
@@ -183,7 +269,7 @@ describe("PackageBlueprintExtraction", () => {
         "preserves fractional stakes, sparse/zero awards, seeded initialization and continuation for seed %p",
         async (seed) => {
             await roundTrip(base(), seed);
-        },
+        }, PACKAGE_EXTRACTION_TEST_TIMEOUT,
     );
     it("preserves weighted variants including zero weights, stable IDs/order and exact mixtures", async () => {
         const blueprint = {
@@ -205,16 +291,16 @@ describe("PackageBlueprintExtraction", () => {
             ],
         };
         await roundTrip(blueprint, "weighted");
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
     it.each(["missing-symbol", "missing-count", "zero", "positive"] as const)(
         "preserves authored paytable %s",
         async (kind) => {
             await roundTrip(authoritativePaytableBlueprint(kind, 0.05), "awards");
-        },
+        }, PACKAGE_EXTRACTION_TEST_TIMEOUT,
     );
     it.each(["ways", "clusters"] as const)("preserves %s runtime model", async (type) => {
         await roundTrip({...base(), rows: 2, winModel: {type}}, 17);
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
     it("preserves free-game missing versus zero grants and base/ante/buy-feature modes", async () => {
         await roundTrip(
             {
@@ -235,17 +321,17 @@ describe("PackageBlueprintExtraction", () => {
             },
             "features",
         );
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
     it("preserves an explicitly empty paytable without inventing runtime defaults", async () => {
         await roundTrip({...base(), paytable: {}}, "empty-table");
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("preserves generated/visible/evaluated geometry and evaluation-local paylines", async () => {
         await roundTrip({...base(), rows: 4, screenGeometry: {
             generated: {reels: 3, rows: 5}, visible: {rowOffset: 0.5, rows: 3},
             evaluated: {rowOffset: 1, rows: 3}, paylineSpace: "evaluated",
         }}, "geometry");
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it.each(["default", "weights"])("regenerates the effective %s reels and labelled default bets without new authoring instructions", async source => {
         const blueprint = {...base()};
@@ -253,7 +339,7 @@ describe("PackageBlueprintExtraction", () => {
         Reflect.deleteProperty(blueprint, "availableBets");
         if (source === "weights") blueprint.symbolWeights = {A: 3, B: 2};
         await roundTrip(blueprint, "materialized");
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("extracts materialized default/weight reels without rerunning authoring instructions", async () => {
         const blueprint = {...base(), reelStrips: undefined, symbolWeights: {A: 3, B: 2}};
@@ -843,6 +929,8 @@ it("retains unsupported literal custom feature extensions through object and loa
     const extractor = new PackageBlueprintExtraction();
     try {
         const loaded = writeDescriptorPackage(directory, {model: model as GameBlueprint});
+        expect((await resolvePokieGameDependencyRoots(loaded))["@fromstan/pokie"])
+            .toBe(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"));
         for (const input of [custom(model), loaded]) {
             const result = await extractor.extract(input);
             expect(result.status).toBe("unsupported");

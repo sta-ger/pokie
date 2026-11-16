@@ -64,3 +64,13 @@ Only after independent candidate acceptance and separate authorization for each 
 `publishConfig.registry` remains `https://publication-disabled.invalid`. The GitHub publication workflow has no dispatch, credentials or executable publishing route. npm pre/post lifecycle hooks and their invoked scripts, generated package scripts and tracked workflows must remain inert for external actions. The historical authorized-release runner refuses before commands, credentials, network or receipt writes, including when supplied credentials or historical green gates. Historical PC-20/P8-05 receipt validators remain readable and confer no current authority. No custom Git-hook configuration is introduced; the clone's local pre-commit hook only runs changed-file ESLint.
 
 [LinkedIn](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/linkedin-draft.md) and [Medium](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/medium-draft.md) drafts require independent editorial review and distinct posting authorization. ISC attribution/AS-IS terms remain in [LICENSE](../../LICENSE). No account ownership, service availability, hosting, commercial support or SLA is established here.
+
+## Final campaign boundary
+
+[V2C-37](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-37.md)
+records final engineering acceptance and internal publication separately. Their
+success does not advance any of the nine external actions in this register.
+All remain pending separate authorization and verified access until their actual
+approved execution is evidenced. Failed/missing execution and historical
+receipts never establish public publication. The disabled publication mechanisms
+and inert launch drafts remain in force during final verification and completion.

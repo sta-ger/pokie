@@ -1,3 +1,4 @@
+import type {StakeAmountDetermining} from "../StakeAmountDetermining.js";
 import {AbstractVideoSlotSessionDecorator} from "./AbstractVideoSlotSessionDecorator.js";
 import type {GridResizeHandling} from "./GridResizeHandling.js";
 import {ResizableSymbolsCombinationsGenerator} from "./combinations/ResizableSymbolsCombinationsGenerator.js";
@@ -12,6 +13,7 @@ import type {VideoSlotSessionHandling} from "./VideoSlotSessionHandling.js";
 export class VideoSlotWithResizableGridSession<
     T extends string | number | symbol = string,
 > extends AbstractVideoSlotSessionDecorator<T> {
+    private payoutAmount?: number;
     private readonly generator: ResizableSymbolsCombinationsGenerator<T>;
     private readonly gridResizeHandling: GridResizeHandling<T>;
 
@@ -33,10 +35,15 @@ export class VideoSlotWithResizableGridSession<
         }
         this.validateScreenCoordinates();
         this.executeStep(() => {
-            super.play();
+            this.baseSession.play();
+            const payout = this.baseSession.getPayoutAmount?.();
+            const credits = this.getCreditsAmount();
             this.generator.setReelsHeights(
                 this.gridResizeHandling.getNextReelsHeights(this.baseSession, this.generator.getReelsHeights()),
             );
+            // The strategy receives the live base session. Forward its exact payout only when
+            // this invocation preserved credits; arbitrary resize handlers may also settle money.
+            this.payoutAmount = this.getCreditsAmount() === credits ? payout : undefined;
         });
     }
 
@@ -45,8 +52,18 @@ export class VideoSlotWithResizableGridSession<
         const heights = this.generator.getReelsHeights();
         return () => {
             rollback();
+            this.payoutAmount = undefined;
             this.generator.setReelsHeights(heights);
         };
+    }
+
+    public getStakeAmount(): number {
+        return (this.baseSession as Partial<StakeAmountDetermining>).getStakeAmount?.() ?? this.getBet();
+    }
+
+    public getPayoutAmount(): number | undefined {
+        if (this.constructor !== VideoSlotWithResizableGridSession) return undefined;
+        return this.stepResultValid ? this.payoutAmount : 0;
     }
 
     public getReelsHeights(): number[] {

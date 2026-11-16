@@ -25,8 +25,14 @@ import {
 import {buildSourceOutcomeLibraryBundle} from "../certification/CertificationEvidenceBundleTestFixtures.js";
 import {emitPublicRuntime} from "./helpers/publicRuntime.js";
 import {fractionalBetBlueprint} from "../fixtures/math/FractionalBetFixture.js";
+import {createPackageExtractionTestEnvironment} from "./fixtures/PackageExtractionFixture.js";
 
 const modes = [{modeName: "base", seed: "evidence-seed", sampleCount: 3}];
+let restoreTemporaryDirectory: () => void = () => undefined;
+beforeAll(() => {
+    restoreTemporaryDirectory = createPackageExtractionTestEnvironment({stageRuntime: false, memoryBacked: true});
+});
+afterAll(() => restoreTemporaryDirectory());
 
 describe("canonical evidence dossier", () => {
     let directory: string;
@@ -151,10 +157,22 @@ describe("canonical evidence dossier", () => {
         let reference: string;
         let relocated: string;
 
+        function runNative(args: string[]): string {
+            try {
+                return execFileSync(process.execPath, args, {encoding: "utf8", timeout: 120000,
+                    env: {...process.env, TMPDIR: runtime.directory}});
+            } catch (error) {
+                const failure = error as NodeJS.ErrnoException & {signal?: string; stderr?: string | Buffer};
+                throw new Error(`Native dossier process failed (${failure.code ?? failure.signal ?? "error"}): ${failure.message}\n${String(failure.stderr ?? "")}`);
+            }
+        }
+
         // Compilation and each real child have separate bounded phases. Their combined
         // wall time must not share one test deadline when the controller uses busy workers.
         beforeAll(() => {
-            runtime = emitPublicRuntime();
+            // These consumers execute native JS in both module formats;
+            // declarations and source maps are not inputs to their dossier.
+            runtime = emitPublicRuntime({runtimeFilesOnly: true, temporaryRoot: os.tmpdir()});
             script = path.join(runtime.directory, "dossier-process.mjs");
             fs.writeFileSync(script, `
 import fs from "node:fs";
@@ -192,7 +210,7 @@ const issues = await new api.CertificationEvidenceBundleVerifier().verify(path.j
 console.log(JSON.stringify({pid: process.pid, issues, manifest: built.manifest, artifactHashes: built.artifactHashes}));
 `);
             const root = path.join(runtime.directory, "original");
-            original = JSON.parse(execFileSync(process.execPath, [script, root, "initialize"], {encoding: "utf8", timeout: 120000})) as DossierProcessResult;
+            original = JSON.parse(runNative([script, root, "initialize"])) as DossierProcessResult;
             reference = path.join(runtime.directory, "reference");
             fs.renameSync(root, reference);
         }, 180000);
@@ -224,7 +242,7 @@ console.log(JSON.stringify({pid: process.pid, issues, manifest: built.manifest, 
             const launch = path.join(runtime.directory, `verify.${extension}`);
             const content = fs.readFileSync(script, "utf8");
             fs.writeFileSync(launch, extension === "mjs" ? content : `(async () => {${content.replace('import fs from "node:fs";', 'const fs = require("node:fs");').replace('import path from "node:path";', 'const path = require("node:path");').replace('import * as api from "@fromstan/pokie";', 'const api = require("@fromstan/pokie");')}})().catch(error => {console.error(error); process.exitCode = 1;});`);
-            const cold = JSON.parse(execFileSync(process.execPath, [launch, relocated, "reproduce"], {encoding: "utf8", timeout: 120000})) as DossierProcessResult;
+            const cold = JSON.parse(runNative([launch, relocated, "reproduce"])) as DossierProcessResult;
             expect(cold.pid).not.toBe(original.pid);
             expect(cold.issues).toEqual([]);
             expect(cold.manifest.evidenceContentHash).toBe(original.manifest.evidenceContentHash);
@@ -291,7 +309,7 @@ await rejects({...authorities, replayFiles: [replacedReplay]}, "audit-execution-
 await publish(original);
 console.log(JSON.stringify({closed: ["candidate", "model", "valid-report-substitution", "false-report-math", "false-report-target", "rehashed-runtime-replay"]}));
 `);
-            const attacks = JSON.parse(execFileSync(process.execPath, [attackScript, relocated], {encoding: "utf8", timeout: 120000})) as {closed: string[]};
+            const attacks = JSON.parse(runNative([attackScript, relocated])) as {closed: string[]};
             expect(attacks.closed).toEqual(["candidate", "model", "valid-report-substitution", "false-report-math", "false-report-target", "rehashed-runtime-replay"]);
             const manifest = JSON.parse(fs.readFileSync(path.join(relocated, "dossier", "manifest.json"), "utf8")) as CertificationEvidenceBundleManifest;
             for (const format of ["json", "console", "markdown", "html", "pdf"] as const) {
@@ -363,7 +381,7 @@ const fresh = await new StudioCertificationService("2.0.0").download(project, re
 assert(restored.bytes.equals(pdf.bytes) && fresh.bytes.equals(pdf.bytes));
 console.log("library rejection/opened-package build/download/retry/stale-authority/restoration passed");
 `);
-            expect(execFileSync(process.execPath, [studioScript, relocated], {encoding: "utf8", timeout: 120000})).toContain("library rejection/opened-package build/download/retry/stale-authority/restoration passed");
+            expect(runNative([studioScript, relocated])).toContain("library rejection/opened-package build/download/retry/stale-authority/restoration passed");
         }, 180000);
     });
 });

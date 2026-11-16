@@ -340,7 +340,10 @@ export class StudioProjectRegistrationService {
 
     private async resolveRecognizedProject(location: string): Promise<{location: string; project: PokieProject} | undefined> {
         const canonicalLocation = await this.canonicalize(location);
-        const project = await this.resolveProject.resolve(canonicalLocation);
+        // Registry callers consume recognition metadata only. Conversion provenance
+        // loads an executable snapshot and its dependency graph; Check/Add, relocation,
+        // recency and identity display must not prepare or execute the user's game.
+        const project = await this.resolveProject.resolve(canonicalLocation, {readConfigurationProvenance: false});
         if (project === undefined) {
             return undefined;
         }

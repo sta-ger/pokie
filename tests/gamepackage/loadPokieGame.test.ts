@@ -1,15 +1,57 @@
-import {loadPokieGame, loadPokieGameRuntime, readPokiePackageConfig, releasePokieGame} from "@fromstan/pokie";
+import {stageCompiledTestRuntime} from "../testUtils/stageCompiledTestRuntime.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../v2/fixtures/PackageExtractionFixture.js";
+import {loadPokieGame, loadPokieGameRuntime, readPokiePackageConfig, releasePokieGame, resolvePokieGameDependencyRoots} from "@fromstan/pokie";
 import fs from "fs";
 import {createRequire} from "module";
-import {execFileSync} from "child_process";
+import {execFileSync, type ExecFileSyncOptionsWithStringEncoding} from "child_process";
 import {pathToFileURL} from "url";
 import os from "os";
 import path from "path";
 import ts from "typescript";
 
+let disposeRuntimeStorage: () => void;
+beforeAll(() => {
+    // Keep the real dependency/fallback fixtures; only their owned snapshot scratch changes.
+    disposeRuntimeStorage = createPackageExtractionTestEnvironment({stageRuntime: false});
+});
+afterAll(() => disposeRuntimeStorage());
+
 const fixturesRoot = path.join(__dirname, "fixtures");
 
-it("preserves the installed host closure across its nested CommonJS scope for unchanged external games", () => {
+function runNativeProbe(args: string[], options: Omit<ExecFileSyncOptionsWithStringEncoding, "encoding"> = {}): string {
+    const started = Date.now();
+    try {
+        return execFileSync(process.execPath, args, {
+            timeout: 30000, ...options, encoding: "utf8", killSignal: "SIGKILL", stdio: "pipe",
+        });
+    } catch (error) {
+        // Node's synchronous spawn error can point to itself through .error. Jest workers
+        // serialize enumerable error properties, hiding the real failure behind a JSON crash.
+        const failure = error as Error & {code?: string; status?: number; signal?: string; stdout?: string; stderr?: string};
+        throw new Error(`Native probe ${args[0]} failed after ${Date.now() - started} ms ` +
+            `(code=${failure.code}, status=${failure.status}, signal=${failure.signal}): ${failure.message}\n` +
+            `stdout:\n${failure.stdout ?? ""}\nstderr:\n${failure.stderr ?? ""}`);
+    }
+}
+
+it("reports native probe rejection and timeout without circular worker errors", () => {
+    for (const [script, timeout, expected] of [
+        ["process.stderr.write('probe rejected'); process.exitCode = 7;", 30000, /status=7[\s\S]*probe rejected/],
+        ["setInterval(() => {}, 1000);", 50, /code=ETIMEDOUT[\s\S]*signal=SIGKILL/],
+    ] as const) {
+        let failure: unknown;
+        try {
+            runNativeProbe(["-e", script], {timeout});
+        } catch (error) {
+            failure = error;
+        }
+        expect(failure).toBeInstanceOf(Error);
+        expect((failure as Error).message).toMatch(expected);
+        expect(() => JSON.stringify(failure)).not.toThrow();
+    }
+});
+
+it("preserves the installed host closure across its nested CommonJS scope for unchanged external games", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-cjs-host-"));
     const host = path.join(root, "host");
     const installation = path.join(host, "node_modules", "@fromstan", "pokie");
@@ -43,11 +85,32 @@ it("preserves the installed host closure across its nested CommonJS scope for un
             dependencies: {...manifest.dependencies, "host-behavior": "1"},
             optionalDependencies: {"missing-host-optional": "1"},
         }));
-        execFileSync(process.execPath, [path.resolve("write-cjs-package-json.js")], {cwd: installation});
+        runNativeProbe([path.resolve("write-cjs-package-json.js")], {cwd: installation});
         expect(JSON.parse(fs.readFileSync(path.join(cjs, "package.json"), "utf8")).dependencies).toBeUndefined();
         fs.mkdirSync(path.join(installation, "node_modules"));
+        // Keep the real executable dependency graph, including package scopes, assets,
+        // cycles and peers. Maps/declarations are irrelevant to these native JS consumers;
+        // repeatedly copying and hashing them dominated this bounded closure probe under load.
+        const staged = new Map<string, string>();
+        const stageDependency = async (source: string): Promise<string> => {
+            const existing = staged.get(source);
+            if (existing) return existing;
+            const destination = path.join(root, "dependencies", String(staged.size));
+            staged.set(source, destination);
+            fs.cpSync(source, destination, {recursive: true, filter: file =>
+                !["node_modules", ".git"].includes(path.basename(file)) && !file.endsWith(".map") && !file.endsWith(".d.ts")});
+            for (const [name, dependency] of Object.entries(await resolvePokieGameDependencyRoots(source, false))) {
+                if (dependency === null) continue;
+                const target = await stageDependency(dependency);
+                const link = path.join(destination, "node_modules", name);
+                fs.mkdirSync(path.dirname(link), {recursive: true});
+                fs.symlinkSync(target, link, "dir");
+            }
+            return destination;
+        };
         for (const name of Object.keys(manifest.dependencies)) {
-            fs.symlinkSync(fs.realpathSync(path.resolve("node_modules", name)), path.join(installation, "node_modules", name), "dir");
+            const dependency = await stageDependency(fs.realpathSync(path.resolve("node_modules", name)));
+            fs.symlinkSync(dependency, path.join(installation, "node_modules", name), "dir");
         }
         const behavior = path.join(installation, "node_modules", "host-behavior");
         const leaf = path.join(behavior, "node_modules", "host-leaf");
@@ -71,12 +134,15 @@ module.exports = {getManifest: () => ({id: 'unchanged-game', name: runtime.hostP
         fs.writeFileSync(script, `const assert = require('node:assert/strict'), fs = require('fs'), path = require('path');
 const runtime = require('@fromstan/pokie');
 const game = process.argv[2], installation = process.argv[3], leaf = process.argv[4], temporaryRoot = process.argv[5];
+const started = performance.now(), timings = {};
+const phase = name => { timings[name] = Math.round(performance.now() - started); console.error(name + ': ' + timings[name] + ' ms'); };
 (async () => {
  assert.equal(require('os').tmpdir(), temporaryRoot);
  assert.deepEqual(fs.readdirSync(temporaryRoot), []);
  assert.throws(() => require('module').createRequire(path.join(game, 'game.cjs')).resolve('@fromstan/pokie'), /Cannot find module/);
  const outside = require.cache[require.resolve('@fromstan/pokie')];
  const first = await runtime.loadPokieGameRuntime(game);
+ phase('first acquisition');
  const firstSession = first.game.createSession();
  assert.equal(first.game.getManifest().name, 'function:function:before');
  const roots = await runtime.resolvePokieGameDependencyRoots(game);
@@ -92,7 +158,9 @@ const game = process.argv[2], installation = process.argv[3], leaf = process.arg
  const after = await runtime.packageExecutableRevision(game);
  assert.notEqual(after, before);
  assert.equal(await runtime.packageExecutableRevision(detached), after);
+ phase('original and detached revisions');
  const second = await runtime.loadPokieGameRuntime(detached);
+ phase('edited acquisition');
  const secondSession = second.game.createSession();
  assert.equal(second.game.getManifest().name, 'function:function:after');
  assert.deepEqual(firstSession.lazy(), ['function', 'function', 'before']);
@@ -105,6 +173,7 @@ const game = process.argv[2], installation = process.argv[3], leaf = process.arg
  const temporaryRoots = fs.readdirSync(temporaryRoot).sort();
  assert.deepEqual(temporaryRoots, [path.basename(firstSession.root), path.basename(secondSession.root)].sort());
  await assert.rejects(runtime.loadPokieGameRuntime(game), /host leaf rejected/);
+ phase('rejected acquisition');
  assert.deepEqual(fs.readdirSync(temporaryRoot).sort(), temporaryRoots);
  fs.writeFileSync(leaf, "module.exports = 'before';");
  assert.equal(await runtime.packageExecutableRevision(game), before);
@@ -113,6 +182,7 @@ const game = process.argv[2], installation = process.argv[3], leaf = process.arg
    assert.equal(restored.getManifest().name, 'function:function:before');
    await runtime.releasePokieGame(restored);
  }
+ phase('repeated recovery');
  await first.release(); await first.release(); await second.release();
  for (const session of [firstSession, secondSession]) {
    assert.equal(fs.existsSync(session.root), false);
@@ -123,15 +193,18 @@ const game = process.argv[2], installation = process.argv[3], leaf = process.arg
  assert.deepEqual(runtime.hostProbe(), ['function', 'function', 'before']);
  assert.equal(fs.existsSync(path.join(game, 'node_modules')), false);
  assert.equal(JSON.parse(fs.readFileSync(path.join(game, 'package.json'))).dependencies, undefined);
- console.log(JSON.stringify({closure: true, privatePaths: true, revision: true, overlay: true, recovered: true, cleanup: true}));
+ phase('cleanup');
+ console.log(JSON.stringify({closure: true, privatePaths: true, revision: true, overlay: true, recovered: true, cleanup: true, timings}));
 })().catch(error => { console.error(error); process.exitCode = 1; });`);
         // Direct Jest and npm launches must exercise the same child. Own its temporary namespace
         // so concurrent suites cannot add/remove entries observed by the rejection cleanup check.
         const childEnvironment = Object.fromEntries(Object.entries(process.env).filter(([name]) => !(/^npm_/i).test(name) && name !== "INIT_CWD"));
-        expect(JSON.parse(execFileSync(process.execPath, [script, game, installation, path.join(leaf, "index.js"), runtimeTemporaryRoot], {
-            cwd: host, encoding: "utf8", timeout: 60000,
+        const {timings, ...result} = JSON.parse(runNativeProbe([script, game, installation, path.join(leaf, "index.js"), runtimeTemporaryRoot], {
+            cwd: host, timeout: 60000,
             env: {...childEnvironment, TMPDIR: runtimeTemporaryRoot, TMP: runtimeTemporaryRoot, TEMP: runtimeTemporaryRoot},
-        }))).toEqual({closure: true, privatePaths: true, revision: true, overlay: true, recovered: true, cleanup: true});
+        }));
+        expect(result).toEqual({closure: true, privatePaths: true, revision: true, overlay: true, recovered: true, cleanup: true});
+        console.log("Native host closure cumulative timings (ms):", timings);
     } finally {
         fs.rmSync(root, {recursive: true, force: true});
     }
@@ -157,8 +230,28 @@ describe("readPokiePackageConfig", () => {
 });
 
 describe("loadPokieGame", () => {
+    let root: string;
+    let isolatedFixturesRoot: string;
+    beforeAll(() => {
+        root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-loader-fixtures-"));
+        // These cases exercise entry validation, not host-runtime discovery (covered above).
+        // Bind every sibling to stable executable output instead of copying the entire
+        // checkout, docs and build products on every successful/invalid acquisition.
+        stageCompiledTestRuntime(root, ["cjs"], {runtimeFilesOnly: true});
+        isolatedFixturesRoot = path.join(root, "fixtures");
+        fs.cpSync(fixturesRoot, isolatedFixturesRoot, {recursive: true});
+        for (const name of fs.readdirSync(isolatedFixturesRoot)) {
+            const file = path.join(isolatedFixturesRoot, name, "package.json");
+            const manifest = JSON.parse(fs.readFileSync(file, "utf8"));
+            fs.writeFileSync(file, JSON.stringify({...manifest, dependencies: {"@fromstan/pokie": "*"}}));
+        }
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+    afterAll(() => {
+        if (root) fs.rmSync(root, {recursive: true, force: true});
+    });
+
     it("loads a valid game package and returns its PokieGame export", async () => {
-        const game = await loadPokieGame(path.join(fixturesRoot, "valid-game"));
+        const game = await loadPokieGame(path.join(isolatedFixturesRoot, "valid-game"));
         try {
             expect(game.getManifest()).toEqual({id: "valid-game", name: "Valid Game", version: "1.0.0"});
             expect(typeof game.createSession).toBe("function");
@@ -168,13 +261,13 @@ describe("loadPokieGame", () => {
     });
 
     it("throws when the entry module does not export a valid PokieGame", async () => {
-        await expect(loadPokieGame(path.join(fixturesRoot, "invalid-export-game"))).rejects.toThrow(/does not export a valid/);
+        await expect(loadPokieGame(path.join(isolatedFixturesRoot, "invalid-export-game"))).rejects.toThrow(/does not export a valid/);
     });
 
     it("throws a descriptive error listing every failing check when the entry module's manifest is invalid", async () => {
         let caughtError: unknown;
         try {
-            await loadPokieGame(path.join(fixturesRoot, "invalid-manifest-game"));
+            await loadPokieGame(path.join(isolatedFixturesRoot, "invalid-manifest-game"));
         } catch (error) {
             caughtError = error;
         }
@@ -188,11 +281,11 @@ describe("loadPokieGame", () => {
     });
 
     it("throws when package.json has no pokie.entry field", async () => {
-        await expect(loadPokieGame(path.join(fixturesRoot, "missing-entry-game"))).rejects.toThrow(/pokie\.entry/);
+        await expect(loadPokieGame(path.join(isolatedFixturesRoot, "missing-entry-game"))).rejects.toThrow(/pokie\.entry/);
     });
 
     it("unwraps a double-nested default (as produced by Node's native ESM loader for a tsc esModuleInterop-compiled entry)", async () => {
-        const game = await loadPokieGame(path.join(fixturesRoot, "nested-default-game"));
+        const game = await loadPokieGame(path.join(isolatedFixturesRoot, "nested-default-game"));
         try {
             expect(game.getManifest()).toEqual({id: "nested-default-game", name: "Nested Default Game", version: "1.0.0"});
         } finally {
@@ -203,7 +296,7 @@ describe("loadPokieGame", () => {
     it("gives an actionable recovery step (never a raw \"Cannot find module\") when the entry module's dist output is missing", async () => {
         let caughtError: unknown;
         try {
-            await loadPokieGame(path.join(fixturesRoot, "missing-dist-game"));
+            await loadPokieGame(path.join(isolatedFixturesRoot, "missing-dist-game"));
         } catch (error) {
             caughtError = error;
         }
@@ -213,13 +306,13 @@ describe("loadPokieGame", () => {
         expect(message).not.toMatch(/^Cannot find module/);
         expect(message).toContain("hasn't been built yet");
         expect(message).toContain("npm install && npm run build");
-        expect(message).toContain(path.join(fixturesRoot, "missing-dist-game"));
+        expect(message).toContain(path.join(isolatedFixturesRoot, "missing-dist-game"));
     });
 
     it("gives an actionable recovery step when the entry module's dist output is stale (requires a module that no longer exists)", async () => {
         let caughtError: unknown;
         try {
-            await loadPokieGame(path.join(fixturesRoot, "stale-dist-game"));
+            await loadPokieGame(path.join(isolatedFixturesRoot, "stale-dist-game"));
         } catch (error) {
             caughtError = error;
         }
@@ -232,11 +325,13 @@ describe("loadPokieGame", () => {
     });
 
     it("rejects a canonical package's dist entry when its source was edited after the last build, instead of loading the stale output", async () => {
-        const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stale-source-game-"));
+        const packageRoot = fs.mkdtempSync(path.join(root, "pokie-stale-source-game-"));
+        const started = Date.now();
+        const timings: Record<string, number> = {};
         try {
             fs.writeFileSync(
                 path.join(packageRoot, "package.json"),
-                JSON.stringify({name: "stale-source-game", version: "1.0.0", pokie: {entry: "./dist/index.js"}}),
+                JSON.stringify({name: "stale-source-game", version: "1.0.0", pokie: {entry: "./dist/index.js"}, dependencies: {"@fromstan/pokie": "*"}}),
             );
 
             fs.mkdirSync(path.join(packageRoot, "src"));
@@ -247,19 +342,28 @@ describe("loadPokieGame", () => {
             const distEntryPath = path.join(packageRoot, "dist", "index.js");
             fs.writeFileSync(
                 distEntryPath,
-                'module.exports = {getManifest() { return {id: "stale-source-game", name: "Stale Source Game", version: "1.0.0"}; }, createSession() { return {}; }};\n',
+                'module.exports = {getManifest() { return {id: "stale-source-game", name: "Stale Source Game", version: "1.0.0"}; }, createSession() { return {root: __dirname}; }};\n',
             );
 
             const buildTime = new Date(Date.now() - 60_000);
             fs.utimesSync(sourcePath, buildTime, buildTime);
             fs.utimesSync(distEntryPath, buildTime, buildTime);
 
+            expect((await resolvePokieGameDependencyRoots(packageRoot))["@fromstan/pokie"])
+                .toBe(path.join(root, "node_modules/@fromstan/pokie"));
             const game = await loadPokieGame(packageRoot);
+            timings.acquisition = Date.now() - started;
+            let snapshotDirectory: string;
             try {
                 expect(game.getManifest()).toEqual({id: "stale-source-game", name: "Stale Source Game", version: "1.0.0"});
+                snapshotDirectory = (game.createSession() as unknown as {root: string}).root;
+                expect(snapshotDirectory).not.toBe(path.dirname(distEntryPath));
+                expect(fs.existsSync(snapshotDirectory)).toBe(true);
             } finally {
                 await releasePokieGame(game);
             }
+            expect(fs.existsSync(snapshotDirectory)).toBe(false);
+            timings.release = Date.now() - started;
 
             // Simulate editing the source after that build completed, without rebuilding.
             const editTime = new Date();
@@ -279,8 +383,11 @@ describe("loadPokieGame", () => {
             expect(message).toContain("stale");
             expect(message).toContain("npm run build");
             expect(message).toContain(packageRoot);
+            timings.staleRejection = Date.now() - started;
         } finally {
             fs.rmSync(packageRoot, {recursive: true, force: true});
+            timings.cleanup = Date.now() - started;
+            console.log("Stale source loader cumulative timings (ms):", timings);
         }
     });
 
@@ -306,7 +413,10 @@ it.each(["cjs", "esm"])("isolates direct/transitive %s code, lazy imports and li
     const manifest = (value: string) => ({id: "dependency-game", name: value, version: "1.0.0"});
     const write = (value: string) => fs.writeFileSync(dependencyFile, format === "cjs" ? `module.exports = '${value}';` : `export default '${value}';`);
     fs.mkdirSync(nested, {recursive: true});
-    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({pokie: {entry: `index.${suffix}`}, dependencies: {direct: "1"}}));
+    // Bind the current native runtime explicitly. The host-fallback contract is
+    // covered separately above; these repeated acquisitions own dependency edits.
+    stageCompiledTestRuntime(root, ["cjs"], {runtimeFilesOnly: true});
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({pokie: {entry: `index.${suffix}`}, dependencies: {"@fromstan/pokie": "*", direct: "1"}}));
     for (const [name, location, dependencies] of [["direct", direct, {nested: "1"}], ["nested", nested, {}]] as const) {
         fs.writeFileSync(path.join(location, "package.json"), JSON.stringify({name, main: `index.${suffix}`, dependencies, peerDependencies: name === "nested" ? {direct: "1"} : {}}));
     }
@@ -322,7 +432,7 @@ it.each(["cjs", "esm"])("isolates direct/transitive %s code, lazy imports and li
         write("current");
         const current = await load();
         try {
-            const fresh = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `console.log(JSON.stringify((await import(${JSON.stringify(pathToFileURL(entry).href)})).default.getManifest()))`], {encoding: "utf8"}));
+            const fresh = JSON.parse(runNativeProbe(["--input-type=module", "-e", `console.log(JSON.stringify((await import(${JSON.stringify(pathToFileURL(entry).href)})).default.getManifest()))`]));
             expect(current.game.getManifest()).toEqual(fresh);
             expect(fresh).toEqual(manifest("current"));
             expect(await (first.game as unknown as {lazy(): Promise<string>}).lazy()).toBe("old");
@@ -360,10 +470,10 @@ Module._extensions['.ts'] = (module, file) => module._compile(ts.transpileModule
  assert.equal(require(${JSON.stringify(dependencyFile)}), outside); assert.equal(require.cache[${JSON.stringify(dependencyFile)}], cached);
  console.log(JSON.stringify({removed: true, preserved: true}));
 })().catch(error => { console.error(error); process.exitCode = 1; });`);
-        expect(JSON.parse(execFileSync(process.execPath, [probe], {encoding: "utf8", timeout: 30000}))).toEqual({removed: true, preserved: true});
+        expect(JSON.parse(runNativeProbe([probe]))).toEqual({removed: true, preserved: true});
     } finally {
         await first.release();
         expect(snapshots.every(snapshot => !fs.existsSync(snapshot))).toBe(true);
         fs.rmSync(root, {recursive: true, force: true});
     }
-}, 60000);
+}, PACKAGE_EXTRACTION_TEST_TIMEOUT);

@@ -4,10 +4,27 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {createRequire} = require('node:module');
 const {pathToFileURL} = require('node:url');
-const ts = require('typescript');
 const directory = process.argv[2];
+const batch = process.argv[3];
+const phase = process.argv[4];
+const offset = Number(process.argv[5] ?? 0);
+assert.ok(['catalogue', 'modifiers', 'features'].includes(batch), 'expected a named bounded feature batch');
+assert.ok(['prepare', 'compare', 'routes', 'compact'].includes(phase), 'expected a named bounded feature phase');
+assert.ok(Number.isSafeInteger(offset) && offset >= 0, 'expected a bounded comparison offset');
+const progressPath = path.join(directory, `${batch}-${phase}-${offset}-progress.jsonl`);
+fs.writeFileSync(progressPath, '');
+async function timed(stage, id, operation) {
+    const started = performance.now(), cpu = process.cpuUsage();
+    fs.appendFileSync(progressPath, `${JSON.stringify({stage, id, status:'started'})}\n`);
+    const result = await operation();
+    const used = process.cpuUsage(cpu);
+    fs.appendFileSync(progressPath, `${JSON.stringify({stage, id, status:'completed', elapsedMs:Math.round(performance.now()-started), cpuMs:Math.round((used.user+used.system)/1000), rssBytes:process.memoryUsage().rss})}\n`);
+    return result;
+}
 const native = createRequire(path.join(directory, 'consumer.cjs'));
+const exitListeners = process.listenerCount('exit');
 const api = native('@fromstan/pokie');
+assert.equal(process.listenerCount('exit'), exitListeners, 'root import must not install workbook dependency exit listeners');
 const clone = value => JSON.parse(JSON.stringify(value));
 const near = (actual, expected, label) => assert.ok(Math.abs(actual - expected) <= 1e-10 * Math.max(1, Math.abs(expected)), `${label}: ${actual} != ${expected}`);
 // Independent FNV-1a/mulberry32 oracle for authored stop scripts and next-draw checks.
@@ -73,6 +90,7 @@ async function build(fixture) {
     return {...fixture, folder, packageDir, artifact, bytes: fs.readFileSync(artifact), manifest: JSON.parse(fs.readFileSync(`${artifact}.pokie-wasm.json`, 'utf8'))};
 }
 function compilePackages(fixtures) {
+    const ts = require('typescript');
     const types = path.join(directory, 'public-types.ts');
     fs.writeFileSync(types, `import type {CanonicalWasmGameModel as Root} from '@fromstan/pokie';
 import type {CanonicalWasmGameModel as Browser} from '@fromstan/pokie/browser';
@@ -338,8 +356,8 @@ async function longSessions(fixtures, portable) {
 const rejectionIds = new Set();
 async function conversionRoutes(fixtures, portable) {
     const routes=[];
-    for (const id of ['modes','weighted-dyadic']) {
-        const fixture=fixtures.find(row=>row.id===id);
+    for (const fixture of fixtures.filter(row=>['modes','weighted-dyadic'].includes(row.id))) {
+        const id=fixture.id;
         const registry=new api.ArtifactBuilderRegistry('1.3.0');
         const source=await new api.ProjectTargetResolver().resolve(fixture.packageDir);
         assert.equal(source.type,'tsPackage');
@@ -369,12 +387,7 @@ async function conversionRoutes(fixtures, portable) {
     return routes;
 }
 let checkpoints = [];
-async function main() {
-    const packageRoot = path.join(directory, 'node_modules/@fromstan/pokie');
-    const esm = await import(pathToFileURL(path.join(packageRoot, 'dist/esm/index.js')).href);
-    const browser = await import(pathToFileURL(path.join(packageRoot, 'dist/esm/browser.js')).href);
-    const portable = await import(pathToFileURL(path.join(packageRoot, 'dist/esm/wasm/browser.js')).href);
-    for (const exports of [api, esm, browser, portable]) assert.equal(typeof exports.instantiatePokieWasm, 'function');
+async function prepare() {
     const inputs = JSON.parse(fs.readFileSync(path.join(directory, 'feature-fixtures.json'), 'utf8'));
     assert.equal(inputs.length, 36);
     const fixtures = [];
@@ -480,20 +493,52 @@ async function main() {
         weightFirstReel(blueprint,seed);
         extras.push({id:'weighted-cascade-refill',kind:'edge',blueprint,seed,weightedLifecycle:true,count:3,known:{wins:[0.1,0,0],stakes:[0.05,0,0.05],drawCounts:[11,11,15]}});
     }
-    for (const input of [...inputs, ...extras]) {
+    // Keep the full matrix, but release compiler/module/runtime state between
+    // bounded native processes instead of putting every cell under one deadline.
+    const modifierExtras = extras.filter(row=>row.id.startsWith('modifier-') || row.id.startsWith('composition-'));
+    const selected = batch === 'catalogue' ? inputs : batch === 'modifiers' ? modifierExtras : extras.filter(row=>!modifierExtras.includes(row));
+    for (const input of selected) {
         input.seed ??= 'feature-parity-31';
         if (input.kind === 'existing') existingFixture(input);
         if (input.kind === 'bounded' && !input.weightedLifecycle) {input.blueprint.reelStrips = [['C'],['C'],['C']]; input.blueprint.paytable = {};}
-        try {fixtures.push(await build(input));} catch (error) {error.message = `${input.id}: ${error.message}`; throw error;}
+        try {fixtures.push(await timed('build', input.id, () => build(input)));} catch (error) {error.message = `${input.id}: ${error.message}`; throw error;}
     }
-    compilePackages(fixtures);
-    const receipts = [];
-    for (const fixture of fixtures) {
-        checkpoints = [];
-        try {receipts.push(await compare(fixture, portable));} catch (error) {error.message = `${fixture.id}: ${error.message}`; throw error;}
+    await timed('typescript', batch, () => compilePackages(fixtures));
+    const selectedIds = new Set(selected.map(row=>row.id));
+    return {fixtures:fixtures.map(({bytes,...fixture})=>fixture), catalogueIds:inputs.filter(row=>selectedIds.has(row.id)).map(row=>row.id), crossProducts:extras.filter(row=>selectedIds.has(row.id)).map(row=>row.id), compactIds:[...inputs.map(row=>row.id),'weighted-hold-flat','weighted-bounded-cascade-respins-collection-lines','weighted-bonus-lines','weighted-cascade-refill']};
+}
+async function main() {
+    const packageRoot = path.join(directory, 'node_modules/@fromstan/pokie');
+    const esm = await import(pathToFileURL(path.join(packageRoot, 'dist/esm/index.js')).href);
+    const browser = await import(pathToFileURL(path.join(packageRoot, 'dist/esm/browser.js')).href);
+    const portable = await import(pathToFileURL(path.join(packageRoot, 'dist/esm/wasm/browser.js')).href);
+    for (const exports of [api, esm, browser, portable]) assert.equal(typeof exports.instantiatePokieWasm, 'function');
+    const saved = path.join(directory, `${batch}-fixtures.json`);
+    const report = {batch, phase, offset, compact:[], routes:[], rejectionIds:[], catalogueIds:[], crossProducts:[], publicExports:['cjs','esm','browser','wasm'], receipts:[]};
+    if (phase === 'prepare') {
+        const prepared = await prepare();
+        // Compiler outputs are private to this invocation. Later native processes
+        // consume these exact files; no fixture is regenerated or recompiled.
+        fs.writeFileSync(saved, JSON.stringify(prepared));
+        report.catalogueIds = prepared.catalogueIds;
+        report.crossProducts = prepared.crossProducts;
+    } else {
+        const prepared = JSON.parse(fs.readFileSync(saved, 'utf8'));
+        const fixtures = prepared.fixtures.map(fixture=>({...fixture,bytes:fs.readFileSync(fixture.artifact)}));
+        if (phase === 'compare') {
+            const selected = fixtures.slice(offset, offset+12);
+            assert.ok(selected.length > 0, 'comparison slice must not be empty');
+            for (const fixture of selected) {
+                checkpoints = [];
+                try {report.receipts.push(await timed('compare', fixture.id, () => compare(fixture, portable)));} catch (error) {error.message = `${fixture.id}: ${error.message}`; throw error;}
+            }
+        } else if (phase === 'routes') {
+            report.routes = await timed('routes', batch, () => conversionRoutes(fixtures,portable));
+        } else {
+            for (const fixture of fixtures.filter(row=>prepared.compactIds.includes(row.id))) report.compact.push(...await timed('compact', fixture.id, () => longSessions([fixture], portable)));
+        }
     }
-    const routes = await conversionRoutes(fixtures,portable);
-    const compact = await longSessions([...fixtures.slice(0,36),...['weighted-hold-flat','weighted-bounded-cascade-respins-collection-lines','weighted-bonus-lines','weighted-cascade-refill'].map(id=>fixtures.find(fixture=>fixture.id===id))], portable);
-    process.stdout.write(JSON.stringify({compact, routes, rejectionIds:[...rejectionIds].sort(), catalogueIds: inputs.map(fixture => fixture.id), crossProducts: extras.map(fixture => fixture.id), publicExports: ['cjs','esm','browser','wasm'], receipts}));
+    report.rejectionIds = [...rejectionIds].sort();
+    process.stdout.write(JSON.stringify(report));
 }
 main().catch(error => {console.error(error.stack); process.exitCode = 1;});

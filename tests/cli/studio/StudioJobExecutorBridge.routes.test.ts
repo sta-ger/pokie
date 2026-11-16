@@ -749,6 +749,64 @@ describe("StudioJobService executor bridge routes", () => {
         await expect(first).resolves.toMatchObject({status: 200, body: {context: {mode: "project", projectRoot: physicalProject}}});
     });
 
+    it("V2C-37 retains cancelled opening history while a retry owns the source and permits later reuse after failure", async () => {
+        let nextId = 0;
+        jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "retry-jobs")), () => 100, () => `opening-${++nextId}`);
+        let entered!: () => void;
+        let release!: (dashboard: ProjectDashboardContext) => void;
+        let aborted!: () => void;
+        let running = new Promise<void>(resolve => {
+            entered = resolve;
+        });
+        const cancelled = new Promise<void>(resolve => {
+            aborted = resolve;
+        });
+        const home = new StudioHomeService("1.3.0");
+        const open = jest.spyOn(home, "openProject").mockImplementation((_source, options) => new Promise(resolve => {
+            release = resolve;
+            options?.signal?.addEventListener("abort", aborted, {once: true});
+            entered();
+        }));
+        const baseUrl = await start({} as StudioCertificationService, jobs, {homeService: home});
+        const endpoint = `${baseUrl}/api/home/projects/open`;
+        const body = {projectRoot};
+        const first = post(endpoint, body);
+        await running;
+        await expect(post(`${baseUrl}/api/home/jobs/opening-1/cancel`, {})).resolves.toMatchObject({status: 202, body: {status: "cancelling"}});
+        await cancelled;
+        expect(jobs.get(projectRoot, "opening-1")?.status).toBe("cancelling");
+        release({status: "error", projectRoot, error: "Cancelled after runtime cleanup."});
+        await expect(first).resolves.toMatchObject({status: 409});
+        expect(jobs.get(projectRoot, "opening-1")?.status).toBe("cancelled");
+
+        for (const outcome of ["success", "failure", "success", "success"] as const) {
+            running = new Promise<void>(resolve => {
+                entered = resolve;
+            });
+            const request = post(endpoint, body);
+            await running;
+            const id = `opening-${nextId}`;
+            await expect(get(`${baseUrl}/api/home/jobs`)).resolves.toMatchObject({body: {jobs: expect.arrayContaining([
+                expect.objectContaining({id: "opening-1", status: "cancelled"}),
+                expect.objectContaining({id, status: "running"}),
+            ])}});
+            await expect(post(endpoint, body)).resolves.toMatchObject({status: 409, body: {activeJobId: id, reattached: true}});
+            expect(open).toHaveBeenCalledTimes(nextId);
+            if (outcome === "failure") {
+                release({status: "error", projectRoot, error: "Source temporarily unavailable."});
+                await expect(request).resolves.toMatchObject({status: 400, body: {error: "Source temporarily unavailable."}});
+                expect(jobs.get(projectRoot, id)?.status).toBe("failed");
+            } else {
+                release({status: "loaded", projectRoot, game: {id: "sample", name: "Sample", version: "1.0.0"}});
+                await expect(request).resolves.toMatchObject({status: 200, body: {context: {mode: "project", projectRoot}}});
+                expect(jobs.get(projectRoot, id)?.status).toBe("completed");
+                await expect(get(`${baseUrl}/api/context`)).resolves.toMatchObject({body: {mode: "project", projectRoot}});
+            }
+        }
+        expect(open).toHaveBeenCalledTimes(5);
+        expect(jobs.list().map(job => job.status)).toEqual(["cancelled", "completed", "failed", "completed", "completed"]);
+    });
+
     it("deduplicates nested symlinked Design destinations and conflicts changed Blueprint content before execution", async () => {
         const physicalRoot = path.join(directory, "design-root");
         const aliasRoot = path.join(directory, "design-alias");

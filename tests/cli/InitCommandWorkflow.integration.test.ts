@@ -1,3 +1,4 @@
+import {expectInconclusiveArtifactValidation} from "../testUtils/expectInconclusiveArtifactValidation.js";
 import {execFileSync} from "child_process";
 import fs from "fs";
 import os from "os";
@@ -8,7 +9,6 @@ import {GamePackagePreparationError} from "../../cli/prepare/GamePackagePreparat
 import {PackageCommandRunning, runPackageCommand, withLocalPokieInstall} from "../../cli/prepare/PackageCommandRunner.js";
 import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
-import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 import {localPokieDependencyRunner, REPO_ROOT} from "../testUtils/offlinePokieDependencyOverride.js";
 import {ensureCompiledTestOutput} from "../testUtils/ensureCompiledTestOutput.js";
 
@@ -82,7 +82,7 @@ describe("CLI workflow (integration): pokie init (in-place, non-interactive) pro
         const game = require(path.join(projectRoot, "dist", "index.js")) as {getManifest(): {id: string}};
         expect(game.getManifest().id).toBe("sample-slot");
 
-        expect(await new ValidateCommand().run([projectRoot])).toBe(0);
+        await expectInconclusiveArtifactValidation([projectRoot]);
 
         const simFile = path.join(workDir, "sim.json");
         await new SimCommand().run([projectRoot, "--rounds", "300", "--seed", "demo", "--out", simFile]);
@@ -156,7 +156,7 @@ describe("CLI workflow (integration): pokie init (in-place, non-interactive) pro
 
         expect(retryExitCode).toBe(0);
         expect(fs.existsSync(path.join(projectRoot, "dist", "index.js"))).toBe(true);
-        expect(await new ValidateCommand().run([projectRoot])).toBe(0);
+        await expectInconclusiveArtifactValidation([projectRoot]);
     });
 });
 
@@ -270,6 +270,6 @@ describe("CLI workflow (integration): pokie init resolves \"pokie\" through the 
         const game = require(path.join(projectRoot, "dist", "index.js")) as {getManifest(): {id: string}};
         expect(game.getManifest().id).toBe("sample-slot");
 
-        expect(await new ValidateCommand().run([projectRoot])).toBe(0);
+        await expectInconclusiveArtifactValidation([projectRoot]);
     });
 });

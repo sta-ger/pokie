@@ -7,7 +7,7 @@
  * closeout.  Reviewers write bounded records and this module rejects records
  * that are not tied to the candidate which they actually exercised.
  */
-import {P805_MAX_EVIDENCE_BYTES, authenticateP805PackedOutput} from "./p8-05-packed-output-evidence.mjs";
+import {P805_MAX_EVIDENCE_BYTES, authenticateP805PackedOutput, readP805Log} from "./p8-05-packed-output-evidence.mjs";
 import {P805_OPERATION_BUDGETS, projectP805PersonaAudit} from "./p8-05-persona-projection.mjs";
 import {createHash} from "node:crypto";
 import {existsSync} from "node:fs";
@@ -385,7 +385,7 @@ async function validateAuditEvidence(directory, audit, expected, label, used) {
     const one = (kind) => [...evidenceById.values()].find((entry) => entry.item.kind === kind)?.contents;
     const text = (kind) => one(kind)?.toString("utf8") ?? "";
     let api, browser, timing, artifact;
-    try { api = JSON.parse(text("api-log")); browser = JSON.parse(text("browser-log")); timing = JSON.parse(text("timing")); const candidates = [...evidenceById.values()].filter((entry) => entry.item.kind === "artifact").map((entry) => JSON.parse(entry.contents.toString("utf8"))).filter((value) => value.packedPackageSha256 !== undefined);
+    try { api = readP805Log("api-log", evidenceById); browser = readP805Log("browser-log", evidenceById); timing = JSON.parse(text("timing")); const candidates = [...evidenceById.values()].filter((entry) => entry.item.kind === "artifact").map((entry) => JSON.parse(entry.contents.toString("utf8"))).filter((value) => value.packedPackageSha256 !== undefined);
         if (candidates.length !== 1) fail(`${label} lacks exactly one packed candidate artifact`);
         artifact = candidates[0]; } catch { fail(`${label} has unparsed machine workflow evidence`); }
     if (audit.rendered.measurements.consoleExceptions !== browser.filter((event) => event.method === "Runtime.exceptionThrown").length || audit.rendered.measurements.unhandledRequestFailures !== browser.filter((event) => event.method === "Network.loadingFailed").length) fail(`${label} browser measurements differ from its captured child log`);

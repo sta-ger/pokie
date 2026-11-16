@@ -43,6 +43,11 @@ it.each(["error", "messageerror"])("V2C-22-WORKER-RETRY recovers the rendered br
     fs.writeFileSync(`${file}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
     const subtle = Reflect.getOwnPropertyDescriptor(globalThis.crypto, "subtle");
     Reflect.defineProperty(globalThis.crypto, "subtle", {configurable: true, value: webcrypto.subtle});
+    // Compile replacement fixtures before admitting any live idle-session lease.
+    const modes = createCanonicalWasmFixture({blueprint: {manifest: GAME, reels: 2, rows: 1, symbols: ["A", "B"],
+        reelStrips: [["A", "B"], ["A", "B"]], availableBets: [1], paytable: {A: {2: 0}},
+        betModes: [{id: "base", runtimeType: "base", isDefault: true}, {id: "ante", runtimeType: "ante", costMultiplier: 2}]}});
+    const replacement = createCanonicalWasmFixture({availableBets: [7.5], capabilities: ["runtime.play", "runtime.replay"]});
     const jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")));
     const recorder = new StudioRoundRecorder();
     const broker = new StudioWasmBrowserService(jobs, recorder);
@@ -135,21 +140,26 @@ it.each(["error", "messageerror"])("V2C-22-WORKER-RETRY recovers the rendered br
         expect(terminated).toBe(1);
         session.dispose();
         // V2C-22-REPLACEMENT-PLAY-SELECTION: follow Retry through actual replacement spins.
-        const modes = createCanonicalWasmFixture({blueprint: {manifest: GAME, reels: 2, rows: 1, symbols: ["A", "B"],
-            reelStrips: [["A", "B"], ["A", "B"]], availableBets: [1], paytable: {A: {2: 0}},
-            betModes: [{id: "base", runtimeType: "base", isDefault: true}, {id: "ante", runtimeType: "ante", costMultiplier: 2}]}});
         fs.writeFileSync(file, modes.bytes);
         fs.writeFileSync(`${file}.pokie-wasm.json`, JSON.stringify(modes.manifest));
         await user.click(screen.getByRole("button", {name: "Reset Play session"}));
-        await waitFor(() => expect(screen.getByRole("button", {name: "Select mode base"})).toBeVisible());
-        const replacement = createCanonicalWasmFixture({availableBets: [7.5], capabilities: ["runtime.play", "runtime.replay"]});
+        // Replacement admission verifies/initializes a real canonical artifact.
+        // Wait through the Worker's 30s request budget rather than ending this
+        // assertion at the shorter 15s ordinary DOM-poll boundary.
+        await waitFor(() => {
+            expect(jobs.list().find(job => job.request.action === "new" && job.request.artifactIdentity === modes.manifest.artifact!.sha256)).toMatchObject({status: "completed"});
+            expect(screen.getByRole("button", {name: "Select mode base"})).toBeVisible();
+            expect(screen.getByRole("button", {name: "Reset Play session"})).toBeEnabled();
+        }, {timeout: 30_000});
         fs.writeFileSync(file, replacement.bytes);
         fs.writeFileSync(`${file}.pokie-wasm.json`, JSON.stringify(replacement.manifest));
         await user.click(screen.getByRole("button", {name: "Reset Play session"}));
         await waitFor(() => {
             expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled();
             expect(screen.queryByRole("button", {name: "Select mode base"})).toBeNull();
-        });
+            expect(jobs.list().find(job => job.request.action === "new" && job.request.artifactIdentity === replacement.manifest.artifact!.sha256)).toMatchObject({status: "completed"});
+            expect(screen.getByRole("button", {name: "Reset Play session"})).toBeEnabled();
+        }, {timeout: 30_000});
         for (let round = 3; round <= 4; round++) {
             await user.click(screen.getByRole("button", {name: "Spin"}));
             await waitFor(() => expect(recorder.list()).toHaveLength(round));
@@ -169,7 +179,7 @@ it.each(["error", "messageerror"])("V2C-22-WORKER-RETRY recovers the rendered br
         else Reflect.deleteProperty(globalThis.crypto, "subtle");
     }
     expect(terminated).toBe(created);
-});
+}, 90_000);
 
 it.each([true, false])("V2C-22-BET-COMMITMENT renders the exact selection before and after ordered fractional plays with artifact.inspect=%s", async inspect => {
     const bets = [0.05, 7.5, 1e-7];

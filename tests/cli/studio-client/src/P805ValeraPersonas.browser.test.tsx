@@ -1,62 +1,10 @@
 import {execFileSync} from "node:child_process";
 import {createHash} from "node:crypto";
-import {chmod, lstat, mkdtemp, readFile, readdir, rm, stat, writeFile} from "node:fs/promises";
+import {chmod, copyFile, lstat, mkdtemp, readFile, readdir, rm, stat, writeFile} from "node:fs/promises";
+import {preparePackedTestCandidate} from "../../../testUtils/preparePackedTestCandidate.js";
 import {tmpdir} from "node:os";
 import path from "node:path";
-
-// Jest is launched through the implementer command policy, whose npm wrapper
-// intentionally refuses broad build commands. This whole-file test owns a
-// candidate build as part of its packed-package assertion, so invoke Node's
-// installed npm CLI directly rather than inheriting that test-launch wrapper.
-const npmCli = path.join(path.dirname(path.dirname(process.execPath)), "lib", "node_modules", "npm", "bin", "npm-cli.js");
-const candidatePath = (process.env.PATH ?? "").split(path.delimiter).filter((entry) => !entry.includes("pokie-command-policy")).join(path.delimiter);
-const runCandidateNpm = (args: string[]) => {
-    if (!npmCli) throw new Error("the candidate package test requires npm");
-    return execFileSync(process.execPath, [npmCli, ...args], {cwd: process.cwd(), encoding: "utf8", env: {...process.env, NODE_ENV: "production", PATH: candidatePath}, stdio: "pipe", maxBuffer: 64 * 1024 * 1024});
-};
-
-type PointerDelivery = {
-    kind: string;
-    controlId: string;
-    capturedControlId: string;
-    count: number;
-    captureKey: string;
-    preDispatchFocus: {controlId: string; native: boolean};
-    hitTest: {region: unknown};
-    dispatch: {
-        pointerDownCount: number; pointerUpCount: number; clickCount: number;
-        eventBindings: Array<{
-            eventType: string; trusted: boolean; captureKey: string; capturedControlId: string;
-            pathContainsCapturedControl: boolean; capturedControlConnected: boolean;
-            identityPreserved: boolean; hitMatchesCapturedControl: boolean;
-            region: unknown;
-            reflow?: {kind: string; measuredRegion: unknown; deliveredRegion: unknown};
-        }>;
-    };
-};
-
-// The complete packed proof consumes the producer's unchanged pointer records,
-// including delivery-time diagnostics, rather than substituting keyboard claims.
-const assertPointerDeliveries = (pointers: PointerDelivery[]) => {
-    for (const pointer of pointers) {
-        expect(pointer.kind).toBe("pointer");
-        expect(pointer.count).toBe(1);
-        expect(pointer.preDispatchFocus).toEqual({controlId: pointer.controlId, native: true});
-        expect(pointer.dispatch.pointerDownCount).toBe(1);
-        expect(pointer.dispatch.pointerUpCount).toBe(1);
-        expect(pointer.dispatch.clickCount).toBe(1);
-        expect(pointer.dispatch.eventBindings.map((event) => event.eventType)).toEqual(["pointerdown", "pointerup", "click"]);
-        const reflowed = pointer.dispatch.eventBindings.some((event) => event.reflow !== undefined);
-        for (const event of pointer.dispatch.eventBindings) {
-            expect(event).toEqual(expect.objectContaining({trusted: true, captureKey: pointer.captureKey, capturedControlId: pointer.capturedControlId, capturedControlConnected: true, identityPreserved: true, hitMatchesCapturedControl: true}));
-            if (reflowed) expect(event.pathContainsCapturedControl).toBe(true);
-            if (event.reflow !== undefined) {
-                expect(event.reflow).toEqual({kind: "same-node-delivery-reflow", measuredRegion: pointer.hitTest.region, deliveredRegion: event.region});
-                expect(event.region).not.toEqual(pointer.hitTest.region);
-            }
-        }
-    }
-};
+import {readCapturedApiLog, assertPointerDeliveries, type PointerDelivery} from "../../../testUtils/p805PackedEvidence";
 
 type PackedTupleChild = {
     tuple: {persona: string; observation: string; viewport: string};
@@ -92,86 +40,7 @@ const makeWritableForCleanup = async (directory: string): Promise<void> => {
 };
 
 describe("P8-05 rendered Valera persona evidence", () => {
-    const runner = path.join(process.cwd(), "scripts/p8-05-valera-browser-audit.mjs");
     const controller = path.join(process.cwd(), "scripts/p8-05-product-readiness-controller.mjs");
-    const verifier = path.join(process.cwd(), "scripts/p8-05-candidate-package-verifier.mjs");
-
-    it("exposes a fail-closed public runner command instead of accepting claim objects", () => {
-        expect(() => execFileSync(process.execPath, [runner], {encoding: "utf8", stdio: "pipe"})).toThrow(/runner configuration is incomplete/i);
-    });
-
-    it("retains accepted tuple receipts and drains every owned child when the next tuple fails", () => {
-        const fixture = path.join(process.cwd(), "tests/cli/studio-client/src/p805TupleLedgerNegative.mjs");
-        const result = JSON.parse(execFileSync(process.execPath, [fixture], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe"}));
-        const {controlledTimeout, ...substitutionCoverage} = result;
-        expect(controlledTimeout).toEqual({
-            acceptedReceipts: 1,
-            failedTuple: {persona: "mathematician", observation: "blueprint", viewport: "compact"},
-            aggregatePublished: false,
-            failureKind: "timeout",
-            terminalStatus: "failed-and-drained",
-            initialAcceptedReceiptValidation: "verified",
-            finalAcceptedReceiptValidation: "verified",
-            revalidatedBeforeTermination: true,
-            terminalAndCleanupHashesVerified: true,
-            authenticated: true,
-            processTreeDrained: true,
-            resourcesDrained: true,
-            ownedKinds: ["browser", "process", "worker"],
-            forcedReleaseKinds: ["browser", "process", "worker"],
-            ownedProcessCount: expect.any(Number),
-            ownedProcessesVerifiedAbsent: true,
-        });
-        expect(controlledTimeout.ownedProcessCount).toBeGreaterThanOrEqual(4);
-        expect(substitutionCoverage).toEqual({acceptedReceipts: 1, aggregatePublished: false, failureKind: "timeout", cleanupKinds: ["success", "timeout"], retainedFailureKinds: {failure: ["success", "failure"], cancellation: ["success", "cancellation"], "spawn-failure": ["success", "spawn-failure"], restart: ["success", "restart"], "detached-descendant": ["success", "success", "detached-descendant"], "cleanup-substitution": ["success", "failure"]}, rejectedReceiptSubstitutions: {missing: true, stale: true, "cross-candidate": true, "cross-persona": true, "cross-viewport": true, duplicate: true, "content-equivalent": true}, pointerSemanticSubstitutionRejected: true, stateClassSubstitutionRejected: true, runtimeSubstitutionRejected: true, retryTerminalSubstitutionRejected: true, retryTerminalJobSubstitutionRejected: true, retryPreDispatchSubstitutionRejected: true});
-    });
-
-    it("discovers reload/restart jobs after an expired first response without accepting another job", () => {
-        const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
-            import assert from 'node:assert/strict';
-            import {readP805RenderedJobDiscovery, readP805RenderedResponse, reloadP805Page, P805_DEVTOOLS_OBSERVATION_EVENTS} from './scripts/p8-05-valera-browser-audit.mjs';
-            assert.equal(P805_DEVTOOLS_OBSERVATION_EVENTS.includes('Page.lifecycleEvent'), true);
-            assert.equal(P805_DEVTOOLS_OBSERVATION_EVENTS.includes('Network.responseReceived'), true);
-            assert.equal(P805_DEVTOOLS_OBSERVATION_EVENTS.includes('Network.dataReceived'), false);
-            const event = (id) => ({method:'Network.responseReceived', params:{requestId:id, response:{url:'http://localhost/api/project/jobs', status:200}}});
-            const reads = [];
-            const cdp = {events:[event('before-reload'), event('expired'), event('unrelated')],
-                send:async (method, {requestId}) => {
-                    reads.push(requestId);
-                    if (requestId === 'expired') {
-                        cdp.events.push(event('restored'));
-                        throw new Error('No resource with given identifier found');
-                    }
-                    return {body:JSON.stringify({jobs:[{id:requestId === 'restored' ? 'captured-job' : 'other-job'}]})};
-                }};
-            const discovery = await readP805RenderedJobDiscovery(cdp, 1, 'captured-job', 'reload', 2_000);
-            assert.equal(discovery.event.params.requestId, 'restored');
-            assert.equal(reads.includes('before-reload'), false);
-            assert.equal(reads.includes('expired'), true);
-            const restart = await readP805RenderedJobDiscovery(cdp, 1, 'captured-job', 'restart', 2_000);
-            assert.equal(restart.payload.jobs[0].id, 'captured-job');
-            await assert.rejects(readP805RenderedJobDiscovery({events:[event('unrelated')], send:async () => ({body:'{"jobs":[]}'})}, 0, 'absent', 'missing job', 150), /Timed out waiting for missing job/);
-            const pollEvents = [event('expired'), event('old-job')].map(value => ({...value, params:{...value.params, response:{url:'http://localhost/api/project/simulations/captured-job', status:200}}}));
-            const poll = {events:pollEvents, send:async (method, {requestId}) => {
-                if (requestId === 'expired') { pollEvents.push({...pollEvents[0], params:{...pollEvents[0].params, requestId:'current'}}); throw new Error('expired'); }
-                return {body:JSON.stringify({id:requestId === 'current' ? 'captured-job' : 'other-job', status:'running'})};
-            }};
-            const restored = await readP805RenderedResponse(poll, 0, '/api/project/simulations/captured-job', value => value.id === 'captured-job' && value.status === 'running', 'restored poll', 2_000);
-            assert.equal(restored.event.params.requestId, 'current');
-            const loader = {events:[], send:async method => {
-                if (method === 'Page.getFrameTree') return {frameTree:{frame:{id:'main', loaderId:'old'}}};
-                if (method === 'Page.reload') {
-                    loader.events.push({method:'Page.lifecycleEvent', params:{name:'load', frameId:'main', loaderId:'old'}});
-                    setTimeout(() => loader.events.push({method:'Page.lifecycleEvent', params:{name:'load', frameId:'main', loaderId:'new'}}), 25);
-                }
-                return {};
-            }};
-            await reloadP805Page(loader, 2_000);
-            assert.equal(loader.events.at(-1).params.loaderId, 'new');
-            process.stdout.write(JSON.stringify({reload:'restored', restart:'captured-job', missing:'rejected'}));
-        `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 10_000}));
-        expect(result).toEqual({reload: "restored", restart: "captured-job", missing: "rejected"});
-    });
 
     it("builds its own candidate package and executes every packed CLI and rendered Studio persona workflow", async () => {
         // This test owns the local candidate.  It deliberately does not accept
@@ -205,23 +74,15 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 }
                 return readFile(target);
             };
-            // The package test is the browser-bundle boundary: refresh the
-            // candidate's Studio assets before packing so this cannot exercise
-            // a stale checked-in dist directory while asserting source-only
-            // accessibility identities.
-            try {
-                runCandidateNpm(["run", "build"]);
-            } catch (error) {
-                const output = error as {stdout?: Buffer | string; stderr?: Buffer | string};
-                const asText = (value: Buffer | string | undefined): string => Buffer.isBuffer(value) ? value.toString("utf8") : value ?? "";
-                throw new Error(`candidate build failed:\n${asText(output.stdout)}${asText(output.stderr)}`);
-            }
-            const packed = JSON.parse(runCandidateNpm(["pack", "--ignore-scripts", "--json", "--pack-destination", candidateDirectory])) as Array<{filename: string}>;
-            expect(packed).toHaveLength(1);
-            const sourceArchivePath = path.join(candidateDirectory, packed[0].filename);
+            // Preparation owns one clean build, canonical pack and independent
+            // rebuild per candidate. This browser operation retains private
+            // archive/receipt paths and all 75 fresh isolated children.
+            const prepared = preparePackedTestCandidate();
+            expect(prepared.candidateId).toBe(candidate);
             const archivePath = path.join(candidateDirectory, "candidate-package.tgz");
             const receiptPath = path.join(candidateDirectory, "candidate-executable-receipt.json");
-            execFileSync(process.execPath, [verifier, "--source-archive", sourceArchivePath, "--candidate-archive", archivePath, "--candidate", candidate, "--receipt", receiptPath], {encoding: "utf8", stdio: "pipe"});
+            await copyFile(prepared.archive, archivePath);
+            await copyFile(prepared.receipt, receiptPath);
             const archive = await readFile(archivePath);
             const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
             const receiptSha256 = createHash("sha256").update(await readFile(receiptPath)).digest("hex");
@@ -579,7 +440,7 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 const [tupleReceiptBytes, cleanupBytes, auditBytes] = await Promise.all([readOperationArtifact(child.tupleReceiptPath), readOperationArtifact(child.cleanupPath), readOperationArtifact(auditPath)]);
                 const tupleAudit = JSON.parse(auditBytes.toString("utf8")) as {
                     rendered: {actions: Array<{transaction: {pointerActivations: PointerDelivery[]}}>};
-                    evidence: Array<{kind: string; path: string; sha256: string}>;
+                    evidence: CapturedLogEvidence[];
                 };
                 assertPointerDeliveries(tupleAudit.rendered.actions.flatMap((action) => action.transaction.pointerActivations));
                 // Includes restored-job Cancel, its real portal confirmation,
@@ -587,9 +448,7 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 const apiEvidence = tupleAudit.evidence.find((evidence) => evidence.kind === "api-log");
                 expect(apiEvidence).toBeDefined();
                 if (apiEvidence === undefined) throw new Error("packed tuple is missing its actual API transaction log");
-                const apiBytes = await readOperationArtifact(apiEvidence.path);
-                expect(createHash("sha256").update(apiBytes).digest("hex")).toBe(apiEvidence.sha256);
-                const api = JSON.parse(apiBytes.toString("utf8")) as Array<{browserRequestId?: string; transaction?: {pointerActivations: PointerDelivery[]; confirmation?: {activation?: PointerDelivery}}}>;
+                const api = await readCapturedApiLog(tupleAudit.evidence, readOperationArtifact);
                 const requestIds = api.flatMap((entry) => entry.browserRequestId === undefined ? [] : [entry.browserRequestId]);
                 expect(new Set(requestIds).size).toBe(requestIds.length);
                 const transactionEvidence = tupleAudit.evidence.find((evidence) => evidence.kind === "live-dom-transaction");

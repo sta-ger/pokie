@@ -3,7 +3,9 @@ import {acquireOptimizationAdapter} from "../../src/optimization/internal/Projec
 import {describeUnsupportedProjectOperation} from "../../src/project/describeUnsupportedProjectOperation.js";
 import {StakeAdapterArtifactBuilder} from "../../src/project/StakeAdapterArtifactBuilder.js";
 import {loadPokieGameRuntime} from "../../src/gamepackage/loadPokieGame.js";
+import {resolvePokieGameDependencyRoots} from "../../src/gamepackage/resolvePokieGameEntryModule.js";
 import fs from "fs";
+import os from "os";
 import {execFile} from "child_process";
 import {promisify} from "util";
 import path from "path";
@@ -23,22 +25,42 @@ import {StakeEngineExporter} from "../../src/stakeengine/StakeEngineExporter.js"
 import {StakeEngineOutcomeSourceReader} from "../../src/stakeengine/standalone/StakeEngineOutcomeSourceReader.js";
 import {buildWeightedOutcomeLibrary} from "../../src/weightedoutcome/buildWeightedOutcomeLibrary.js";
 import {sourceInventory} from "../../src/optimization/internal/optimizationData.js";
+import {stageCompiledTestRuntime} from "../testUtils/stageCompiledTestRuntime.js";
+import {PACKAGE_EXTRACTION_TEST_TIMEOUT} from "./fixtures/PackageExtractionFixture.js";
 
 import {optimizationBlueprint as model, optimizationRequest, stochasticOptimizationRequest, declaredOptimizationGameCode as declaredGameCode} from "./fixtures/OptimizationFixture.js";
 let directory: string;
 let source: string;
 let service: ProjectOptimizationService;
+let previousTemporaryDirectory: string | undefined;
 const execFileAsync = promisify(execFile);
 const resolve = async (file: string) => (await new ProjectTargetResolver().resolve(file, {readConfigurationProvenance: false}))!;
 beforeEach(() => {
-    fs.mkdirSync(path.resolve("node_modules/.cache"), {recursive: true});
-    directory = fs.mkdtempSync(path.resolve("node_modules/.cache/optimization-test-"));
+    const cache = path.resolve("node_modules/.cache");
+    fs.mkdirSync(cache, {recursive: true});
+    let parent = cache;
+    // Real isolated dependency snapshots are short-lived fixtures. Keep their
+    // repeated copies off slow storage only when both memory limits and the
+    // private filesystem have ample space; other hosts use the normal cache.
+    try {
+        const available = (process as typeof process & {availableMemory?: () => number}).availableMemory?.() ?? 0;
+        const shared = fs.statfsSync("/dev/shm");
+        if (available >= 4 * 1024 ** 3 && shared.bavail * shared.bsize >= 2 * 1024 ** 3) parent = "/dev/shm";
+    } catch {
+        // Memory-backed fixtures are optional, never a platform requirement.
+    }
+    directory = fs.mkdtempSync(path.join(parent, "optimization-test-"));
+    previousTemporaryDirectory = process.env.TMPDIR;
+    process.env.TMPDIR = directory;
+    jest.spyOn(os, "tmpdir").mockReturnValue(directory);
     source = path.join(directory, "source.blueprint.json");
     fs.writeFileSync(source, JSON.stringify(model()));
     service = new ProjectOptimizationService(path.join(directory, "scratch"));
 });
 afterEach(() => {
     jest.restoreAllMocks();
+    if (previousTemporaryDirectory === undefined) Reflect.deleteProperty(process.env, "TMPDIR");
+    else process.env.TMPDIR = previousTemporaryDirectory;
     fs.rmSync(directory, {recursive: true, force: true});
 });
 
@@ -235,9 +257,10 @@ it("requires package source authority before mutation", async () => {
 
 
 function declaredPackage(name = "package", prefix = "", release = "", dependencies: Record<string, string> = {}) {
+    if (!fs.existsSync(path.join(directory, "node_modules/@fromstan/pokie/package.json"))) stageCompiledTestRuntime(directory, ["cjs"], {runtimeFilesOnly: true});
     const root = path.join(directory, name);
     fs.mkdirSync(root);
-    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({name: "tunable", version: "1.0.0", pokie: {entry: "index.cjs"}, dependencies}));
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({name: "tunable", version: "1.0.0", pokie: {entry: "index.cjs"}, dependencies: {"@fromstan/pokie": "*", ...dependencies}}));
     fs.writeFileSync(path.join(root, "parameters.json"), JSON.stringify(model()));
     const code = prefix + declaredGameCode.replace("module.exports = {", `module.exports = {${release ? `release: async () => {${release}},` : ""}`);
     fs.writeFileSync(path.join(root, "index.cjs"), code);
@@ -616,9 +639,13 @@ it("rejects coordinated package code and contract drift against original authori
 });
 
 it("retains project-local dependency identity through evaluation, independent saves and runtime loading", async () => {
+    // This scenario repeatedly loads real detached graphs. Resolve the host from
+    // immutable compiled bytes, rather than snapshotting the mutable checkout.
+    const runtimeRoot = stageCompiledTestRuntime(directory, ["cjs"], {runtimeFilesOnly: true});
     const loads = path.join(directory, "dependency-loads");
     const name = "optimization-local-dependency";
-    const {root} = declaredPackage("local-dependency", `const d = require('${name}'); if (d.value !== 42) throw Error('wrong dependency'); require('fs').appendFileSync(${JSON.stringify(loads)}, require.resolve('${name}') + '\\n');\n`, "", {[name]: "1.0.0"});
+    const dependencies = {"@fromstan/pokie": "*", [name]: "1.0.0"};
+    const {root} = declaredPackage("local-dependency", `const d = require('${name}'); if (d.value !== 42) throw Error('wrong dependency'); require('fs').appendFileSync(${JSON.stringify(loads)}, require.resolve('${name}') + '\\n');\n`, "", dependencies);
     const dependency = path.join(root, "node_modules", name);
     fs.mkdirSync(dependency, {recursive: true});
     fs.writeFileSync(path.join(dependency, "package.json"), JSON.stringify({name, version: "1.0.0", main: "index.cjs"}));
@@ -628,12 +655,13 @@ it("retains project-local dependency identity through evaluation, independent sa
     fs.writeFileSync(path.join(root, "src", "authored.ts"), "// Authored source, compiled into dist/index.cjs.\n");
     fs.writeFileSync(path.join(root, "dist", "index.cjs"), fs.readFileSync(path.join(root, "index.cjs"), "utf8").replace("'./parameters.json'", "'../parameters.json'"));
     fs.rmSync(path.join(root, "index.cjs"));
-    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({name: "tunable", version: "1.0.0", pokie: {entry: "dist/index.cjs"}, dependencies: {[name]: "1.0.0"}}));
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({name: "tunable", version: "1.0.0", pokie: {entry: "dist/index.cjs"}, dependencies}));
     fs.utimesSync(path.join(root, "src", "authored.ts"), new Date("2000-01-01"), new Date("2000-01-01"));
     fs.utimesSync(path.join(root, "dist", "index.cjs"), new Date("2001-01-01"), new Date("2001-01-01"));
     fs.rmSync(path.join(root, "pokie-tuning.json"));
     declarePackageTuning(root, "parameters.json", ["/paytable/A/2"]);
     const request = optimizationRequest();
+    expect(await resolvePokieGameDependencyRoots(root)).toEqual({"@fromstan/pokie": runtimeRoot, [name]: dependency});
     const result = await service.optimize(await resolve(root), request);
     expect(result.diagnostics).toEqual([]);
     expect(result.status).toBe("success");
@@ -663,7 +691,7 @@ it("retains project-local dependency identity through evaluation, independent sa
     expect(loadedPaths.every(file => !fs.existsSync(file))).toBe(true);
     fs.appendFileSync(path.join(saved, "dist", "index.cjs"), "\n// independently edited");
     expect(fs.readFileSync(path.join(second, "dist", "index.cjs"), "utf8")).not.toContain("independently edited");
-});
+}, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
 it("rolls back publication when the saved executable cannot load", async () => {
     const rejectLoad = path.join(directory, "reject-load");
@@ -1098,7 +1126,7 @@ it.each(["changed", "missing", "transitive"])("rejects %s executable dependencie
     expect(fs.existsSync(`${output}.optimization.json`)).toBe(false);
     expect(sourceInventory(project)).toEqual(before);
     await service.discard(result.candidate!);
-}, 60000);
+}, 180000);
 
 // This includes package search, held-out assessment and publication-time runtime
 // loading. Match the whole-scenario budget of the sampled package adapter above.
@@ -1162,29 +1190,24 @@ it.each([["cjs", false], ["cjs", true], ["esm", false], ["esm", true]] as const)
         const before = sourceInventory(project);
         const request = stochasticOptimizationRequest();
         request.policy.tunables[0].values = [3];
-        // The gate can build checkout dist concurrently. Bind this native host to
-        // immutable fixture-owned source bytes so real dependency fingerprints do
-        // not mistake another suite's compiler output for executable drift.
-        const runtimeRoot = path.join(directory, "host-runtime");
-        fs.mkdirSync(runtimeRoot);
-        fs.copyFileSync(path.resolve("package.json"), path.join(runtimeRoot, "package.json"));
-        fs.cpSync(path.resolve("src"), path.join(runtimeRoot, "src"), {recursive: true});
+        // Use the fixture's source-bound compiled installation through normal
+        // public Node resolution. Checkout dist may be rebuilt by another gate;
+        // copying and transpiling the complete SDK in every native process is
+        // unnecessary for these JavaScript-only executable-drift scenarios.
+        const runtimeRoot = path.join(directory, "node_modules/@fromstan/pokie");
         const temporaryRoot = path.join(directory, "native-tmp");
         fs.mkdirSync(temporaryRoot);
         const script = path.join(directory, "native-optimization.cjs");
         // Execute the public service in an ordinary long-lived Node host, then compare
         // its rerun to a separate fresh process. ts-jest cannot require native ESM.
-        fs.writeFileSync(script, `const fs = require('fs'); const Module = require('module'); const ts = require(${JSON.stringify(require.resolve("typescript"))});
-const original = Module._resolveFilename;
-Module._resolveFilename = function(request, ...rest) { if (request === '@fromstan/pokie') return ${JSON.stringify(path.join(runtimeRoot, "src/index.ts"))}; try { return original.call(this, request, ...rest); } catch (error) { if (request.endsWith('.js')) return original.call(this, request.slice(0, -3) + '.ts', ...rest); throw error; } };
-Module._extensions['.ts'] = (module, file) => module._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true}}).outputText, file);
+        fs.writeFileSync(script, `const fs = require('fs');
 const assert = require('node:assert/strict');
+assert.equal(require.resolve('@fromstan/pokie'), ${JSON.stringify(path.join(runtimeRoot, "dist/cjs/index.js"))});
 const root = ${JSON.stringify(root)}, leaf = ${JSON.stringify(leafFile)}, request = ${JSON.stringify(request)};
 const select = result => ({status: result.status, diagnostics: result.diagnostics, evidence: result.evidence});
 const write = multiplier => fs.writeFileSync(leaf, ${JSON.stringify(format === "cjs" ? "module.exports = " : "export default ")} + multiplier + ';');
 (async () => {
- const {ProjectOptimizationService} = require(${JSON.stringify(path.join(runtimeRoot, "src/optimization/ProjectOptimizationService.ts"))});
- const {ProjectTargetResolver} = require(${JSON.stringify(path.join(runtimeRoot, "src/project/ProjectTargetResolver.ts"))});
+ const {ProjectOptimizationService, ProjectTargetResolver, ParallelSimulationRunner} = require('@fromstan/pokie');
  const service = new ProjectOptimizationService(${JSON.stringify(path.join(directory, "native-scratch"))} + (process.argv[2] === 'fresh' ? '-fresh' : ''));
  const project = await new ProjectTargetResolver().resolve(root, {readConfigurationProvenance: false});
  if (process.argv[2] === 'fresh') {
@@ -1203,7 +1226,6 @@ const write = multiplier => fs.writeFileSync(leaf, ${JSON.stringify(format === "
  const freshOutput = await require('util').promisify(require('child_process').execFile)(process.execPath, [__filename, 'fresh'], {encoding: 'utf8', timeout: 120000});
  const fresh = JSON.parse(freshOutput.stdout);
  assert.deepEqual(select(changed), fresh);
- const {ParallelSimulationRunner} = require(${JSON.stringify(path.join(runtimeRoot, "src/simulation/parallel/ParallelSimulationRunner.ts"))});
  const run = ParallelSimulationRunner.prototype.run; let samples = 0;
  ParallelSimulationRunner.prototype.run = function(...args) { samples++; return Reflect.apply(run, this, args); };
  await service.publish(changed.candidate, request, ${JSON.stringify(path.join(directory, "current-output"))});
@@ -1268,7 +1290,7 @@ it.each(["blueprint", "parWorkbook", "wasm", "tsPackage"] as const)("V35 optimiz
     expect(await measure()).toEqual([0.5]);
     expect(await measure()).toEqual([0.5]);
     expect(sourceInventory(project)).toEqual(before);
-}, 60000);
+}, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
 it("V35 optimizer progress observations cannot mutate execution authority and failures permit first/subsequent reuse", async () => {
     const project = await resolve(source);

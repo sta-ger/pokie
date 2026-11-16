@@ -319,6 +319,15 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             }
         }
         expect(planner.plan(project("wasm"), "outcomeLibrary")).toMatchObject({status: "unavailable", diagnostic: {code: "unsupported-boundary"}});
+        // These model-extraction edges were added after the frozen PC-14 run.
+        for (const target of ["blueprint", "tsPackage", "parWorkbook", "wasm"] as const) {
+            const plan = planner.plan(project("tsPackage"), target);
+            expect(plan.status).toBe("planned");
+            expect(plan.steps.map((step) => step.kind)).toEqual(target === "blueprint" ? ["extractPackageModel"] : ["extractPackageModel", "publish"]);
+            expect(planner.plan({...project("tsPackage"), capabilities: []}, target)).toMatchObject({
+                status: "unavailable", diagnostic: {code: "missing-capability"},
+            });
+        }
     });
 
     it("preserves the complete immutable planner audit from its real produced or imported sources", () => {
@@ -326,19 +335,47 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             const runnerPath = path.join(path.dirname(evidencePath), input.file);
             return (JSON.parse(fs.readFileSync(runnerPath, "utf-8")) as InteroperabilityResult)["planner_cells"] ?? [];
         });
-        const auditedSources = [...new Set(cells.map((cell) => cell["source_type"]))];
-        const auditedTargets = [...new Set(cells.map((cell) => cell.target))];
+        const auditedSources = ["blueprint", "outcomeLibrary", "parWorkbook", "stakeAdapter", "tsPackage", "wasm"] as const;
+        const auditedTargets = ["blueprint", "outcomeLibrary", "parWorkbook", "stakeAdapter", "tsPackage"] as const;
+        const archivedPlannedTargets: Readonly<Record<PokieProject["type"], readonly ArtifactTargetType[]>> = {
+            blueprint: ["outcomeLibrary", "parWorkbook", "stakeAdapter", "tsPackage"],
+            outcomeLibrary: ["outcomeLibrary", "stakeAdapter"],
+            parWorkbook: auditedTargets,
+            stakeAdapter: ["stakeAdapter"],
+            tsPackage: ["outcomeLibrary", "stakeAdapter"],
+            wasm: [],
+        };
         expect(cells).toHaveLength(auditedSources.length * auditedTargets.length);
-        // PC-14 is immutable historical evidence from before canonical WASM was added as a build product.
-        // Validate every recorded source/target cell against its still-supported planner contract without
-        // pretending the saved audit exercised a later target.
+        const matrixRows = result.rows.filter((row) => row.id.startsWith("matrix-"));
+        expect(matrixRows).toHaveLength(cells.length);
+        // Freeze the historical matrix, including unavailable package-model edges and the absent WASM
+        // target. Today's planner cannot establish what PC-14 observed. Bind every cell to the real
+        // emitted execution/diagnostic instead; the archive integrity checks above pin its exact bytes.
         for (const source of auditedSources) {
             for (const target of auditedTargets) {
                 const cell = cells.find((candidate) => candidate["source_type"] === source && candidate.target === target);
-                expect(cell).toMatchObject({"source_path": expect.stringMatching(/^run-artifacts\//), "source_identity": expect.stringMatching(/^sha256:/)});
-                const plan = new ArtifactConversionPlanner().plan(project(source), target);
-                expect(cell?.status).toBe(plan.status);
-                if (plan.status !== "planned") expect(cell?.diagnostic).toMatchObject({code: plan.diagnostic?.code, recovery: plan.diagnostic?.recovery});
+                const planned = archivedPlannedTargets[source].includes(target);
+                expect(cell).toMatchObject({
+                    "source_path": expect.stringMatching(/^run-artifacts\//), "source_identity": expect.stringMatching(/^sha256:/),
+                    status: planned ? "planned" : "unavailable",
+                });
+                const row = matrixRows.find((candidate) => candidate.id === `matrix-${source}-${target}-build`);
+                expect(row).toMatchObject({
+                    "artifact_kind": source, operation: `build:${target}`,
+                    "source_path": cell?.source_path, "source_identity": cell?.source_identity,
+                    status: planned ? "supported" : "intentionally-unsupported",
+                    "operation_owner": planned ? "ArtifactBuilderRegistry.executePlan" : "ArtifactBuilderRegistry.preparePlan",
+                });
+                if (planned) {
+                    expect(cell).not.toHaveProperty("diagnostic");
+                    expect(row).not.toHaveProperty("diagnostic");
+                    expect(row?.produced_path).toMatch(/^run-artifacts\/matrix-edge-/);
+                    expect(row?.produced_identity).toMatch(/^sha256:/);
+                } else {
+                    expect(cell?.diagnostic).toMatchObject({code: expect.stringMatching(/^(?:missing-data|unsupported-boundary)$/), recovery: expect.any(String)});
+                    expect(cell?.diagnostic).toEqual(row?.diagnostic);
+                    expect(row).toMatchObject({"produced_path": null, "produced_identity": null});
+                }
             }
         }
         for (const audit of result.systemic_class_audits) {

@@ -70,6 +70,8 @@ export const PACKAGE_ONLY_COMMAND_INPUTS: PackageOnlyCommandInput[] = [
 
     {command: "inspect", verb: undefined, requiresLoadablePackage: true, primaryInput: "packageRoot"},
 
+    {command: "optimize", verb: undefined, requiresLoadablePackage: false, primaryInput: "project (a supported Blueprint, PAR, WASM or declared package)"},
+
     // --- par: a source workbook / a blueprint config -- never a package. ---
     {command: "par", verb: "import", requiresLoadablePackage: false, primaryInput: "input.xlsx (a PAR sheet workbook)"},
     {command: "par", verb: "export", requiresLoadablePackage: false, primaryInput: "config.json (a GameBlueprint)"},

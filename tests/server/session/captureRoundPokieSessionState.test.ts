@@ -30,16 +30,12 @@ function createFakeSession(): GameSessionHandling {
     };
 }
 
+const winningScreen = [["A", "A", "A"], ["A", "K", "Q"], ["A", "K", "Q"], ["K", "Q", "J"], ["Q", "J", "10"]];
+
 function winEvaluationResultWithWin(): WinEvaluationResult<string> {
     const config = new VideoSlotConfig();
     const winCalculator = new VideoSlotWinCalculator(config);
-    const symbols = new SymbolsCombination<string>().fromMatrix([
-        ["A", "A", "A"],
-        ["A", "K", "Q"],
-        ["A", "K", "Q"],
-        ["K", "Q", "J"],
-        ["Q", "J", "10"],
-    ]);
+    const symbols = new SymbolsCombination<string>().fromMatrix(winningScreen);
     winCalculator.calculateWin(config.getAvailableBets()[0], symbols);
     return winCalculator.getWinEvaluationResult();
 }
@@ -49,7 +45,7 @@ function winEvaluationResultWithWin(): WinEvaluationResult<string> {
 // getWinEvaluationResult) buildRoundArtifactFromSession requires — the "full" capture-policy tests
 // below need a session real enough to build a genuine RoundArtifact from, not just a placeholder.
 function createFakeVideoSlotSession(): GameSessionHandling & VideoSlotSessionHandling<string> {
-    const screen = [["A", "A", "A"]];
+    const screen = winningScreen;
     return {
         ...createFakeSession(),
         getBet: () => 5,
@@ -237,7 +233,7 @@ describe("captureRoundPokieSessionState", () => {
             expect(artifact!.roundId).toBe("round-1");
             expect(artifact!.provenance).toEqual(provenance);
             expect(artifact!.stake).toBe(5);
-            expect(artifact!.screen).toEqual([["A", "A", "A"]]);
+            expect(artifact!.screen).toEqual(winningScreen);
             expect(artifact!.steps).toHaveLength(1);
             expect(artifact!.wins.length).toBeGreaterThan(0);
             expect(artifact!.totalWin).toBeGreaterThan(0);
@@ -264,7 +260,7 @@ describe("captureRoundPokieSessionState", () => {
             expect(debug.command).toBe("spin");
             expect(debug.credits).toBe(995);
             expect(debug.stateBefore).toEqual({bet: 5, win: 0, screen: [["seed"]]});
-            expect(debug.stateAfter).toEqual({bet: 5, win: 100, screen: [["A", "A", "A"]]});
+            expect(debug.stateAfter).toEqual({bet: 5, win: 100, screen: winningScreen});
             expect(debug.debugPayloads).toEqual({rngSeed: "seed-round"});
         });
 

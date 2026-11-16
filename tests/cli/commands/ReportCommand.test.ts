@@ -6,6 +6,8 @@ import {
     OutcomeLibraryBundleWriter,
     OutcomeSourceProjectAnalyzing,
     OutcomeSourceProjectReport,
+    loadPokieGame,
+    ParallelSimulationRunner,
     PokieProject,
     PROJECT_TYPE_CAPABILITIES,
     ProjectResolving,
@@ -22,6 +24,7 @@ import path from "path";
 import zlib from "zlib";
 import {ReportCommand} from "../../../cli/commands/ReportCommand.js";
 import {SimCommand} from "../../../cli/commands/SimCommand.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../../v2/fixtures/PackageExtractionFixture.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 const report: SimulationReport = {
@@ -61,6 +64,54 @@ function createStubReadFile(files: Record<string, string>): (file: string) => st
         }
         return files[file];
     };
+}
+
+async function simulateReport(fixtureRoot: string, rounds: number, output: string): Promise<void> {
+    const started = performance.now();
+    const phases: Array<{phase: string; elapsedMs: number}> = [];
+    const record = (phase: string): void => {
+        phases.push({phase, elapsedMs: Math.round(performance.now() - started)});
+    };
+    let loads = 0;
+    const command = new SimCommand(async root => {
+        const load = ++loads;
+        record(`load-${load}-start`);
+        const game = await loadPokieGame(root);
+        record(`load-${load}-end`);
+        return game;
+    }, undefined, undefined, undefined, (root, count, options) => new ParallelSimulationRunner(root, count, {
+        ...options, onPhase: record,
+    }));
+    try {
+        await command.run([fixtureRoot, "--rounds", String(rounds), "--seed", "demo", "--out", output]);
+        record("command-completed");
+        expect(loads).toBe(2); // Metadata and execution each own a real loader lease.
+    } finally {
+        console.info(`Report simulation phases (${path.basename(fixtureRoot)}): ${JSON.stringify(phases)}`);
+    }
+}
+
+function useReportSimulationFixture(name: string): () => string {
+    let root: string;
+    let restoreRuntimeEnvironment: (() => void) | undefined;
+    beforeAll(() => {
+        // These consumers execute real JS but do not compile a public package.
+        // Declare the staged runtime so neither loader lease copies the checkout.
+        restoreRuntimeEnvironment = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
+        root = path.join(os.tmpdir(), name);
+        fs.cpSync(path.join(__dirname, "..", "fixtures", name), root, {
+            recursive: true,
+            filter: source => !["node_modules", ".pokie-runtime-cache"].includes(path.basename(source)),
+        });
+        const manifest = path.join(root, "package.json");
+        fs.writeFileSync(manifest, JSON.stringify({...JSON.parse(fs.readFileSync(manifest, "utf8")), dependencies: {"@fromstan/pokie": "*"}}));
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+    afterEach(() => {
+        // Check the leases before deleting storage; deletion cannot prove release.
+        expect(fs.readdirSync(os.tmpdir()).filter(entry => entry.startsWith("pokie-runtime-"))).toEqual([]);
+    });
+    afterAll(() => restoreRuntimeEnvironment?.());
+    return () => root;
 }
 
 // This fixture intentionally does not use StakeEngineExporter: report must accept the public Stake outcome
@@ -816,7 +867,7 @@ describe("ReportCommand (SimulationReportSet -- pokie sim --mode all output)", (
 });
 
 describe("ReportCommand (integration, real pokie sim output)", () => {
-    const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game");
+    const fixtureRoot = useReportSimulationFixture("playable-game");
     let outDir: string;
 
     beforeEach(() => {
@@ -831,7 +882,7 @@ describe("ReportCommand (integration, real pokie sim output)", () => {
 
     it("accepts a report produced by pokie sim --out and renders it as Markdown and HTML", async () => {
         const simReportFile = path.join(outDir, "sim.json");
-        await new SimCommand().run([fixtureRoot, "--rounds", "100", "--seed", "demo", "--out", simReportFile]);
+        await simulateReport(fixtureRoot(), 100, simReportFile);
 
         const markdownOut = path.join(outDir, "report.md");
         const htmlOut = path.join(outDir, "report.html");
@@ -844,11 +895,11 @@ describe("ReportCommand (integration, real pokie sim output)", () => {
         expect(markdown).toContain("**Actual rounds**: 100");
         expect(html).toContain("<h1>Simulation Report: Playable Game</h1>");
         expect(html).toContain("<td>100</td>");
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 });
 
 describe("ReportCommand (integration, base vs. freeGames breakdown from a real free-games game)", () => {
-    const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game-with-free-games");
+    const fixtureRoot = useReportSimulationFixture("playable-game-with-free-games");
     let outDir: string;
 
     beforeEach(() => {
@@ -863,12 +914,22 @@ describe("ReportCommand (integration, base vs. freeGames breakdown from a real f
 
     it("renders a Breakdown section with both base and freeGames rows for a game with a free-games feature", async () => {
         const simReportFile = path.join(outDir, "sim.json");
-        await new SimCommand().run([fixtureRoot, "--rounds", "5000", "--seed", "demo", "--out", simReportFile]);
+        // The PC-12 fixture has deterministic featured rounds. A rendering test
+        // needs both categories, not 5,000 costly rounds of distribution sampling.
+        await simulateReport(fixtureRoot(), 100, simReportFile);
 
         const simReport = JSON.parse(fs.readFileSync(simReportFile, "utf-8")) as SimulationReport;
+        expect(simReport.requestedRounds).toBe(100);
+        // --rounds budgets subrounds; the fixture completes 25 logical rounds.
+        expect(simReport.rounds).toBe(25);
+        expect(simReport.sampling?.acceptedSubrounds).toBe(100);
         expect(simReport.breakdown).toBeDefined();
-        expect(simReport.breakdown!.components.base.rounds).toBeGreaterThan(0);
-        expect(simReport.breakdown!.components.freeGames.rounds).toBeGreaterThan(0);
+        const {base, freeGames} = simReport.breakdown!.components;
+        expect(base.rounds).toBeGreaterThan(0);
+        expect(freeGames.rounds).toBeGreaterThan(0);
+        expect(base.rounds + freeGames.rounds).toBe(simReport.sampling?.acceptedSubrounds ?? simReport.rounds);
+        expect(base.totalBet + freeGames.totalBet).toBeCloseTo(simReport.totalBet, 10);
+        expect(base.totalWin + freeGames.totalWin).toBeCloseTo(simReport.totalWin, 10);
 
         const markdownOut = path.join(outDir, "report.md");
         await new ReportCommand().run([simReportFile, "--out", markdownOut]);
@@ -877,7 +938,7 @@ describe("ReportCommand (integration, base vs. freeGames breakdown from a real f
         expect(markdown).toContain("## Breakdown");
         expect(markdown).toContain("| base |");
         expect(markdown).toContain("| freeGames |");
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 });
 
 it("exposes rare Stake metrics in canonical JSON and truthful Markdown/HTML stdout and files", async () => {

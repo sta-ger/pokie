@@ -13,7 +13,8 @@ export type LogicalSubround = {
     readonly command: SessionCommand;
     readonly stake: number;
     readonly win: number;
-    /** Actual wallet award, including a released free-game bank; never added to win. */
+    /** Signed settlement after the declared stake, including released banks and custom
+     * adjustments; never added to mathematical win. */
     readonly payout: number;
     readonly credits: number;
     readonly screen?: unknown[][];
@@ -38,6 +39,7 @@ export type LogicalRound = {
     readonly status: "pending" | "completed" | "exhausted";
     readonly totalStake: number;
     readonly totalWin: number;
+    /** Sum of signed subround settlements. Mathematical wins remain non-negative. */
     readonly totalPayout: number;
     readonly subrounds: readonly LogicalSubround[];
 };
@@ -61,7 +63,7 @@ function validateLogicalRoundStructure(value: unknown): string | undefined {
     if (!round || typeof round !== "object" || typeof round.id !== "string" || !round.id ||
         !Number.isSafeInteger(round.deliveryCursor) || round.deliveryCursor < 1 || !Number.isSafeInteger(round.stageCursor) || round.stageCursor < 0 || !Number.isSafeInteger(round.cursor) || round.cursor < 1 || !Array.isArray(round.subrounds) || round.subrounds.length !== round.cursor ||
         !["pending", "completed", "exhausted"].includes(round.mathematicalStatus) || !["pending", "completed", "exhausted"].includes(round.status) || !Number.isFinite(round.bet) || round.bet <= 0 ||
-        ![round.totalStake, round.totalWin, round.totalPayout].every(n => Number.isFinite(n) && n >= 0)) return "Invalid logical-round cursor/accounting.";
+        (![round.totalStake, round.totalWin].every(n => Number.isFinite(n) && n >= 0) || !Number.isFinite(round.totalPayout))) return "Invalid logical-round cursor/accounting.";
     if (validateSessionCommand(round.entry) || round.entry.roundId !== round.id || round.entry.continuation || round.entry.delivery === undefined) return "Invalid retained entry command.";
     if ((round.entry.bet !== undefined && round.entry.bet !== round.bet) || (round.entry.mode !== undefined && round.entry.mode !== round.mode) ||
         (round.mode !== undefined && (typeof round.mode !== "string" || !round.mode))) return "Retained entry selection differs from logical selection.";
@@ -73,7 +75,7 @@ function validateLogicalRoundStructure(value: unknown): string | undefined {
             (index === 0 ? JSON.stringify(step.command) !== JSON.stringify(round.entry) :
                 command.continuation?.roundId !== round.id || command.continuation.cursor !== priorCursor)) return "Foreign or inconsistent retained subround command.";
         if (validateSessionCommand(step.command) || step.index !== index || step.id !== `${round.id}:${index}` ||
-            ![step.stake, step.win, step.payout, step.credits].every(n => Number.isFinite(n) && n >= 0) ||
+            (![step.stake, step.win, step.credits].every(n => Number.isFinite(n) && n >= 0) || !Number.isFinite(step.payout)) ||
             (index > 0 && step.stake !== 0)) return "Invalid logical subround.";
         if (step.finalScreen !== undefined && (!validScreen(step.finalScreen) || index !== round.cursor - 1 || round.mathematicalStatus !== "exhausted")) return "Invalid exhausted final screen.";
         if (step.screen !== undefined && !validScreen(step.screen)) return "Invalid retained subround screen.";
@@ -126,8 +128,8 @@ function validateCompactLogicalRound(round: LogicalRound): string | undefined {
     const last = round.subrounds?.[0];
     if (!last || round.subrounds.length !== 1 || !Number.isSafeInteger(round.cursor) || round.cursor < 1 ||
         round.cursor > round.deliveryCursor || round.deliveryCursor > 10000 || last.index !== round.cursor - 1 || last.id !== `${round.id}:${last.index}` ||
-        ![round.totalStake, round.totalWin, round.totalPayout].every(n => Number.isFinite(n) && n >= 0) ||
-        round.totalStake < last.stake || round.totalWin < last.win || round.totalPayout < last.payout ||
+        (![round.totalStake, round.totalWin].every(n => Number.isFinite(n) && n >= 0) || !Number.isFinite(round.totalPayout)) ||
+        round.totalStake < last.stake || round.totalWin < last.win ||
         (round.cursor > 1 && (last.stake !== 0 || last.command.continuation?.roundId !== round.id ||
             last.command.continuation.cursor !== round.deliveryCursor - Math.max(1, round.stageCursor)))) return "Invalid compact logical progress.";
     if (round.cursor === 1 && (round.totalStake !== last.stake || round.totalWin !== last.win || round.totalPayout !== last.payout || JSON.stringify(last.command) !== JSON.stringify(round.entry))) return "Compact entry totals differ.";

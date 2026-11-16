@@ -16,6 +16,7 @@ import {auditCascadeGame} from "./fixtures/AuditCascadeGame.js";
 import {emitPublicRuntime} from "./helpers/publicRuntime.js";
 import {setTransactionBoundaryHook} from "../../src/server/storage/internal/transactionBoundary.js";
 import {validateOperationRecord, validateRetryResult} from "../../src/runtime/internal/validateRecoveryData.js";
+import {legacyFractionalGame} from "./fixtures/LegacyFractionalGame.js";
 
 const feature: api.GameBlueprint = {
     manifest: {id: "audit-feature", name: "Audit feature", version: "1"}, reels: 3, rows: 1,
@@ -45,7 +46,7 @@ describe("canonical audited logical-round replay", () => {
     let runtime: ReturnType<typeof emitPublicRuntime>;
     beforeAll(() => {
         runtime = emitPublicRuntime();
-        for (const name of ["AuditCascadeGame", "AuditRoundReplayProcess"]) {
+        for (const name of ["AuditCascadeGame", "AuditRoundReplayProcess", "LegacyFractionalGame"]) {
             const source = fs.readFileSync(path.join(process.cwd(), `tests/v2/fixtures/${name}.ts`), "utf-8");
             for (const extension of ["mjs", "cjs"]) {
                 fs.writeFileSync(path.join(runtime.directory, `${name}.${extension}`), ts.transpileModule(source, {
@@ -56,6 +57,113 @@ describe("canonical audited logical-round replay", () => {
         }
     }, 60000);
     afterAll(() => runtime?.dispose());
+
+    it.each(["accepted-boundary", "command"] as const)("preserves legacy fractional and signed balance-delta settlement through %s replay", execution => {
+        for (const [adjustment, credits] of [[0.1, 1], [-0.1, 2]]) {
+            const game = legacyFractionalGame(adjustment, credits),
+                session = game.createSession(),
+                probe = game.createSession(),
+                recorder = new api.ReplayRecorder();
+            expect((session as Partial<api.PayoutAmountDetermining>).getPayoutAmount).toBeUndefined();
+            probe.play();
+            const walletPayout = probe.getCreditsAmount() - credits + 1;
+            if (credits === 1) expect(walletPayout).toBe(0.09999999999999998);
+            else expect(walletPayout).toBe(-0.10000000000000009);
+            const descriptor = recorder.recordAudit(game, session, [{kind: "spin"}], {...detached, walletPayout, walletCredits: probe.getCreditsAmount()});
+            const audit = rehash({...descriptor.audit!, deliveries: descriptor.audit!.deliveries.map(delivery => ({...delivery, execution}))});
+            expect(session.getCreditsAmount()).toBe(probe.getCreditsAmount());
+            expect(audit.deliveries[0]).toMatchObject({before: {credits, bet: 1}, after: {credits: probe.getCreditsAmount()}, disposition: {walletPayout}});
+            expect(audit.deliveries[0].result).not.toHaveProperty("payout");
+            expect(audit.deliveries[0].result).not.toHaveProperty("logicalRound");
+            expect(() => api.validateAuditReplayDescriptor({...descriptor, audit}, game)).not.toThrow();
+            expect(new api.AuditRoundReplay().replay(game, JSON.parse(JSON.stringify(audit))).verification).toBe("verified");
+            expect(recorder.replay(game, audit).auditStatus).toBe("verified");
+            const withoutSettlement = rehash({...audit, deliveries: audit.deliveries.map(delivery => ({...delivery, disposition: detached}))});
+            expect(new api.AuditRoundReplay().replay(game, withoutSettlement).verification).toBe("verified");
+            expect(session.getCreditsAmount()).toBe(probe.getCreditsAmount());
+            recorder.releaseAuditSession(session);
+        }
+    });
+
+    it.each(["rounded", "zero", "nearby", "coordinated"])("rejects %s legacy fractional settlement tampering and reuses the public validators/replayer", mutation => {
+        const game = legacyFractionalGame(),
+            session = game.createSession(),
+            recorder = new api.ReplayRecorder(),
+            replay = new api.AuditRoundReplay();
+        const previousState = api.captureInitialPokieSessionState(undefined, session, undefined, false, game);
+        const descriptor = recorder.recordAudit(game, session, [{kind: "spin"}], {...detached, requestId: "legacy", walletPayout: 0.1 - 1 + 1, walletCredits: 0.1});
+        const state = api.captureInitialPokieSessionState(undefined, session, undefined, false, game);
+        const original = descriptor.audit!;
+        expect(replay.replay(game, original).verification).toBe("verified");
+        let payout = 0;
+        if (mutation === "rounded") payout = 0.1;
+        if (mutation === "nearby") payout = 0.1 - 1 + 1 + Number.EPSILON;
+        const corrupt = rehash({...original, deliveries: original.deliveries.map(delivery => ({...delivery,
+            disposition: {...delivery.disposition, walletPayout: payout, ...(mutation === "coordinated" ? {walletCredits: 0} : {})},
+            ...(mutation === "coordinated" ? {after: {...delivery.after, credits: 0}, result: {...delivery.result, credits: 0, win: 0}} : {})}))});
+        const structurallyValid = mutation === "rounded" || mutation === "coordinated";
+        const validate = [() => api.validateAuditRoundRecording(corrupt, game),
+            () => api.validateAuditReplayDescriptor({...descriptor, audit: corrupt, ...(mutation === "coordinated" ? {credits: 0, totalWin: 0} : {})}, game),
+            () => recorder.describeAudit(corrupt)];
+        for (const check of validate) {
+            if (structurallyValid) expect(check).not.toThrow();
+            else expect(check).toThrow("audit-state at deliveries[0].disposition.walletPayout");
+        }
+        const code = structurallyValid ? "audit-execution-mismatch" : "audit-state";
+        const retained = {sessionId: detached.sessionId, requestId: "legacy", previousState, state,
+            ...original.deliveries[0].result, audit: original};
+        expect(validateRetryResult(retained, game, detached.sessionId, "legacy")).toBeUndefined();
+        const recovered = validateRetryResult({...retained, audit: corrupt,
+            ...(mutation === "coordinated" ? {win: 0, credits: 0, state: {...state, win: 0, credits: 0}} : {})}, game, detached.sessionId, "legacy");
+        // Recovery shares structural validation; it does not replace offline reproduction.
+        if (structurallyValid) expect(recovered).toBeUndefined();
+        else expect(recovered).toMatchObject({status: "corrupt-state", reason: expect.stringContaining("audit-state at deliveries[0].disposition.walletPayout")});
+        expect(() => replay.replay(game, corrupt)).toThrow(`${code} at deliveries[0].disposition.walletPayout`);
+        expect(() => recorder.replay(game, corrupt)).toThrow(`${code} at deliveries[0].disposition.walletPayout`);
+        for (let retry = 0; retry < 2; retry++) {
+            expect(() => api.validateAuditReplayDescriptor(descriptor, game)).not.toThrow();
+            expect(validateRetryResult(retained, game, detached.sessionId, "legacy")).toBeUndefined();
+            expect(replay.replay(game, original).verification).toBe("verified");
+            expect(recorder.replay(game, original).auditStatus).toBe("verified");
+        }
+        expect(session.getCreditsAmount()).toBe(0.1);
+        expect(api.captureAuditBoundary(session).state).toEqual({rounds: 1});
+        recorder.releaseAuditSession(session);
+    });
+
+    it.each(["mjs", "cjs"])("records and replays legacy fractional money through a native %s public consumer", extension => {
+        const file = path.join(runtime.directory, `legacy-fractional-consumer.${extension}`);
+        const imports = extension === "mjs"
+            ? `import {ReplayRecorder, AuditRoundReplay} from "@fromstan/pokie"; import {legacyFractionalGame} from "./LegacyFractionalGame.mjs";`
+            : `const {ReplayRecorder, AuditRoundReplay} = require("@fromstan/pokie"); const {legacyFractionalGame} = require("./LegacyFractionalGame.cjs");`;
+        fs.writeFileSync(file, `${imports}
+const game = legacyFractionalGame(), session = game.createSession();
+const descriptor = new ReplayRecorder().recordAudit(game, session, [{kind: "spin"}], {status: "calculated", sessionId: "native", durability: "detached", walletPayout: 0.1 - 1 + 1});
+console.log(JSON.stringify({verification: new AuditRoundReplay().replay(game, JSON.parse(JSON.stringify(descriptor.audit))).verification, credits: session.getCreditsAmount(), payout: descriptor.audit.deliveries[0].disposition.walletPayout}));
+`);
+        expect(JSON.parse(execFileSync(process.execPath, [file], {encoding: "utf8", timeout: 10000}))).toEqual({verification: "verified", credits: 0.1, payout: 0.09999999999999998});
+    });
+
+    it.each([0, 0.1, 1e-20])("retains exact built-in payout %s and rejects a different payout even when credits coincide", walletPayout => {
+        const game = createOverscanGame({manifest: {id: "exact-audit-money", name: "Exact audit money", version: "1"},
+                reels: 3, rows: 1, availableBets: [1], symbols: ["A"], wilds: [], scatters: [],
+                paylines: [[0, 0, 0]], paytable: {A: {3: walletPayout}}, reelStrips: [["A"], ["A"], ["A"]]}),
+            session = game.createSession(),
+            recorder = new api.ReplayRecorder();
+        const descriptor = recorder.recordAudit(game, session, [{kind: "spin"}], {...detached, walletPayout});
+        expect((session as api.VideoSlotSessionHandling).getPayoutAmount?.()).toBe(walletPayout);
+        expect(session.getCreditsAmount()).toBe(1000 - 1 + walletPayout);
+        expect(new api.AuditRoundReplay().replay(game, descriptor.audit!).verification).toBe("verified");
+        let changedPayout = 0;
+        if (walletPayout === 0) changedPayout = 1e-20;
+        if (walletPayout === 0.1) changedPayout = 0.1 + Number.EPSILON;
+        const altered = rehash({...descriptor.audit!, deliveries: descriptor.audit!.deliveries.map(delivery => ({...delivery,
+            disposition: {...delivery.disposition, walletPayout: changedPayout}}))});
+        // At this balance each changed payout still satisfies the forward equation.
+        expect(() => api.validateAuditRoundRecording(altered, game)).not.toThrow();
+        expect(() => new api.AuditRoundReplay().replay(game, altered)).toThrow("audit-execution-mismatch at deliveries[0].disposition.walletPayout");
+        recorder.releaseAuditSession(session);
+    });
 
     it("retains weighted variants in the actual CJS package and enumerates them from an ESM consumer", () => {
         fs.writeFileSync(path.join(runtime.directory, "weighted.cjs"), renderBuiltGameModule(weightedBlueprint, "2.0.0"));
@@ -119,7 +227,8 @@ console.log(JSON.stringify({rtp: new WeightedOutcomeLibraryAnalyzer().analyze(li
             expect(result).toMatchObject({win: 0, stake: bet, credits: 25 - bet});
             const delivery = result.audit!.deliveries[0];
             expect(delivery.result.stake).toBe(bet);
-            expect(delivery.disposition.walletPayout).toBe(delivery.after.credits - delivery.before.credits + bet);
+            expect(delivery.disposition.walletPayout).toBe(0);
+            expect(delivery.after.credits).toBe(delivery.before.credits - bet);
             expect(new api.AuditRoundReplay().replay(game, JSON.parse(JSON.stringify(result.audit))).verification).toBe("verified");
         } finally {
             await store?.close();

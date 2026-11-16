@@ -100,7 +100,7 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
 
     let restoreTemporaryDirectory: () => void;
     beforeAll(() => {
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({memoryBacked: true});
     });
     afterAll(() => {
         restoreTemporaryDirectory();
@@ -253,7 +253,7 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
         fs.cpSync(path.join(packageRoot, "studio-library"), path.join(wrongPackage, "studio-library"), {recursive: true});
         fs.cpSync(path.join(packageRoot, ".pokie"), path.join(wrongPackage, ".pokie"), {recursive: true});
         expect(await studio.registry(wrongPackage)).toMatchObject({status: "ok", buildStatus: "wrong", modes: expect.arrayContaining([expect.objectContaining({buildStatus: "wrong"})])});
-    }, 3 * PACKAGE_EXTRACTION_TEST_TIMEOUT);
+    }, 5 * PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("binds an exact real-package preflight and publishes the same canonical library as CLI", async () => {
         const blueprint = path.join(root, "exact-slot.blueprint.json");

@@ -1,3 +1,4 @@
+import {resolvePokieGameDependencyRoots} from "../../../src/gamepackage/resolvePokieGameEntryModule.js";
 import {ArtifactConversionPlanner} from "@fromstan/pokie";
 import fs from "fs";
 import {execFileSync} from "child_process";
@@ -32,7 +33,8 @@ describe("Studio common job routes", () => {
     let restoreTemporaryDirectory: () => void;
 
     beforeAll(() => {
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+        // Keep reload/reattachment repository evidence on the original disk-backed fixture boundary.
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({memoryBacked: false});
     });
     afterAll(() => {
         restoreTemporaryDirectory();
@@ -123,7 +125,14 @@ describe("Studio common job routes", () => {
 
     // Replay plus three valid artifact inspections each acquire and release a real runtime.
     it("inspects the exact downloaded unseeded replay and recovers after an invalid artifact", async () => {
-        const projectRoot = path.join(__dirname, "..", "fixtures", "playable-game");
+        const projectRoot = path.join(directory, "playable-game");
+        fs.cpSync(path.join(__dirname, "..", "fixtures", "playable-game"), projectRoot, {recursive: true, filter: file => path.basename(file) !== "node_modules"});
+        // Legacy omitted dependencies deliberately use the embedding runtime. This
+        // executable fixture instead owns the suite's stable compiled installation.
+        const manifest = path.join(projectRoot, "package.json");
+        fs.writeFileSync(manifest, JSON.stringify({...JSON.parse(fs.readFileSync(manifest, "utf8")), dependencies: {"@fromstan/pokie": "*"}}));
+        expect((await resolvePokieGameDependencyRoots(projectRoot))["@fromstan/pokie"])
+            .toBe(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"));
         const home = new StudioHomeService("1.3.0");
         jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")));
         server = new StudioServer({

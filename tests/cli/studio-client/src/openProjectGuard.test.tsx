@@ -72,6 +72,7 @@ describe("useOpenProject: guarded side effects", () => {
         const {fetchImpl, calls} = createRoutedFakeFetch({
             ...registryRoute(),
             ...createProjectDashboardFetchRoutes(),
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "project", projectRoot: serverIdentity}}),
             "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
             "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
             "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: [{

@@ -1,28 +1,54 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
+import {stageCompiledTestRuntime} from "../../testUtils/stageCompiledTestRuntime.js";
 import type {GameBlueprint} from "@fromstan/pokie";
 import {fractionalBetBlueprint} from "../../fixtures/math/FractionalBetFixture.js";
 
 // These tests copy the real host runtime and dependency graph several times per conversion.
 export const PACKAGE_EXTRACTION_TEST_TIMEOUT = 120_000;
 
-/** Give direct Jest and npm launches the same clone-local snapshot storage. */
-export function createPackageExtractionTestEnvironment(): () => void {
+/** Private runtime fixtures prefer capacity-checked fast scratch, with clone-local disk fallback. */
+export function createPackageExtractionTestEnvironment(options: {stageRuntime?: boolean; runtimeFilesOnly?: boolean; memoryBacked?: boolean} = {}): () => void {
     const cache = path.resolve(__dirname, "../../../node_modules/.cache/pokie-tmp");
     fs.mkdirSync(cache, {recursive: true});
-    const directory = fs.mkdtempSync(path.join(cache, "pokie-package-extraction-"));
+    let parent = cache;
+    // Repeated SDK acquisitions are I/O fixtures, not disk-throughput benchmarks.
+    // Real install/durable-storage suites opt out explicitly; no host-global TMPDIR changes.
+    if (options.memoryBacked !== false) {
+        try {
+            const available = (process as NodeJS.Process & {availableMemory?: () => number}).availableMemory?.() ?? 0;
+            const shared = fs.statfsSync("/dev/shm");
+            if (available >= 4 * 1024 ** 3 && shared.bavail * shared.bsize >= 2 * 1024 ** 3) parent = "/dev/shm";
+        } catch {
+            // Keep private on-disk fixtures on hosts without safe memory-backed storage.
+        }
+    }
+    const directory = fs.mkdtempSync(path.join(parent, "pokie-package-extraction-"));
+    // Bind declared fixture dependencies to stable compiled bytes, outside mutable checkout dist.
+    try {
+        if (options.stageRuntime !== false) stageCompiledTestRuntime(directory, ["cjs"], {runtimeFilesOnly: options.runtimeFilesOnly});
+    } catch (error) {
+        fs.rmSync(directory, {recursive: true, force: true});
+        // Native spawn errors can reference themselves through .error, which Jest's
+        // worker transport cannot serialize. Preserve the failing setup boundary.
+        throw new Error(`Package fixture runtime preparation failed: ${(error as Error).message}`);
+    }
     const original = process.env.TMPDIR;
     const originalTmpdir = os.tmpdir;
+    let active = true;
     process.env.TMPDIR = directory;
     // Node's POSIX os.tmpdir() reads the native environment, not Jest's process.env copy.
     // Set the OS boundary explicitly too. A plain override survives callers' restoreAllMocks();
     // the suite owns restoring it after every operation has drained.
-    os.tmpdir = () => directory;
+    // Native ESM can retain this function after the Jest suite has restored os.
+    // Retired overrides must delegate rather than return a deleted directory.
+    os.tmpdir = () => active ? directory : originalTmpdir();
     return () => {
         try {
             fs.rmSync(directory, {recursive: true, force: true});
         } finally {
+            active = false;
             os.tmpdir = originalTmpdir;
             if (original === undefined) Reflect.deleteProperty(process.env, "TMPDIR");
             else process.env.TMPDIR = original;
@@ -39,7 +65,7 @@ export function writeDescriptorPackage(
     const model = options.model ?? fractionalBetBlueprint([0.05, 7.5, 1e-7], true);
     fs.writeFileSync(
         path.join(root, "package.json"),
-        JSON.stringify({name: "npm-identity", version: "99", pokie: {entry: "index.js"}}),
+        JSON.stringify({name: "npm-identity", version: "99", dependencies: {"@fromstan/pokie": "*"}, pokie: {entry: "index.js"}}),
     );
     fs.writeFileSync(
         path.join(root, "index.js"),
@@ -95,8 +121,8 @@ export function writePausedDescriptorPackage(
     // test waiting forever for a descriptor which can no longer be reached.
     const waitForRead = (operation: Promise<unknown>): Promise<void> => Promise.race([
         readStarted,
-        operation.then(() => {
-            throw new Error("Package operation settled before the paused descriptor read");
+        operation.then(result => {
+            throw new Error(`Package operation settled before the paused descriptor read: ${JSON.stringify(result)}`);
         }),
     ]);
     return {source, control, readStarted, waitForRead, settle, get readCount() {
@@ -131,7 +157,9 @@ export function runtimeSnapshotNames(packageSource: string): string[] {
 export function writeRunnableCodeFirstPackage(parent: string): string {
     const root = path.join(parent, "code-first");
     fs.mkdirSync(root);
-    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({name: "code-first-probe", version: "1", pokie: {entry: "index.js"}}));
+    // This source requires the public runtime. Declare it so the loader resolves the
+    // suite's staged installation instead of snapshotting the embedding checkout.
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({name: "code-first-probe", version: "1", dependencies: {"@fromstan/pokie": "*"}, pokie: {entry: "index.js"}}));
     fs.writeFileSync(path.join(root, "index.js"), `
 const {VideoSlotConfig, VideoSlotWithFreeGamesConfig, VideoSlotWithFreeGamesSession,
     SymbolsSequence, SymbolsCombinationsGenerator, SeededRandomNumberGenerator, CustomLinesDefinitions, Paytable} = require("@fromstan/pokie");

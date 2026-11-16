@@ -33,6 +33,13 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import ts from "typescript";
+import {createPackageExtractionTestEnvironment} from "../../v2/fixtures/PackageExtractionFixture.js";
+
+let restoreTemporaryDirectory: () => void;
+beforeAll(() => {
+    restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
+});
+afterAll(() => restoreTemporaryDirectory());
 
 function outcomeById(outcomes: readonly {id: string; weight: number; artifact: {screen?: unknown}}[], weight: number) {
     return outcomes.filter((outcome) => outcome.weight === weight);

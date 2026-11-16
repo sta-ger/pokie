@@ -1,3 +1,4 @@
+import {resolvePokieGameDependencyRoots} from "../../src/gamepackage/resolvePokieGameEntryModule.js";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
 import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
@@ -23,6 +24,8 @@ import {WasmArtifactBuilder} from "../../src/project/WasmArtifactBuilder.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
 import {createCanonicalWasmFixture} from "../fixtures/wasm/createCanonicalWasmFixture.js";
 
+import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
+
 const blueprint = {
     manifest: {id: "cli-wasm", name: "CLI WASM", version: "1.0.0"}, reels: 3, rows: 1,
     symbols: ["A", "B", "C"], reelStrips: [["A", "B", "C"], ["B", "C", "A"], ["C", "A", "B"]], paytable: {A: {3: 2}},
@@ -46,6 +49,11 @@ async function waitForProjectContext(address: string, projectRoot: string): Prom
 describe("canonical WASM CLI workflow", () => {
     let directory: string;
     let artifact: string;
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    }, 300_000);
+    afterAll(() => restoreTemporaryDirectory());
 
     beforeEach(async () => {
         directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pokie-wasm-cli-")));
@@ -101,6 +109,8 @@ describe("canonical WASM CLI workflow", () => {
         const output: string[] = [];
         const log = jest.spyOn(console, "log").mockImplementation((line: string) => output.push(line));
         try {
+            expect((await resolvePokieGameDependencyRoots(fixture.projectRoot))["@fromstan/pokie"])
+                .toBe(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"));
             const runtime = await loadPokieWasmFileRuntime(fixture.artifact, new SeededPokieWasmHost("0"));
             const session = runtime.createSession("0");
             const initial = session.serialize();

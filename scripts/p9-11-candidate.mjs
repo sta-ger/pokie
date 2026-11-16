@@ -13,6 +13,107 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sha = (value, length = 64) => typeof value === "string" && new RegExp(`^[a-f0-9]{${length}}$`).test(value);
 const fail = (message) => { throw new Error(`P9-11 candidate: ${message}`); };
 const tooling = new Set([
+    // V2C-37 bounded native-runtime and transaction race fixtures only.
+    "tests/cli/studio/OptimizationRoutes.test.ts",
+    "tests/cli/studio/blueprint/StudioBlueprintService.test.ts",
+    "tests/v2/TransactionalRoundStore.test.ts",
+    "tests/v2/Valera34Regression.test.ts",
+    // V2C-37 saved recovery-selector and bounded native parity regression repair only.
+    "tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.profileRecovery.test.tsx",
+    "tests/v2/WasmFeatureParity.test.ts",
+    "tests/fixtures/wasm/verifyDeliveredFeatures.cjs",
+    // User-authorized test preparation delta; independent review/gates remain required.
+    // V2C-37 bounded lossless browser/API log persistence; product and driver pins stay protected.
+    "scripts/p8-05-packed-output-evidence.mjs",
+    "scripts/p8-05-product-readiness-campaign.mjs",
+    // V2C-37 retained optimizer native-host regression; product/build inputs remain protected.
+    "tests/project/BlueprintStakeOutcomeLibraryWorkflow.test.ts",
+    "tests/v2/Valera35Regression.test.ts",
+    "tests/v2/fixtures/RetainedOptimizationProbe.ts",
+    "scripts/prepare-test-package.mjs",
+    "tests/testUtils/preparePackedTestCandidate.ts",
+    "tests/testUtils/runtimePreparationCache.test.ts",
+    "tests/testUtils/ensureCompiledTestOutput.ts",
+    "tests/testUtils/ensureCompiledTestOutput.test.ts",
+    // V2C-37 retained unit-gate fixture repair; product/build and receipt pins stay protected.
+    "tests/cli/commands/ReportCommand.test.ts",
+    "tests/cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.test.ts",
+    "tests/v2/PackageIdentity.test.ts",
+    // V2C-37 generated-math fixture isolation; no product/build or driver exemption.
+    "tests/generated/GamePackageGenerator.test.ts",
+    // V2C-37 saved runtime-fixture correction; product/build and receipt pins stay protected.
+    "tests/cli/BuildWorkflow.integration.test.ts",
+    "tests/cli/P907ValeraMathematician.integration.test.ts",
+    "tests/server/PokieDevServer.test.ts",
+    "tests/v2/MathDefinitionDiff.test.ts",
+    "tests/v2/helpers/publicRuntime.ts",
+    "tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts",
+    // V2C-37 retained runtime gate correction; no product/build exemption.
+    "tests/cli/commands/ReplayCommand.test.ts",
+    "tests/gamepackage/loadPokieGame.test.ts",
+    "tests/cli/commands/SimCommand.test.ts",
+    "tests/project/wasm/WasmRuntimeParity.golden.test.ts",
+    "tests/v2/OptimizationSearchConvergence.test.ts",
+
+    // V2C-37 saved post-review fixture correction; no product/build or driver exemption.
+    "tests/cli/BlueprintEditorWorkflow.integration.test.ts",
+    "tests/cli/studio-client/src/hooks/usePlaySession.test.tsx",
+    "tests/simulation/parallel/simulationWorkerEntry.test.ts",
+    "tests/v2/PlaygroundGallery.test.ts",
+
+    // Complete V2C-37 saved gate correction; product/build inputs and receipt pins stay protected.
+    "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts",
+    "tests/cli/CanonicalArtifactCli.integration.test.ts",
+    "tests/cli/InitCommandWorkflow.integration.test.ts",
+    "tests/cli/P805ValeraProgrammer.integration.test.ts",
+    "tests/cli/P906ValeraProgrammer.integration.test.ts",
+    "tests/cli/PC18LifecycleParity.integration.test.ts",
+    "tests/cli/PC18RoleMissions.integration.test.ts",
+    "tests/cli/RandomBuildWorkflow.integration.test.ts",
+    "tests/cli/Workflow.integration.test.ts",
+    "tests/cli/commands/DiffCommand.test.ts",
+    "tests/cli/commands/SimCommand.realWorkers.test.ts",
+    "tests/cli/studio-client/src/openProjectGuard.test.tsx",
+    "tests/cli/studio/OutcomeLibraryGenerationWorkflow.integration.test.ts",
+    "tests/testUtils/prepareP906Candidate.ts",
+
+    "scripts/pc-20-resource-ownership-hook.cjs",
+
+    // V2C-37 exact bounded regression delta; product/build and driver pins stay protected.
+    "tests/cli/studio/StudioArtifactBuildService.integration.test.ts",
+    "tests/parsheet/ParSheetExporter.test.ts",
+    "tests/v2/CascadeCollectionAuthoring.test.ts",
+    // V2C-37 saved runtime/matrix fixture correction; product inputs and pins stay protected.
+    "tests/scripts/p8-05-product-readiness-campaign.test.mjs",
+    "tests/v2/FeatureAnalyticsPublic.test.ts",
+    "tests/v2/TransactionalRuntimeBoundary.test.ts",
+    "tests/testUtils/stageCompiledTestRuntime.ts",
+    "tests/scripts/p8-05-valera-devtools-events.test.mjs",
+    "tests/scripts/p8-05-valera-ownership.test.mjs",
+    "tests/PackageJsonScripts.test.ts",
+    "tests/cli/commands/DevCommand.test.ts",
+    "tests/cli/commands/ServeCommand.test.ts",
+    "tests/cli/studio-client/src/components/project/ProjectDashboardPage.wasmWorkflow.test.tsx",
+    "tests/cli/materialize/BlueprintProjectMaterializer.offline.integration.test.ts",
+    "tests/cli/packageOnlyCommandInputs.contract.test.ts",
+    "tests/cli/studio-client/src/PC18ProductAcceptance.browser.test.tsx",
+    "tests/cli/studio-client/src/components/blueprintEditor/BlueprintBuildPanel.test.tsx",
+    "tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.guidedProgress.test.tsx",
+    "tests/cli/studio-client/src/components/project/ProjectDashboardPage.libraryDurability.test.tsx",
+    "tests/cli/studio-client/src/components/project/ProjectDashboardPage.outcomeStakeHandoff.test.tsx",
+    "tests/cli/studio-client/src/domain/interpret/ExportDeployTargets.test.ts",
+    "tests/cli/studio/StudioLongRunningOperationInventory.contract.test.ts",
+    "tests/project/BuildProductMatrix.contract.test.ts",
+    "tests/project/PC05ProductModel.contract.test.ts",
+    "tests/project/PC17CapabilityMatrix.contract.test.ts",
+    "tests/server/session/captureRoundPokieSessionState.test.ts",
+    "tests/stakeengine/StakeEngineRoundEventsImporter.test.ts",
+    "tests/v2/OptimizationContractsAdapters.test.ts",
+    "tests/cli/fixtures/packageOnlyCommandInputs.ts",
+    "tests/cli/studio-client/src/jestPolyfills.ts",
+    "tests/cli/studio-client/src/testUtils/nodeServiceTimers.ts",
+    "docs/v2-completion/V2C-37.md",
+
     "docs/audit-corrections/README.md", "docs/audit-corrections/p9-11-closeout.md",
     "scripts/p9-11-candidate.mjs", "scripts/p9-11-corrective-closeout.mjs", "scripts/p9-11-corrective-scenarios.mjs",
     "scripts/p9-11-produce-candidate.mjs", "tests/scripts/p9-11-produce-candidate.test.mjs",
@@ -26,11 +127,21 @@ const tooling = new Set([
     "scripts/p8-04-studio-polish-browser-audit.mjs",
     "tests/cli/studio-client/src/P804StudioPolish.browser.test.tsx",
     "tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx",
+    // V2C-37 shared browser storage repair; product/build and driver pins stay protected.
+    "tests/cli/studio-client/src/productionStudioCandidate.ts",
+    "tests/cli/studio-client/src/P909ValeraRecovery.browser.test.tsx",
+    "tests/cli/studio-client/src/P910ValeraGraphicDesigner.browser.test.tsx",
     "tests/cli/studio-client/src/components/common/StudioPresentation.test.tsx",
     "tests/cli/studio-client/src/hooks/useHomeSourceJobs.test.tsx",
     "tests/cli/studio-client/src/P805ValeraPersonas.browser.test.tsx",
+    "tests/cli/studio-client/src/P805ValeraHarness.test.tsx",
+    "tests/testUtils/p805PackedEvidence.ts",
     "tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx",
     "tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx",
+    "tests/cli/studio/StudioServerTrust.integration.test.ts",
+    "tests/cli/studio-client/src/PC16StudioContextLifecycle.browser.test.tsx",
+    "tests/cli/studio-client/src/StudioDuplicateEntrypoints.browser.test.tsx",
+    "tests/cli/studio-client/src/testUtils/createStudioHttpTestClient.ts",
     "tests/cli/studio-client/src/StudioReadinessConvergence.test.tsx",
     // P10-03 retained-candidate delta: installed receipt plus bounded gate regression.
     "docs/math-contract-corrections/README.md",
@@ -61,6 +172,12 @@ const tooling = new Set([
     "tests/v2/StableConsumerContracts.test.ts",
     "tests/v2/PackageBlueprintExtraction.test.ts",
     "tests/v2/WasmSharedMath.test.ts",
+    // Bounded V2C-37 snapshot-storage correction; no production/build changes.
+    "tests/replay/ReplayRecorder.test.ts",
+    "tests/gamepackage/PokieGamePackageValidator.test.ts",
+    "tests/cli/scaffold/createdEntrypoint.test.ts",
+    "tests/cli/commands/OptimizeCommand.test.ts",
+    "tests/v2/WasmProjectWorkflow.test.ts",
     "tests/fixtures/wasm/verifyDeliveredSharedMath.cjs",
     "tests/v2/fixtures/normal-pack.stdout.txt",
     "scripts/p8-05-release-handoff.mjs",
@@ -71,6 +188,9 @@ const tooling = new Set([
     "docs/v2-completion/V2C-34.md",
     // V2C-34 bounded timeout regressions; sibling tests and product/build inputs stay protected.
     "tests/cli/studio/AdvancedModelValidationRoutes.test.ts",
+    "tests/cli/WasmWorkflow.integration.test.ts",
+    "tests/server/spin/SpinSessionPersistence.integration.test.ts",
+    "tests/v2/AdvancedModelValidation.test.ts",
     "tests/cli/studio/simulation/StudioSimulationService.test.ts",
     // Remaining V2C-34 saved gate files (the two rendered suites are named above).
     "tests/cli/PC17CliStudioParity.integration.test.ts",
@@ -84,6 +204,19 @@ const tooling = new Set([
     // V2C-34 retained interoperability and Replay route gate correction only.
     "tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts",
     "tests/cli/studio/StudioJobRoutes.integration.test.ts",
+    // V2C-37 reviewed isolated-runtime fixtures; other inputs remain protected.
+    "tests/cli/commands/InspectCommand.test.ts",
+    "tests/project/TsPackageArtifactBuilder.test.ts",
+    "tests/simulation/parallel/ParallelSimulationRunner.test.ts",
+    "tests/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.test.ts",
+    // V2C-37 saved full-gate runtime binding/progress repairs, individually named.
+    "tests/server/session/FileSessionRepository.test.ts",
+    "tests/cli/CertificationFairnessLifecycle.integration.test.ts",
+    "tests/cli/studio/simulation/StudioSimulationService.realWorkers.test.ts",
+    "tests/cli/BuildCommand.test.ts",
+    "tests/v2/EvidenceDossier.test.ts",
+    "tests/v2/FeatureAnalyticsAggregates.test.ts",
+    "tests/scripts/p8-05-release-handoff.test.mjs",
 ]);
 const git = (repository, args) => execFileSync("git", args, {cwd:repository, encoding:"utf8", timeout:10_000, maxBuffer:16 * 1024 * 1024}).trimEnd();
 

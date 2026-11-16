@@ -18,6 +18,7 @@ import {
     isSimulationReportSet,
     GameSessionHandling,
     loadPokieGame,
+    resolvePokieGameDependencyRoots,
     OutcomeLibraryBundleWriter,
     PokieGame,
     PokieGamePackageValidating,
@@ -1282,15 +1283,28 @@ describe("StudioSimulationService with a resolved, multi-mode native outcome-lib
 
 describe("StudioSimulationService (integration, real loadPokieGame + fixture game packages)", () => {
     let restoreTemporaryDirectory: () => void;
-    beforeAll(() => {
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    beforeAll(async () => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
+        for (const name of ["playable-game", "playable-game-with-free-games"]) {
+            const fixtureRoot = path.join(os.tmpdir(), name);
+            fs.cpSync(path.join(__dirname, "..", "..", "fixtures", name), fixtureRoot, {
+                recursive: true,
+                filter: source => !["node_modules", ".pokie-runtime-cache"].includes(path.basename(source)),
+            });
+            const manifestPath = path.join(fixtureRoot, "package.json");
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+            manifest.dependencies = {...manifest.dependencies, "@fromstan/pokie": "*"};
+            fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+            expect((await resolvePokieGameDependencyRoots(fixtureRoot))["@fromstan/pokie"])
+                .toBe(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"));
+        }
     });
     afterAll(() => {
         restoreTemporaryDirectory();
     });
 
     it("produces a JSON-shaped SimulationReport for a real, plain fixture game (no breakdown)", async () => {
-        const fixtureRoot = path.join(__dirname, "..", "..", "fixtures", "playable-game");
+        const fixtureRoot = path.join(os.tmpdir(), "playable-game");
         const service = new StudioSimulationService(new InMemoryStudioSimulationRepository(), loadPokieGame, undefined, 200);
 
         try {
@@ -1311,7 +1325,7 @@ describe("StudioSimulationService (integration, real loadPokieGame + fixture gam
     }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("produces a base/freeGames breakdown for a real fixture game with a free-games feature, across chunks", async () => {
-        const fixtureRoot = path.join(__dirname, "..", "..", "fixtures", "playable-game-with-free-games");
+        const fixtureRoot = path.join(os.tmpdir(), "playable-game-with-free-games");
         const service = new StudioSimulationService(new InMemoryStudioSimulationRepository(), loadPokieGame, undefined, 300);
 
         try {

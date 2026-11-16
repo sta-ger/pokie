@@ -50,14 +50,18 @@ const supervisorSecret = process.env.POKIE_P805_SUPERVISOR_SECRET;
 const supervisorOperation = process.env.POKIE_P805_SUPERVISOR_OPERATION;
 if (supervisorRegistry && (!supervisorSecret || !/^[a-f0-9]{32}$/i.test(supervisorOperation || ""))) throw new Error("P8-05 supervisor namespace is incomplete");
 const write = (record) => {
-    append(record, registry, secret);
+    // A nested Worker may disappear with its parent thread before its exit
+    // callback can append a release. Bind every ledger to the actual owning
+    // process: identity-verified process absence proves all of its threads gone.
+    // Process-scoped IDs also keep sibling child processes' thread IDs distinct.
+    const workerOwner = record.kind === "worker" ? {pid:process.pid, processIdentity:processIdentity(process.pid), resourceId:`${record.resourceId}:process:${process.pid}`} : {};
+    const ownedRecord = {...record, ...workerOwner};
+    append(ownedRecord, registry, secret);
     if (supervisorRegistry && supervisorRegistry !== registry) {
-        // A worker thread disappears with its owning process. Preserve that
-        // process identity so the supervisor can prove forced thread release.
-        const workerOwner = record.kind === "worker" ? {pid:process.pid, processIdentity:processIdentity(process.pid), resourceId:`${record.resourceId}:process:${process.pid}`} : {};
-        append({...record, ...workerOwner, operationId:supervisorOperation}, supervisorRegistry, supervisorSecret);
+        append({...ownedRecord, operationId:supervisorOperation}, supervisorRegistry, supervisorSecret);
     }
 };
+
 const terminateUnrecorded = (child) => {
     try { child.kill("SIGKILL"); } catch { /* the caller still fails closed */ }
 };

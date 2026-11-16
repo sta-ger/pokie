@@ -1,3 +1,5 @@
+import {stageCompiledTestRuntime} from "../testUtils/stageCompiledTestRuntime.js";
+import {expectInconclusiveArtifactValidation} from "../testUtils/expectInconclusiveArtifactValidation.js";
 import {
     GameBlueprint,
     GamePackageGenerator,
@@ -16,18 +18,31 @@ import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
 import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {ServeCommand} from "../../cli/commands/ServeCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
-import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
+import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
+
+let disposeRuntimeStorage: () => void;
+beforeAll(() => {
+    // These real command chains acquire the private compiled SDK repeatedly.
+    disposeRuntimeStorage = createPackageExtractionTestEnvironment({stageRuntime: false, memoryBacked: true});
+});
+afterAll(() => disposeRuntimeStorage());
 
 // End-to-end happy path for the v1.3 tool foundation: validate -> sim -> report -> diff -> replay -> serve,
 // run as real commands against the same built game package (the "create"/"init" fixtures elsewhere already
 // cover scaffolding; this test starts from an already-built package, as create/init leave one after
 // "npm install && npm run build").
 describe("CLI workflow (integration, real commands chained against one fixture game package)", () => {
-    const fixtureRoot = path.join(__dirname, "fixtures", "playable-game");
+    let fixtureRoot: string;
     let outDir: string;
 
     beforeEach(() => {
         outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-workflow-test-"));
+        stageCompiledTestRuntime(outDir);
+        fixtureRoot = path.join(outDir, "playable-game");
+        fs.cpSync(path.join(__dirname, "fixtures", "playable-game"), fixtureRoot, {recursive: true});
+        const manifestPath = path.join(fixtureRoot, "package.json");
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+        fs.writeFileSync(manifestPath, JSON.stringify({...manifest, dependencies: {"@fromstan/pokie": "*"}}));
         jest.spyOn(console, "log").mockImplementation(() => undefined);
     });
 
@@ -37,8 +52,7 @@ describe("CLI workflow (integration, real commands chained against one fixture g
     });
 
     it("validates, simulates, reports, diffs, replays, and serves the same package", async () => {
-        const exitCode = await new ValidateCommand().run([fixtureRoot]);
-        expect(exitCode).toBe(0);
+        await expectInconclusiveArtifactValidation([fixtureRoot]);
 
         const beforeFile = path.join(outDir, "before.json");
         const afterFile = path.join(outDir, "after.json");
@@ -120,8 +134,9 @@ describe("generated tsPackage round reproducibility (regression: context.seed th
 
     beforeAll(() => {
         outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-determinism-test-"));
+        const runtimePackageRoot = stageCompiledTestRuntime(outDir);
         const generator = new GamePackageGenerator("1.3.0");
-        const result = generator.generate(buildDeterminismBlueprint(), outDir);
+        const result = generator.generate(buildDeterminismBlueprint(), outDir, undefined, undefined, {runtimePackageRoot});
         projectRoot = result.projectRoot;
     });
 

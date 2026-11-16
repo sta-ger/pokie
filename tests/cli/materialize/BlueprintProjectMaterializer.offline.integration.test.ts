@@ -4,6 +4,7 @@ import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {createServer} from "http";
 import {computeGameBlueprintHash, DEV_OPERATION, GAME_BLUEPRINT_SCHEMA_VERSION, GameBlueprint} from "@fromstan/pokie";
 import {createStarterGameBlueprint} from "../../../cli/build/createStarterGameBlueprint.js";
 import {createLocalRuntimeIdentity, createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
@@ -146,7 +147,7 @@ function runPokieCliToCompletion(pokieJsPath: string, args: string[]): Promise<C
             stderr += chunk.toString();
         });
         child.once("error", reject);
-        child.once("exit", (exitCode) => {
+        child.once("close", (exitCode) => {
             resolve({exitCode, stdout, stderr});
         });
     });
@@ -197,18 +198,18 @@ function startPokieCliServer(pokieJsPath: string, args: string[], readyPattern: 
 
 function stopPokieCliChild(child: ChildProcessWithoutNullStreams): Promise<void> {
     return new Promise((resolve, reject) => {
-        if (child.exitCode !== null) {
+        if (child.stdout.closed && child.stderr.closed) {
             resolve();
             return;
         }
         const timer = setTimeout(() => {
             reject(new Error("Timed out waiting for the pokie CLI child process to exit after SIGINT."));
         }, 15000);
-        child.once("exit", () => {
+        child.once("close", () => {
             clearTimeout(timer);
             resolve();
         });
-        child.kill("SIGINT");
+        if (child.exitCode === null && child.signalCode === null) child.kill("SIGINT");
     });
 }
 
@@ -323,11 +324,25 @@ describe("CLI command coverage (offline end-to-end, through the built CLI execut
         restoreEnv("npm_config_registry", originalNpmRegistry);
     });
 
-    it("`pokie validate` reaches a materialized runtime through the built CLI executable", async () => {
-        const result = await runPokieCliToCompletion(pokieJsPath, ["validate", blueprintPath]);
+    it("`pokie validate` validates a bounded Blueprint through the built CLI executable", async () => {
+        const boundedPath = path.join(sourceDir, "bounded-validation.json");
+        fs.writeFileSync(boundedPath, JSON.stringify({
+            manifest: blueprint.manifest, reels: 2, rows: 1, symbols: ["A", "B"],
+            paytable: {A: {2: 1}}, reelStrips: [["A", "B"], ["A", "B"]], availableBets: [1],
+        }));
+        const result = await runPokieCliToCompletion(pokieJsPath, ["validate", boundedPath]);
         expect(result.stderr).toBe("");
         expect(result.exitCode).toBe(0);
         expect(result.stdout).toContain("valid           yes");
+    });
+
+    it("keeps the full starter's inconclusive advanced verdict distinct from structural validity", async () => {
+        const result = await runPokieCliToCompletion(pokieJsPath, ["validate", blueprintPath]);
+        expect(result.stderr).toBe("");
+        expect(result.exitCode).toBe(2);
+        expect(result.stdout).toContain("valid           yes (structural/contract validation)");
+        expect(result.stdout).toContain("budget-exhausted: inconclusive");
+        expect(result.stdout).toContain("Analysis outcomes limit exhausted.");
     });
 
     it("`pokie sim` reaches a materialized runtime through the built CLI executable", async () => {
@@ -519,35 +534,99 @@ describe("CLI command coverage (offline end-to-end, through the built CLI execut
 
 // Polls GET /api/project/context -- the exact route the Project Dashboard itself polls -- until the
 // background load StudioServer kicked off at startup (see StudioServer.ts's own startProjectDashboardLoad)
-// settles out of "loading"/"empty" into a terminal status. Mirrors StudioFullWorkflow.integration.test.ts's
-// own pollUntilTerminal, tailored to this context's own status vocabulary.
-async function pollProjectDashboard(baseUrl: string): Promise<Record<string, unknown>> {
-    for (let attempt = 0; attempt < 2000; attempt++) {
-        const response = await fetch(`${baseUrl}/api/project/context`);
-        const body = (await response.json()) as Record<string, unknown>;
-        if (body.status !== "loading" && body.status !== "empty") {
-            return body;
-        }
-        await new Promise<void>((resolve) => {
-            setImmediate(resolve);
-        });
-    }
-    throw new Error(`Timed out waiting for ${baseUrl}/api/project/context to leave "loading".`);
+// settles out of "loading"/"empty" into a terminal status. Listening does not mean the runtime's
+// dependency snapshot has finished copying and draining. Counting fast responses instead of elapsed
+// time exhausted 2,000 requests in eight seconds and competed with that useful background work.
+function pollProjectDashboard(baseUrl: string): Promise<Record<string, unknown>> {
+    return pollStudioState(`${baseUrl}/api/project/context`, ["loading", "empty"]);
 }
 
-async function pollStudioRuntimeJob(url: string): Promise<Record<string, unknown>> {
-    for (let attempt = 0; attempt < 2000; attempt++) {
-        const response = await fetch(url);
-        const body = (await response.json()) as Record<string, unknown>;
-        if (body.status !== "queued" && body.status !== "running") {
-            return body;
-        }
-        await new Promise<void>((resolve) => {
-            setImmediate(resolve);
-        });
-    }
-    throw new Error(`Timed out waiting for ${url} to complete.`);
+function pollStudioRuntimeJob(url: string): Promise<Record<string, unknown>> {
+    return pollStudioState(url, ["queued", "running"]);
 }
+
+async function pollStudioState(url: string, pendingStatuses: readonly string[], timeoutMs = 120000): Promise<Record<string, unknown>> {
+    const started = performance.now();
+    const signal = AbortSignal.timeout(timeoutMs);
+    let attempts = 0;
+    let lastStatus: unknown;
+    try {
+        while (!signal.aborted) {
+            const response = await fetch(url, {signal});
+            if (!response.ok) throw new Error(`Studio polling received HTTP ${response.status} from ${url}.`);
+            const body = (await response.json()) as Record<string, unknown>;
+            attempts++;
+            lastStatus = body.status;
+            if (!pendingStatuses.includes(String(body.status))) {
+                console.log(JSON.stringify({operation: new URL(url).pathname, elapsedMs: Math.round(performance.now() - started), attempts, status: body.status}));
+                return body;
+            }
+            await new Promise<void>(resolve => {
+                setTimeout(resolve, Math.min(100, Math.max(1, timeoutMs - (performance.now() - started))));
+            });
+        }
+    } catch (error) {
+        if (!signal.aborted) throw error;
+    }
+    throw new Error(`Timed out waiting for ${url} after ${Math.round(performance.now() - started)} ms (${attempts} responses; last status: ${String(lastStatus)}).`);
+}
+
+describe("Studio HTTP polling contract", () => {
+    it.each([
+        {route: "/api/project/context", pending: ["empty", "loading"], terminal: "loaded", poll: pollProjectDashboard},
+        {route: "/api/project/simulations/job", pending: ["queued", "running"], terminal: "completed", poll: (baseUrl: string) => pollStudioRuntimeJob(`${baseUrl}/api/project/simulations/job`)},
+        {route: "/api/project/replays/job", pending: ["queued", "running"], terminal: "failed", poll: (baseUrl: string) => pollStudioRuntimeJob(`${baseUrl}/api/project/replays/job`)},
+    ])("paces $route until its actual $terminal response", async ({route, pending, terminal, poll}) => {
+        let requests = 0;
+        const started = performance.now();
+        const server = createServer((request, response) => {
+            expect(request.url).toBe(route);
+            requests++;
+            response.setHeader("Content-Type", "application/json");
+            response.end(JSON.stringify({status: requests >= 3 && performance.now() - started >= 350 ? terminal : pending[requests % pending.length], result: "real HTTP"}));
+        });
+        await new Promise<void>(resolve => {
+            server.listen(0, "127.0.0.1", resolve);
+        });
+        try {
+            const address = server.address();
+            if (address === null || typeof address === "string") throw new Error("Missing test listener address.");
+            expect(await poll(`http://127.0.0.1:${address.port}`)).toEqual({status: terminal, result: "real HTTP"});
+            expect(requests).toBeGreaterThan(1);
+            expect(requests).toBeLessThanOrEqual(6);
+        } finally {
+            await new Promise<void>((resolve, reject) => {
+                server.close(error => error ? reject(error) : resolve());
+            });
+        }
+    });
+
+    it.each(["loading", "blocked transport", "HTTP failure"])("bounds and diagnoses %s without retrying a terminal HTTP error", async state => {
+        let requests = 0;
+        const server = createServer((_request, response) => {
+            requests++;
+            if (state === "blocked transport") return;
+            response.statusCode = state === "HTTP failure" ? 503 : 200;
+            response.end(JSON.stringify({status: "loading"}));
+        });
+        await new Promise<void>(resolve => {
+            server.listen(0, "127.0.0.1", resolve);
+        });
+        try {
+            const address = server.address();
+            if (address === null || typeof address === "string") throw new Error("Missing test listener address.");
+            const url = `http://127.0.0.1:${address.port}/api/project/context`;
+            await expect(pollStudioState(url, ["loading"], 250)).rejects.toThrow(state === "HTTP failure" ? /HTTP 503/ : /Timed out.*responses; last status:/);
+            expect(requests).toBeLessThanOrEqual(3);
+            if (state !== "loading") expect(requests).toBe(1);
+        } finally {
+            server.closeAllConnections();
+            await new Promise<void>((resolve, reject) => {
+                server.close(error => error ? reject(error) : resolve());
+            });
+        }
+    });
+});
 
 function restoreEnv(name: string, value: string | undefined): void {
     if (value === undefined) {

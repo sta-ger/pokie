@@ -4,8 +4,9 @@ import {mkdir, mkdtemp, readFile, rm, symlink, writeFile, access} from "node:fs/
 import os from "node:os";
 import path from "node:path";
 import {pathToFileURL} from "node:url";
-import {test, jest} from "@jest/globals";
+import {test, jest, describe, beforeAll, afterEach, afterAll} from "@jest/globals";
 import {P911_SCENARIOS, P911_PERSONAS, P911_RENDERED_COVERAGE, runP911Closeout, validateActionCoverage, settleP911Commands, stopP911Child, spawnP911Child, p911ChildrenDrained, retainP911PackagingReceipt, waitP911Child, runP911Process} from "../../scripts/p9-11-corrective-closeout.mjs";
+import {authenticateP805ProductTree} from "../../scripts/p8-05-release-handoff.mjs";
 import {readPinnedJson, sha256, P911_CAMPAIGN} from "../../scripts/p9-11-candidate.mjs";
 import {assertRareP911Metrics} from "../../scripts/p9-11-corrective-scenarios.mjs";
 import {candidateFixture, commitP911ToolingDescendant, P911_TOOLING_DESCENDANT_PATHS} from "../testUtils/createP911CandidateFixture.mjs";
@@ -147,6 +148,18 @@ test("shared selector retains the authenticated archive/install through committe
         // Keep the retained-candidate delta and this repair explicit rather
         // than allowing an omitted fixture path to silently shrink coverage.
         for (const file of [
+            "tests/cli/commands/InspectCommand.test.ts",
+            "tests/project/TsPackageArtifactBuilder.test.ts",
+            "tests/simulation/parallel/ParallelSimulationRunner.test.ts",
+            "tests/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.test.ts",
+            "tests/server/session/FileSessionRepository.test.ts",
+            "tests/v2/StableConsumerContracts.test.ts",
+            "tests/cli/CertificationFairnessLifecycle.integration.test.ts",
+            "tests/cli/studio/simulation/StudioSimulationService.realWorkers.test.ts",
+            "tests/cli/BuildCommand.test.ts",
+            "tests/v2/EvidenceDossier.test.ts",
+            "tests/v2/FeatureAnalyticsAggregates.test.ts",
+            "tests/scripts/p8-05-release-handoff.test.mjs",
             "tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx",
             "docs/audit-corrections/README.md",
             "docs/math-contract-corrections/p10-03-candidate-reader-targeted-verification.md",
@@ -156,6 +169,10 @@ test("shared selector retains the authenticated archive/install through committe
             "scripts/p9-11-candidate.mjs",
             "tests/testUtils/createP911CandidateFixture.mjs",
             "tests/scripts/p9-11-corrective-closeout.test.mjs",
+            "tests/cli/studio/OptimizationRoutes.test.ts",
+            "tests/cli/studio/blueprint/StudioBlueprintService.test.ts",
+            "tests/v2/TransactionalRoundStore.test.ts",
+            "tests/v2/Valera34Regression.test.ts",
         ]) assert.ok(selected.equivalence.changedEvidenceAndTooling.includes(file), `missing committed descendant: ${file}`);
         assert.deepEqual({...selected, equivalence:original.equivalence}, original);
         assert.equal(selected.consumedArchiveSha256, fixture.handoff.archiveSha256);
@@ -197,7 +214,69 @@ test("shared selector retains the authenticated archive/install through committe
     } finally { await rm(directory, {recursive:true, force:true}); }
 });
 
-test.each([
+test("both candidate readers admit the complete bounded gate correction and retain protected inputs", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "p911-both-readers-"));
+    try {
+        const fixture = await candidateFixture(directory);
+        const correction = [
+            "scripts/p8-05-release-handoff.mjs", "scripts/p9-11-candidate.mjs",
+            "tests/cli/studio/OptimizationRoutes.test.ts", "tests/cli/studio/blueprint/StudioBlueprintService.test.ts",
+            "tests/scripts/p9-11-corrective-closeout.test.mjs", "tests/testUtils/createP911CandidateFixture.mjs",
+            "tests/v2/TransactionalRoundStore.test.ts", "tests/v2/Valera34Regression.test.ts",
+        ];
+        for (const file of correction) await writeFile(path.join(fixture.repository, file), "// bounded gate fixture correction\n");
+        const reviewedId = commitFixture(fixture.repository);
+        const check = () => authenticateP805ProductTree(fixture.handoff.candidateId,
+            execFileSync("git", ["rev-parse", "HEAD"], {cwd:fixture.repository, encoding:"utf8"}).trim(), fixture.repository);
+        const selected = await selectRetained(fixture);
+        assert.deepEqual(selected.equivalence.changedEvidenceAndTooling, [...correction].sort());
+        assert.deepEqual(check().changedToolingAndEvidencePaths, [...correction].sort());
+        for (const file of ["src/gamepackage/resolvePokieGameEntryModule.ts", "cli/studio/StudioProjectRegistrationService.ts",
+            "cli/studio-client/vite.config.ts", "tests/v2/TransactionalRoundStore.extra.test.ts"]) {
+            const target = path.join(fixture.repository, file);
+            await mkdir(path.dirname(target), {recursive:true});
+            await writeFile(target, "changed protected input\n");
+            commitFixture(fixture.repository);
+            assert.throws(check, /changes product or build inputs/);
+            await assert.rejects(selectRetained(fixture), /product\/build inputs changed/);
+            execFileSync("git", ["reset", "--hard", reviewedId], {cwd:fixture.repository, stdio:"pipe"});
+        }
+        const target = path.join(fixture.repository, correction[2]);
+        await rm(target); await symlink(fixture.handoff.browserDriver.path, target);
+        commitFixture(fixture.repository);
+        assert.throws(check, /nonregular Git entries/);
+        await assert.rejects(selectRetained(fixture), /nonregular tooling\/evidence entry/);
+        execFileSync("git", ["reset", "--hard", reviewedId], {cwd:fixture.repository, stdio:"pipe"});
+        assert.deepEqual(await selectRetained(fixture), selected);
+        assert.deepEqual(check().changedToolingAndEvidencePaths, [...correction].sort());
+    } finally { await rm(directory, {recursive:true, force:true}); }
+});
+
+// Each table owns one authenticated archive/install and a committed descendant.
+// Reset only this synthetic Git repository between mutations. Recreating hundreds
+// of tooling files, two commits, tar and installation for every rejection obscured
+// the selector under test and contended with native runtime snapshots in the gate.
+function descendantCases(name, files, check) {
+    describe(name, () => {
+        let directory, fixture, reviewedId;
+        beforeAll(async () => {
+            directory = await mkdtemp(path.join(os.tmpdir(), "p911-descendant-cases-"));
+            fixture = await candidateFixture(directory);
+            reviewedId = await commitP911ToolingDescendant(fixture);
+            await selectRetained(fixture);
+        });
+        afterEach(() => {
+            if (reviewedId) execFileSync("git", ["reset", "--hard", reviewedId], {cwd:fixture.repository, stdio:"pipe"});
+        });
+        afterAll(async () => { if (directory) await rm(directory, {recursive:true, force:true}); });
+        test.each(files)("%s", async file => {
+            assert.equal(execFileSync("git", ["status", "--porcelain"], {cwd:fixture.repository, encoding:"utf8"}), "");
+            await check(fixture, file);
+        });
+    });
+}
+
+descendantCases("tooling descendant does not exempt product/build or unnamed input", [
     "package.json", "package-lock.json", "generate-barrels.js", "tsconfig.prod.json", "src/index.ts", "cli/studio-client/src/global.css",
     "scripts/p9-11-rendered-driver-extra.mjs", "tests/scripts/p9-11-other.test.mjs", "docs/audit-corrections/valera-graphic-designer.md",
     "docs/math-contract-corrections/p10-03-candidate-reader-targeted-verification-extra.md",
@@ -207,31 +286,34 @@ test.each([
     "scripts/p8-05-valera-browser-audit-extra.mjs", "tests/cli/studio-client/src/other.test.tsx",
     "tests/cli/studio-client/src/Pc14StudioUiInteroperability.extra.test.tsx",
     "cli/studio-client/vite.config.ts", "cli/studio-client/tsconfig.json",
-])("tooling descendant does not exempt product/build or unnamed input %s", async (file) => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "p911-protected-descendant-"));
-    try {
-        const fixture = await candidateFixture(directory);
-        await commitP911ToolingDescendant(fixture);
-        await selectRetained(fixture);
-        const target = path.join(fixture.repository, file);
-        await mkdir(path.dirname(target), {recursive:true});
-        await writeFile(target, file === "package.json" ? `${JSON.stringify({name:"changed-product"})}\n` : "changed protected input\n");
-        commitFixture(fixture.repository);
-        await assert.rejects(selectRetained(fixture), /product\/build inputs changed/);
-    } finally { await rm(directory, {recursive:true, force:true}); }
+    "src/gamepackage/resolvePokieGameEntryModule.ts", "cli/studio/StudioProjectRegistrationService.ts",
+    "tests/cli/studio/OptimizationRoutes.extra.test.ts", "tests/cli/studio/blueprint/StudioBlueprintService.extra.test.ts",
+    "tests/v2/TransactionalRoundStore.extra.test.ts", "tests/v2/Valera34Regression.extra.test.ts",
+    "tests/cli/commands/InspectCommand.extra.test.ts",
+    "tests/project/TsPackageArtifactBuilder.extra.test.ts",
+    "tests/simulation/parallel/ParallelSimulationRunner.extra.test.ts",
+    "tests/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.extra.test.ts",
+    "tests/scripts/p8-05-release-handoff.extra.test.mjs",
+    "tests/server/session/FileSessionRepository.extra.test.ts",
+    "tests/v2/StableConsumerContracts.extra.test.ts",
+    "tests/cli/CertificationFairnessLifecycle.extra.integration.test.ts",
+    "tests/cli/studio/simulation/StudioSimulationService.extra.realWorkers.test.ts",
+    "tests/cli/BuildCommand.extra.test.ts",
+    "tests/v2/EvidenceDossier.extra.test.ts",
+    "tests/v2/FeatureAnalyticsAggregates.extra.test.ts",
+], async (fixture, file) => {
+    const target = path.join(fixture.repository, file);
+    await mkdir(path.dirname(target), {recursive:true});
+    await writeFile(target, file === "package.json" ? `${JSON.stringify({name:"changed-product"})}\n` : "changed protected input\n");
+    commitFixture(fixture.repository);
+    await assert.rejects(selectRetained(fixture), /product\/build inputs changed/);
 });
 
-test.each(P911_TOOLING_DESCENDANT_PATHS)("tooling descendant rejects nonregular entry %s", async (file) => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "p911-nonregular-descendant-"));
-    try {
-        const fixture = await candidateFixture(directory);
-        await commitP911ToolingDescendant(fixture);
-        await selectRetained(fixture);
-        const target = path.join(fixture.repository, file);
-        await rm(target); await symlink(fixture.handoff.browserDriver.path, target);
-        commitFixture(fixture.repository);
-        await assert.rejects(selectRetained(fixture), /nonregular tooling\/evidence entry/);
-    } finally { await rm(directory, {recursive:true, force:true}); }
+descendantCases("tooling descendant rejects nonregular entry", P911_TOOLING_DESCENDANT_PATHS, async (fixture, file) => {
+    const target = path.join(fixture.repository, file);
+    await rm(target); await symlink(fixture.handoff.browserDriver.path, target);
+    commitFixture(fixture.repository);
+    await assert.rejects(selectRetained(fixture), /nonregular tooling\/evidence entry/);
 });
 
 test("pinned real file/archive reader rejects candidate, stale assets, extra assets and product descendants", async () => {

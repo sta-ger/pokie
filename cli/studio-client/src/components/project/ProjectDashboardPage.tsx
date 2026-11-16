@@ -12,7 +12,6 @@ import {
     inspectProject,
     inspectReplayArtifact,
     checkNativePickerAvailability,
-    openOutputFolder,
     revealOutputPath,
     listRecentSpins,
     listReplays,
@@ -568,7 +567,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const handleFeatureOwnedOutcomeLibraryJobChange = useCallback((jobId: string | undefined): void => {
         setFeatureOwnedOutcomeLibraryJobId(jobId);
     }, []);
-    const [recoveryJob, setRecoveryJob] = useState<Pick<StudioJobView, "operation" | "request"> | undefined>();
+    const [recoveryJob, setRecoveryJob] = useState<(Pick<StudioJobView, "operation" | "request"> & {id?: string}) | undefined>();
     // Simulation recovery is a pending Configure handoff, not durable view
     // authority. A newer submission or report selection consumes it; tab
     // remounts must then derive their view from that newer result instead.
@@ -577,6 +576,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     }, []);
     const [newSessionRecoveryRequested, setNewSessionRecoveryRequested] = useState(false);
     const [jobProjectOpeningError, setJobProjectOpeningError] = useState<string>();
+    const [recoveryNavigationError, setRecoveryNavigationError] = useState<string>();
     const openAndNavigate = useOpenProject();
     const projectActionGuardRef = useRef<GuardedAction | undefined>(undefined);
     const reopenJobProject = useCallback((sourcePath: string): void => {
@@ -588,6 +588,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         });
     }, [openAndNavigate]);
     const handleJobRecoveryAction = useCallback((job: StudioJobView): void => {
+        setRecoveryNavigationError(undefined);
         if (job.operation === "project-open-materialization" && typeof job.request.sourcePath === "string") {
             reopenJobProject(job.request.sourcePath);
             return;
@@ -610,10 +611,29 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             setActiveTab("replay");
         } else if (job.operation.includes("certification")) {
             setActiveTab("certification");
+        } else if (job.operation === "optimization") {
+            setActiveTab("overview");
         } else {
             setActiveTab("exportDeploy");
         }
     }, [commonJobs.jobs, releaseSimulationRestoration, reopenJobProject, setActiveTab]);
+    const requestedRecoveryId = new URLSearchParams(location.search).get("recoverJob");
+    const consumedRecoveryNavigation = useRef<string | undefined>(undefined);
+    useEffect(() => {
+        if (requestedRecoveryId === null || projectKey === undefined || commonJobs.discoveryStatus === "pending" || commonJobs.discoveryStatus === "failed") return;
+        if (consumedRecoveryNavigation.current === location.key) return;
+        // Home hands off identity only. Re-read the accepted record in the
+        // current project instead of trusting request/status copies in history.
+        const job = commonJobs.jobs.find(candidate => candidate.id === requestedRecoveryId);
+        if (job?.operation === "simulation" && simulation.canRestore && !["queued", "running", "cancelling"].includes(job.status)) return;
+        consumedRecoveryNavigation.current = location.key;
+        if (job === undefined || job.recovery === undefined || job.recovery.action === "resume" || ["queued", "running", "cancelling"].includes(job.status)) {
+            setRecoveryNavigationError("This retained job is no longer available for retry. Review current project operations or reattach to retained work.");
+            return;
+        }
+        setRecoveryNavigationError(undefined);
+        handleJobRecoveryAction(job);
+    }, [commonJobs.discoveryStatus, commonJobs.jobs, handleJobRecoveryAction, location.key, projectKey, requestedRecoveryId, simulation.canRestore]);
     const handleFeatureOutcomeLibraryRecoveryAction = useCallback((jobId: string): void => {
         const job = commonJobs.jobs.find((candidate) => candidate.id === jobId);
         if (job === undefined || job.recovery === undefined) return;
@@ -1302,7 +1322,8 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
 
     function openJobOutput(resolvedOutputPath: string): void {
         setJobOutputNotice(undefined);
-        openOutputFolder(fetchImpl, resolvedOutputPath)
+        // Common durable outputs can be files as well as directories.
+        revealOutputPath(fetchImpl, resolvedOutputPath)
             .then((result) => {
                 if (result.status === "ok") {
                     setJobOutputNotice("Opened job output.");
@@ -1484,7 +1505,12 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     ? <WasmManifestInspection projectRoot={header.projectRoot} summary={header.wasmPresentation.inspectionSummary} />
                                     : <Text>This {describeProjectType(header.type).toLowerCase()} can be republished from Build/Export.</Text>
                             )}
-                            {activeTab === "overview" && (header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact") && <OptimizationPanel key={header.projectRoot} projectRoot={header.projectRoot} jobs={commonJobs} sourceChange={optimizerSourceChange?.projectRoot === header.projectRoot ? optimizerSourceChange : undefined} onStarted={(sourceRevision) => setOptimizerSourceChange(previous => previous?.projectRoot === header.projectRoot && previous.sourceRevision === sourceRevision ? previous : {projectRoot: header.projectRoot, sourceRevision})} onApplied={handleBlueprintSaved} />}
+                            {activeTab === "overview" && (header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact") && <OptimizationPanel key={header.projectRoot} projectRoot={header.projectRoot} jobs={commonJobs} recoveryJob={recoveryJob?.operation === "optimization" ? recoveryJob : undefined} sourceChange={optimizerSourceChange?.projectRoot === header.projectRoot ? optimizerSourceChange : undefined} onStarted={(sourceRevision) => {
+                                // Retry owns only the pending form handoff. Once the server
+                                // accepts its replacement, remounts must follow current work.
+                                setRecoveryJob(job => job?.operation === "optimization" ? undefined : job);
+                                setOptimizerSourceChange(previous => previous?.projectRoot === header.projectRoot && previous.sourceRevision === sourceRevision ? previous : {projectRoot: header.projectRoot, sourceRevision});
+                            }} onApplied={handleBlueprintSaved} />}
                             {activeTab === "gameModel" && (
                                 // GameModelTab owns all of its own fetch state locally (no page-level hook),
                                 // so a genuine project switch needs a full remount, not just a re-render of a
@@ -1650,6 +1676,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         </Stack>
                     )}
                     {jobProjectOpeningError !== undefined && <Alert role="alert" color="red">{jobProjectOpeningError}</Alert>}
+                    {recoveryNavigationError !== undefined && <Alert role="alert" color="orange">{recoveryNavigationError}</Alert>}
                     {(jobProjectOpeningError !== undefined || visibleCommonJobs.some((job) => job.operation === "project-open-materialization" && job.result?.outputs?.some((output) => output.unavailableReason !== undefined))) &&
                         <Button variant="default" onClick={() => navigate("/home/projects")}>Find retained project in Projects</Button>}
                     {jobOutputNotice !== undefined && <Text size="xs" aria-live="polite" c="dimmed">{jobOutputNotice}</Text>}

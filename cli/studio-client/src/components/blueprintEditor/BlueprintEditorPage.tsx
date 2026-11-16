@@ -1168,6 +1168,8 @@ export function BlueprintEditorPage({
         guidedActionDescriptionId = "blueprint-create-game-opening";
     } else if (managedSaveView.status === "loading") {
         guidedActionDescriptionId = "blueprint-create-game-saving";
+    } else if (sequenceDraftDirty) {
+        guidedActionDescriptionId = "blueprint-create-game-sequences";
     }
     let validationGuidance = "Studio is checking this game design automatically. Create game becomes available when the check succeeds.";
     if (validationView.status === "inconclusive") {
@@ -1238,7 +1240,7 @@ export function BlueprintEditorPage({
                             id="blueprint-create-game"
                             data-pokie-validation-state={validationView.status}
                             onClick={handleGuidedSave}
-                            disabled={guidedActionPending || validationView.status !== "ok"}
+                            disabled={sequenceDraftDirty || guidedActionPending || validationView.status !== "ok"}
                             aria-describedby={guidedActionDescriptionId}
                             loading={guidedActionPending}
                             aria-busy={guidedActionPending || undefined}
@@ -1259,6 +1261,11 @@ export function BlueprintEditorPage({
                     {validationView.status !== "ok" && (
                         <Text id="blueprint-create-game-validation" c="dimmed" size="sm" mb="sm">
                             {validationGuidance}
+                        </Text>
+                    )}
+                    {sequenceDraftDirty && (
+                        <Text id="blueprint-create-game-sequences" c="dimmed" size="sm" mb="sm">
+                            Apply or cancel whole-sequence edits before saving.
                         </Text>
                     )}
                     {workspaceOpenError && (

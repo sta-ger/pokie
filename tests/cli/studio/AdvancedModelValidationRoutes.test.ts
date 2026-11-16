@@ -1,4 +1,4 @@
-import {execFileSync} from "node:child_process";
+import {spawnSync} from "node:child_process";
 import {pathToFileURL} from "node:url";
 import fs from "fs";
 import os from "os";
@@ -19,7 +19,7 @@ import type {AdvancedModelValidationReport} from "../../../src/validation/Advanc
 
 let restoreTemporaryDirectory: () => void;
 beforeAll(() => {
-    restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    restoreTemporaryDirectory = createPackageExtractionTestEnvironment({stageRuntime: false});
 });
 afterAll(() => {
     restoreTemporaryDirectory();
@@ -228,18 +228,26 @@ it("bounds shared-weight normalization on the real Studio comparison route and r
 it("preserves authenticated candidate selection across the complete bounded timeout correction", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "advanced-gate-handoff-"));
     try {
-        execFileSync(process.execPath, ["--input-type=module", "-e", `
+        const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
             import assert from "node:assert/strict";
             import {execFileSync} from "node:child_process";
             import {mkdir, readFile, writeFile} from "node:fs/promises";
             import path from "node:path";
             import {candidateFixture, commitP911ToolingDescendant, P911_TOOLING_DESCENDANT_PATHS} from ${JSON.stringify(pathToFileURL(path.resolve("tests/testUtils/createP911CandidateFixture.mjs")).href)};
-            import {readP911Candidate, sha256} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p9-11-candidate.mjs")).href)};
+            import {readP911Candidate, readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment, sha256} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p9-11-candidate.mjs")).href)};
             import {authenticateP805ProductTree} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p8-05-release-handoff.mjs")).href)};
+            const started = performance.now();
+            const phase = name => console.log(JSON.stringify({phase: name, elapsedMs: performance.now() - started}));
             const fixture = await candidateFixture(${JSON.stringify(root)});
+            phase("fixture-created");
             const correction = [
                 "tests/cli/studio/AdvancedModelValidationRoutes.test.ts",
                 "tests/cli/studio/simulation/StudioSimulationService.test.ts",
+                "tests/cli/WasmWorkflow.integration.test.ts",
+                "tests/cli/studio/StudioJobRoutes.integration.test.ts",
+                "tests/server/spin/SpinSessionPersistence.integration.test.ts",
+                "tests/v2/AdvancedModelValidation.test.ts",
+                "tests/v2/fixtures/PackageExtractionFixture.ts",
                 "scripts/p8-05-release-handoff.mjs", "scripts/p9-11-candidate.mjs",
                 "tests/testUtils/createP911CandidateFixture.mjs",
             ];
@@ -249,6 +257,12 @@ it("preserves authenticated candidate selection across the complete bounded time
             assert.deepEqual(selected.equivalence.changedEvidenceAndTooling, [...P911_TOOLING_DESCENDANT_PATHS].sort());
             assert.equal(selected.packageRoot, path.join(fixture.handoff.installationRoot, "node_modules/@fromstan/pokie"));
             assert.equal(selected.archiveSha256, sha256(await readFile(fixture.handoff.archivePath)));
+            const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path,
+                POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256,
+                POKIE_PACK_SMOKE_CANDIDATE_ID: reviewed, POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256: selected.archiveSha256};
+            const selectors = [readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment];
+            for (const selector of selectors) assert.deepEqual(await selector(environment, {repository: fixture.repository}), selected);
+            phase("complete-delta-readers-and-selectors");
             // P8 has its own narrower admission set: exercise this complete correction separately.
             const git = args => execFileSync("git", args, {cwd: fixture.repository, encoding: "utf8"}).trim();
             git(["reset", "--hard", fixture.handoff.candidateId]);
@@ -260,19 +274,29 @@ it("preserves authenticated candidate selection across the complete bounded time
             };
             const legacy = commit();
             assert.deepEqual(authenticateP805ProductTree(fixture.handoff.candidateId, legacy, fixture.repository).changedToolingAndEvidencePaths, [...correction].sort());
-            for (const file of ["cli/studio/changed.ts", "tsconfig.prod.json", "tests/cli/studio/unnamed.test.ts"]) {
+            for (const file of ["src/changed.ts", "cli/studio/changed.ts", "tsconfig.prod.json", "tests/cli/studio/unnamed.test.ts"]) {
                 await mkdir(path.dirname(path.join(fixture.repository, file)), {recursive: true});
                 await writeFile(path.join(fixture.repository, file), "protected input");
                 commit();
                 assert.throws(() => authenticateP805ProductTree(fixture.handoff.candidateId, git(["rev-parse", "HEAD"]), fixture.repository), /product or build inputs/);
                 await assert.rejects(readP911Candidate(fixture.reference, {repository: fixture.repository}), /product.*build inputs/);
+                for (const selector of selectors) await assert.rejects(selector(environment, {repository: fixture.repository}), /product.*build inputs/);
                 git(["reset", "--hard", legacy]);
             }
+            phase("protected-inputs-rejected");
             git(["reset", "--hard", reviewed]);
             await assert.rejects(readP911Candidate({...fixture.reference, sha256: "b".repeat(64)}, {repository: fixture.repository}), /receipt digest mismatch/);
             await writeFile(fixture.handoff.browserDriver.path, "changed external driver");
             await assert.rejects(readP911Candidate(fixture.reference, {repository: fixture.repository}), /authenticated controller browser driver required/);
-        `], {stdio: "pipe", timeout: 20_000});
+            phase("receipt-and-driver-pins-rejected");
+        `], {stdio: "pipe", timeout: 20_000, encoding: "utf8"});
+        // Keep a native timeout's completed phases and terminal fields serializable
+        // through direct Jest workers, rather than throwing its circular .error object.
+        if (result.error || result.status !== 0) throw new Error(JSON.stringify({
+            operation: "candidate readers and selectors", status: result.status, signal: result.signal,
+            error: result.error?.message, stdout: result.stdout, stderr: result.stderr,
+        }));
+        console.log("CANDIDATE_READER_PHASES", result.stdout.trim());
     } finally {
         fs.rmSync(root, {recursive: true, force: true});
     }

@@ -21,8 +21,12 @@ describe("BuildProductMatrix", () => {
             "blueprint:stakeAdapter",
             "blueprint:parWorkbook",
             "blueprint:wasm",
+            "tsPackage:blueprint",
+            "tsPackage:tsPackage",
             "tsPackage:outcomeLibrary",
             "tsPackage:stakeAdapter",
+            "tsPackage:parWorkbook",
+            "tsPackage:wasm",
             "outcomeLibrary:outcomeLibrary",
             "outcomeLibrary:stakeAdapter",
             "stakeAdapter:stakeAdapter",
@@ -34,7 +38,7 @@ describe("BuildProductMatrix", () => {
             "parWorkbook:wasm",
         ]);
         expect(cells.filter((cell) => cell.state === "hidden/unadvertised")).toHaveLength(0);
-        expect(cells.filter((cell) => cell.state === "diagnostic-required")).toHaveLength(20);
+        expect(cells.filter((cell) => cell.state === "diagnostic-required")).toHaveLength(16);
     });
 
     it("makes WASM an advertised registry target through the same matrix", () => {
@@ -43,7 +47,7 @@ describe("BuildProductMatrix", () => {
         expect(ADVERTISED_ARTIFACT_BUILD_TARGETS).toEqual(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"]);
         expect(registry.listTargets()).toEqual(ADVERTISED_ARTIFACT_BUILD_TARGETS);
         expect(BUILD_PRODUCT_MATRIX_TARGETS).toContain("wasm");
-        expect(registry.describe("wasm").supportedSources).toEqual(["blueprint", "parWorkbook"]);
+        expect(registry.describe("wasm").supportedSources).toEqual(["blueprint", "tsPackage", "parWorkbook"]);
     });
 
     it("gives every advertised diagnostic cell the same exact prerequisite and next action", () => {

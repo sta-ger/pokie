@@ -1,3 +1,4 @@
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../../v2/fixtures/PackageExtractionFixture.js";
 import {authoritativePaytableBlueprint} from "../../fixtures/math/AuthoritativePaytableFixture.js";
 import {FRACTIONAL_BET_STAKES, FRACTIONAL_MIXED_CONTINUATION, fractionalBetBlueprint, screenMultiplier, amountTolerance} from "../../fixtures/math/FractionalBetFixture.js";
 import fs from "fs";
@@ -21,7 +22,14 @@ import {BoundedPokieWasmTraceCollector, type PokieWasmRound, type PokieWasmLegac
 import {PORTABLE_RUNTIME_ALL_WILD_GOLDEN, PORTABLE_RUNTIME_FEATURE_GOLDEN, PORTABLE_RUNTIME_GOLDEN} from "../../fixtures/wasm/portableRuntimeGolden.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
+let restoreRuntimeEnvironment: () => void;
+beforeAll(() => {
+    restoreRuntimeEnvironment = createPackageExtractionTestEnvironment();
+}, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+afterAll(() => restoreRuntimeEnvironment());
+
 describe("WASM runtime parity golden", () => {
+    jest.setTimeout(PACKAGE_EXTRACTION_TEST_TIMEOUT);
     it.each((["missing-symbol", "missing-count", "zero", "positive", "scatter-missing", "scatter-zero", "scatter-positive"] as const).flatMap(kind => FRACTIONAL_BET_STAKES.map(bet => [kind, bet] as const)))("matches authored %s Node/WASM awards at stake %s", async (kind, bet) => {
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-authored-wasm-"));
         let fixture: Awaited<ReturnType<typeof createProductionParityFixture>> | undefined;

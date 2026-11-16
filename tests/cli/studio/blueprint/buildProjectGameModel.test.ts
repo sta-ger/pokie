@@ -1,8 +1,8 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {writeDescriptorPackage} from "../../../v2/fixtures/PackageExtractionFixture.js";
-import {PackageBlueprintExtraction, type GamePackageInspectionReport, type PokieProject, type WasmComponentManifestReadResult} from "@fromstan/pokie";
+import {createPackageExtractionTestEnvironment, writeDescriptorPackage} from "../../../v2/fixtures/PackageExtractionFixture.js";
+import {PackageBlueprintExtraction, resolvePokieGameDependencyRoots, type GamePackageInspectionReport, type PokieProject, type WasmComponentManifestReadResult} from "@fromstan/pokie";
 import {buildProjectGameModel, type GameModelSourceReaders} from "../../../../cli/studio/blueprint/buildProjectGameModel.js";
 import type {StudioBlueprintLoadView} from "../../../../cli/studio/blueprint/StudioBlueprintLoadView.js";
 
@@ -40,11 +40,19 @@ function outcomeLibraryProject(): PokieProject {
 }
 
 describe("buildProjectGameModel", () => {
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
+    });
+    afterAll(() => restoreTemporaryDirectory());
+
     it("uses shared package extraction for descriptor and legacy views, retaining concrete identity/diagnoses", async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-package-model-"));
         try {
             for (const legacy of [false, true]) {
                 const source = writeDescriptorPackage(root, {name: String(legacy), legacy});
+                expect((await resolvePokieGameDependencyRoots(source))["@fromstan/pokie"])
+                    .toBe(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"));
                 const project: PokieProject = {type: "tsPackage", rootPath: source, capabilities: ["runtime.execute"], provenance: "fixture"};
                 const bytes = fs.readFileSync(path.join(source, "index.js"));
                 const inventory = fs.readdirSync(source).sort();

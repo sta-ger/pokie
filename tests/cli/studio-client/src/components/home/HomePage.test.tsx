@@ -2,6 +2,8 @@ import {act, fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
+import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
+import type {StudioJobView} from "../../../../../../cli/studio-client/src/api/types";
 
 const RETAINED_OPEN_SOURCE = "/games/recoverable";
 const RETAINED_OPEN_RUNTIME = "/games/recoverable/generated";
@@ -98,6 +100,107 @@ async function expectActiveSection(name: string): Promise<void> {
 jest.setTimeout(120000);
 
 describe("HomePage", () => {
+    it("V2C-37 keeps cancelled Retry and completed Open pending through the actual response and permits recovery after rejection", async () => {
+        const retained: StudioJobView = {
+            id: "cancelled", projectId: RETAINED_OPEN_SOURCE, operation: "project-open-materialization",
+            request: {sourcePath: RETAINED_OPEN_SOURCE}, conflictKey: `project-open:${RETAINED_OPEN_SOURCE}`,
+            status: "cancelled", createdAt: 1, recovery: {action: "retry", reason: "Reopen the same project to retry."},
+        };
+        const base = createRoutedFakeFetch({
+            ...retainedOpeningRoutes(),
+            "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: [retained, {
+                ...retained, id: "completed", status: "completed", recovery: undefined,
+                result: {summary: "Earlier opening completed.", outputs: [{label: "Opened project", path: RETAINED_OPEN_SOURCE}]},
+            }]}}),
+        });
+        const requests: string[] = [];
+        let settle!: (response: Awaited<ReturnType<FetchLike>>) => void;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url !== "/api/home/projects/open") return base.fetchImpl(url, init);
+            requests.push(init!.body!);
+            return new Promise(resolve => {
+                settle = resolve;
+            });
+        };
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
+        const retry = await screen.findByRole("button", {name: "Retry"});
+        // Both events enter before the disabled state is committed to the DOM.
+        act(() => {
+            fireEvent.click(retry);
+            fireEvent.click(retry);
+        });
+        expect(requests).toEqual([JSON.stringify({projectRoot: RETAINED_OPEN_SOURCE})]);
+        expect(retry).toBeDisabled();
+        const open = screen.getByRole("button", {name: "Open Opened project"});
+        expect(open).toBeDisabled();
+        fireEvent.click(open);
+        expect(requests).toHaveLength(1);
+        expect(router.state.location.pathname).toBe("/home/projects");
+        expect(screen.getAllByText(/Project opening is pending/)).toHaveLength(2);
+
+        await act(async () => {
+            settle({ok: false, status: 400, json: () => Promise.resolve({error: "Temporary source failure."})});
+            await Promise.resolve();
+        });
+        expect(await screen.findByRole("alert")).toHaveTextContent("Temporary source failure.");
+        expect(retry).toBeEnabled();
+        expect(open).toBeEnabled();
+        fireEvent.click(retry);
+        expect(retry).toBeDisabled();
+        expect(requests).toHaveLength(2);
+        const response = {context: {mode: "project", projectRoot: RETAINED_OPEN_RUNTIME}};
+        await act(async () => {
+            settle({ok: true, status: 200, json: () => Promise.resolve(response)});
+            await Promise.resolve();
+        });
+        await screen.findByRole("heading", {name: "Recoverable"});
+        expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(RETAINED_OPEN_RUNTIME)}/overview`);
+        expect(screen.queryByText(/Couldn't reopen/)).not.toBeInTheDocument();
+
+        // A later explicit opening still works; no abandoned guard or optimistic destination survives.
+        await act(() => router.navigate("/home/projects"));
+        fireEvent.click(await screen.findByRole("button", {name: "Open Opened project"}));
+        expect(requests).toHaveLength(3);
+        await act(async () => {
+            settle({ok: true, status: 200, json: () => Promise.resolve(response)});
+            await Promise.resolve();
+        });
+        await screen.findByRole("heading", {name: "Recoverable"});
+        expect(requests.every(request => request === JSON.stringify({projectRoot: RETAINED_OPEN_SOURCE}))).toBe(true);
+    });
+
+    it.each(["queued", "running", "cancelling"] as const)("V2C-37 disables reload-discovered Retry during same-source %s work until its terminal", async status => {
+        const retained: StudioJobView = {
+            id: "cancelled", projectId: RETAINED_OPEN_SOURCE, operation: "project-open-materialization",
+            request: {sourcePath: RETAINED_OPEN_SOURCE}, conflictKey: `project-open:${RETAINED_OPEN_SOURCE}`,
+            status: "cancelled", createdAt: 1, recovery: {action: "retry", reason: "Reopen the same project to retry."},
+        };
+        let active: StudioJobView = {...retained, id: "active", createdAt: 2, status, recovery: undefined};
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...retainedOpeningRoutes(),
+            "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: [retained, active, {
+                ...retained, id: "other-source", projectId: "/other", request: {sourcePath: "/other"}, conflictKey: "project-open:/other",
+            }]}}),
+            "/api/home/jobs/active": () => ({ok: true, status: 200, body: active}),
+            "/api/home/projects/open": () => ({ok: true, status: 200, body: {context: {mode: "project", projectRoot: RETAINED_OPEN_RUNTIME}}}),
+        });
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
+        const card = await screen.findByRole("region", {name: "project-open-materialization job cancelled"});
+        const retry = within(card).getByRole("button", {name: "Retry"});
+        expect(retry).toBeDisabled();
+        expect(card).toHaveTextContent("Project opening is active for this source.");
+        expect(within(screen.getByRole("region", {name: "project-open-materialization job other-source"})).getByRole("button", {name: "Retry"})).toBeEnabled();
+        fireEvent.click(retry);
+        expect(calls.filter(call => call.url === "/api/home/projects/open")).toHaveLength(0);
+        expect(within(screen.getByRole("region", {name: "project-open-materialization job active"})).getByRole("button", {name: "Cancel"})).toBeInTheDocument();
+        active = {...active, status: "cancelled"};
+        await waitFor(() => expect(retry).toBeEnabled());
+        fireEvent.click(retry);
+        await screen.findByRole("heading", {name: "Recoverable"});
+        expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(RETAINED_OPEN_RUNTIME)}/overview`);
+        expect(calls.filter(call => call.url === "/api/home/projects/open").map(call => JSON.parse(call.init!.body!))).toEqual([{projectRoot: RETAINED_OPEN_SOURCE}]);
+    });
+
     it("exposes draft package publication from fresh Home advanced options without a retained job", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
@@ -212,6 +315,7 @@ describe("HomePage", () => {
         fireEvent.click(screen.getByRole("button", {name: "Stay"}));
         expect(screen.getByLabelText("Game name")).toHaveValue("Unsaved A");
         expect(screen.queryByRole("button", {name: "Reveal Opened project"})).not.toBeInTheDocument();
+        await waitFor(() => expect(screen.getByRole("button", {name: "Open Opened project"})).toBeEnabled());
         fireEvent.click(screen.getByRole("button", {name: "Open Opened project"}));
         await screen.findByText(DIRTY_CONFIRMATION);
         fireEvent.click(screen.getByRole("button", {name: "Leave"}));

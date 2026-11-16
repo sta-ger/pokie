@@ -1,10 +1,17 @@
-import {PokieProject, ProjectResolving, ProjectTargetMalformedError, ProjectTargetUnsupportedError} from "@fromstan/pokie";
+import {PokieProject, ProjectResolving, ProjectTargetMalformedError, ProjectTargetUnsupportedError, resolvePokieGameDependencyRoots} from "@fromstan/pokie";
 import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
 import {InspectCommand} from "../../../cli/commands/InspectCommand.js";
+import {createPackageExtractionTestEnvironment} from "../../v2/fixtures/PackageExtractionFixture.js";
+
+let restoreTemporaryDirectory: () => void;
+beforeAll(() => {
+    restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
+});
+afterAll(() => restoreTemporaryDirectory());
 
 function createStubResolver(project: PokieProject | undefined): ProjectResolving & {calledWith?: string} {
     return {
@@ -196,14 +203,21 @@ describe("InspectCommand (integration, real GamePackageInspector)", () => {
     });
 
     it("inspects a real hand-written package and returns 0 with its public kind", async () => {
-        const packageRoot = path.join(__dirname, "..", "..", "gamepackage", "fixtures", "valid-game");
-        const command = new InspectCommand();
+        const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-inspect-hand-written-"));
+        fs.cpSync(path.join(__dirname, "..", "..", "gamepackage", "fixtures", "valid-game"), packageRoot, {recursive: true});
+        const manifest = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf8"));
+        fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({...manifest, dependencies: {"@fromstan/pokie": "*"}}));
+        try {
+            expect(await resolvePokieGameDependencyRoots(packageRoot)).toEqual({"@fromstan/pokie": path.join(os.tmpdir(), "node_modules/@fromstan/pokie")});
+            const command = new InspectCommand();
+            const exitCode = await command.run([packageRoot]);
 
-        const exitCode = await command.run([packageRoot]);
-
-        expect(exitCode).toBe(0);
-        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
-        expect(printed).toContain("POKIE game package");
+            expect(exitCode).toBe(0);
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).toContain("POKIE game package");
+        } finally {
+            fs.rmSync(packageRoot, {recursive: true, force: true});
+        }
     });
 
     it("returns 1 for a missing package root", async () => {

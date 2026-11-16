@@ -12,11 +12,11 @@ export function compileP906Candidate(repositoryRoot: string): void {
         outputPaths: ["dist/cli/pokie.js", "dist/esm/index.js", "dist/cjs/index.js", "dist/cli/studio-client/index.html", "dist/src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", ...["esm", "cjs", "src"].map(tree => `dist/${tree}/gamepackage/internal/runtimeLocation.mjs`)].map((entry) => path.join(repositoryRoot, entry)),
         lockName: "canonical-artifact-cli",
         forceRebuild: true,
-        executionTimeoutMs: 120_000,
+        executionTimeoutMs: 240_000,
         command: [process.execPath, "-e", `
             const {execFileSync}=require('node:child_process');
             const fs=require('node:fs');
-            const run=(args)=>execFileSync(process.execPath,args,{stdio:'inherit',timeout:60000,killSignal:'SIGKILL'});
+            const run=(args)=>execFileSync(process.execPath,args,{stdio:'inherit',timeout:120000,killSignal:'SIGKILL'});
             run(['node_modules/typescript/bin/tsc','--project','tsconfig.prod.json']);
             run(['node_modules/typescript/bin/tsc','--project','tsconfig.prod.json','--module','CommonJS','--outDir','dist/cjs']);
             run(['write-cjs-package-json.js']);

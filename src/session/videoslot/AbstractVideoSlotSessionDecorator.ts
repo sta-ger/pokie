@@ -1,3 +1,4 @@
+import type {StakeAmountDetermining} from "../StakeAmountDetermining.js";
 import {getSessionCompositionError, resolveSessionStateSchema, type SessionStateSchema} from "../SessionStateRestoring.js";
 import type {ReelSequenceSelection, ReelSequenceStatistics} from "./combinations/WeightedSequenceVariant.js";
 import type {ScreenGeometry} from "./coordinates/ScreenGeometry.js";
@@ -207,7 +208,21 @@ implements VideoSlotSessionHandling<T> {
         try {
             rollback = this.createStepRollback();
             this.stepResultValid = true;
+            const credits = this.getCreditsAmount();
+            const payoutProvider = (this as VideoSlotSessionHandling<T>).getPayoutAmount;
+            const stake = payoutProvider ? (this as Partial<StakeAmountDetermining>).getStakeAmount?.() ?? this.getBet() : 0;
             if (action() === false) this.stepResultValid = resultValid;
+            else {
+                const payout: number | undefined = payoutProvider ? Reflect.apply(payoutProvider, this, []) : undefined;
+                // Only an explicit, composition-aware payout contract may canonicalize credits.
+                // Undefined leaves successful extension accounting exactly as executed.
+                if (payout !== undefined) {
+                    if (!Number.isFinite(payout)) throw new Error("Domain payout must be finite.");
+                    const settled = credits - stake + payout;
+                    if (!Number.isFinite(settled) || settled < 0) throw new Error("Payout or balance overflow.");
+                    this.setCreditsAmount(settled);
+                }
+            }
         } catch (error) {
             rollback?.();
             this.stepResultValid = false;

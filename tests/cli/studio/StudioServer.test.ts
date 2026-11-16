@@ -1,6 +1,6 @@
 import {generatedMechanicsGame} from "../../v2/fixtures/ExistingMechanicsGame.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
-import {createPackageExtractionTestEnvironment, writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, runtimeSnapshotNames, writeDescriptorPackage, writePausedDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
 import {StudioRoundRecorder} from "../../../cli/studio/runtime/StudioRoundRecorder.js";
 import {transactionalRoundGame} from "../../v2/fixtures/TransactionalRoundGame.js";
 import {
@@ -20,6 +20,7 @@ import {
     ManagedOutcomeProjectService,
     OutcomeLibraryBundleWriter,
     OutcomeLibraryBundleReader,
+    PackageBlueprintExtraction,
     PokieGame,
     PokieGameManifest,
     PokieGamePackageValidationReport,
@@ -63,6 +64,7 @@ import {StudioFairnessService} from "../../../cli/studio/fairness/StudioFairness
 import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
 import {InMemoryRecentProjectsRepository} from "../../../cli/studio/InMemoryRecentProjectsRepository.js";
 import {StudioNativePickerService} from "../../../cli/studio/home/StudioNativePickerService.js";
+import {validateOpenFolderRequest} from "../../../cli/studio/home/validateOpenFolderRequest.js";
 import {isLoopbackRequest} from "../../../cli/studio/isLoopbackRequest.js";
 import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
 import {FileStudioProjectRegistry} from "../../../cli/studio/FileStudioProjectRegistry.js";
@@ -84,6 +86,7 @@ import {buildStakeEngineTestLibrary} from "../../stakeengine/StakeEngineTestFixt
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {ensureCompiledTestOutput} from "../../testUtils/ensureCompiledTestOutput.js";
 import {REPO_ROOT} from "../../testUtils/offlinePokieDependencyOverride.js";
+import {resolvePokieGameDependencyRoots} from "../../../src/gamepackage/resolvePokieGameEntryModule.js";
 
 const fixtureCommandAuthority: Pick<PokieGame, "getSessionCommandCapabilities"> = {
     getSessionCommandCapabilities: () => ({bets: [0.05, 7.5, 1e-7, 1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], modes: ["base", "ante", "buyFeature"]}),
@@ -97,6 +100,22 @@ const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulatio
 // under the controller's concurrent Jest launcher; route-only cases keep the default timeout.
 const REAL_RUNTIME_TEST_TIMEOUT_MS = 300000;
 const RUNTIME_PHASE_POLL_TIMEOUT_MS = 60000;
+// Preview owns one extraction; publication rechecks the source and graph before
+// extracting the published model. Each read acquires and releases a real snapshot.
+const PRODUCER_WORKFLOW_TIMEOUT_MS = 3 * REAL_RUNTIME_TEST_TIMEOUT_MS;
+
+async function waitForProducerJob(producer: StudioArtifactBuildService, source: string, id: string, timeoutMs = REAL_RUNTIME_TEST_TIMEOUT_MS) {
+    const started = performance.now();
+    let lastJob: ReturnType<StudioArtifactBuildService["getStatusForProject"]>;
+    while (performance.now() - started < timeoutMs) {
+        lastJob = producer.getStatusForProject(source, id);
+        if (lastJob && !["queued", "running", "cancelling"].includes(lastJob.status)) return lastJob;
+        await new Promise<void>(resolve => {
+            setTimeout(resolve, 50);
+        });
+    }
+    throw new Error(`Producer job ${id} did not settle after ${Math.round(performance.now() - started)}ms: ${JSON.stringify(lastJob)}`);
+}
 type PendingGameLoad = (game: PokieGame) => void;
 type PendingLoadStarted = () => void;
 
@@ -491,7 +510,8 @@ async function pollUntilProjectContextSettled(url: string, timeoutMs = RUNTIME_P
 describe("StudioServer", () => {
     let restoreTemporaryDirectory: () => void;
     beforeAll(() => {
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+        // Keep real npm installs and million-stop job outputs on durable executable storage.
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({memoryBacked: false});
     });
     afterAll(() => {
         restoreTemporaryDirectory();
@@ -1635,7 +1655,9 @@ describe("StudioServer", () => {
     ] as const)("retains %s %s release failure as cleanup-unconfirmed (cancelled=%s)", async (entry, resource, cancelled) => {
         const sourcePath = path.join(studioRoot, "release-failure-game");
         fs.mkdirSync(sourcePath);
-        fs.writeFileSync(path.join(sourcePath, "package.json"), JSON.stringify({name: "release-failure-game", pokie: {entry: "index.js"}}));
+        // Resolve the suite's staged runtime instead of the compatibility fallback
+        // to the entire embedding checkout. The real snapshot/release still runs.
+        fs.writeFileSync(path.join(sourcePath, "package.json"), JSON.stringify({name: "release-failure-game", dependencies: {"@fromstan/pokie": "*"}, pokie: {entry: "index.js"}}));
         fs.writeFileSync(path.join(sourcePath, "index.js"), "// injectable game module");
         const failureMessage = `fixture ${resource} release failed`;
         let finishLoad!: (game: PokieGame) => void;
@@ -2059,6 +2081,8 @@ describe("StudioServer", () => {
             return {baseUrl: `http://${address.host}:${address.port}`, rawProjectRoot};
         }
 
+        // These Open/Close/cache-reuse paths load real runtime snapshots as well as
+        // installing the package. Keep their budget aligned with other real-runtime cases.
         it("materializes a genuinely loadable runtime through Home Open Project using the production materializing resolver, offline, with an installation path containing spaces, and reuses the cache on a second Open", async () => {
             // Reproduce the independent direct-Jest launch even when this file is run via npm.
             const callerKeys = Object.keys(process.env).filter(key => key.startsWith("npm_lifecycle_") || key.startsWith("npm_package_") || key === "INIT_CWD" || key === "TMPDIR");
@@ -2097,7 +2121,7 @@ describe("StudioServer", () => {
             } finally {
                 for (const [key, value] of callerEnvironment) restoreEnv(key, value);
             }
-        });
+        }, REAL_RUNTIME_TEST_TIMEOUT_MS);
 
         it("retries a transient staged install through Home Open Project so one Open reaches the Workspace, then reuses the cache", async () => {
             const flakyRunner = failFirstInstallThenDelegate(runBundledNpmCommand);
@@ -2112,7 +2136,7 @@ describe("StudioServer", () => {
             const cachedAfterAutomaticRetry = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
             expect(cachedAfterAutomaticRetry.status).toBe(200);
             expect(flakyRunner.calls).toBe(2);
-        });
+        }, REAL_RUNTIME_TEST_TIMEOUT_MS);
     });
 
     describe("Home nav: GET /api/home/fs/browse", () => {
@@ -2381,12 +2405,20 @@ describe("StudioServer", () => {
         let folderServer: StudioServer | undefined;
         let folderStudioRoot: string;
         let folderWorkDir: string;
+        let folderWorkflow: Promise<void> | undefined;
+
+        beforeEach(() => {
+            folderWorkflow = undefined;
+        });
 
         afterEach(async () => {
+            // Jest timing out does not cancel its callback. Its producer finally
+            // must settle before either HTTP service or its source is removed.
+            await folderWorkflow?.catch(() => undefined);
             await folderServer?.stop();
             fs.rmSync(folderStudioRoot, {recursive: true, force: true});
             fs.rmSync(folderWorkDir, {recursive: true, force: true});
-        });
+        }, PRODUCER_WORKFLOW_TIMEOUT_MS);
 
         async function startServerWithOpenFolder(
             openFolder: (folderPath: string) => void,
@@ -2481,6 +2513,160 @@ describe("StudioServer", () => {
             expect(status).toBe(200);
             expect(body).toEqual({status: "ok"});
             expect(openFolder).toHaveBeenCalledWith(folderWorkDir);
+        });
+
+        it("opens an authenticated completed Blueprint producer output through the file-or-directory boundary", () => {
+            folderWorkflow = openProducedBlueprint();
+            return folderWorkflow;
+        }, PRODUCER_WORKFLOW_TIMEOUT_MS);
+
+        async function openProducedBlueprint(): Promise<void> {
+            const openFolder = jest.fn();
+            const folderBaseUrl = await startServerWithOpenFolder(openFolder);
+            const source = writeDescriptorPackage(folderWorkDir);
+            const sourceBytes = fs.readFileSync(path.join(source, "index.js"));
+            const snapshots = runtimeSnapshotNames(source);
+            const destination = path.join(folderWorkDir, "blueprint.json");
+            const repository = new FileStudioJobRepository(path.join(folderWorkDir, "producer"));
+            const jobs = new StudioJobService(repository);
+            const producer = new StudioArtifactBuildService("1.0.0");
+            producer.attachJobService(jobs);
+            let phase = "preview";
+            const extract = PackageBlueprintExtraction.prototype.extract;
+            const extractions: Array<{phase: string; status: string; elapsedMs: number}> = [];
+            const reads = jest.spyOn(PackageBlueprintExtraction.prototype, "extract").mockImplementation(async function(this: PackageBlueprintExtraction, ...args) {
+                const started = performance.now();
+                const result = await Reflect.apply(extract, this, args);
+                extractions.push({phase, status: result.status, elapsedMs: Math.round(performance.now() - started)});
+                // extract() returns after releasing its invocation-owned snapshot.
+                console.info(`Producer extraction: ${JSON.stringify({...extractions[extractions.length - 1], remainingSnapshots: runtimeSnapshotNames(source)})}`);
+                return result;
+            });
+            const controller = new AbortController();
+            const deadline = setTimeout(() => controller.abort(), REAL_RUNTIME_TEST_TIMEOUT_MS);
+            let phaseStarted = performance.now();
+            try {
+                const preview = await producer.preview(source, "blueprint", destination, controller.signal);
+                if (preview.status !== "ok") throw new Error(JSON.stringify(preview));
+                console.info(`Producer phase: ${JSON.stringify({phase, elapsedMs: Math.round(performance.now() - phaseStarted)})}`);
+                clearTimeout(deadline);
+                phase = "publication";
+                phaseStarted = performance.now();
+                const start = producer.startPreparedExtraction(source, preview.preparedOperationId!, destination);
+                if (start.status !== "created") throw new Error(JSON.stringify(start));
+                expect(await waitForProducerJob(producer, source, start.job.id)).toMatchObject({status: "completed"});
+                console.info(`Producer phase: ${JSON.stringify({phase, elapsedMs: Math.round(performance.now() - phaseStarted)})}`);
+                const job = jobs.get(source, start.job.id)!;
+                expect(job).toMatchObject({status: "completed", result: {
+                    outputs: [{label: "Built artifact", path: destination}],
+                    detail: {target: "blueprint", outputKind: "file", result: {outputPath: destination}},
+                }});
+                expect(fs.statSync(destination).isFile()).toBe(true);
+                expect(JSON.parse(fs.readFileSync(destination, "utf8"))).toHaveProperty("manifest");
+                expect(JSON.parse(fs.readFileSync(`${destination}.conversion-evidence.json`, "utf8"))).toMatchObject({kind: "package-extraction", extraction: preview.plan.packageExtraction});
+                expect(extractions.filter(read => read.phase === "preview")).toHaveLength(1);
+                expect(extractions.filter(read => read.phase === "publication").length).toBeGreaterThan(1);
+                expect(extractions.every(read => read.status === "complete")).toBe(true);
+                phase = "host action";
+                phaseStarted = performance.now();
+                const outputPath = job.result!.outputs![0].path!;
+                // The old route still truthfully rejects files; common cards
+                // must use the existing file-aware route for this exact receipt.
+                expect((await post(`${folderBaseUrl}/api/home/fs/open-folder`, {path: outputPath})).body).toMatchObject({status: "error"});
+                expect(openFolder).not.toHaveBeenCalled();
+                expect((await post(`${folderBaseUrl}/api/home/fs/reveal-path`, {path: outputPath})).body).toEqual({status: "ok"});
+                expect(openFolder).toHaveBeenLastCalledWith(folderWorkDir);
+                expect(fs.statSync(outputPath).isFile()).toBe(true);
+                console.info(`Producer phase: ${JSON.stringify({phase, elapsedMs: Math.round(performance.now() - phaseStarted)})}`);
+            } finally {
+                clearTimeout(deadline);
+                controller.abort();
+                const started = performance.now();
+                try {
+                    await producer.cancelAll();
+                    expect(runtimeSnapshotNames(source)).toEqual(snapshots);
+                    expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(sourceBytes);
+                    console.info(`Producer drain: ${JSON.stringify({phase, elapsedMs: Math.round(performance.now() - started), remainingSnapshots: runtimeSnapshotNames(source)})}`);
+                } finally {
+                    reads.mockRestore();
+                }
+            }
+        }
+
+        it("bounds a stalled producer wait and drains its cancelled extraction before removing the source", () => {
+            folderWorkflow = cancelStalledProducer();
+            return folderWorkflow;
+        }, PRODUCER_WORKFLOW_TIMEOUT_MS);
+
+        async function cancelStalledProducer(): Promise<void> {
+            await startServerWithOpenFolder(jest.fn());
+            const fixture = writePausedDescriptorPackage(folderWorkDir);
+            const snapshots = runtimeSnapshotNames(fixture.source);
+            const producer = new StudioArtifactBuildService("1.0.0");
+            const jobs = new StudioJobService(new FileStudioJobRepository(path.join(folderWorkDir, "producer")));
+            producer.attachJobService(jobs);
+            const destination = path.join(folderWorkDir, "cancelled.json");
+            let drain: Promise<void> | undefined;
+            let terminal: ReturnType<typeof waitForProducerJob> | undefined;
+            try {
+                const preview = await producer.preview(fixture.source, "blueprint", destination);
+                if (preview.status !== "ok") throw new Error(JSON.stringify(preview));
+                fixture.arm();
+                const start = producer.startPreparedExtraction(fixture.source, preview.preparedOperationId!, destination);
+                if (start.status !== "created") throw new Error(JSON.stringify(start));
+                terminal = waitForProducerJob(producer, fixture.source, start.job.id);
+                await fixture.waitForRead(terminal);
+                const waiting = waitForProducerJob(producer, fixture.source, start.job.id, 50);
+                await expect(waiting).rejects.toThrow(/Producer job .* did not settle after .*"status":"running"/);
+                drain = producer.cancelAll();
+                expect(jobs.get(fixture.source, start.job.id)?.status).toBe("cancelling");
+                expect(runtimeSnapshotNames(fixture.source)).toHaveLength(snapshots.length + 1);
+                fixture.settle();
+                await drain;
+                expect(await terminal).toMatchObject({status: "cancelled"});
+                expect(jobs.get(fixture.source, start.job.id)).toMatchObject({status: "cancelled"});
+                expect(jobs.get(fixture.source, start.job.id)?.result?.outputs).toBeUndefined();
+                expect(fs.existsSync(destination)).toBe(false);
+                expect(fs.existsSync(`${destination}.conversion-evidence.json`)).toBe(false);
+                expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
+            } finally {
+                fixture.settle();
+                try {
+                    await (drain ?? producer.cancelAll());
+                    await terminal;
+                } finally {
+                    fixture.restore();
+                }
+            }
+        }
+
+        it.each([undefined, null, 1, [], {}, "", "   "])("rejects malformed path %p at the shared validator and both host callers, then reuses valid outputs", async invalidPath => {
+            const openFolder = jest.fn();
+            const folderBaseUrl = await startServerWithOpenFolder(openFolder);
+            const malformed = {path: invalidPath};
+            expect(() => validateOpenFolderRequest(malformed)).toThrow('"path" is required.');
+            for (const route of ["open-folder", "reveal-path"]) {
+                expect(await post(`${folderBaseUrl}/api/home/fs/${route}`, malformed)).toMatchObject({status: 400, body: {error: '"path" is required.'}});
+            }
+            expect(openFolder).not.toHaveBeenCalled();
+            for (const route of ["open-folder", "reveal-path"]) {
+                expect(validateOpenFolderRequest({path: folderWorkDir})).toEqual({path: folderWorkDir});
+                expect((await post(`${folderBaseUrl}/api/home/fs/${route}`, {path: folderWorkDir})).body).toEqual({status: "ok"});
+            }
+            expect(openFolder.mock.calls).toEqual([[folderWorkDir], [folderWorkDir]]);
+        });
+
+        it("retains a missing-output diagnostic, then opens the repaired file and subsequent directory on the same server", async () => {
+            const openFolder = jest.fn();
+            const folderBaseUrl = await startServerWithOpenFolder(openFolder);
+            const outputPath = path.join(folderWorkDir, "blueprint.json");
+            expect((await post(`${folderBaseUrl}/api/home/fs/reveal-path`, {path: folderWorkDir})).body).toEqual({status: "ok"});
+            expect((await post(`${folderBaseUrl}/api/home/fs/reveal-path`, {path: outputPath})).body).toEqual({status: "error", message: `"${outputPath}" does not exist.`});
+            fs.writeFileSync(outputPath, "{}");
+            for (const currentPath of [outputPath, folderWorkDir]) {
+                expect((await post(`${folderBaseUrl}/api/home/fs/reveal-path`, {path: currentPath})).body).toEqual({status: "ok"});
+            }
+            expect(openFolder.mock.calls).toEqual([[folderWorkDir], [folderWorkDir], [folderWorkDir]]);
         });
 
         it("reports reveal as unavailable for a remote caller and does not invoke the host action", async () => {
@@ -6829,19 +7015,42 @@ describe("StudioServer", () => {
     describe("Project Dashboard: Replay with the real fixture game package", () => {
         let replayStudioRoot: string;
         let replayServer: StudioServer | undefined;
+        let fixtureRoot: string;
+        let snapshots: string[];
 
         beforeEach(() => {
             replayStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-replay-fixture-test-"));
             writeStudioAssets(replayStudioRoot);
+            replayServer = undefined;
+            fixtureRoot = path.join(replayStudioRoot, "playable-game");
+            fs.cpSync(path.join(__dirname, "..", "fixtures", "playable-game"), fixtureRoot, {
+                recursive: true,
+                filter: source => !["node_modules", ".pokie-runtime-cache"].includes(path.basename(source)),
+            });
+            // The legacy fixture omits its runtime dependency. The host fallback
+            // snapshots the whole checkout, including evidence, on every load.
+            // Bind both dashboard and replay to the suite's real compiled install.
+            const manifest = path.join(fixtureRoot, "package.json");
+            fs.writeFileSync(manifest, JSON.stringify({...JSON.parse(fs.readFileSync(manifest, "utf8")), dependencies: {"@fromstan/pokie": "*"}}));
+            snapshots = runtimeSnapshotNames(fixtureRoot);
         });
 
         afterEach(async () => {
-            await replayServer?.stop();
-            fs.rmSync(replayStudioRoot, {recursive: true, force: true});
+            const started = performance.now();
+            try {
+                await replayServer?.stop();
+                expect(runtimeSnapshotNames(fixtureRoot)).toEqual(snapshots);
+                console.info(`Real fixture replay drain: ${JSON.stringify({elapsedMs: Math.round(performance.now() - started), remainingSnapshots: runtimeSnapshotNames(fixtureRoot)})}`);
+            } finally {
+                fs.rmSync(replayStudioRoot, {recursive: true, force: true});
+            }
         });
 
         it("runs a replay against a real fixture game and produces a reproducible descriptor", async () => {
-            const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game");
+            const originalFixture = path.join(__dirname, "..", "fixtures", "playable-game");
+            expect(await resolvePokieGameDependencyRoots(originalFixture)).toEqual({"@fromstan/pokie": REPO_ROOT});
+            expect(await resolvePokieGameDependencyRoots(fixtureRoot)).toEqual({"@fromstan/pokie": path.join(os.tmpdir(), "node_modules/@fromstan/pokie")});
+            expect(fs.readFileSync(path.join(fixtureRoot, "index.js"))).toEqual(fs.readFileSync(path.join(originalFixture, "index.js")));
             replayServer = new StudioServer({
                 pokieVersion: "1.0.0",
                 host: "127.0.0.1",
@@ -6856,12 +7065,22 @@ describe("StudioServer", () => {
             const address = await replayServer.start();
             const replayBaseUrl = `http://${address.host}:${address.port}`;
 
+            let started = performance.now();
             const firstCreated = await post(`${replayBaseUrl}/api/project/replays`, {round: 20, seed: "demo"});
+            expect(firstCreated).toMatchObject({status: 202, body: {status: "queued", round: 20, seed: "demo"}});
             const first = await pollUntilTerminal(`${replayBaseUrl}/api/project/replays/${(firstCreated.body as {id: string}).id}`);
+            console.info(`Real fixture replay phase: ${JSON.stringify({phase: "first replay", elapsedMs: Math.round(performance.now() - started), status: first.body.status})}`);
+            expect((await pollUntilProjectContextSettled(`${replayBaseUrl}/api/project/context`)).body).toMatchObject({status: "loaded", game: {id: "playable-game"}});
+            expect(runtimeSnapshotNames(fixtureRoot)).toEqual(snapshots);
+            started = performance.now();
             const secondCreated = await post(`${replayBaseUrl}/api/project/replays`, {round: 20, seed: "demo"});
+            expect(secondCreated.status).toBe(202);
             const second = await pollUntilTerminal(`${replayBaseUrl}/api/project/replays/${(secondCreated.body as {id: string}).id}`);
+            console.info(`Real fixture replay phase: ${JSON.stringify({phase: "second replay", elapsedMs: Math.round(performance.now() - started), status: second.body.status})}`);
 
-            expect(first.body.status).toBe("completed");
+            for (const result of [first, second]) {
+                expect(result).toMatchObject({status: 200, body: {status: "completed", completedRounds: 20, descriptor: {round: 20, seed: "demo"}}});
+            }
             expect((first.body.descriptor as {game: unknown}).game).toEqual({
                 id: "playable-game",
                 name: "Playable Game",
@@ -6872,6 +7091,10 @@ describe("StudioServer", () => {
             expect(secondDescriptor.totalBet).toBe(firstDescriptor.totalBet);
             expect(secondDescriptor.totalWin).toBe(firstDescriptor.totalWin);
             expect(secondDescriptor.screen).toEqual(firstDescriptor.screen);
+            const download = await fetch(`${replayBaseUrl}/api/project/replays/${(secondCreated.body as {id: string}).id}/download`);
+            expect(download.status).toBe(200);
+            expect(await download.json()).toEqual(secondDescriptor);
+            expect(runtimeSnapshotNames(fixtureRoot)).toEqual(snapshots);
         }, REAL_RUNTIME_TEST_TIMEOUT_MS);
     });
 

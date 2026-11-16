@@ -1,6 +1,6 @@
 import {ReelSequencesSheetMapper} from "./mapping/ReelSequencesSheetMapper.js";
 import type {ReelSequencesSheetMapping} from "./mapping/ReelSequencesSheetMapping.js";
-import ExcelJS from "exceljs";
+import type ExcelJS from "exceljs";
 import {GAME_BLUEPRINT_SCHEMA_VERSION, type GameBlueprint} from "../generated/GameBlueprint.js";
 import type {GameBlueprintValidating} from "../generated/GameBlueprintValidating.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
@@ -70,6 +70,7 @@ export class ParSheetImporter implements ParSheetImporting {
         provenanceMapper: ProvenanceSheetMapping = new ProvenanceSheetMapper(),
         validator: GameBlueprintValidating = new GameBlueprintValidator(),
         readWorkbook: (filePath: string) => Promise<ExcelJS.Workbook> = async (filePath) => {
+            const ExcelJS = (await import("exceljs")).default;
             const workbook = new ExcelJS.Workbook();
             await workbook.xlsx.readFile(filePath);
             return workbook;

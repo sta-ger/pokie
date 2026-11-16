@@ -10,7 +10,6 @@ import {compareIds} from "../../weightedoutcome/internal/compareIds.js";
 import {writeNativeStakeTuningManifest} from "./NativeStakeTuningManifest.js";
 import fs from "fs";
 import path from "path";
-import ExcelJS from "exceljs";
 import type {GameBlueprint} from "../../generated/GameBlueprint.js";
 import {GameBlueprintValidator} from "../../generated/GameBlueprintValidator.js";
 import {computeGameBlueprintHash} from "../../generated/computeGameBlueprintHash.js";
@@ -469,6 +468,7 @@ export async function acquireOptimizationAdapter(
             }
             if (project.type === "parWorkbook") {
                 // Edit only the declared paytable cells; preserve all other workbook parts/declarations.
+                const ExcelJS = (await import("exceljs")).default;
                 const workbook = new ExcelJS.Workbook();
                 await workbook.xlsx.readFile(project.rootPath);
                 const sheet = workbook.getWorksheet("Paytable")!;

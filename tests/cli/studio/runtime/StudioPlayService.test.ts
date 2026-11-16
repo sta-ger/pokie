@@ -26,6 +26,7 @@ import {
     VideoSlotWinCalculator,
     WASM_MANIFEST_READ_CAPABILITY,
     WinEvaluationResult,
+    resolvePokieGameDependencyRoots,
 } from "@fromstan/pokie";
 import ExcelJS from "exceljs";
 import crypto from "crypto";
@@ -323,7 +324,7 @@ function createFakeNonVideoSlotGame(): PokieGame {
 describe("StudioPlayService", () => {
     let publicRuntime: ReturnType<typeof emitPublicRuntime>;
     beforeAll(() => {
-        publicRuntime = emitPublicRuntime();
+        publicRuntime = emitPublicRuntime({runtimeFilesOnly: true});
     }, 60000);
     afterAll(() => publicRuntime?.dispose());
     it.each([false, true].flatMap(weighted => [false, true].flatMap(typed => [undefined, "review-fixed"].map(seed => ({weighted, typed, seed})))))("records executable package steps through Play, history and replay import (weighted=$weighted, typed=$typed, seed=$seed)", async ({weighted, typed, seed}) => {
@@ -331,7 +332,9 @@ describe("StudioPlayService", () => {
         const blueprint = replayModesBlueprint(weighted);
         blueprint.availableBets = [0.05];
         blueprint.manifest = {id: `v2c12-package-${weighted ? "weighted" : "ordinary"}`, name: `V2C12 Package ${weighted ? "Weighted" : "Ordinary"}`, version: "1.0.0"};
-        const built = new GamePackageGenerator("1.3.0").generate(blueprint, root);
+        const built = new GamePackageGenerator("1.3.0").generate(blueprint, root, undefined, undefined, {
+            runtimePackageRoot: path.join(publicRuntime.directory, "node_modules/@fromstan/pokie"),
+        });
         const entry = path.join(built.projectRoot, "dist", "index.js");
         if (typed) fs.writeFileSync(entry, ts.transpileModule(fs.readFileSync(path.join(built.projectRoot, "src", "index.ts"), "utf8"), {
             compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
@@ -389,6 +392,39 @@ describe("StudioPlayService", () => {
             await service.reset();
         }
     });
+    it("loads one owned runtime per session and recognizes source edits before reopening", async () => {
+        const built = new GamePackageGenerator("1.3.0").generate(
+            replayModesBlueprint(false), path.join(publicRuntime.directory, "single-play-lease"), undefined, undefined,
+            {runtimePackageRoot: path.join(publicRuntime.directory, "node_modules/@fromstan/pokie")},
+        );
+        const service = new StudioPlayService();
+        const snapshots = jest.spyOn(fs.promises, "mkdtemp");
+        const runtimeCopies = () => snapshots.mock.calls.filter(([prefix]) => path.basename(String(prefix)) === "pokie-runtime-");
+        try {
+            const created = await service.newSession(built.projectRoot, "single-play-lease");
+            if (created.status !== "ok") throw new Error(JSON.stringify(created));
+            expect(runtimeCopies()).toHaveLength(1);
+            for (let index = 0; index < 3; index++) {
+                expect(await service.spin(created.session.sessionId)).toMatchObject({status: "ok"});
+            }
+            expect(runtimeCopies()).toHaveLength(1);
+            const leaseRoot = await (snapshots.mock.results[0].value as Promise<string>);
+            expect(fs.existsSync(leaseRoot)).toBe(true);
+            // A live native session owns its original snapshot. The next opening
+            // must recognize the edited source and release the earlier lease.
+            fs.writeFileSync(path.join(built.projectRoot, "package.json"), "{malformed");
+            expect(await service.spin(created.session.sessionId)).toMatchObject({status: "ok"});
+            expect(await service.newSession(built.projectRoot)).toMatchObject({
+                status: "failed", error: expect.stringMatching(/Could not parse.*package\.json/),
+            });
+            expect(runtimeCopies()).toHaveLength(1);
+            expect(fs.existsSync(leaseRoot)).toBe(false);
+        } finally {
+            await service.reset();
+            snapshots.mockRestore();
+        }
+    });
+
     it("rejects a CJS selected mode excluded by retained capabilities in Play and scenario callers", async () => {
         const game = publicRuntime.legacyGame("bet-free", true);
         const service = new StudioPlayService(() => Promise.resolve(game));
@@ -976,16 +1012,20 @@ describe("StudioPlayService", () => {
     });
 
     it("releases a real CJS runtime snapshot when abort wins immediately after loading", async () => {
-        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-play-abort-"));
+        // The real loader must use this suite's compiled installation, not
+        // snapshot the embedding source checkout for an undeclared dependency.
+        const workDir = fs.mkdtempSync(path.join(publicRuntime.directory, "pokie-studio-play-abort-"));
         const packageRoot = path.join(workDir, "game");
         const packageName = `studio-play-abort-${crypto.randomUUID()}`;
         fs.cpSync(path.join(__dirname, "..", "..", "fixtures", "playable-game"), packageRoot, {
             recursive: true,
-            filter: (source) => path.basename(source) !== ".pokie-runtime-cache",
+            // Prior controller runs can leave an ignored source-bound install
+            // beside the fixture. It is not part of this native consumer.
+            filter: (source) => !["node_modules", ".pokie-runtime-cache"].includes(path.basename(source)),
         });
         fs.writeFileSync(
             path.join(packageRoot, "package.json"),
-            JSON.stringify({name: packageName, version: "1.0.0", pokie: {entry: "./index.js"}}),
+            JSON.stringify({name: packageName, version: "1.0.0", dependencies: {"@fromstan/pokie": "*"}, pokie: {entry: "./index.js"}}),
         );
         const controller = new AbortController();
         const service = new StudioPlayService(async (root) => {
@@ -995,6 +1035,8 @@ describe("StudioPlayService", () => {
         });
 
         try {
+            expect((await resolvePokieGameDependencyRoots(packageRoot))["@fromstan/pokie"])
+                .toBe(path.join(publicRuntime.directory, "node_modules/@fromstan/pokie"));
             expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
             await expect(service.newSession(packageRoot, undefined, undefined, {signal: controller.signal})).resolves.toEqual({
                 status: "failed",
@@ -1002,6 +1044,7 @@ describe("StudioPlayService", () => {
             });
             expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
         } finally {
+            await service.reset();
             fs.rmSync(workDir, {recursive: true, force: true});
         }
     });

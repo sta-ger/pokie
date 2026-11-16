@@ -138,6 +138,7 @@ describe("BlueprintBuildPanel", () => {
         const user = userEvent.setup();
         const buildCalls: unknown[] = [];
         const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "ok", resolvedPath: "/games/new-output", entries: []}}),
             "/api/home/blueprints/build-preview": () => ({ok: true, status: 200, body: previewOkBody()}),
             "/api/home/blueprints/build": (call) => {
                 buildCalls.push(JSON.parse(call.init?.body ?? "{}"));

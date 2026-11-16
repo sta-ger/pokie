@@ -1,5 +1,6 @@
 import {spawn, spawnSync} from "child_process";
 import fs from "fs";
+import http from "http";
 import os from "os";
 import path from "path";
 import type {SimulationReport} from "@fromstan/pokie";
@@ -8,10 +9,23 @@ import {compileP906Candidate, prepareP906Candidate} from "../testUtils/prepareP9
 const repositoryRoot = path.resolve(__dirname, "../..");
 const seed = "p906-valera";
 const rounds = 6;
+// A session includes several real dependency snapshots (Open, Inspect, Validate
+// and shutdown). Give preparation its own budget rather than killing the child
+// while a still-owned snapshot is draining under concurrent gate workers.
+const runtimePhaseTimeoutMs = 120_000;
+const studioSessionTimeoutMs = 3 * runtimePhaseTimeoutMs;
 
-beforeAll(() => compileP906Candidate(repositoryRoot), 130_000);
+// Each supervised Studio child owns a short-lived listener. Do not retain an
+// idle pooled socket across its runtime snapshots or reuse it for the next child.
+function fetchStudio(url: string | URL, options: RequestInit = {}): Promise<Response> {
+    const headers = new Headers(options.headers);
+    headers.set("Connection", "close");
+    return fetch(url, {...options, headers});
+}
 
 describe("P9-06 bounded public developer scenario", () => {
+    beforeAll(() => compileP906Candidate(repositoryRoot), 250_000);
+
     it("starts real Home/projects, converts and reads back, compares seeded WASM sim/replay, and recovers with truthful statuses", async () => {
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-p906-"));
         const observations: unknown[] = [];
@@ -36,22 +50,55 @@ describe("P9-06 bounded public developer scenario", () => {
                 if (result.error !== undefined) throw result.error;
                 expect(result.signal).toBeNull();
                 expect(result.status).toBe(status);
-                if (status === 0) expect(result.stderr).toBe("");
+                if (status === 0 || status === 2) expect(result.stderr).toBe("");
                 else {
                     expect(result.stderr.trim()).not.toBe("");
                     expect(result.stdout).toBe("");
                 }
                 return result;
             };
+            // Seed 906 exceeds the bounded declared-model outcome analysis.
+            // Structural validity is preserved through conversion, but it must
+            // not turn that inconclusive analysis into a successful proof.
+            const validate = (file: string, kind: "blueprint" | "wasm") => {
+                const result = JSON.parse(run(["validate", file, "--format", "json"], 2).stdout);
+                expect(result).toMatchObject({
+                    project: {path: file, kind}, valid: true, errors: [],
+                    advanced: {
+                        scope: "declared-model", status: "budget-exhausted", verdict: "inconclusive", structuralValid: true,
+                        executableFidelity: kind === "blueprint" ? "declarative-runtime-contract" : "unverified",
+                        checks: expect.arrayContaining([
+                            expect.objectContaining({id: "analysis.completion", status: "unknown", message: "Analysis outcomes limit exhausted."}),
+                        ]),
+                    },
+                });
+                if (kind === "wasm") expect(result.wasm).toMatchObject({compatibility: "compatible"});
+            };
             const request = async (url: string, route: string, body?: unknown) => {
-                const response = await fetch(`${url}${route}`, {
+                const response = await fetchStudio(`${url}${route}`, {
                     ...(body === undefined ? {} : {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)}),
-                    signal: AbortSignal.timeout(5000),
+                    signal: AbortSignal.timeout(runtimePhaseTimeoutMs),
                 });
                 const text = await response.text();
                 observations.push({request: route, body, status: response.status, response: text});
                 expect(response.status).toBe(200);
                 return JSON.parse(text) as Record<string, unknown>;
+            };
+            const loadedProject = async (url: string, projectRoot: string, id: string) => {
+                // Startup serves HTTP before the invocation-owned runtime
+                // dependency snapshot is ready. Give that asynchronous load
+                // the same bounded budget as Home's materializing request.
+                const deadline = Date.now() + runtimePhaseTimeoutMs;
+                let context;
+                do {
+                    context = await request(url, "/api/project/context");
+                    if (context.status !== "loading") break;
+                    await new Promise((resolve) => {
+                        setTimeout(resolve, 25);
+                    });
+                } while (Date.now() < deadline);
+                expect(context).toMatchObject({status: "loaded", projectRoot, game: {id}});
+                return context;
             };
             const studio = async (args: string[], cwd: string, exercise: (url: string) => Promise<void>) => {
                 const started = Date.now();
@@ -74,7 +121,7 @@ describe("P9-06 bounded public developer scenario", () => {
                 const deadline = setTimeout(() => {
                     expired = true;
                     child.kill("SIGKILL");
-                }, 15_000);
+                }, studioSessionTimeoutMs);
                 try {
                     const url = await new Promise<string>((resolve, reject) => {
                         child.stdout.on("data", () => {
@@ -83,13 +130,13 @@ describe("P9-06 bounded public developer scenario", () => {
                         });
                         closed.then(() => reject(new Error(`Studio exited before startup: ${stderr}`)), reject);
                     });
-                    const response = await fetch(url, {signal: AbortSignal.timeout(5000)});
+                    const response = await fetchStudio(url, {signal: AbortSignal.timeout(5000)});
                     expect(response.status).toBe(200);
                     const html = await response.text();
                     expect(html).toContain('<div id="root">');
                     const asset = html.match(/src="([^"]+\.js)"/);
                     expect(asset).not.toBeNull();
-                    const script = await fetch(new URL(asset![1], url), {signal: AbortSignal.timeout(5000)});
+                    const script = await fetchStudio(new URL(asset![1], url), {signal: AbortSignal.timeout(5000)});
                     expect(script.status).toBe(200);
                     expect((await script.text()).length).toBeGreaterThan(1000);
                     await exercise(url);
@@ -131,16 +178,7 @@ describe("P9-06 bounded public developer scenario", () => {
             ] as const) {
                 await studio([...args], cwd, async (url) => {
                     expect(await request(url, "/api/context")).toEqual({mode: "project", projectRoot: candidate.existingProject});
-                    const deadline = Date.now() + 5000;
-                    let context;
-                    do {
-                        context = await request(url, "/api/project/context");
-                        if (context.status !== "loading") break;
-                        await new Promise((resolve) => {
-                            setTimeout(resolve, 25);
-                        });
-                    } while (Date.now() < deadline);
-                    expect(context).toMatchObject({status: "loaded", projectRoot: candidate.existingProject, game: {id: "playable-game"}});
+                    await loadedProject(url, candidate.existingProject, "playable-game");
                     expect(await request(url, "/api/home/projects/registry")).toEqual(expect.arrayContaining([expect.objectContaining({location: candidate.existingProject})]));
                 });
             }
@@ -148,14 +186,14 @@ describe("P9-06 bounded public developer scenario", () => {
             expect(run(["create", "--help"]).stdout).toContain("--seed");
             expect(run(["build", "--help"]).stdout).toContain("--dry-run");
             expect(run(["create", "Tiny Game", "--random", "--seed", "906", "--out", blueprint]).stdout).toContain("created");
-            expect(run(["validate", blueprint]).stdout).toMatch(/valid\s+yes/);
+            validate(blueprint, "blueprint");
             const preview = run(["build", blueprint, "--target", "parWorkbook", "--out", workbook, "--dry-run"]).stdout;
             expect(preview).toContain(workbook);
             expect(fs.existsSync(workbook)).toBe(false);
             expect(run(["build", blueprint, "--target", "parWorkbook", "--out", workbook]).stdout).toContain('Artifact "parWorkbook" built');
             expect(run(["inspect", workbook]).stdout).toContain("PAR");
             expect(run(["build", workbook, "--target", "blueprint", "--out", imported]).stdout).toContain('Artifact "blueprint" built');
-            expect(run(["validate", imported]).stdout).toMatch(/valid\s+yes/);
+            validate(imported, "blueprint");
             const source = JSON.parse(fs.readFileSync(blueprint, "utf8")) as Record<string, unknown>;
             const readback = JSON.parse(fs.readFileSync(imported, "utf8")) as Record<string, unknown>;
             expect(readback.reels).toEqual(source.reels);
@@ -167,12 +205,18 @@ describe("P9-06 bounded public developer scenario", () => {
 
             expect(run(["build", blueprint, "--target", "wasm", "--out", wasm]).stdout).toContain('Artifact "wasm" built');
             expect(fs.existsSync(`${wasm}.pokie-wasm.json`)).toBe(true);
-            const inspection = run([wasm]).stdout;
+            // A positional canonical WASM is a runnable Studio Project. The
+            // explicit inspect command owns the terminating CLI description.
+            await studio([wasm, "--no-open", "--port", "0"], candidate.workspace, async (url) => {
+                expect(await request(url, "/api/context")).toEqual({mode: "project", projectRoot: wasm});
+                expect(await loadedProject(url, wasm, "Tiny Game")).toMatchObject({type: "wasm"});
+            });
+            const inspection = run(["inspect", wasm]).stdout;
             expect(inspection).toContain("POKIE WASM component");
             expect(inspection).toContain("pokie run");
             expect(inspection).toContain("pokie sim");
             expect(inspection).toContain("pokie replay");
-            expect(run(["validate", wasm]).stdout).toMatch(/valid\s+yes/);
+            validate(wasm, "wasm");
             expect(run(["run", "--help"]).stdout).toContain("--seed");
             const draw = run(["run", wasm, "--seed", seed]).stdout;
             expect(draw).toContain("POKIE WASM round");
@@ -197,7 +241,7 @@ describe("P9-06 bounded public developer scenario", () => {
             expect(fs.existsSync(failedOutput)).toBe(false);
             expect(fs.existsSync(`${failedOutput}.pokie-wasm.json`)).toBe(false);
             expect(run(["build", blueprint, "--target", "wasm", "--out", failedOutput]).stdout).toContain('Artifact "wasm" built');
-            expect(run(["validate", failedOutput]).stdout).toMatch(/valid\s+yes/);
+            validate(failedOutput, "wasm");
             const bytes = fs.readFileSync(wasm);
             const sidecar = fs.readFileSync(`${wasm}.pokie-wasm.json`);
             run(["build", blueprint, "--target", "wasm", "--out", wasm], 1);
@@ -220,5 +264,52 @@ describe("P9-06 bounded public developer scenario", () => {
             fs.writeFileSync(path.join(repositoryRoot, "node_modules", ".cache", "p906-scenario.json"), JSON.stringify(observations, null, 2));
             fs.rmSync(directory, {recursive: true, force: true});
         }
-    }, 180_000);
+    }, 6 * runtimePhaseTimeoutMs);
+});
+
+describe("P9-06 Studio HTTP transport", () => {
+    it("uses fresh sockets for Home reads and project-open without changing request or response semantics", async () => {
+        const requests: {method: string | undefined; route: string | undefined; connection: string | undefined; contentType: string | undefined; body: string}[] = [];
+        const sockets: http.IncomingMessage["socket"][] = [];
+        const server = http.createServer((request, response) => {
+            sockets.push(request.socket);
+            let body = "";
+            request.setEncoding("utf8");
+            request.on("data", (chunk: string) => {
+                body += chunk;
+            });
+            request.on("end", () => {
+                requests.push({method: request.method, route: request.url, connection: request.headers.connection, contentType: request.headers["content-type"], body});
+                response.writeHead(request.method === "POST" ? 409 : 200, {"Content-Type": "application/json"});
+                response.end(JSON.stringify(request.method === "POST" ? {error: "Project opening is already in progress."} : {mode: "home"}));
+            });
+        });
+        await new Promise<void>(resolve => {
+            server.listen(0, "127.0.0.1", resolve);
+        });
+        try {
+            const address = server.address();
+            if (address === null || typeof address === "string") throw new Error("Expected a bound Studio test port.");
+            const url = `http://127.0.0.1:${address.port}`;
+            const context = await fetchStudio(`${url}/api/context`, {signal: AbortSignal.timeout(5000)});
+            expect(context.status).toBe(200);
+            expect(await context.json()).toEqual({mode: "home"});
+            const projectRoot = "/workspace/Existing Project";
+            const opened = await fetchStudio(new URL("/api/home/projects/open", url), {
+                method: "POST", headers: new Headers({"Content-Type": "application/json", Connection: "keep-alive"}),
+                body: JSON.stringify({projectRoot}), signal: AbortSignal.timeout(5000),
+            });
+            expect(opened.status).toBe(409);
+            expect(await opened.json()).toEqual({error: "Project opening is already in progress."});
+            expect(requests).toEqual([
+                {method: "GET", route: "/api/context", connection: "close", contentType: undefined, body: ""},
+                {method: "POST", route: "/api/home/projects/open", connection: "close", contentType: "application/json", body: JSON.stringify({projectRoot})},
+            ]);
+            expect(sockets[0]).not.toBe(sockets[1]);
+        } finally {
+            await new Promise<void>((resolve, reject) => {
+                server.close(error => error ? reject(error) : resolve());
+            });
+        }
+    });
 });

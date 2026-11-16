@@ -1,4 +1,5 @@
 import fs from "fs";
+import http from "http";
 import os from "os";
 import path from "path";
 import {
@@ -111,24 +112,24 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         const address = await server.start();
         try {
             const baseUrl = `http://${address.host}:${address.port}`;
-            const context = await fetch(`${baseUrl}/api/project/context`);
+            const context = await fetchStudio(`${baseUrl}/api/project/context`);
             expect(context.status).toBe(200);
             // Dashboard resolution is intentionally asynchronous: immediately
             // after start it may still report loading, but it must be the real
             // project context that the following inspect/validate calls own.
             expect(await context.json()).toMatchObject({status: expect.any(String)});
-            const inspected = await fetch(`${baseUrl}/api/project/inspect`);
+            const inspected = await fetchStudio(`${baseUrl}/api/project/inspect`);
             expect(inspected.status).toBe(200);
             expect(await inspected.json()).toMatchObject({packageRoot: blueprintPath, valid: true});
-            const validated = await fetch(`${baseUrl}/api/project/validate`);
+            const validated = await fetchStudio(`${baseUrl}/api/project/validate`);
             expect(validated.status).toBe(200);
             expect(await validated.json()).toMatchObject({valid: true});
-            const targets = await fetch(`${baseUrl}/api/project/artifacts/targets`);
+            const targets = await fetchStudio(`${baseUrl}/api/project/artifacts/targets`);
             expect(targets.status).toBe(200);
             expect(await targets.json()).toEqual(expect.arrayContaining([
                 expect.objectContaining({target: "tsPackage", supported: true}),
             ]));
-            const preview = await fetch(`${baseUrl}/api/project/artifacts/preview`, {
+            const preview = await fetchStudio(`${baseUrl}/api/project/artifacts/preview`, {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({target: "tsPackage", outDir: path.join(workDir, "http-package")}),
@@ -140,7 +141,7 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             // The route deliberately returns a pollable job immediately, so
             // this records only the observable job creation rather than
             // claiming that this HTTP request synchronously published output.
-            const buildStart = await fetch(`${baseUrl}/api/project/artifacts/build`, {
+            const buildStart = await fetchStudio(`${baseUrl}/api/project/artifacts/build`, {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({
@@ -153,7 +154,7 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             const buildBody = await buildStart.json() as {status: string; job: {id: string; status: string}};
             expect(buildBody).toMatchObject({status: "created", job: {id: expect.any(String)}});
             const terminalBuild = await waitForStudioJob(
-                () => fetch(`${baseUrl}/api/project/artifacts/build/${buildBody.job.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
+                () => fetchStudio(`${baseUrl}/api/project/artifacts/build/${buildBody.job.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
             );
             expect(terminalBuild).toMatchObject({status: 200, body: {status: "completed", result: {status: "ok", outputPath: path.join(workDir, "http-package")}}});
             expect(fs.existsSync(path.join(workDir, "http-package"))).toBe(true);
@@ -164,7 +165,7 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             // then start a fresh job to prove the same Studio server can
             // recover without retaining a stale queued/running record.
             const cancelledOutcomePath = path.join(workDir, "http-cancelled-outcome-library");
-            const cancelledStart = await fetch(`${baseUrl}/api/project/artifacts/build`, {
+            const cancelledStart = await fetchStudio(`${baseUrl}/api/project/artifacts/build`, {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({target: "outcomeLibrary", outDir: cancelledOutcomePath}),
@@ -174,7 +175,7 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             let activeBuild: {status: number; body: {status: string; progress?: {message?: string}}} | undefined;
             const publicationDeadline = performance.now() + PACKAGE_EXTRACTION_TEST_TIMEOUT;
             while (performance.now() < publicationDeadline) {
-                const current = await fetch(`${baseUrl}/api/project/artifacts/build/${cancelledJob.job.id}`)
+                const current = await fetchStudio(`${baseUrl}/api/project/artifacts/build/${cancelledJob.job.id}`)
                     .then(async (response) => ({status: response.status, body: await response.json() as {status: string; progress?: {message?: string}}}));
                 if (current.body.status === "running" && current.body.progress?.message?.startsWith("Writing Outcome mode")) {
                     activeBuild = current;
@@ -186,17 +187,17 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
                 });
             }
             expect(activeBuild).toMatchObject({status: 200, body: {status: "running"}});
-            const cancellation = await fetch(`${baseUrl}/api/project/artifacts/build/${cancelledJob.job.id}/cancel`, {method: "POST"});
+            const cancellation = await fetchStudio(`${baseUrl}/api/project/artifacts/build/${cancelledJob.job.id}/cancel`, {method: "POST"});
             expect(cancellation.status).toBe(200);
             const cancelledTerminal = await waitForStudioJob(
-                () => fetch(`${baseUrl}/api/project/artifacts/build/${cancelledJob.job.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
+                () => fetchStudio(`${baseUrl}/api/project/artifacts/build/${cancelledJob.job.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
             );
             expect(cancelledTerminal).toMatchObject({status: 200, body: {status: "cancelled", cancellationRequested: true, result: {status: "cancelled"}}});
             expect(fs.existsSync(cancelledOutcomePath)).toBe(false);
             expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(false);
 
             const restartedOutcomePath = path.join(workDir, "http-restarted-outcome-library");
-            const restart = await fetch(`${baseUrl}/api/project/artifacts/build`, {
+            const restart = await fetchStudio(`${baseUrl}/api/project/artifacts/build`, {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({target: "outcomeLibrary", outDir: restartedOutcomePath}),
@@ -204,7 +205,7 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             expect(restart.status).toBe(202);
             const restartedJob = await restart.json() as {job: {id: string}};
             const restartedTerminal = await waitForStudioJob(
-                () => fetch(`${baseUrl}/api/project/artifacts/build/${restartedJob.job.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
+                () => fetchStudio(`${baseUrl}/api/project/artifacts/build/${restartedJob.job.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
             );
             expect(restartedTerminal).toMatchObject({status: 200, body: {status: "completed", result: {status: "ok", outputPath: restartedOutcomePath}}});
             expect(fs.existsSync(restartedOutcomePath)).toBe(true);
@@ -583,7 +584,7 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             const lifecycleAddress = await lifecycleServer.start();
             try {
                 const lifecycleBaseUrl = `http://${lifecycleAddress.host}:${lifecycleAddress.port}`;
-                const simulationStart = await fetch(`${lifecycleBaseUrl}/api/project/simulations`, {
+                const simulationStart = await fetchStudio(`${lifecycleBaseUrl}/api/project/simulations`, {
                     method: "POST",
                     headers: {"Content-Type": "application/json"},
                     body: JSON.stringify({rounds: 10000, seed: "pc14-cancel-simulation"}),
@@ -591,16 +592,16 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
                 expect(simulationStart.status).toBe(202);
                 const simulationJob = await simulationStart.json() as {id: string};
                 expect(simulationJob.id).toEqual(expect.any(String));
-                const simulationCancel = await fetch(`${lifecycleBaseUrl}/api/project/simulations/${simulationJob.id}`, {method: "DELETE"});
+                const simulationCancel = await fetchStudio(`${lifecycleBaseUrl}/api/project/simulations/${simulationJob.id}`, {method: "DELETE"});
                 expect(simulationCancel.status).toBe(200);
                 const cancelledSimulation = await waitForStudioJob(
-                    () => fetch(`${lifecycleBaseUrl}/api/project/simulations/${simulationJob.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
+                    () => fetchStudio(`${lifecycleBaseUrl}/api/project/simulations/${simulationJob.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
                 );
                 expect(cancelledSimulation).toMatchObject({status: 200, body: {status: "cancelled"}});
-                const simulationDownload = await fetch(`${lifecycleBaseUrl}/api/project/reports/${simulationJob.id}`);
+                const simulationDownload = await fetchStudio(`${lifecycleBaseUrl}/api/project/reports/${simulationJob.id}`);
                 expect(simulationDownload.status).toBe(409);
 
-                const replayStart = await fetch(`${lifecycleBaseUrl}/api/project/replays`, {
+                const replayStart = await fetchStudio(`${lifecycleBaseUrl}/api/project/replays`, {
                     method: "POST",
                     headers: {"Content-Type": "application/json"},
                     body: JSON.stringify({round: 10000, seed: "pc14-cancel-replay"}),
@@ -608,59 +609,59 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
                 expect(replayStart.status).toBe(202);
                 const replayJob = await replayStart.json() as {id: string};
                 expect(replayJob.id).toEqual(expect.any(String));
-                const replayCancel = await fetch(`${lifecycleBaseUrl}/api/project/replays/${replayJob.id}`, {method: "DELETE"});
+                const replayCancel = await fetchStudio(`${lifecycleBaseUrl}/api/project/replays/${replayJob.id}`, {method: "DELETE"});
                 expect(replayCancel.status).toBe(200);
                 const cancelledReplay = await waitForStudioJob(
-                    () => fetch(`${lifecycleBaseUrl}/api/project/replays/${replayJob.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
+                    () => fetchStudio(`${lifecycleBaseUrl}/api/project/replays/${replayJob.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
                 );
                 expect(cancelledReplay).toMatchObject({status: 200, body: {status: "cancelled"}});
-                const replayDownload = await fetch(`${lifecycleBaseUrl}/api/project/replays/${replayJob.id}/download`);
+                const replayDownload = await fetchStudio(`${lifecycleBaseUrl}/api/project/replays/${replayJob.id}/download`);
                 expect(replayDownload.status).toBe(409);
 
                 // The cancellation path above proves cleanup. Exercise a second,
                 // completed lifecycle through the same public owners so reports,
                 // replay descriptors, the shared round recorder, and a live Play
                 // session are all observed against the prepared package itself.
-                const playStart = await fetch(`${lifecycleBaseUrl}/api/project/play/session`, {
+                const playStart = await fetchStudio(`${lifecycleBaseUrl}/api/project/play/session`, {
                     method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({seed: "pc14-live-play"}),
                 });
                 expect(playStart.status).toBe(201);
                 const playBody = await playStart.json() as {session: {sessionId: string}};
-                const playSpin = await fetch(`${lifecycleBaseUrl}/api/project/play/sessions/${playBody.session.sessionId}/spin`, {
+                const playSpin = await fetchStudio(`${lifecycleBaseUrl}/api/project/play/sessions/${playBody.session.sessionId}/spin`, {
                     method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({bet: 1}),
                 });
                 expect(playSpin.status).toBe(200);
                 expect(await playSpin.json()).toMatchObject({status: "ok"});
-                const recordedRounds = await fetch(`${lifecycleBaseUrl}/api/project/rounds`);
+                const recordedRounds = await fetchStudio(`${lifecycleBaseUrl}/api/project/rounds`);
                 expect(recordedRounds.status).toBe(200);
                 expect(await recordedRounds.json()).toEqual(expect.arrayContaining([expect.objectContaining({sessionId: playBody.session.sessionId})]));
 
-                const completedSimulationStart = await fetch(`${lifecycleBaseUrl}/api/project/simulations`, {
+                const completedSimulationStart = await fetchStudio(`${lifecycleBaseUrl}/api/project/simulations`, {
                     method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({rounds: 8, seed: "pc14-completed-simulation"}),
                 });
                 expect(completedSimulationStart.status).toBe(202);
                 const completedSimulationJob = await completedSimulationStart.json() as {id: string};
                 const completedSimulation = await waitForStudioJob(
-                    () => fetch(`${lifecycleBaseUrl}/api/project/simulations/${completedSimulationJob.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
+                    () => fetchStudio(`${lifecycleBaseUrl}/api/project/simulations/${completedSimulationJob.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
                 );
                 expect(completedSimulation).toMatchObject({status: 200, body: {status: "completed"}});
-                const reports = await fetch(`${lifecycleBaseUrl}/api/project/reports`);
+                const reports = await fetchStudio(`${lifecycleBaseUrl}/api/project/reports`);
                 expect(reports.status).toBe(200);
                 expect(await reports.json()).toEqual(expect.arrayContaining([expect.objectContaining({id: completedSimulationJob.id})]));
-                const report = await fetch(`${lifecycleBaseUrl}/api/project/reports/${completedSimulationJob.id}`);
+                const report = await fetchStudio(`${lifecycleBaseUrl}/api/project/reports/${completedSimulationJob.id}`);
                 expect(report.status).toBe(200);
                 expect(await report.json()).toMatchObject({report: expect.any(Object)});
 
-                const completedReplayStart = await fetch(`${lifecycleBaseUrl}/api/project/replays`, {
+                const completedReplayStart = await fetchStudio(`${lifecycleBaseUrl}/api/project/replays`, {
                     method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({round: 1, seed: "pc14-completed-replay", simulationId: completedSimulationJob.id}),
                 });
                 expect(completedReplayStart.status).toBe(202);
                 const completedReplayJob = await completedReplayStart.json() as {id: string};
                 const completedReplay = await waitForStudioJob(
-                    () => fetch(`${lifecycleBaseUrl}/api/project/replays/${completedReplayJob.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
+                    () => fetchStudio(`${lifecycleBaseUrl}/api/project/replays/${completedReplayJob.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
                 );
                 expect(completedReplay).toMatchObject({status: 200, body: {status: "completed", descriptor: expect.any(Object)}});
-                const completedReplayDownload = await fetch(`${lifecycleBaseUrl}/api/project/replays/${completedReplayJob.id}/download`);
+                const completedReplayDownload = await fetchStudio(`${lifecycleBaseUrl}/api/project/replays/${completedReplayJob.id}/download`);
                 expect(completedReplayDownload.status).toBe(200);
             } finally {
                 await lifecycleServer.stop();
@@ -765,14 +766,14 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         const wasmAddress = await wasmServer.start();
         try {
             const wasmBaseUrl = `http://${wasmAddress.host}:${wasmAddress.port}`;
-            const simulationResponse = await fetch(`${wasmBaseUrl}/api/project/simulations`, {
+            const simulationResponse = await fetchStudio(`${wasmBaseUrl}/api/project/simulations`, {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({rounds: 1}),
             });
             expect(simulationResponse.status).toBe(409);
             expect(await simulationResponse.json()).toEqual({error: httpSimulationDiagnostic.message});
-            const replayResponse = await fetch(`${wasmBaseUrl}/api/project/replays`, {
+            const replayResponse = await fetchStudio(`${wasmBaseUrl}/api/project/replays`, {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({round: 1}),
@@ -866,3 +867,86 @@ async function waitForStudioJob(
     }
     throw new Error(`Studio artifact job did not reach a terminal state while exercising its public polling route: ${JSON.stringify(lastResult)}`);
 }
+
+/** Avoid reusing an idle socket after synchronous snapshots delay its close. */
+function fetchStudio(url: string, options: RequestInit = {}): Promise<Response> {
+    const headers = new Headers(options.headers);
+    headers.set("Connection", "close");
+    return fetch(url, {...options, headers});
+}
+
+describe("Studio artifact HTTP transport", () => {
+    it("uses fresh connections while preserving stateful request headers, body and response", async () => {
+        const requests: {connection: string | undefined; method: string | undefined; contentType: string | undefined; body: string}[] = [];
+        const sockets: http.IncomingMessage["socket"][] = [];
+        const server = http.createServer((request, response) => {
+            sockets.push(request.socket);
+            let body = "";
+            request.setEncoding("utf8");
+            request.on("data", (chunk: string) => {
+                body += chunk;
+            });
+            request.on("end", () => {
+                requests.push({connection: request.headers.connection, method: request.method, contentType: request.headers["content-type"], body});
+                response.writeHead(202, {"Content-Type": "application/json"});
+                response.end(JSON.stringify({id: requests.length}));
+            });
+        });
+        await new Promise<void>(resolve => {
+            server.listen(0, "127.0.0.1", resolve);
+        });
+        try {
+            const address = server.address();
+            if (address === null || typeof address === "string") throw new Error("Expected a bound HTTP port.");
+            const url = `http://127.0.0.1:${address.port}/build`;
+            const first = await fetchStudio(url);
+            expect(first.status).toBe(202);
+            expect(await first.json()).toEqual({id: 1});
+            const second = await fetchStudio(url, {
+                method: "POST", headers: new Headers({"Content-Type": "application/json", Connection: "keep-alive"}),
+                body: JSON.stringify({target: "tsPackage"}),
+            });
+            expect(second.status).toBe(202);
+            expect(await second.json()).toEqual({id: 2});
+            expect(requests).toEqual([
+                {connection: "close", method: "GET", contentType: undefined, body: ""},
+                {connection: "close", method: "POST", contentType: "application/json", body: '{"target":"tsPackage"}'},
+            ]);
+            expect(sockets[0]).not.toBe(sockets[1]);
+        } finally {
+            await new Promise<void>((resolve, reject) => {
+                server.close(error => error ? reject(error) : resolve());
+            });
+        }
+    });
+
+    it("exposes HTTP and connection failures without retrying a stateful request", async () => {
+        const requests: string[] = [];
+        const server = http.createServer((request, response) => {
+            requests.push(request.url ?? "");
+            if (request.url === "/reset") {
+                request.socket.destroy();
+                return;
+            }
+            response.writeHead(409, {"Content-Type": "application/json"});
+            response.end(JSON.stringify({error: "Destination already exists"}));
+        });
+        await new Promise<void>(resolve => {
+            server.listen(0, "127.0.0.1", resolve);
+        });
+        try {
+            const address = server.address();
+            if (address === null || typeof address === "string") throw new Error("Expected a bound HTTP port.");
+            const url = `http://127.0.0.1:${address.port}`;
+            const conflict = await fetchStudio(`${url}/conflict`, {method: "POST"});
+            expect(conflict.status).toBe(409);
+            expect(await conflict.json()).toEqual({error: "Destination already exists"});
+            await expect(fetchStudio(`${url}/reset`, {method: "POST"})).rejects.toThrow("fetch failed");
+            expect(requests).toEqual(["/conflict", "/reset"]);
+        } finally {
+            await new Promise<void>((resolve, reject) => {
+                server.close(error => error ? reject(error) : resolve());
+            });
+        }
+    });
+});
