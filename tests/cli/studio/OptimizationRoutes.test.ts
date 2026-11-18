@@ -645,7 +645,7 @@ it("V35 optimizer progress identifies each real candidate across resets and dura
 });
 
 it("V35 optimizer progress persists the retained 46656-draw workload before cancellation and permits reviewed retry/apply", async () => {
-    const fixture = fs.readFileSync(path.resolve("tests/v2/fixtures/Valera35FeralBlazingSafari.blueprint.json"));
+    const fixture = fs.readFileSync(path.resolve("tests/v2/fixtures/retained-optimization.blueprint.json"));
     fs.writeFileSync(source, fixture);
     const request = {
         targets: [{metric: "rtp", unit: "ratio", value: 0.95, tolerance: {kind: "absolute", value: 0.001}}],

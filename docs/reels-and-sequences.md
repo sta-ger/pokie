@@ -295,7 +295,7 @@ practice:
 
 ## Generated, visible and evaluated coordinates
 
-Explicit generated matrices, visible viewports and evaluation windows: see [the coordinate contract and adapter support matrix](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-03.md).
+Explicit generated matrices, visible viewports and evaluation windows: see the coordinate contract and adapter support matrix.
 
 ## Weighted whole-sequence reels
 
@@ -449,5 +449,5 @@ precomputed outcome artifacts, with no reconstruction edge to Blueprint/PAR.
 
 See [finite weighted bonus outcomes](weighted-bonus.md) for selection identity,
 payout/duration units, authoring/interchange, restoration/replay, statistics and
-custom-rule/target boundaries. The [launch support register](v2-completion/launch-mechanics-support.md)
+custom-rule/target boundaries. The [launch support register](supported-mechanics.md)
 maps every mandatory family separately from arbitrary custom callbacks.

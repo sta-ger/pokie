@@ -388,7 +388,7 @@ Play propagates repository command failure codes through the service and API. Co
 
 ## Generated, visible and evaluated coordinates
 
-Overscan in Play, replay inspectors, Game Model previews and JSON authoring: see [the coordinate contract and adapter support matrix](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-03.md).
+Overscan in Play, replay inspectors, Game Model previews and JSON authoring: see the coordinate contract and adapter support matrix.
 
 Studio Play uses the legacy independent-port, ephemeral compensation composition. It does
 not acquire durable round identity or external-wallet guarantees from shared handler types.
@@ -434,7 +434,7 @@ fresh preview. Destination/project changes invalidate old client responses. Poll
 separate editable authoring project. Its evidence companion remains historical extraction provenance
 after ordinary edits. The original package stays unchanged.
 
-Home Design's Bets section includes free games, executable bet modes, Hold&Win and jackpot configuration. Project Game Model uses the same mechanic fieldsets under Mechanics. Edits remain drafts until the existing explicit Apply JSON / Save / Create action; validation locations, dirty drafts and stale-response protection remain shared. Symbol rename/deletion safeguards include collector effects and jackpot triggers. Play resets consumed purchase selection from each accepted server response, even when the safe default mode's value did not change. A new purchase needs another explicit action. [V2C-12](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-12.md) records the authored workflow boundaries.
+Home Design's Bets section includes free games, executable bet modes, Hold&Win and jackpot configuration. Project Game Model uses the same mechanic fieldsets under Mechanics. Edits remain drafts until the existing explicit Apply JSON / Save / Create action; validation locations, dirty drafts and stale-response protection remain shared. Symbol rename/deletion safeguards include collector effects and jackpot triggers. Play resets consumed purchase selection from each accepted server response, even when the safe default mode's value did not change. A new purchase needs another explicit action.
 
 ### Wild and modifier authoring
 
@@ -450,7 +450,7 @@ multiplier breakdown; “Inspect round artifact” exposes `screenModifiers` eve
 Simulation/report downloads include executed-step, applied-rule, sticky-step and
 multiplied-component counts from the runtime observations.
 
-## Bounded authored mechanics (V2C-14)
+## Bounded authored mechanics
 
 See [cascades, respins and collections](bounded-mechanics.md) for the declarative
 contracts, supported compositions, authoring/build/extraction/PAR workflow,
@@ -460,7 +460,7 @@ logical-round accounting, continuation and durability boundaries.
 
 See [finite weighted bonus outcomes](weighted-bonus.md) for selection identity,
 payout/duration units, authoring/interchange, restoration/replay, statistics and
-custom-rule/target boundaries. The [launch support register](v2-completion/launch-mechanics-support.md)
+custom-rule/target boundaries. The [launch support register](supported-mechanics.md)
 maps every mandatory family separately from arbitrary custom callbacks.
 
 ### Mathematical definition comparison preview
@@ -495,25 +495,19 @@ and distinct from structural save/build gates. Source/revision/project changes,
 request cancellation and unmount invalidate old responses; retry checks the
 current source. Server shutdown aborts and drains owned analysis requests.
 Definition comparison also retains advanced validation changes and limitations.
-See [V2C-19](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-19.md).
 
 See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.
 
 
-## Canonical dossier preparation (V2C-27)
+## Canonical dossier preparation
 
 Certification supports explicit model/report/replay/revision/template inputs, persisted request identity, partial/unavailable model disclosures and bounded JSON/console/Markdown/HTML/PDF downloads. Field edits invalidate inspection/export; downloads revalidate retained job inputs and reject changed source/model/evidence/template files. Cancellation cleanup failures remain failures. Every dossier is preparation only, never regulatory/RNG certification. See [the canonical dossier](certification-evidence-bundle.md).
 
 
-### Included public documentation
+### Documentation links
 
-Studio Home opens the candidate's included documentation and FromStan / POKIE
-landing in a separate tab under `/help/`. Getting started, CLI reference, search,
-examples Gallery, interactive playground and report/dossier guidance are served
-locally with the installed candidate; a hosted site or GitHub is not required.
-The normal Studio build includes these public assets. A missing help route
-returns an explicit 404 with `/help/docs/` recovery guidance rather than opening
-the Studio workspace. Closing a help tab leaves the authoring tab intact.
+Studio Home links to the repository documentation and example games in a separate
+tab. No hosted documentation site is required.
 
 ### Full simulation report
 

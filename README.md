@@ -1,110 +1,42 @@
-# FromStan/POKIE
+# POKIE
 
-ISC-licensed **game math**, a headless JavaScript/TypeScript runtime, CLI and local Studio for authoring and reproducible experiments.
+POKIE is an ISC-licensed JavaScript/TypeScript framework for video-slot game math: reels, paylines, win
+evaluation, free games, feature mechanics, RTP simulation, deterministic replay and portable game
+artifacts.
 
-**Unpublished 2.0.0 candidate.** Registry availability, repository transfer and site deployment have not been established by this preparation.
-Install a controller-produced archive using its actual filename (`npm install /absolute/path/to/archive.tgz`),
-or a built checkout (`npm install /absolute/path/to/pokie`). Run the installed `pokie` for global Studio Home,
-or `pokie <project>` for a Project. `pokie create` authors a Blueprint; `pokie init` prepares a code-first package;
-`pokie build SOURCE --target TARGET` owns artifact conversions. Future registry-based commands below are conditional on publication.
+The 2.0 source is prepared for publication as `@fromstan/pokie`. Until the package is published, install
+a built checkout or a locally produced archive:
 
-Repository/site targets are [fromstan/pokie](https://github.com/fromstan/pokie) and
-[pokie.fromstan.com](https://pokie.fromstan.com); account access, hosting and publication require separate authorization.
-See [2.0 candidate notes](CHANGELOG.md) and [release preparation](docs/v2-completion/release-preparation.md).
+```bash
+npm install /absolute/path/to/pokie
+# or
+npm install /absolute/path/to/fromstan-pokie-2.0.0.tgz
+```
 
-The public-site target provides [Getting started](https://pokie.fromstan.com/docs/getting-started/),
-[CLI/API and build](https://pokie.fromstan.com/docs/cli-api/) and [the docs index](https://pokie.fromstan.com/docs/).
-Deployment is separately controlled; [repository guides](docs/README.md) remain available before hosting.
-Build and preview the actual static site with `npm run site:build` and `npm run site:preview`;
-see [static handoff instructions](https://github.com/fromstan/pokie/blob/develop/site/README.md). Output is isolated in `site/.output/`.
-
-> **⚠️ RNG:** default `PseudorandomNumberGenerator` uses `Math.random()` — not cryptographically secure.
-> `SecureRandomNumberGenerator` gives a stronger, production-like, security-sensitive RNG primitive built on
-> Node's `crypto.randomInt`, but it's a building block, not a certification — real-money/regulated games still need
-> independent RNG certification and regulatory/compliance sign-off, which is outside POKIE's scope. See
-> [Reels & Symbol Sequences](docs/reels-and-sequences.md).
+> **RNG:** the default `PseudorandomNumberGenerator` uses `Math.random()` and is not cryptographically
+> secure. `SecureRandomNumberGenerator` uses Node's `crypto.randomInt`, but it is a building block, not
+> an RNG certification. Real-money and regulated games still require independent RNG certification and
+> regulatory sign-off, which is outside POKIE's scope.
 
 ## What's included
 
-POKIE goes well beyond classic paylines:
+- **Win styles** — line, scatter, ways/megaways-style, cluster and per-symbol value wins, individually or
+  mixed under an explicit aggregation policy.
+- **Feature mechanics** — free games, bet modes (ante/buy feature), Hold & Win / Lock & Spin, fixed and
+  progressive jackpots, cascading wins, resizable grids and weighted bonuses.
+- **Simulation** — per-round `Simulation`, aggregate-only runners, parallel workers, RTP, hit frequency,
+  volatility, confidence intervals and optional convergence-based early stop.
+- **Exact math** — a canonical `WeightedOutcomeLibrary` can enumerate every outcome and its weight, so RTP
+  and payout distributions can be computed without Monte Carlo error.
+- **Artifacts** — `GameBlueprint` JSON, generated TypeScript packages, Outcome Library bundles, Stake
+  Engine adapters, PAR workbooks and canonical WASM modules.
+- **Deterministic replay** — seeded RNG, round artifacts, audit replay and commit-reveal fairness proofs.
+- **CLI and Studio** — author, build, validate, simulate, replay and inspect games from the terminal or a
+  local browser UI.
+- **Network and server primitives** — session serialization plus a local/reference HTTP server with
+  replaceable session storage and wallet ports. It is not a casino backend or RGS.
 
-- **Win styles** — classic line wins, scatter wins, ways/megaways-style, cluster (grid) wins, and per-symbol value
-  pays, individually or [mixed](docs/paytable-and-wins.md) under an explicit aggregation policy.
-- **Cascading wins** — a deterministic win/remove/collapse/refill resolver (`CascadingSpinResolver`) with a
-  max-step guard, for tumble/cascade mechanics.
-- **Free games / free spins**, **resizable/growing grids**, **Hold & Win / Lock & Spin** (respin-and-collect),
-  and **fixed/local/progressive jackpot pools** as first-class, composable session decorators.
-- **Ante bet / buy-the-feature** — an opt-in `BetMode.runtimeType` contract (always-applied extra stake, or a
-  one-shot forced entry into a free-games feature), with per-mode target-RTP simulation/reporting and PAR sheet
-  round-tripping.
-- **Simulation** — full per-round `Simulation` plus aggregate-only primitives (`AggregateSimulationRunner`,
-  `SimulationAccumulator`) with RTP, hit frequency, volatility, and 95% confidence intervals, for runs too large
-  to keep every round in memory, plus opt-in convergence-based adaptive early stop.
-- **[Provably Fair](docs/provably-fair.md)** — an HMAC-SHA256 commit-reveal proof for a single round, drawn from
-  a canonical [Outcome Library Bundle](docs/outcome-library-bundle.md) and independently verifiable by anyone
-  holding the source bundle and the original commitment — `pokie fairness seed-commit`/`commit`/`reveal`/`verify`.
-- **Deterministic/seeded RNG** (`SeededRandomNumberGenerator`) for reproducible simulation, replay, and
-  regression tests, alongside the default and cryptographically-secure RNG options.
-- **Network serialization** — `net/` serializers turning session state into plain-data DTOs for a game client.
-- **Validation primitives** around the win evaluation pipeline, surfacing incompatible-evaluator or misconfigured
-  setups as structured issues instead of silent runtime surprises.
-- **[Reel strip generation](docs/reel-strip-generation.md)** — `ReelStripGenerator` produces a reel strip's fixed
-  symbol sequence under constraints (exact counts, minimum/maximum circular distance, max run length, forbidden/
-  required adjacency and exact-sequence patterns — directed/reversed matching, wrap-around — locked positions),
-  deterministically by seed, with clear diagnostics when a request can't be satisfied. Also accepts
-  proportional `symbolWeights` instead of exact counts, deterministically apportioned via the Largest Remainder
-  Method. A design-time tool, separate from the runtime spin path.
-- **[Game packages](docs/game-packages.md)** — a `PokieGame`/`pokie.entry` npm package convention plus a
-  `loadPokieGame` loader, so an external game can be loaded by a CLI, simulator, validator, or server without
-  knowing about it in advance.
-- **[CLI](docs/cli.md)** — `npx --package @fromstan/pokie pokie` opens global **POKIE Studio Home**; `npx --package @fromstan/pokie pokie .` or `npx --package @fromstan/pokie pokie <projectRoot>`
-  opens a project's Studio dashboard. Create a game with `npx --package @fromstan/pokie pokie init <directory>` or design a Blueprint with
-  `npx --package @fromstan/pokie pokie create <name>`; `npx --package @fromstan/pokie pokie --help` lists every public
-  workflow. Artifacts use one canonical command: `pokie build <project> --target <artifact>`
-  (`blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, or `wasm`), including standalone
-  Outcome Library and Stake descriptors for their matching targets. `npx --package @fromstan/pokie pokie build <project.json> --target tsPackage --out <dir>` generates a working game
-  package straight from a JSON `GameBlueprint` (reels, symbols, paylines, paytable, reel strips — literal, weighted,
-  or build-time generated via `reelStripGeneration` and `ReelStripGenerator`), no compile step required (see
-  [`examples/blueprints`](examples/blueprints)); `--dry-run` validates and previews a blueprint without writing
-  anything; `npx --package @fromstan/pokie pokie create [name] --random` generates a structurally-valid `GameBlueprint` with no config file at
-  all — seeded/reproducible — ready to feed straight into `pokie build`; `npx --package @fromstan/pokie pokie inspect
-  <packageRoot>` identifies the project kind and available next actions without running it; it does not attest to a package's original Blueprint or build provenance;
-  `npx --package @fromstan/pokie pokie create [name]` designs an editable Blueprint Project (a `GameBlueprint` JSON file) through an
-  interactive wizard when run in a terminal (`--blank`/`--random` write one non-interactively instead); `npx --package @fromstan/pokie pokie
-  init [directory]` prepares an immediately valid game package in place, entirely non-interactively; `npx --package @fromstan/pokie pokie
-  sim <project>` simulates a package, Blueprint, native Outcome Library or canonical WASM artifact and reports RTP/hit-frequency/max-win; `npx --package @fromstan/pokie pokie
-  validate <project>` checks a game package, Blueprint JSON file, or outcome-library bundle without playing it
-  (`--deep` adds outcome checks only for outcome-library bundles); `npx --package @fromstan/pokie pokie report <simulationReportJson>` renders a `pokie sim`
-  report (including reproducibility info, warnings, and recommendations) as JSON/Markdown/HTML; `npx --package @fromstan/pokie pokie diff
-  <leftProjectOrReportJson> <rightProjectOrReportJson>` compares two `pokie sim` reports or two Outcome Library/
-  Stake Engine outcome sources (e.g. before/after a config change); `npx --package @fromstan/pokie pokie replay <project>` replays by
-  seed + round index (deterministic canonical WASM/native Outcome Library, best-effort package/Blueprint) as a JSON artifact;
-  use the same explicit seed and round count to [compare WASM simulation and replay](docs/cli.md#wasm-quick-start).
-  `npx --package @fromstan/pokie pokie serve <packageRoot>` starts a local/dev JSON
-  HTTP server over a package for creating sessions and spinning them, not a casino backend/RGS; `npx --package @fromstan/pokie pokie client
-  <packageRoot>` serves the POKIE browser client for a running `pokie serve`; `npx --package @fromstan/pokie
-  pokie dev <packageRoot>` runs both together, opening a browser — all optionally as a JSON
-  file/machine-readable output; `npx --package @fromstan/pokie pokie .` launches **POKIE Studio**, a
-  local web app GUI for create/build/inspect/validate/sim/report/replay, opening a browser — its own Play tab
-  drives a real game session entirely in-process, never a server; use `pokie serve`/`pokie dev` directly for that.
-
-See [pokie-examples](https://github.com/sta-ger/pokie-examples) for a working demo of each of these (ways/
-megaways-style, cluster pays, sticky respin, growing grid, value-pay + multiplier wilds, mixed evaluators, and a
-verifiable/seeded-RNG spin).
-
-Package extraction uses the same artifact route: `pokie build PACKAGE --target blueprint --dry-run`
-previews the public effective-model descriptor and diagnostics; omitting `--dry-run` explicitly saves
-an editable Blueprint and its `.conversion-evidence.json` companion to new file paths. Studio's
-Build/Export tab provides the same preview and **Save Blueprint**, then **Open as Project**.
-Opening a custom package keeps it code-first. A complete declared model is required for save;
-unsupported mechanics stay visible, and finite seeded comparisons cannot establish arbitrary
-executable-code equivalence. See [package extraction](docs/game-packages.md#package-extraction-to-an-editable-blueprint).
-
-## Usage
-
-### Session
-
-Video slot game logic.
+## Session
 
 ```js
 import {VideoSlotSession} from "@fromstan/pokie";
@@ -115,53 +47,28 @@ session.play();
 
 session.getSymbolsCombination(); // symbols combination
 session.getWinAmount(); // total round win amount
-session.getWinEvaluationResult(); // unified win breakdown for runtime/reporting/debug
+session.getWinEvaluationResult(); // unified win breakdown
 session.getWinningLines(); // winning lines data
 session.getWinningScatters(); // winning scatters data
 ```
 
-### Simulation
-
-Running a certain number of game rounds and calculating RTP.
+## Simulation
 
 ```js
 import {SimulationConfig, Simulation} from "@fromstan/pokie";
 
 const simulationConfig = new SimulationConfig();
 simulationConfig.setNumberOfRounds(10000);
-const simulation = new Simulation(session, simulationConfig);
-
-// set the callbacks if you want to control the session manually
-simulation.setBeforePlayCallback(() => {
-    console.log("Before play");
-});
-simulation.setAfterPlayCallback(() => {
-    console.log("After play");
-});
-simulation.setOnFinishedCallback(() => {
-    console.log("Simulation finished");
-});
-
-simulation.run(); // 10000 rounds will be played
-
-simulation.getLastRtp(); // RTP after the last round played
-simulation.getAverageRtp(); // average RTP across all rounds played
-```
-
-Capturing specific game features.
-
-```js
-import {SimulationConfig, Simulation, PlayUntilSymbolWinStrategy} from "@fromstan/pokie";
-
-const simulationConfig = new SimulationConfig();
-simulationConfig.setNumberOfRounds(Infinity);
-simulationConfig.setPlayStrategy(new PlayUntilSymbolWinStrategy("A"));
 
 const simulation = new Simulation(session, simulationConfig);
-simulation.run(); // the simulation will be stopped on any winning combination with symbol "A"
+simulation.run();
+
+simulation.getLastRtp();
+simulation.getAverageRtp();
 ```
 
-Running a large number of rounds without keeping every round in memory — just the running statistics.
+Large runs can use `AggregateSimulationRunner`, which keeps only running statistics instead of every
+round:
 
 ```js
 import {AggregateSimulationRunner, VideoSlotSession} from "@fromstan/pokie";
@@ -169,17 +76,12 @@ import {AggregateSimulationRunner, VideoSlotSession} from "@fromstan/pokie";
 const runner = new AggregateSimulationRunner(new VideoSlotSession(), 1_000_000);
 const stats = runner.run().getStatistics();
 
-stats.rtp; // return-to-player across all 1,000,000 rounds
+stats.rtp;
 stats.rtpConfidenceInterval95; // {low, high}
-stats.hitCount; // number of winning rounds
+stats.hitCount;
 ```
 
-### Seeded RNG
-
-`SeededRandomNumberGenerator` produces the same sequence of draws for the same seed — useful for
-simulation/replay/debugging and regression tests that need a repeatable outcome. It's not a production-grade RNG.
-For a stronger, security-sensitive entropy source, POKIE also provides `SecureRandomNumberGenerator` — but note
-that real-money/regulated play still requires independent RNG certification and compliance work outside POKIE.
+## Seeded RNG
 
 ```js
 import {SymbolsCombinationsGenerator, SeededRandomNumberGenerator, VideoSlotConfig} from "@fromstan/pokie";
@@ -187,149 +89,66 @@ import {SymbolsCombinationsGenerator, SeededRandomNumberGenerator, VideoSlotConf
 const config = new VideoSlotConfig();
 const generator = new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(12345));
 
-generator.generateSymbolsCombination(); // same seed always reproduces the same combination
+generator.generateSymbolsCombination(); // the same seed reproduces the same combination
 ```
 
-### CLI
+## CLI
 
-Start with the installed CLI's guidance and public version:
+The `pokie` executable has three main entry points:
 
-```
-npx --package @fromstan/pokie pokie
-npx --package @fromstan/pokie pokie --version
-npx --package @fromstan/pokie pokie --help
-```
-
-Turn a directory into a ready-to-run [game package](docs/game-packages.md) in place — merging into an existing npm
-project if there is one, scaffolding a fresh one if not:
-
-```
-npx --package @fromstan/pokie pokie init sample-slot
-cd sample-slot
-npx --package @fromstan/pokie pokie validate .
+```bash
+pokie                    # open Studio Home
+pokie .                  # open the current project in Studio
+pokie <project>          # open a specific project in Studio
 ```
 
-To design an editable Blueprint Project instead, use `npx --package @fromstan/pokie pokie create <name>` in an interactive terminal, or use
-`npx --package @fromstan/pokie pokie create <name> --blank` / `npx --package @fromstan/pokie pokie create <name> --random` non-interactively. Each command has its own
-complete grammar through `npx --package @fromstan/pokie pokie <command> --help`.
+Author and run games without the browser:
 
-Validate a package, Blueprint JSON file, or outcome-library bundle without playing it. It returns exit code 0 when
-valid and 1 otherwise; use `--format json` for CI-friendly JSON output. `--deep` applies only to outcome-library
-bundles:
-
-```
-npx --package @fromstan/pokie pokie validate .
-npx --package @fromstan/pokie pokie validate game.blueprint.json
-npx --package @fromstan/pokie pokie validate outcomes --deep
+```bash
+pokie create demo --random --seed 42 --out demo.blueprint.json
+pokie build demo.blueprint.json --target tsPackage --out demo-package
+pokie validate demo-package
+pokie sim demo-package --rounds 10000 --seed demo --out sim.json
+pokie report sim.json
 ```
 
-See the [CLI docs](docs/cli.md) for what `pokie create`/`pokie init` generate, what `pokie sim`/`pokie validate`
-report, and a
-[full create → validate → sim → report → diff → replay → dev walkthrough](docs/cli.md#workflow).
+Other commands include `inspect`, `edit`, `reel`, `par`, `optimize`, `replay`, `run`, `serve`, `client`,
+`dev`, `fairness`, `certification` and `diff`. Use `pokie <command> --help` for the exact grammar.
 
-Open an existing package or Blueprint in the local GUI:
+## Studio
 
-```
-npx --package @fromstan/pokie pokie .
-```
-
-**POKIE Studio** is a local web app covering Home (a guided Design Game flow for a new/random/
-existing blueprint, plus a Projects panel for managed and registered projects) and, once a project is open, a
-Project Dashboard (an Overview with automatic validation diagnostics, Game Model, a Play tab for driving a real
-in-process game session, Simulation, Replay, and a Build/Export tab bundling outcome-library generation, Stake
-Engine export, and remote deployment via the [External Adapter SDK](docs/external-adapter-sdk.md) as one surface)
-— see the [Studio docs](docs/cli.md#pokie) for the full tour. Like `pokie serve`/
-`pokie dev`, it's a local/dev tool, not a casino backend or RGS.
+`pokie` opens a local web app for designing a `GameBlueprint`, building artifacts, running simulations,
+replaying rounds and playing a game in-process. It is a local development tool, not a hosted service or
+production RGS.
 
 ## Documentation
 
-See the [docs](docs/README.md) for the full reference: game session and configuration, reels and symbol sequences,
-paylines and line patterns, paytable and win calculation, free games, resizable grids, simulation, network
-serialization, extension points, reel strip generation, and a walkthrough of modeling slot math with POKIE.
+See [docs/README.md](docs/README.md) for the full reference:
 
-Recent runtime additions include a unified `WinEvaluationResult`, explicit mixed-evaluator aggregation policies,
-deterministic cascade runtime foundation (`CascadingSpinResolver`), and aggregate-only simulation primitives.
-Legacy custom win calculators remain supported, multiplier scopes are enforced per component type, and cascade
-resolution is protected by a max-step guard for deterministic runtime safety.
-
-## Use cases
-
-- **Back-End** — implement the video slot game mechanics server-side: create and manage game sessions, serialize
-  round results, and send the payload to your game client through your API.
-- **Front-End** — run the same logic standalone client-side for fun/demo play, relieving the server of unnecessary
-  load. Use simulations to showcase specific game features.
-- **Math** — configure a session and run Monte Carlo simulations to balance RTP, hit frequency, and volatility
-  before a game ships.
-
-POKIE's WASM target and generated Node games share the `pokie.math.v2` evaluator.
-Component contract 1.0.0, ABI 3.0.0, runtime API 2.1.0 and compact state v3/v4 are independent of package 2.0.0.
-Supported models include bounded feature composition; arbitrary TypeScript behavior is not compiled.
-See the [WASM execution/resource boundary](docs/wasm-compatibility-boundary.md) and
-[authored workflow and target support](docs/v2-completion/launch-mechanics-support.md).
-
-Math targeting supports [finite exact and bounded seeded same-type optimization](docs/optimization.md)
-with explicit candidate save/apply. Dossier/PDF preparation, simulations, fairness proofs and technical SDK
-compatibility do not establish regulatory certification. Accounts, KYC, production RGS integration and
-regulatory compliance belong to operators. Local transactional storage and external-wallet outbox/reconciliation
-contracts do not provide distributed ACID. Studio Play is process-only, with no production settlement guarantee.
-ISC attribution and AS-IS terms apply; no managed hosting, commercial support or service-level commitment is supplied.
+- [Getting started](docs/getting-started.md)
+- [Game session and configuration](docs/game-session.md)
+- [Reels and symbol sequences](docs/reels-and-sequences.md)
+- [Paylines and patterns](docs/paylines-and-patterns.md)
+- [Paytable and wins](docs/paytable-and-wins.md)
+- [Free games](docs/free-games.md)
+- [Resizable grid](docs/resizable-grid.md)
+- [Simulation](docs/simulation.md)
+- [Serialization](docs/serialization.md)
+- [Round artifacts](docs/round-artifacts.md)
+- [Weighted outcome library](docs/weighted-outcome-library.md)
+- [Game packages](docs/game-packages.md)
+- [CLI](docs/cli.md)
+- [WASM compatibility](docs/wasm-compatibility-boundary.md)
+- [Provably fair](docs/provably-fair.md)
+- [Supported mechanics](docs/supported-mechanics.md)
+- [Testing](docs/testing.md)
 
 ## Examples
 
-See the [examples](https://github.com/sta-ger/pokie-examples) of various video slot game mechanics implemented with
-**POKIE**.
-
-- **Simple video slot game** [[Demo](https://sta-ger.github.io/pokie-examples/simple-slot.html)]
-  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/simple-slot)] — 5x4, 8 lines, right-to-left
-  pays, a wild, and two scatter types (a classic any-position scatter and a stacked-reels bonus scatter).
-- **Video slot with free spins** [[Demo](https://sta-ger.github.io/pokie-examples/slot-with-free-games.html)]
-  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/slot-with-free-games)] — 5x3 free-spins
-  game with scattered line matching and a 2x win multiplier during the bonus; also demonstrates using `Simulation`
-  to capture specific outcomes.
-- **Video slot with sticky re-spin** [[Demo](https://sta-ger.github.io/pokie-examples/slot-with-sticky-respin.html)]
-  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/slot-with-sticky-respin)] — 5x3 game where
-  a win holds its symbols in place and triggers a re-spin, continuing as long as new wins land.
-- **Cascading cluster pays** [[Demo](https://sta-ger.github.io/pokie-examples/cascading-cluster.html)]
-  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/cascading-cluster)] — 6x5 cluster-pay slot
-  using `CascadingSpinResolver`: winning clusters are removed, the grid collapses and refills, and evaluation
-  repeats until nothing wins, with an escalating step multiplier.
-- **Megaways-style ways-to-win** [[Demo](https://sta-ger.github.io/pokie-examples/megaways-style.html)]
-  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/megaways-style)] — each of 6 reels draws
-  its own row count every round (`VariableHeightSymbolsCombinationsGenerator`), paid with `WaysWinCalculator`.
-- **Growing grid bonus** [[Demo](https://sta-ger.github.io/pokie-examples/growing-grid.html)]
-  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/growing-grid)] — `ResizableSymbolsCombinationsGenerator`
-  grows the grid by a row on every win (up to a cap) and resets it on a loss.
-- **Value pay with multiplier wilds** [[Demo](https://sta-ger.github.io/pokie-examples/value-pay-multiplier.html)]
-  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/value-pay-multiplier)] — `ValueWinCalculator`
-  coins pay independently of `MultiplierResolver` wilds, which are scoped to line wins only.
-- **Verifiable spin** [[Demo](https://sta-ger.github.io/pokie-examples/verifiable-spin.html)]
-  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/verifiable-spin)] — `SeededRandomNumberGenerator`
-  plus a button that replays the session's seed from scratch and verifies it reproduces the same outcome.
-- **Mixed win evaluators** [[Demo](https://sta-ger.github.io/pokie-examples/mixed-evaluators.html)]
-  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/mixed-evaluators)] — the same grid
-  evaluated as lines, ways, and clusters at once, paid by whichever wins the most (`HighestWinOnlyAggregationPolicy`).
-- **Fixture Slot — deterministic Player round** [[Demo](https://sta-ger.github.io/pokie-examples/fixture-slot.html)]
-  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/fixture-slot)] — a compact seeded 3×3
-  round rendered through POKIE's public `client/player` surface; it is the parity fixture for package, Studio
-  Play, and Replay presentation.
-
-### Modeling slot math with POKIE
-
-See the [walkthrough](docs/math-modeling.md) in the docs for balancing RTP, hit frequency, and volatility with
-POKIE. It's an updated, API-verified version of the original
-[Medium article](https://medium.com/@sta-ger/exploring-video-slot-math-with-pokie-3bc7191b72a0) on the same topic.
+See [pokie-examples](https://github.com/sta-ger/pokie-examples) for working games covering ways wins,
+cluster pays, sticky respins, growing grids, value pays, mixed evaluators and verifiable spins. Local
+Blueprint examples live in [examples/blueprints](examples/blueprints).
 
 ## License
 
 ISC — see [LICENSE](LICENSE).
-
-
-Weighted whole-sequence reels support rendered Studio editing (Preview → Apply →
-Save), mixed exact/weighted PAR XLSX round trips with versioned context/provenance,
-and simulation reports with per-reel selection denominators. `pokie diff` explains
-variant order, weight, full-array and context/model changes. See
-[reels and sequences](docs/reels-and-sequences.md#whole-sequence-studio-and-par-workflow).
-Per-symbol weights and weighted outcome libraries remain separate capabilities;
-WASM does not support whole-sequence variants.
-
-See [finite same-type math optimization](docs/optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.

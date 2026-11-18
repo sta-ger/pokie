@@ -228,7 +228,7 @@ own strict validation requirements, including the game validator for custom payl
 
 ## Generated, visible and evaluated coordinates
 
-Blueprint screenGeometry, generated packages and conversion support: see [the coordinate contract and adapter support matrix](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-03.md).
+Blueprint screenGeometry, generated packages and conversion support: see the coordinate contract and adapter support matrix.
 
 ### Exact audit capability
 
@@ -386,7 +386,7 @@ Blueprint `mechanics` accepts `freeGames`, `holdAndWin`, `jackpot`, `modifiers`,
 
 All symbol references must be declared. A fixed pool uses `{"id":"mini","type":"fixed","amount":10}`. The percentage is a fraction in [0,1] of the actual charged stake, including ante/purchase multiplication. Zero-stake continuations contribute nothing. Fixed pools record contributions in statistics but their balance never grows. Accumulating pools are constructed fresh per session; each award pays the pre-reset value and resets to the configured seed.
 
-Assembly order is base (optionally free games), Hold&Win if present, executable bet modes if present, then jackpot. Jackpot remains outside suppression and mode multiplication. Free games and Hold&Win cannot coexist: their competing continuation/banking rules are rejected. Existing geometry restrictions remain. The [authored catalogue](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-12.md) records each supported variant/composition separately from the random-strategy compatibility catalogue.
+Assembly order is base (optionally free games), Hold&Win if present, executable bet modes if present, then jackpot. Jackpot remains outside suppression and mode multiplication. Free games and Hold&Win cannot coexist: their competing continuation/banking rules are rejected. Existing geometry restrictions remain. The authored catalogue records each supported variant/composition separately from the random-strategy compatibility catalogue.
 
 Executable modes require every mode's `runtimeType`, exactly one safe default, and compatible free games for purchases. `costMultiplier`/labels/`isDefault` without runtime semantics remain metadata; `forcedFreeGames` without runtime opt-in is invalid. Base/ante selections persist. Buy-feature selection is consumed once at entry and resets to the default; another purchase requires a fresh action after feature completion. Original charged mode attribution remains available separately from current selection.
 
@@ -406,7 +406,7 @@ package with `pokie PACKAGE`. Stateless modifiers retain exact enumeration;
 sticky games explicitly lack independent-spin enumeration. See the
 [math contract](math-modeling.md#authored-wilds-and-screen-modifiers).
 
-## Bounded authored mechanics (V2C-14)
+## Bounded authored mechanics
 
 See [cascades, respins and collections](bounded-mechanics.md) for the declarative
 contracts, supported compositions, authoring/build/extraction/PAR workflow,
@@ -416,7 +416,7 @@ logical-round accounting, continuation and durability boundaries.
 
 See [finite weighted bonus outcomes](weighted-bonus.md) for selection identity,
 payout/duration units, authoring/interchange, restoration/replay, statistics and
-custom-rule/target boundaries. The [launch support register](v2-completion/launch-mechanics-support.md)
+custom-rule/target boundaries. The [launch support register](supported-mechanics.md)
 maps every mandatory family separately from arbitrary custom callbacks.
 
 ### Definition comparison declarations
@@ -454,6 +454,6 @@ instantiate custom sessions to infer a theorem. A complete descriptor, a
 cannot establish arbitrary TypeScript executable fidelity. Undeclared max-win
 policy and unsupported nested collaborators remain unknown. Source-path
 acquisition owns and releases its snapshot; a direct supplied game remains
-caller-owned. See [V2C-19](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-19.md) for supported checks and limits.
+caller-owned. See the advanced-validation report for supported checks and limits.
 
 See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.

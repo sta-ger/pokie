@@ -2056,7 +2056,7 @@ it.each(["compatibility", "durable"] as const)("terminal %s save failure never p
     }
 });
 
-describe("V2C-12 package simulation replay mode policy", () => {
+describe("package simulation replay mode policy", () => {
     function authoredGame(id: string) {
         const blueprint = existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!);
         blueprint.reelStrips = [["A"], ["A"], ["A"]];
@@ -2154,7 +2154,7 @@ describe.each([false, true])("F12 Studio replay attribution (weighted: %s)", wei
 });
 
 
-it("V2C-21 completes Studio seed-7 cascade logical replay with correct totals and next RNG", async () => {
+it("completes Studio seed-7 cascade logical replay with correct totals and next RNG", async () => {
     const {boundedBlueprint} = await import("../../../v2/fixtures/BoundedMechanicsGame.js");
     const {instantiatePokieWasm, SeededPokieWasmHost} = await import("../../../../src/wasm/PokieWasmRuntime.js");
     const blueprint = boundedBlueprint("cascade");
@@ -2189,7 +2189,7 @@ it("V2C-21 completes Studio seed-7 cascade logical replay with correct totals an
 });
 
 
-it("V2C-22-SIMULATION-REPLAY-FUNDING carries the bound policy through the Node replay record and preserves standalone funding", async () => {
+it("SIMULATION-REPLAY-FUNDING carries the bound policy through the Node replay record and preserves standalone funding", async () => {
     const {bindReplayToSimulationReport} = await import("../../../../cli/studio/replay/validateReplayRequest.js");
     const {StudioSimulationService} = await import("../../../../cli/studio/simulation/StudioSimulationService.js");
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "v2c22-replay-funding-"));

@@ -592,7 +592,7 @@ it("retains per-mode budgets and adaptive settings when retrying an all-mode job
     unmount();
 });
 
-describe("V2C-34 simulation freshness authority", () => {
+describe("simulation freshness authority", () => {
     it("retains job ownership across invalidation, rejection and conflict, then accepts first and subsequent fresh reuse", async () => {
         let starts = 0;
         let outcome: "created" | "rejected" | "conflict" = "created";
@@ -731,7 +731,7 @@ describe("V2C-34 simulation freshness authority", () => {
 });
 
 
-describe("V2C-36 restored source freshness", () => {
+describe("restored source freshness", () => {
     it.each([true, false, undefined, "true"])("requires strict server source proof (%s) in fresh and reused hooks", async sourceCurrent => {
         const retained = {...job("completed", 10), sourceCurrent};
         const fetchImpl: FetchLike = () => Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(retained)});

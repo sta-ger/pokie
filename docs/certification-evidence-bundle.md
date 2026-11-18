@@ -4,7 +4,7 @@
 
 **Certification-ready preparation only.** Integrity verification establishes evidence consistency and
 reproduction, not regulatory approval, independent RNG certification, compliance sign-off, authenticity
-or guaranteed executable correctness. Independent assessment and controller approval remain separate.
+or guaranteed executable correctness. Independent assessment remains separate.
 
 The existing `CertificationEvidenceBundleBuilder`, validator and verifier own this workflow. They reuse
 the model reader/extraction, advanced validation, canonical simulation reports, weighted outcome readers
@@ -133,7 +133,7 @@ PDF 1.4 uses selectable standard Courier text, wrapped two-column evidence table
 repeated section/column context and explicit pagination. Non-ASCII characters use **lossless
 `[U+XXXX]` notation** because the self-contained standard font has no universal Unicode glyph coverage;
 JSON/HTML retain Unicode text. PDF is intended for printable assessment evidence, not branded artwork.
-Independent visual/PDF-reader review is controller-owned and remains separate from source tests.
+Independent visual/PDF-reader review remains separate from source tests.
 
 ## Publication, cancellation and Studio
 

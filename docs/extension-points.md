@@ -105,5 +105,5 @@ limitations in `unsupported` instead of flattening them into a Blueprint.
 
 See [finite weighted bonus outcomes](weighted-bonus.md) for selection identity,
 payout/duration units, authoring/interchange, restoration/replay, statistics and
-custom-rule/target boundaries. The [launch support register](v2-completion/launch-mechanics-support.md)
+custom-rule/target boundaries. The [launch support register](supported-mechanics.md)
 maps every mandatory family separately from arbitrary custom callbacks.

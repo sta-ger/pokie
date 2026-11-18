@@ -97,19 +97,19 @@ continue an active logical round with its returned cursor. Project changes drain
 accepted Play work before releasing its runtime; retained history remains
 inspectable and late responses cannot repopulate the active project view.
 
-## Bounded authored mechanics (V2C-14)
+## Bounded authored mechanics
 
 See [cascades, respins and collections](bounded-mechanics.md) for the declarative
 contracts, supported compositions, authoring/build/extraction/PAR workflow,
 logical-round accounting, continuation and durability boundaries.
 
-V2C-16 reports persist the analytics envelope, raw counts and denominators in the
+Reports persist the analytics envelope, raw counts and denominators in the
 existing job detail store. Reopened reports and JSON/Markdown/HTML downloads retain
 the same analytics. Cancelled/failed observed prefixes remain diagnostic and are
 not listed as completed reports; publication follows runtime/worker cleanup.
 Worker feature trajectories and accumulating jackpot pools are independent.
 Worker seed derivation and the executable model identity remain in each mode's
-saved report; see [simulation analytics](simulation.md#feature-analytics-aggregates-v2c-16).
+saved report; see [simulation analytics](simulation.md#feature-analytics-aggregates).
 
 Simulation exposes real preparation, simulation, finalization/cleanup and terminal phases through both durable jobs and compatibility polling. Counts are accepted plays; all-mode totals cover each independent mode. A 100% counter can still be finalizing. Cancellation stays pending until worker/session/runtime release settles; a release error is failed and actionable, including when cancellation was requested. Staged mode results are unavailable to report/history/download consumers until the entire job succeeds and cleanup completes.
 

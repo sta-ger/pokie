@@ -100,7 +100,7 @@ async function expectActiveSection(name: string): Promise<void> {
 jest.setTimeout(120000);
 
 describe("HomePage", () => {
-    it("V2C-37 keeps cancelled Retry and completed Open pending through the actual response and permits recovery after rejection", async () => {
+    it("keeps cancelled Retry and completed Open pending through the actual response and permits recovery after rejection", async () => {
         const retained: StudioJobView = {
             id: "cancelled", projectId: RETAINED_OPEN_SOURCE, operation: "project-open-materialization",
             request: {sourcePath: RETAINED_OPEN_SOURCE}, conflictKey: `project-open:${RETAINED_OPEN_SOURCE}`,
@@ -169,7 +169,7 @@ describe("HomePage", () => {
         expect(requests.every(request => request === JSON.stringify({projectRoot: RETAINED_OPEN_SOURCE}))).toBe(true);
     });
 
-    it.each(["queued", "running", "cancelling"] as const)("V2C-37 disables reload-discovered Retry during same-source %s work until its terminal", async status => {
+    it.each(["queued", "running", "cancelling"] as const)("disables reload-discovered Retry during same-source %s work until its terminal", async status => {
         const retained: StudioJobView = {
             id: "cancelled", projectId: RETAINED_OPEN_SOURCE, operation: "project-open-materialization",
             request: {sourcePath: RETAINED_OPEN_SOURCE}, conflictKey: `project-open:${RETAINED_OPEN_SOURCE}`,

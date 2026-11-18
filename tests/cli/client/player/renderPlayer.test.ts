@@ -41,7 +41,7 @@ import {
 // repository's standalone test suite remains runnable from an isolated worktree.
 function adaptExamplesCandidate(original: string, candidate: string, spec: string): string {
     execFileSync(process.execPath, ["--input-type=module", "--eval", `
-        import {adaptPc12CandidateConsumer} from ${JSON.stringify(pathToFileURL(resolve(process.cwd(), "scripts/pc-12-player-parity-browser.mjs")).href)};
+        import {adaptPc12CandidateConsumer} from ${JSON.stringify(pathToFileURL(resolve(process.cwd(), "scripts/playerParityBrowser.mjs")).href)};
         await adaptPc12CandidateConsumer(...process.argv.slice(1));
     `, original, candidate, spec], {timeout: 10_000});
     return candidate;

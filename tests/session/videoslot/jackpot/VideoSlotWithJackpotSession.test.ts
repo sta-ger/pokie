@@ -491,7 +491,7 @@ describe("VideoSlotWithJackpotSession", () => {
     });
 });
 
-describe("V2C-12 canonical session-local jackpot", () => {
+describe("canonical session-local jackpot", () => {
     it.each(["fixed", "accumulating"] as const)("conserves %s actual ante contribution, zero-stake awards and isolated restore", kind => {
         const b = existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === `${kind}-holdAndWin-modes`)!);
         b.reelStrips = [["C"], ["A"], ["J"]];

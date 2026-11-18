@@ -13,7 +13,7 @@ all reels; per-reel offsets, fractional evaluation cells and nonidentity ragged 
 Authored mechanics include free games, Hold&Win, jackpots, bet modes, expanding/sticky/restricted/multiplier
 wilds, transforms/reel replacements, bounded cascades/respins/collections and weighted bonuses. Their
 editor, build, runtime/restore, simulation/report, extraction, PAR and replay workflows are mapped in the
-[launch support register](v2-completion/launch-mechanics-support.md). Supported compositions and artifact
+[launch support register](supported-mechanics.md). Supported compositions and artifact
 targets remain explicit; arbitrary callbacks and dynamic targets remain custom-only, and lossy extraction
 is blocked. PAR does not represent nonidentity geometry.
 
@@ -234,9 +234,9 @@ preserves these supported modifier contracts. Persistent sticky rules block inde
 outcome enumeration and its downstream conversions; stateless rules use the same
 session payout path during enumeration. Custom callbacks retain their custom
 capability/extraction boundary. See [serialization](serialization.md) and
-[the implementation evidence record](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-13.md).
+the implementation evidence record.
 
-## Bounded authored mechanics (V2C-14)
+## Bounded authored mechanics
 
 See [cascades, respins and collections](bounded-mechanics.md) for the declarative
 contracts, supported compositions, authoring/build/extraction/PAR workflow,
@@ -246,10 +246,10 @@ logical-round accounting, continuation and durability boundaries.
 
 See [finite weighted bonus outcomes](weighted-bonus.md) for selection identity,
 payout/duration units, authoring/interchange, restoration/replay, statistics and
-custom-rule/target boundaries. The [launch support register](v2-completion/launch-mechanics-support.md)
+custom-rule/target boundaries. The [launch support register](supported-mechanics.md)
 maps every mandatory family separately from arbitrary custom callbacks.
 
-## Canonical definition comparison (V2C-18)
+## Canonical definition comparison
 
 `compareMathDefinitions(left, right, {signal})` and `MathDefinitionSourceReader`
 read definitions; `MathDefinitionDiffer.diff(leftSnapshot, rightSnapshot)` is the
@@ -436,6 +436,6 @@ lifetime cap; cascade bound failures are explicit. Collection currency state is
 closed over reachable entry values; persistent jackpot/modifier state and
 lifetime wallet/counter overflow retain limitations. Max-win declarations are
 checked in their declared units/scope and never install an enforcement cap.
-See [the full source/mechanic boundary](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-19.md).
+See the full source/mechanic boundary.
 
 See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.

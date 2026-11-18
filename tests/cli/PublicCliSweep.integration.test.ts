@@ -5,47 +5,65 @@ import {registerCliCommands} from "../../cli/registerCliCommands.js";
 
 const ROOT = path.join(__dirname, "..", "..");
 const PUBLIC_COMMANDS = [
-    "build", "certification", "client", "create", "dev", "diff", "edit", "fairness", "generate", "import", "init", "inspect", "par", "optimize", "reel", "run", "replay", "report", "sample", "serve", "sim", "validate",
-];
-// P7-01's completed inventory is immutable campaign evidence from before the
-// canonical WASM `run` command existed. Keep asserting that historical record
-// verbatim while separately asserting the current public command tree above.
-const INITIAL_INVENTORY_COMMANDS = [
-    "build", "certification", "client", "create", "dev", "diff", "edit", "export", "fairness", "generate", "import", "init", "inspect", "par", "reel", "replay", "report", "sample", "serve", "sim", "validate",
+    "build",
+    "certification",
+    "client",
+    "create",
+    "dev",
+    "diff",
+    "edit",
+    "fairness",
+    "generate",
+    "import",
+    "init",
+    "inspect",
+    "par",
+    "optimize",
+    "reel",
+    "run",
+    "replay",
+    "report",
+    "sample",
+    "serve",
+    "sim",
+    "validate",
 ];
 const NESTED_VERBS = [
-    "certification build", "certification verify", "fairness commit", "fairness reveal", "fairness seed-commit", "fairness verify", "par export", "par import", "reel generate",
+    "certification build",
+    "certification verify",
+    "fairness commit",
+    "fairness reveal",
+    "fairness seed-commit",
+    "fairness verify",
+    "par export",
+    "par import",
+    "reel generate",
 ];
 
-describe("PC-15 public CLI sweep contract", () => {
+describe("public CLI command tree", () => {
     const commands = registerCliCommands({
-        version: "1.3.0",
+        version: "2.0.0",
         pokiePackageRoot: "/fake/pokie/root",
         clientRoot: "/fake/pokie/root/dist/cli/client",
         studioRoot: "/fake/pokie/root/dist/cli/studio-client",
     });
 
-    it("keeps the registered command tree, maintained docs, and inventory on the complete public contract", () => {
-        const publicNames = commands.filter((command) => !command.getName().startsWith("__")).map((command) => command.getName());
-        const inventory = JSON.parse(fs.readFileSync(path.join(ROOT, "docs", "evidence", "p7-01-cli-inventory", "coverage-map.json"), "utf-8")) as {
-            initialInventory: {rootCommands: string[]; nestedVerbs: string[]};
-        };
+    it("registers every public command and documents the maintained surface", () => {
+        const publicNames = commands
+            .filter((command) => !command.getName().startsWith("__"))
+            .map((command) => command.getName());
         const maintainedDocumentation = ["README.md", "docs/README.md", "docs/cli.md", "docs/studio-frontend.md"]
             .map((file) => fs.readFileSync(path.join(ROOT, file), "utf-8"))
             .join("\n");
 
-        const current = JSON.parse(fs.readFileSync(path.join(ROOT, "docs/audit-corrections/cli-coverage-map.json"), "utf8")) as {
-            currentInventory: {rootCommands: string[]; nestedVerbs: string[]};
-        };
         expect(publicNames).toEqual(PUBLIC_COMMANDS);
-        // The saved audit is historical; assert the current addition through registration and docs.
         expect(maintainedDocumentation).toContain("pokie optimize");
-        expect(current.currentInventory).toEqual({rootCommands: PUBLIC_COMMANDS.filter((name) => name !== "optimize").sort(), nestedVerbs: NESTED_VERBS});
-        expect(inventory.initialInventory).toEqual({rootCommands: INITIAL_INVENTORY_COMMANDS, nestedVerbs: NESTED_VERBS});
-        expect(maintainedDocumentation).not.toMatch(/\bpokie (?:export|studio|__studio|outcomelibrary|outcomesource|stakeengine|name)\b/);
+        expect(maintainedDocumentation).not.toMatch(
+            /\bpokie (?:export|studio|__studio|outcomelibrary|outcomesource|stakeengine|name)\b/,
+        );
     });
 
-    it("renders help for every public command, nested verb, and implicit Studio entry without legacy names", () => {
+    it("renders help for every public command and nested verb", () => {
         for (const command of commands.filter((candidate) => !candidate.getName().startsWith("__"))) {
             const help = command.getCommanderCommand().helpInformation();
             expect(help).toContain(`Usage: ${command.getName()}`);
@@ -60,7 +78,9 @@ describe("PC-15 public CLI sweep contract", () => {
         }
 
         const studio = commands.find((command) => command.getName() === "__studio");
-        expect(studio?.getCommanderCommand().helpInformation()).toContain("Usage: pokie [options] [projectRoot] [excess...]");
+        expect(studio?.getCommanderCommand().helpInformation()).toContain(
+            "Usage: pokie [options] [projectRoot] [excess...]",
+        );
         expect(studio?.getCommanderCommand().helpInformation()).not.toContain("Usage: studio");
     });
 });

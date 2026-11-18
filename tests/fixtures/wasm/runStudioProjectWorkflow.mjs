@@ -31,7 +31,7 @@ try {
     const source = path.join(directory, "parity.blueprint.json");
     const artifact = path.join(directory, "parity.wasm");
     fs.writeFileSync(source, JSON.stringify(blueprint));
-    await new WasmArtifactBuilder("1.3.0").build({type: "blueprint", rootPath: source, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "V2C-22 installed workflow"}, artifact);
+    await new WasmArtifactBuilder("1.3.0").build({type: "blueprint", rootPath: source, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: " installed workflow"}, artifact);
     const session = loaded.game.createSession({seed: "0"});
     const expected = blueprint.availableBets.map(bet => {
         session.setBet(bet);

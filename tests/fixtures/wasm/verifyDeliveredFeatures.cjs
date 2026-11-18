@@ -86,7 +86,7 @@ async function build(fixture) {
     const packageDir = path.join(folder, 'package');
     new api.GamePackageGenerator('1.3.0').generate(fixture.blueprint, source, packageDir);
     const artifact = path.join(folder, 'game.wasm');
-    await new api.WasmArtifactBuilder('1.3.0').build({type: 'blueprint', rootPath: source, capabilities: api.PROJECT_TYPE_CAPABILITIES.blueprint, provenance: 'V2C-21 public parity'}, artifact);
+    await new api.WasmArtifactBuilder('1.3.0').build({type: 'blueprint', rootPath: source, capabilities: api.PROJECT_TYPE_CAPABILITIES.blueprint, provenance: ' public parity'}, artifact);
     return {...fixture, folder, packageDir, artifact, bytes: fs.readFileSync(artifact), manifest: JSON.parse(fs.readFileSync(`${artifact}.pokie-wasm.json`, 'utf8'))};
 }
 function compilePackages(fixtures) {

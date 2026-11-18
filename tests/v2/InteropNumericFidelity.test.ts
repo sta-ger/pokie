@@ -574,7 +574,7 @@ describe("Stake exact interchange and independent numeric domains", () => {
     });
 });
 
-describe("V2C-26 review conversion boundaries", () => {
+describe("review conversion boundaries", () => {
     it.each(["artifact builder", "canonical build", "PAR alias", "Studio draft", "Studio artifact"])("%s rejects retained Mechanics errors without output and supports repaired warning-only reuse", async caller => {
         const inputs = path.join(directory, "inputs");
         fs.mkdirSync(inputs);

@@ -1380,7 +1380,7 @@ describe("Overscan Studio simulation lifecycle", () => {
     });
 });
 
-describe("V2C-12 authored Studio simulation mode/report policy", () => {
+describe("authored Studio simulation mode/report policy", () => {
     function deterministicGame(id: string, symbol = "A") {
         const blueprint = existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!);
         blueprint.reelStrips = [[symbol], [symbol], [symbol]];
@@ -1503,7 +1503,7 @@ describe("V2C-12 authored Studio simulation mode/report policy", () => {
     });
 });
 
-describe("V2C-12 separately loaded package simulation to Replay", () => {
+describe("separately loaded package simulation to Replay", () => {
     let runtime: ReturnType<typeof emitPublicRuntime>;
     beforeAll(() => {
         runtime = emitPublicRuntime();

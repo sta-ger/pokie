@@ -234,7 +234,7 @@ console.log(JSON.stringify({pid: process.pid, issues, manifest: built.manifest, 
             expect(original.manifest.dossier.statistics.estimates).toHaveLength(1);
             expect(original.manifest.dossier.reproduction.runtime).toBe("audit-round-v1");
             expect(original.manifest.dossier.rules.definition?.advanced?.executableFidelity).toBe("unverified");
-            console.info("V2C-27 fixture identities", JSON.stringify({evidenceContentHash: original.manifest.evidenceContentHash, modelHash: original.manifest.dossier.identity.modelHash, modelArtifactHash: original.manifest.dossier.identity.modelArtifactHash, sourceManifestHash: original.manifest.sourceBundleManifestHash, templateHash: original.manifest.presentation.templateHash, pdfHash: original.artifactHashes["dossier.pdf"]}));
+            console.info(" fixture identities", JSON.stringify({evidenceContentHash: original.manifest.evidenceContentHash, modelHash: original.manifest.dossier.identity.modelHash, modelArtifactHash: original.manifest.dossier.identity.modelArtifactHash, sourceManifestHash: original.manifest.sourceBundleManifestHash, templateHash: original.manifest.presentation.templateHash, pdfHash: original.artifactHashes["dossier.pdf"]}));
         });
 
         it.each(["mjs", "cjs"])("reproduces relocated inputs in a fresh %s process", extension => {

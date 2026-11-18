@@ -18,7 +18,7 @@ import {StudioPlayService} from "../../../../../../cli/studio/runtime/StudioPlay
 // P5-POLISH-19: proves the real Studio Replay presentation entry point (ReplayTab -> RoundArtifactInspector
 // -> GameScreenView -> CanonicalPlayerView -> cli/client/player's own DOM functions) actually renders the
 // exact fixture round captured live from a real Studio Replay job -- not the shared player module mounted
-// in isolation (see docs/phase5-evidence/p5-polish-19/README.md's own "Rendered, not just JSON" section for
+// in isolation (see the Studio Replay capture fixture notes for
 // the prior round review correctly rejected). The fixture file loaded below is the unmodified capture from
 // that same round's own evidence table (Studio Replay row): `POST /api/project/replays {round: 1, seed:
 // "fixture-round"}`, polled to completion, against the after-fix `fixture-slot` package.
@@ -32,7 +32,7 @@ describe("ReplayTab renders a real captured Studio Replay round through the actu
     function loadFixtureJob(): StudioReplayJobView {
         const fixturePath = path.resolve(
             __dirname,
-            "../../../../../../docs/phase5-evidence/p5-polish-19/parity/after-fix-studio-replay-job.json",
+            "../../fixtures/studio-replay-job.json",
         );
         return JSON.parse(readFileSync(fixturePath, "utf-8")) as StudioReplayJobView;
     }
@@ -367,7 +367,7 @@ describe("F12 seeded package replay presentation", () => {
     });
 });
 
-it("V2C-13 seeded replay shows the transformed outcome, multiplied amount and ordered-rule observations", async () => {
+it("seeded replay shows the transformed outcome, multiplied amount and ordered-rule observations", async () => {
     const user = userEvent.setup();
     const blueprint = JSON.parse(readFileSync(path.resolve(__dirname, "../../../../../../examples/blueprints/wild-transform.blueprint.json"), "utf8"));
     const game = generatedMechanicsGame(blueprint);

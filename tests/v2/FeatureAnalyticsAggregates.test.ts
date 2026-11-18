@@ -18,7 +18,7 @@ beforeAll(() => {
 });
 afterAll(() => restoreTemporaryDirectory());
 
-describe("V2C-16 feature analytics", () => {
+describe("feature analytics", () => {
     it("known answers retain every numerator, denominator, distribution and conserved attribution", () => {
         const a = aggregate().getStatistics().analytics!;
         const report = featureAnalyticsReport();

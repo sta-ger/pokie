@@ -36,7 +36,7 @@ async function preview() {
 }
 beforeEach(() => window.sessionStorage.clear());
 it.each(["metadata", "coordinated model"])("retains a rejected same-event %s Apply after successful use and reuses the editor twice", async change => {
-    const initial = JSON.parse(fs.readFileSync(path.resolve("tests/cli/fixtures/v2c37-weighted-reels.blueprint.json"), "utf8"));
+    const initial = JSON.parse(fs.readFileSync(path.resolve("tests/cli/fixtures/weighted-reels.blueprint.json"), "utf8"));
     const service = new StudioBlueprintService("2.0.0", process.cwd(),
         new StudioHomeService("2.0.0", new InMemoryRecentProjectsRepository()));
     let changeSource: () => void = () => undefined;
@@ -101,7 +101,7 @@ it.each(["metadata", "coordinated model"])("retains a rejected same-event %s App
     }
 });
 it.each(["Home", "Project"])("persists the retained observer's weight 2 through %s Apply, Save and the settled projection", async surface => {
-    const bytes = fs.readFileSync(path.resolve("tests/cli/fixtures/v2c37-weighted-reels.blueprint.json"));
+    const bytes = fs.readFileSync(path.resolve("tests/cli/fixtures/weighted-reels.blueprint.json"));
     expect(createHash("sha256").update(bytes).digest("hex")).toBe("fe656f0214998f3bc0312b04026a46c8c0a3ffdc2d3e03631d3493e34af5073e");
     const directory = fs.mkdtempSync(path.resolve("node_modules/.cache/pokie-tmp/weighted-save-"));
     const target = path.join(directory, "blueprint.json");
@@ -170,7 +170,7 @@ it.each(["Home", "Project"])("persists the retained observer's weight 2 through 
 });
 
 it("rejects the identical retained zero-weight design at the shared authority and public services, then repairs and reuses them", () => {
-    const initial = JSON.parse(fs.readFileSync(path.resolve("tests/cli/fixtures/v2c37-weighted-reels.blueprint.json"), "utf8"));
+    const initial = JSON.parse(fs.readFileSync(path.resolve("tests/cli/fixtures/weighted-reels.blueprint.json"), "utf8"));
     const malformed = JSON.parse(JSON.stringify(initial));
     malformed.reelSequences[0].variants[0].weight = 0;
     const before = JSON.stringify(malformed);

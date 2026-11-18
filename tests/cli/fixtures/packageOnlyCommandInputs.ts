@@ -7,7 +7,7 @@
 // previously-produced bundle/export/report artifact, a plain file, a project directory to write into,
 // or nothing at all. This axis matters specifically for a future migration step that wants to relax the
 // "package-only" requirement (e.g. letting `pokie sim` run straight off a blueprint, no build step
-// first) -- see docs/pokie-phase3-inventory.md, which this fixture backs.
+// first) -- see the Phase 3 inventory, which this fixture backs.
 //
 // PACKAGE_ONLY_COMMAND_INPUTS is deliberately NOT a general-purpose input-kind taxonomy for every
 // command (that would just re-derive CLI_COMMAND_DESCRIPTORS' own `positionals`/`usage` fields under a

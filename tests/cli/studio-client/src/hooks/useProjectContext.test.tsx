@@ -16,7 +16,7 @@ describe("useProjectContext refresh acknowledgement", () => {
         const fetchImpl: FetchLike = (url) => {
             expect(url).toBe("/api/project/context");
             requests += 1;
-            const body = requests === 1 ? {status: "loading", projectRoot: "/games/valera"} : {status: "loaded", projectRoot: "/games/valera", game: {id: "valera", name: "Valera", version: "1.0.0"}};
+            const body = requests === 1 ? {status: "loading", projectRoot: "/games/sample"} : {status: "loaded", projectRoot: "/games/sample", game: {id: "sample", name: "Sample", version: "1.0.0"}};
             return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
         };
         const {result, rerender} = renderHook(({generation}) => useProjectContext(undefined, generation), {initialProps: {generation: 7}, wrapper: wrapper(fetchImpl)});
@@ -36,9 +36,9 @@ describe("useProjectContext refresh acknowledgement", () => {
         expect(result.current.renderedTerminal?.header).toBe(result.current.header);
     });
 
-    it.each([undefined, "/games/valera"])("retains live same-project controls during a loading refresh on route %s without acknowledging it", async (route) => {
+    it.each([undefined, "/games/sample"])("retains live same-project controls during a loading refresh on route %s without acknowledging it", async (route) => {
         let requests = 0;
-        const loaded = {status: "loaded", projectRoot: "/games/valera", game: {id: "valera", name: "Valera", version: "1.0.0"}};
+        const loaded = {status: "loaded", projectRoot: "/games/sample", game: {id: "sample", name: "Sample", version: "1.0.0"}};
         const fetchImpl: FetchLike = () => {
             requests++;
             return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(requests === 2 ? {status: "loading", projectRoot: loaded.projectRoot} : loaded)});
@@ -67,7 +67,7 @@ describe("useProjectContext refresh acknowledgement", () => {
     });
 
     it("ignores a superseded terminal response while retaining the current project's last rendered context", async () => {
-        const context = {status: "loaded", projectRoot: "/games/valera", game: {id: "valera", name: "Valera", version: "1.0.0"}};
+        const context = {status: "loaded", projectRoot: "/games/sample", game: {id: "sample", name: "Sample", version: "1.0.0"}};
         const pending: (() => void)[] = [];
         let requests = 0;
         const fetchImpl: FetchLike = () => {
@@ -97,15 +97,15 @@ describe("useProjectContext refresh acknowledgement", () => {
 });
 
 
-describe("V2C-34 bounded context recovery", () => {
+describe("bounded context recovery", () => {
     beforeEach(() => jest.useFakeTimers());
     afterEach(() => jest.useRealTimers());
 
-    const root = "/games/valera";
-    const loaded = {status: "loaded", projectRoot: root, game: {id: "valera", name: "Valera", version: "1.0.0"}};
+    const root = "/games/sample";
+    const loaded = {status: "loaded", projectRoot: root, game: {id: "sample", name: "Sample", version: "1.0.0"}};
     const response = (body: unknown) => ({ok: true, status: 200, json: () => Promise.resolve(body)});
 
-    it.each([undefined, root])("V2C-34-CONTEXT-BUDGET retains same-project controls on route %s, fails terminally and recovers twice", async route => {
+    it.each([undefined, root])("CONTEXT-BUDGET retains same-project controls on route %s, fails terminally and recovers twice", async route => {
         let loading = false;
         let requests = 0;
         const fetchImpl: FetchLike = () => {
@@ -139,7 +139,7 @@ describe("V2C-34 bounded context recovery", () => {
         expect(jest.getTimerCount()).toBe(0);
     });
 
-    it.each(["fetch", "body", "http", "context"])("V2C-34-CONTEXT-REUSE retains a loaded screen across %s failure and rejects late authority", async phase => {
+    it.each(["fetch", "body", "http", "context"])("CONTEXT-REUSE retains a loaded screen across %s failure and rejects late authority", async phase => {
         let fail = false;
         let release: (() => void) | undefined;
         const fetchImpl: FetchLike = () => {
@@ -169,11 +169,11 @@ describe("V2C-34 bounded context recovery", () => {
             release?.();
             await Promise.resolve();
         });
-        expect(result.current.header).toMatchObject({status: "loaded", name: "Valera"});
+        expect(result.current.header).toMatchObject({status: "loaded", name: "Sample"});
         expect(result.current.renderedTerminal?.generation).toBe(3);
     });
 
-    it("V2C-34-CONTEXT-INITIAL terminates initial loading in StrictMode, then reuses one request on recovery", async () => {
+    it("CONTEXT-INITIAL terminates initial loading in StrictMode, then reuses one request on recovery", async () => {
         let loading = true;
         let requests = 0;
         const fetchImpl: FetchLike = () => {

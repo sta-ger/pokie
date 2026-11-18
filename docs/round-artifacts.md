@@ -251,7 +251,7 @@ if (issues.some((issue) => issue.severity === "error")) {
 
 ## Generated, visible and evaluated coordinates
 
-Canonical generated evidence and the separate PublicRoundArtifactProjector: see [the coordinate contract and adapter support matrix](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-03.md).
+Canonical generated evidence and the separate PublicRoundArtifactProjector: see the coordinate contract and adapter support matrix.
 
 ### Retained logical rounds
 
@@ -400,10 +400,10 @@ artifact construction nor Play/Replay presentation re-executes a rule.
 
 See [finite weighted bonus outcomes](weighted-bonus.md) for selection identity,
 payout/duration units, authoring/interchange, restoration/replay, statistics and
-custom-rule/target boundaries. The [launch support register](v2-completion/launch-mechanics-support.md)
+custom-rule/target boundaries. The [launch support register](supported-mechanics.md)
 maps every mandatory family separately from arbitrary custom callbacks.
 
-## Portable feature results (V2C-21)
+## Portable feature results
 
 Supported WASM feature results carry the shared logical-round observations and
 canonical mathematical artifacts. CLI/Studio adapters project those observations

@@ -34,7 +34,7 @@ source directly, so re-run \`npm run build\` after every source change before re
 
 Running \`npm install\` again afterward -- by hand, after deleting \`node_modules\`, or on another machine you copied this package to -- reads that version range like any other dependency: it succeeds immediately if \`node_modules\` travels along with it (no reinstall needed) or if \`@fromstan/pokie\` has since been published at a matching version; otherwise, re-run \`pokie init\` in this directory again (or against a \`pokie\` checkout you have available there) to re-resolve it locally.
 
-See [\`pokie\`'s CLI docs](https://github.com/fromstan/pokie/blob/develop/docs/cli.md) for what each
+See [\`pokie\`'s CLI docs](https://github.com/sta-ger/pokie/blob/develop/docs/cli.md) for what each
 command does and every available option.
 `;
 }

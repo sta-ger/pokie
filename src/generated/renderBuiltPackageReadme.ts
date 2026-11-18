@@ -55,7 +55,7 @@ npx --no-install pokie replay . --seed demo --round 1
 npx --no-install pokie dev .
 \`\`\`
 
-See [\`pokie\`'s CLI docs](https://github.com/fromstan/pokie/blob/develop/docs/cli.md) for what each
+See [\`pokie\`'s CLI docs](https://github.com/sta-ger/pokie/blob/develop/docs/cli.md) for what each
 command does and every available option.
 `;
 }

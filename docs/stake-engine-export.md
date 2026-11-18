@@ -308,7 +308,7 @@ while native persisted bundles retain their safe-integer weight/total restrictio
 Exact Stake payload import/re-export supports wide weights as described below.
 Numeric analytics are approximate; standalone decimal fractions are capped at 40 fractional digits.
 
-### V2C-26 numeric and rebuild boundaries
+### Numeric and rebuild boundaries
 
 Numeric `WeightedOutcomeLibrary` exporter inputs require **positive safe integer**
 weights (1 through 9007199254740991); an unsafe integer-valued JavaScript Number

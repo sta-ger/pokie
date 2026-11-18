@@ -54,7 +54,7 @@ describe("ScreenTable orientation", () => {
     });
 });
 
-it("V2C-13 renders transformed visible cells without inventing highlights or moving reel coordinates", () => {
+it("renders transformed visible cells without inventing highlights or moving reel coordinates", () => {
     const transformed = [["W2", "A"], ["W2", "W2"], ["W3", "A"]];
     const before = JSON.stringify(transformed);
     const {container} = renderWithMantine(<ScreenTable screen={transformed} />);

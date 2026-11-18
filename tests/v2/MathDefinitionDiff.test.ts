@@ -1,5 +1,3 @@
-import {execFileSync} from "child_process";
-import {pathToFileURL} from "url";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -1078,68 +1076,3 @@ it("diffs advanced witness additions, removals, support assumptions and escaped 
 });
 
 // Synthetic receipts test the shared selectors without rebuilding or collecting acceptance.
-it("preserves authenticated delivery across the complete saved runtime fixture correction", () => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "definition-candidate-"));
-    try {
-        execFileSync(process.execPath, ["--input-type=module", "-e", `
-            import assert from "node:assert/strict";
-            import {mkdir, readFile, writeFile} from "node:fs/promises";
-            import {execFileSync} from "node:child_process";
-            import path from "node:path";
-            import {candidateFixture, P911_TOOLING_DESCENDANT_PATHS} from ${JSON.stringify(pathToFileURL(path.resolve("tests/testUtils/createP911CandidateFixture.mjs")).href)};
-            import {readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p9-11-candidate.mjs")).href)};
-            import {authenticateP805ProductTree} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p8-05-release-handoff.mjs")).href)};
-            const fixture = await candidateFixture(${JSON.stringify(directory)});
-            const options = {repository: fixture.repository};
-            const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256};
-            const readers = [readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment];
-            const original = await readers[0](environment, options);
-            const correctionPaths = ["scripts/p8-05-release-handoff.mjs", "scripts/p9-11-candidate.mjs",
-                "tests/cli/BuildWorkflow.integration.test.ts", "tests/cli/P907ValeraMathematician.integration.test.ts",
-                "tests/cli/studio/StudioServerParWorkbook.integration.test.ts", "tests/server/PokieDevServer.test.ts",
-                "tests/testUtils/createP911CandidateFixture.mjs", "tests/v2/MathDefinitionDiff.test.ts"];
-            for (const file of correctionPaths) {
-                assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "missing correction path: " + file);
-                await writeFile(path.join(fixture.repository, file), "// Saved runtime fixture correction.");
-            }
-            const git = args => execFileSync("git", args, {cwd: fixture.repository, encoding: "utf8"}).trim();
-            const commit = () => {
-                git(["add", "."]);
-                git(["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "bounded fixture regression"]);
-                return git(["rev-parse", "HEAD"]);
-            };
-            const correctedId = commit();
-            assert.deepEqual(authenticateP805ProductTree(fixture.handoff.candidateId, correctedId, fixture.repository).changedToolingAndEvidencePaths, correctionPaths);
-            const selectedEnvironment = {...environment, POKIE_PACK_SMOKE_CANDIDATE_ID: correctedId,
-                POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256: original.archiveSha256};
-            for (const reader of readers) {
-                const selected = await reader(selectedEnvironment, options);
-                assert.deepEqual(selected.equivalence.changedEvidenceAndTooling, correctionPaths);
-                assert.deepEqual({...selected, equivalence: original.equivalence}, original);
-            }
-            for (const reference of [fixture.reference, fixture.handoff.browserDriver, fixture.handoff.buildReceipt,
-                fixture.handoff.installReceipt, {path: fixture.handoff.archivePath},
-                {path: path.join(original.packageRoot, "dist/cli/pokie.js")}]) {
-                const bytes = await readFile(reference.path);
-                try {
-                    await writeFile(reference.path, "changed pinned input");
-                    for (const reader of readers) await assert.rejects(reader(selectedEnvironment, options),
-                        /authenticated controller browser driver required|receipt digest mismatch|archive digest mismatch|stale installed asset/);
-                } finally {
-                    await writeFile(reference.path, bytes);
-                }
-            }
-            for (const file of ["src/index.ts", "package.json", "tsconfig.prod.json", "tests/v2/Unrelated.test.ts"]) {
-                const target = path.join(fixture.repository, file);
-                await mkdir(path.dirname(target), {recursive: true});
-                await writeFile(target, "changed protected input");
-                const productId = commit();
-                assert.throws(() => authenticateP805ProductTree(fixture.handoff.candidateId, productId, fixture.repository), /product or build inputs/);
-                for (const reader of readers) await assert.rejects(reader(environment, options), /product.*build inputs changed/);
-                git(["reset", "--hard", correctedId]);
-            }
-        `], {stdio: "pipe", timeout: 30_000});
-    } finally {
-        fs.rmSync(directory, {recursive: true, force: true});
-    }
-});

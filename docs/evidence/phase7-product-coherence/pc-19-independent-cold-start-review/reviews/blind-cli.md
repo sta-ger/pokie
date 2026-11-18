@@ -1,3 +1,0 @@
-# Blind CLI exploration
-
-Candidate `169c80f839758285d02de55eb72008e750e48a53`; clean launcher context was the exact source checkout. The retained candidate-built public CLI inspected the Studio-produced TypeScript package as runnable, inspected its generated sibling as an Outcome Library, validated the package as `valid yes`, and sampled the same `starter-slot-base` / `sha256:f30acec36101c92da8bf15c9ddc81d27c4c2a33b8816eee629e888009a7abc5e` identity that Studio rendered. This is the retained blind/public CLI interoperability and parity observation; its rendered counterpart and transcript checksum are recorded in `recovery-run-2026-09-07T18-55Z.md`.

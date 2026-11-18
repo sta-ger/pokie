@@ -1118,50 +1118,6 @@ describe("StudioServer", () => {
         expect(await response.text()).toBe("<html>studio</html>");
     });
 
-    it("serves included help, Gallery and downloads without falling back to the Studio shell, then recovers after missing routes", async () => {
-        const helpRoot = path.join(studioRoot, "help");
-        const files = {
-            "index.html": "<html>FromStan / POKIE</html>",
-            "docs/index.html": "<html>Documentation <a href='/help/gallery/'>Gallery</a></html>",
-            "docs/getting-started/index.html": "<html>Getting started</html>",
-            "docs/cli-api/index.html": "<html>CLI reference</html>",
-            "gallery/index.html": "<html>Examples gallery</html>",
-            "assets/playground/worker.js": "// public Worker",
-            "assets/playground/models/lines.wasm": "wasm bytes",
-            "sources/docs/certification-evidence-bundle.md": "# Dossier guidance",
-            "downloads/reproduce.mjs": "// local reproduction",
-        };
-        for (const [name, body] of Object.entries(files)) {
-            const file = path.join(helpRoot, name);
-            fs.mkdirSync(path.dirname(file), {recursive: true});
-            fs.writeFileSync(file, body);
-        }
-        const redirect = await fetch(`${baseUrl}/help?topic=docs`, {redirect: "manual"});
-        expect(redirect.status).toBe(308);
-        expect(redirect.headers.get("location")).toBe("/help/?topic=docs");
-        const guideRedirect = await fetch(`${baseUrl}/help/docs?topic=producer`, {redirect: "manual"});
-        expect(guideRedirect.status).toBe(308);
-        expect(guideRedirect.headers.get("location")).toBe("/help/docs/?topic=producer");
-        for (const [name, body] of Object.entries(files)) {
-            const route = name.replace(/index\.html$/, "");
-            const response = await fetch(`${baseUrl}/help/${route}`);
-            expect(response.status).toBe(200);
-            expect(await response.text()).toBe(body);
-            if (name.endsWith(".wasm")) expect(response.headers.get("content-type")).toBe("application/wasm");
-            if (name.endsWith(".js") || name.endsWith(".mjs")) expect(response.headers.get("content-type")).toContain("text/javascript");
-            if (name.endsWith(".md")) expect(response.headers.get("content-type")).toContain("text/plain");
-        }
-        for (const missing of ["missing/", "assets/missing.js", "%2e%2e%2findex.html"]) {
-            const response = await fetch(`${baseUrl}/help/${missing}`);
-            expect(response.status).toBe(404);
-            expect(await response.json()).toEqual({error: "Documentation page not found. Return to /help/docs/."});
-        }
-        for (let attempt = 0; attempt < 2; attempt++) {
-            expect(await (await fetch(`${baseUrl}/help/docs/`)).text()).toContain("Documentation");
-            expect(await (await fetch(`${baseUrl}/home/projects`)).text()).toBe("<html>studio</html>");
-        }
-    });
-
     it("returns 404 for a file that doesn't exist", async () => {
         const response = await fetch(`${baseUrl}/does-not-exist.js`);
 
@@ -3810,7 +3766,7 @@ describe("StudioServer", () => {
         });
     });
 
-    describe("V2C-34 authored dashboard context", () => {
+    describe("authored dashboard context", () => {
         async function fixture() {
             const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-authored-context-"));
             const studioRoot = path.join(directory, "studio");
@@ -3850,7 +3806,7 @@ describe("StudioServer", () => {
                 }};
         }
 
-        it("V2C-34-SERVER-SAVE-CONTEXT publishes saved metadata without another runtime preparation while the original execution remains active", async () => {
+        it("SERVER-SAVE-CONTEXT publishes saved metadata without another runtime preparation while the original execution remains active", async () => {
             const test = await fixture();
             let finishRefresh!: () => void;
             const refreshGate = new Promise<void>(resolve => {
@@ -3924,7 +3880,7 @@ describe("StudioServer", () => {
             }
         });
 
-        it("V2C-34-SERVER-CONTEXT-REUSE rejects malformed persisted models through the shared validator then supports repeated corrected Save", async () => {
+        it("SERVER-CONTEXT-REUSE rejects malformed persisted models through the shared validator then supports repeated corrected Save", async () => {
             const test = await fixture();
             try {
                 const malformed = {...test.blueprint, rows: 0};
@@ -3955,7 +3911,7 @@ describe("StudioServer", () => {
             }
         });
 
-        it("V2C-34-SERVER-APPLY-CONTEXT refreshes the persisted optimized Blueprint without eagerly preparing another runtime", async () => {
+        it("SERVER-APPLY-CONTEXT refreshes the persisted optimized Blueprint without eagerly preparing another runtime", async () => {
             const test = await fixture();
             try {
                 const request = {
@@ -3983,7 +3939,7 @@ describe("StudioServer", () => {
             }
         });
 
-        it("V2C-34-SERVER-CONTEXT-SUPERSEDE cannot republish an authored refresh after Project close", async () => {
+        it("SERVER-CONTEXT-SUPERSEDE cannot republish an authored refresh after Project close", async () => {
             const test = await fixture();
             let finish!: () => void;
             const gate = new Promise<void>(resolve => {
@@ -4796,7 +4752,7 @@ describe("StudioServer", () => {
             fs.rmSync(wasmStudioRoot, {recursive: true, force: true});
         });
 
-        it("V2C-22-SIMULATION-REPLAY-FUNDING binds retained HTTP samples beyond standalone funding and ignores caller funding overrides", async () => {
+        it("SIMULATION-REPLAY-FUNDING binds retained HTTP samples beyond standalone funding and ignores caller funding overrides", async () => {
             const wasmFile = path.join(wasmStudioRoot, "game.wasm");
             const fixture = createCanonicalWasmFixture({availableBets: [7.5], paytable: {A: {2: 0}, B: {2: 0}}});
             fs.writeFileSync(wasmFile, fixture.bytes);
@@ -4875,7 +4831,7 @@ describe("StudioServer", () => {
             expect(jobs.get(wasmFile, job.id)?.status).toBe("cancelled");
         });
 
-        it("V2C-22-ASYNC-OWNERSHIP closes through apiClient.closeProject and rejects delayed historical reattachment", async () => {
+        it("ASYNC-OWNERSHIP closes through apiClient.closeProject and rejects delayed historical reattachment", async () => {
             const {closeProject} = await import("../../../cli/studio-client/src/api/apiClient.js");
             const wasmFile = path.join(wasmStudioRoot, "closing.wasm");
             const fixture = createCanonicalWasmFixture();
@@ -4907,7 +4863,7 @@ describe("StudioServer", () => {
             expect(jobs.get(wasmFile, id)).toEqual(historical);
         });
 
-        it("V2C-22-IDLE-SHUTDOWN settles an unresponsive idle lease after admission closes and retains recovery", async () => {
+        it("IDLE-SHUTDOWN settles an unresponsive idle lease after admission closes and retains recovery", async () => {
             const wasmFile = path.join(wasmStudioRoot, "idle.wasm");
             const fixture = createCanonicalWasmFixture();
             fs.writeFileSync(wasmFile, fixture.bytes);
@@ -6405,7 +6361,7 @@ describe("StudioServer", () => {
         // round-producing action in Studio (see StudioServer.recordSimulationSampleReplay), unlike a
         // plain "Recreate from seed" reproduction (no `simulationId`), which the test right after this
         // one proves is deliberately left unrecorded.
-        it("V2C-22-SIMULATION-REPLAY-BINDING rejects non-samples before HTTP admission and permits subsequent retained steps", async () => {
+        it("SIMULATION-REPLAY-BINDING rejects non-samples before HTTP admission and permits subsequent retained steps", async () => {
             await openSampleSlot(createSeedAwareFakeGame(manifest));
             const created = await post(`${baseUrl}/api/project/simulations`, {rounds: 1, seed: "0"});
             const simulationId = (created.body as {id: string}).id;

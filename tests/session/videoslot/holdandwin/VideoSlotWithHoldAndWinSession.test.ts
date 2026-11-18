@@ -526,7 +526,7 @@ describe("VideoSlotWithHoldAndWinSession", () => {
     });
 });
 
-describe("V2C-12 canonical HoldAndWin continuation", () => {
+describe("canonical HoldAndWin continuation", () => {
     it.each([0.05, 7.5, 1e-7])("binds values to entry bet %s through fresh-instance restoration and direct bet changes", bet => {
         const b = existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === "hold-bet")!);
         b.reelStrips = [["C"], ["A"], ["A"]];
@@ -578,7 +578,7 @@ describe("V2C-12 canonical HoldAndWin continuation", () => {
 });
 
 
-describe("V2C-13 HoldAndWin synchronous rollback", () => {
+describe("HoldAndWin synchronous rollback", () => {
     const compositions = ["hold-flat", "hold-flat-modes", "fixed-holdAndWin", "fixed-holdAndWin-modes"];
     function fixture(id: string, overflowingBase = false) {
         const b = existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!);

@@ -245,7 +245,7 @@ Restore replaces the session and ends its collector. Cancel/dispose also
 invalidate pending initialization before it can publish a replacement.
 
 CLI and direct server simulation use collector-free sessions and aggregate results with `workers=1`. The Studio browser executes fixed-budget simulation in a production module Worker, reusing `collectPokieWasmSimulation`, shared command sequencing and `SimulationAccumulator`. Replay reuses `collectPokieWasmReplay` and the existing replay runtime, keeping only the final requested observation. CLI retains its requested command/result batch. Neither path keeps cumulative continuation history.
-See [P9-02 measurements](https://github.com/fromstan/pokie/blob/develop/docs/audit-corrections/compact-wasm-state.md) for bounds,
+See P9-02 measurements for bounds,
 accounting and focused regression commands.
 
 ## Generated, visible and evaluated coordinates
@@ -269,11 +269,9 @@ WASM does not flatten them into independent symbol weights.
 Portable replay remains distinct from package audit recordings. CLI and Studio
 forward modes and logical-round intent for supported artifacts; Play is
 process-only, and simulation excludes delivery-only frames from mathematical
-sampling while preserving money, lifecycle and weighted counters. See the
-[V2C-21 receipt](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-21.md) for executed candidate evidence and
-pending controller review.
+sampling while preserving money, lifecycle and weighted counters.
 
-## Bounded authored mechanics (V2C-14)
+## Bounded authored mechanics
 
 See [cascades, respins and collections](bounded-mechanics.md) for the declarative
 contracts, supported compositions, authoring/build/extraction/PAR workflow,
@@ -283,11 +281,11 @@ logical-round accounting, continuation and durability boundaries.
 
 See [finite weighted bonus outcomes](weighted-bonus.md) for selection identity,
 payout/duration units, authoring/interchange, restoration/replay, statistics and
-custom-rule/target boundaries. The [launch support register](v2-completion/launch-mechanics-support.md)
+custom-rule/target boundaries. The [launch support register](supported-mechanics.md)
 maps every mandatory family separately from arbitrary custom callbacks.
 
 
-## Studio browser ownership (V2C-22)
+## Studio browser ownership
 
 `pokie game.wasm` opens Project Studio, including Home/recent/registered reopening. `inspect` remains explicit CLI inspection. `/api/project/wasm/artifact` delivers a matching byte/sidecar pair scoped to the active Project generation. Canonical integrity and compatibility checks run before admission, in browser loading, at Worker initialization and before publication. Same-path replacement invalidates an active Play session and stale job output. No package loader handles a failed WASM artifact.
 

@@ -1,365 +1,67 @@
-# Running the test suite
+# Testing
 
-This file is for people working on POKIE itself (contributors), not for consumers of the `pokie`
-npm package — see [`docs/README.md`](README.md) for the library's own API reference.
+This guide is for people working on POKIE itself. Consumers of the package can start with
+[`docs/README.md`](README.md) and the [main README](../README.md).
 
-## Dependency maintenance
+## Install
 
-Use Node 24 (`nvm use`) and `npm ci` for a clean contributor install. ESLint 10 uses
-`eslint.config.mjs`; the former `.eslintrc.json` rules and `.eslintignore` patterns
-are carried into that configuration. The React 7 plugin still needs
-`@eslint/compat` and its scoped ESLint peer override until it supports ESLint 10.
+Use Node 24 (`nvm use`) and install from the lockfile:
 
-The dependency overrides in `package.json` also keep installs free of deprecated
-packages while upstream packages still request older dependencies:
+```bash
+npm ci
+```
 
-- ExcelJS 4 uses Fast-CSV 5 and Unzipper 0.12 to remove its deprecated
-  `lodash.isequal` and Fstream/Rimraf dependencies. Keep the PAR workbook
-  import/export tests green when changing these overrides. Retain its Archiver 5
-  dependency: Archiver 6 and 7 reject ExcelJS's custom streams.
-- Jest 30's jsdom dependency is pinned to the 27.4 series, which replaces
-  `whatwg-encoding` and retains the project's Node compatibility range.
-  Native package-copy tests use `tests/testUtils/createNativeRequire.ts` because
-  Jest 30 also redirects `process.getBuiltinModule()` through its module registry.
-- Glob 14 and Minimatch 11 (only for consumers already using Minimatch 7 or newer)
-  fix advisories in the versions requested by Jest, Archiver and coverage tools.
-  Test-Exclude 8 removes the legacy Glob 7 API from the coverage dependency path.
+ESLint 10 uses `eslint.config.mjs`. The React plugin currently needs `@eslint/compat` and its scoped
+ESLint peer override. The dependency overrides in `package.json` keep installs free of deprecated
+transitive packages; remove each override when the upstream package adopts a supported patched version.
+The vendored Picomatch patch is documented in [`vendor/README.md`](../vendor/README.md).
 
-Remove each override when its upstream dependency adopts a supported, patched
-version. The separate vendored Picomatch patch is documented in
-[`vendor/README.md`](../vendor/README.md).
+## Commands
 
-## Lanes
-
-| Command | What it runs | Coverage | When to use it |
-|---|---|---|---|
-| `npm test` / `npm run check:fast` | Unit + component tests only (`pokie` + `studio-client-components` Jest projects) | off | Everyday dev loop |
-| `npm run check:full` | `check:fast` + root and Studio-client TypeScript checks + `pokie-integration` + `studio-client-workflows` | off | Before opening a PR |
-| `npm run check:release` | lint + typecheck + every test **with coverage** + the real `npm pack`/install smoke test (`pokie-packaging`) | on | Controller-owned packaging gate; publication workflow is disabled |
-| `npm run test:integration` | Just the `pokie-integration` lane | off | Iterating on integration/server/worker tests specifically |
-| `npm run test:targeted -- <files...>` | Exact named files across all Jest projects, serially | off | Verifying one bounded correction set that spans unit/component/workflow projects |
-| `npm run test:workflows` | Just the `studio-client-workflows` lane | off | Iterating on the heavy Studio workflow/navigation-guard/poll-hook tests specifically |
-| `npm run test:coverage` | `pokie` + `studio-client-components` + `pokie-integration` + `studio-client-workflows`, with `--coverage` | on | Checking coverage without also paying for the packaging smoke test |
-| `npm run test:packaging` | Just `tests/packaging/npmPackSmoke.test.ts` (real `npm pack` → install → spawn) | n/a | Verifying the published package boundary in isolation |
-| `npm run test:report -- --lane <fast\|full\|release>` | Runs that lane through `jest --json` and prints the slowest suites + lane wall time | n/a | Diagnosing a performance regression |
-| `npm run bench` | The `pokie-benchmarks` lane (`benchmarks/**/*.bench.ts`) — prints throughput/memory/timing baselines | n/a | Comparing before/after a perf-sensitive change (see [`benchmarks/README.md`](https://github.com/fromstan/pokie/blob/develop/benchmarks/README.md)) |
-
-`npm test` no longer collects coverage or runs the packaging smoke test by default — both still
-exist, just behind their own commands (`test:coverage`, `test:packaging`, both folded into
-`check:release`), so nothing that used to be verified stopped being verified. As of this pass,
-`check:fast`/`check:full`/`check:release` are all genuinely green — nothing is documented here as a
-known-red gate; see "Fixed in this pass" below for what previously was.
-
-`check:full` runs its unit, typecheck, integration, and workflow lanes sequentially but does not
-stop after the first failed lane. It returns non-zero after every lane has reported, allowing one
-official run to provide the complete bounded correction set. The workflow runner likewise keeps
-each memory-heavy file in its own process while continuing through the remaining files after an
-assertion failure.
-
-### Why five Jest projects
-
-- **`pokie`** — the default fast lane: unit/component tests for individual classes, transpile-only
-  (`isolatedModules`, see below), no coverage instrumentation.
-- **`studio-client-components`** — React/jsdom component tests for the Studio frontend that measured
-  fast (roughly under ~11s each) — same transpile-only treatment.
-- **`studio-client-workflows`** — the React/jsdom tests that measured heavy (roughly 15s+ each via
-  `npm run test:report`): Studio workflow pages (simulation/replay/runtime/mechanics-editor), the
-  navigation-guard/confirm-modal tests, the Reel Strip Modeler/PAR-sheet-import validation tests, and
-  the two poll-hook tests that directly exercise production `useSimulationPoll`/`useReplayPoll`'s
-  real 500ms recursive `setTimeout` loop. That real-timer behavior is deliberate (these tests
-  specifically verify real cleanup/cancellation semantics — a timer actually cancelled on unmount, a
-  stale response actually discarded — which `jest.useFakeTimers()` can't verify the same way, since
-  it executes callbacks synchronously instead of racing real async work), so these were moved to
-  their own lane rather than rewritten. Runs with `--maxWorkers=2` like everything else — `--runInBand`
-  was tried first and rejected: serializing all 22 files pushed the run past 20+ minutes for no
-  correctness benefit; `--maxWorkers=2` finished in ~445s across three consecutive runs, all green.
-  It additionally pins `--workerIdleMemoryLimit=192MB` and runs Jest under
-  `node --max-old-space-size=512` (see below), which the other lanes don't need.
-- **`pokie-integration`** — anything that spins up a real HTTP server (`PokieDevServer`,
-  `PokieClientServer`, `StudioServer`), real `worker_threads` (`simulationWorkerEntry`, and the
-  extracted `*.realWorkers.test.ts` files below), or does heavy real filesystem I/O
-  (`GamePackageGenerator`, 45 real generated-package writes). These files were picked by measuring
-  what they actually do, not by size or directory name — several genuinely large files
-  (`SpinCommandHandler*.test.ts`, `SpinReconciliationService.test.ts`, `SimulationReportBuilder.test.ts`)
-  are pure in-memory logic tests and stayed in the fast `pokie` lane.
-- **`pokie-packaging`** — `tests/packaging/npmPackSmoke.test.ts` alone. It runs a real
-  `npm pack` (which triggers the full `prepack` → `npm run build` lifecycle), installs the tarball
-  into a temp directory, and spawns the installed CLI as a real child process. 5-minute budget by
-  design — this is the one test that's intentionally kept real, end-to-end, and slow, because it's
-  the only thing that actually proves the published dual CJS/ESM package + CLI works. It never runs
-  as part of `check:fast`/`check:full`.
-- **`pokie-benchmarks`** — `benchmarks/**/*.bench.ts`, run only via `npm run bench`. Informational
-  performance baselines (throughput, memory, worker-count comparison, analysis/diff/report-generation
-  timing), never selected by `test`/`check:full`/`check:release`/`test:integration` — see
-  [Benchmarks](#benchmarks) below.
-
-Every heavy-file lane assignment above was decided from real measurement (`npm run test:report`),
-not guessed from file size or naming — see "Fixed in this pass" for the specific numbers that drove
-the `studio-client-workflows` split.
-
-### Extracted `*.realWorkers.test.ts` files
-
-`StudioSimulationService.test.ts` and `SimCommand.test.ts` each used to mix fast, in-process tests
-with a `describe` block that spins up real `worker_threads`. Those blocks were extracted verbatim
-into `StudioSimulationService.realWorkers.test.ts` / `SimCommand.realWorkers.test.ts` so the
-file-level lane split (`pokie` vs. `pokie-integration`) doesn't require running the whole original
-file in the slow lane just because one `describe` block in it is heavy.
-
-While extracting `StudioSimulationService.realWorkers.test.ts`'s cancellation test, its
-`rounds: 5_000_000` + blind `setTimeout(resolve, 50)` before cancelling was replaced with the same
-event-driven "wait for the first progress tick" poll the test right above it already used, at
-`rounds: 200_000`. The 5M round count only existed to make "still running after a guessed 50ms
-delay" a safe bet; polling for real progress removes the guess (and the flakiness risk that comes
-with guessing wrong under load) while still genuinely exercising real-worker-thread cancellation —
-nothing about what the test verifies got weaker.
-
-These tests (plus `simulationWorkerEntry.test.ts`) also needed a fixture-resolution fix — see
-"Fixed in this pass" below.
-
-### One compiled runtime build per test run
-
-Real `worker_threads` cannot load ts-jest source files, so their test fixture needs real CJS and ESM
-`dist/` entries. A clean task clone can evaluate that fixture in more than one Jest worker at once.
-Those workers must not independently run `build-cjs`/`build-esm`: besides wasting CPU, concurrent
-writers to the same disposable `dist/` directory make timing and failures nondeterministic.
-
-`ensureFixturesCanRequirePokie` therefore uses a small cross-process lock in Jest's disposable
-`node_modules/.cache` area and requests one complete `npm run build-test-runtime` (CJS + ESM only;
-it deliberately does not pay for lint or the unrelated CLI/client build). Every waiter checks for the
-required CJS and ESM entries, then cheaply waits for that owner instead of starting another compiler.
-The lock is removed on success or failure;
-a dead owner's lock is reclaimed after a short grace period, so an interrupted Jest worker cannot
-strand later runs. This is test setup only — source freshness remains explicit: as before, tests build
-only when outputs are absent, not when source files are merely newer.
-
-## Benchmarks
-
-`npm run bench` runs `benchmarks/**/*.bench.ts`: representative baselines for simulation
-throughput/memory (`AggregateSimulationRunner`), `workers=1` vs `workers=4` real-worker-thread
-comparison (`ParallelSimulationRunner`), Stake Engine standalone analysis/diff timing, random game
-blueprint generation timing, and simulation report build/render timing. Each prints a `[bench] ...`
-line with its numbers; none of them assert a hard wall-clock or memory threshold — see
-[`benchmarks/README.md`](https://github.com/fromstan/pokie/blob/develop/benchmarks/README.md) for why a fixed threshold here would be a flaky
-gate rather than a useful one, and why this lane deliberately sits outside every other lane above.
-
-## TypeScript in tests: transpile-only, checked once
-
-Tests run through ts-jest with `tsconfig.test.json` (`isolatedModules: true`, plus a
-`module: "commonjs"` override — `tsconfig.prod.json`'s `module: "node16"` isn't what ts-jest's
-usual auto-CJS-override recognizes when `isolatedModules` bypasses that codepath, so it has to be
-set explicitly here). This skips full type-checking per file; full type-checking across the whole
-program (`src`, `tests`, `cli`, excluding the `cli/studio-client`/`tests/cli/studio-client` React
-subtree, which needs its own JSX/bundler-resolution tsconfig and is unaffected either way — see
-below) happens once via `npm run typecheck` (plain `tsc --noEmit -p tsconfig.typecheck.json`), part
-of `check:full`/`check:release`, never part of the fast per-file transform.
-
-The `cli/studio-client` exclusion doesn't drop any verification that existed before this pass:
-`studio-client-components`'s ts-jest project already had `isolatedModules: true` set in its own
-`cli/studio-client/tsconfig.json` prior to this change (nothing here turned type-checking off for
-it — it was already transpile-only), and `typecheck-studio-client` (pre-existing, unchanged) covers
-the frontend *source* under its own tsconfig. Running the root `tsconfig.json` whole-program check
-over that subtree fails outright (wrong `jsx`/`moduleResolution` for it), which is a pre-existing
-gap in how thoroughly the `.tsx` test files themselves get type-checked, not something this pass
-introduced or is in scope to fix.
-
-`isolatedModules` itself is set in `tsconfig.test.json`'s `compilerOptions`, not as a ts-jest
-transform option — the latter is the deprecated form that prints the ts-jest "isolatedModules
-should be enabled via tsconfig" advisory once ts-jest notices it configured that way (this is what
-used to surface as noisy warnings before this change).
-
-## Import convention: direct imports for new unit tests
-
-`src/index.ts` is an auto-generated barrel (`generate-barrels.js`) re-exporting everything under
-`src/` (600+ exports). A unit test importing a single class `from "@fromstan/pokie"` forces ts-jest to
-resolve/load the entire barrel graph just to get that one class — measured directly on one file
-(`DefaultVideoSlotSessionWinCalculator.test.ts`, 36 tests): barrel import cost roughly **6x** the
-wall time of a direct import, independent of and additive to the isolatedModules/no-coverage
-savings above.
-
-**Convention for new unit tests:** import directly from the class's own source file
-(`import {Foo} from "../../../src/some/path/Foo.js"`), not `from "@fromstan/pokie"`. The one deliberate
-exception is `tests/packaging/npmPackSmoke.test.ts`, which imports `from "@fromstan/pokie"` on purpose — it's
-verifying the installed package's own barrel/dual-build boundary, not a single class.
-
-This is not (yet) enforced by an ESLint rule — retrofitting `no-restricted-imports` now would need
-an exceptions list for the ~200 existing test files that still import via the barrel and haven't
-been migrated (not worth the churn). New tests should follow the convention above; existing files
-get migrated opportunistically, prioritizing whichever files show up as slow in
-`npm run test:report`.
-
-## `maxWorkers`
-
-`test`/`test:integration`/`test:workflows`/`test:coverage` pin `--maxWorkers=2` instead of Jest's
-CPU-based default, picked by measuring the heaviest jsdom subset at 2/3/4 workers on this project's
-reference environment (4 CPUs, ~8GB RAM, swap already in active use at idle):
-
-| `maxWorkers` | Wall time | Result |
+| Command | What it runs | When to use it |
 |---|---|---|
-| 2 | 133s | all pass |
-| 3 | 130s | 1 failed (contention-induced `waitFor` timeout) |
-| 4 | 148s | 1 failed (contention-induced `waitFor` timeout, and slower than 2) |
+| `npm test` / `npm run check:fast` | Unit and component tests | Everyday development |
+| `npm run check:full` | Fast tests, typecheck, integration tests and Studio workflow tests | Before opening a PR |
+| `npm run check:release` | Lint, typecheck, coverage and the real pack/install smoke test | Before a release |
+| `npm run test:integration` | Integration lane only | Server, worker and real-filesystem changes |
+| `npm run test:targeted -- <files...>` | Exact named files, one process per file | Verifying a focused correction |
+| `npm run test:workflows` | Studio jsdom workflow lane only | Studio navigation, polling and job lifecycle |
+| `npm run test:coverage` | Unit, component, integration and workflow lanes with coverage | Checking coverage |
+| `npm run test:packaging` | Real `npm pack` → install → spawn smoke test | Verifying the published package boundary |
+| `npm run test:report -- --lane <fast\|full\|release>` | Runs a lane through `jest --json` and prints the slowest suites | Diagnosing test performance |
+| `npm run bench` | Informational performance benchmarks | Comparing throughput or memory |
 
-3 and 4 workers are not just no faster — they actively introduce flakiness (a real-timer-dependent
-`waitFor` assertion misses its window under CPU contention) that 2 workers doesn't. The plain
-TypeScript unit tests (`pokie` project alone) show closer to a wash across worker counts (~53-57s
-either way on this box), so the jsdom/React lanes are what actually justify pinning at 2 rather
-than leaving it to Jest's auto-scaling default — which is also what produced the baseline run's
-spurious timeouts below. `test:workflows` specifically was also tried with `--runInBand` (fully
-serial, no worker contention at all) — rejected because it pushed the full 22-file lane past 20+
-minutes; `--maxWorkers=2` finished in ~445s across three consecutive green runs instead.
+`npm test` does not collect coverage and does not run the packaging smoke test. Those have their own
+commands and are included in `check:release`.
 
-### Why `test:workflows` also pins `--workerIdleMemoryLimit=192MB`
+## Jest projects
 
-Worker count bounds CPU contention; it does not bound memory. A Jest worker is reused for every file
-it is handed, and a single `studio-client-workflows` suite retains ~220MB of heap on its own
-(`--logHeapUsage`), so two workers chewing through 22 jsdom/React files grow monotonically for the
-whole lane — which is how the baseline run below reached a ~1.92GB peak RSS. On the 8GB reference
-box that was merely untidy; in a CI container capped at 2GiB it is the failure, because a process
-spending its time in GC misses real-timer deadlines regardless of how large `testTimeout` or
-`asyncUtilTimeout` are. That is the signature the workflow lane kept producing under `check:full`:
-timeouts that never reproduced when the same file ran alone, on assertions with 10x headroom at idle.
+- **`pokie`** — fast unit/component lane for the library and CLI. Tests are transpile-only; import a
+  concrete source file when a test needs a single class instead of pulling the full barrel.
+- **`pokie-examples`** — runs the companion `pokie-examples` checkout when it is available and skips
+  cleanly when it is not.
+- **`studio-client-components`** — React/jsdom component tests for the Studio frontend.
+- **`studio-client-workflows`** — heavier Studio workflow tests that use real timers and navigation
+  guards. They run in a separate process with a bounded heap.
+- **`pokie-integration`** — real HTTP servers, worker threads and heavier filesystem workflows.
+- **`pokie-packaging`** — the real package tarball, install and installed-CLI smoke test.
+- **`pokie-benchmarks`** — performance baselines, run only via `npm run bench`.
 
-`--workerIdleMemoryLimit` makes Jest check a worker's `heapUsed` after each file and restart it past
-that threshold, so the lane's footprint stays flat instead of accumulating. The threshold only does
-that if it sits **below what one heavy suite of this lane retains** — otherwise the check simply
-never trips on the files that cost anything. That is what the first attempt at this got wrong: it
-used 512MB, but `HomePage.test.tsx` alone finishes at 205-277MB `heapUsed` across runs, so a worker
-had to swallow two or three such suites before 512MB was reached, and by then its RSS had roughly
-doubled (measured: the Jest main process plus one worker peaks at ~654MB running that one file). Two
-workers accumulating that way is exactly how the lane still reached the ~1.92GB peak the 2GiB cap
-turns into GC thrash.
+The workflow runner starts each heavy file in its own Node process so one suite cannot exhaust the
+shared heap for the next one. `test:targeted` resolves the named files across Jest projects and runs
+them serially, which makes focused verification deterministic.
 
-192MB is under even the lowest of those retained-heap readings, so every suite at least as heavy as
-`HomePage.test.tsx` hands back a recycled worker and the lane's peak stays at roughly one file's
-footprint per worker (~1.1GB total) instead of climbing for 22 files. Cheap suites can still share a
-worker, so this is not `--runInBand` in disguise — `--maxWorkers=2`'s parallelism is untouched; the
-only cost is a worker respawn after the heavy files. Note this flag also forces worker processes to
-be used at all — `@jest/core`'s `shouldRunInBand` runs in the main process whenever
-`maxWorkers <= 1`, where the limit could not be enforced.
+## Test layout
 
-### Why `test:workflows` also runs Jest under `node --max-old-space-size=512`
+- `tests/session`, `tests/simulation`, `tests/server`, `tests/replay` — runtime behaviour.
+- `tests/generated`, `tests/parsheet`, `tests/stakeengine`, `tests/weightedoutcome`,
+  `tests/pregenerated` — authored models and artifact formats.
+- `tests/cli` — CLI commands, materialization, packaging and Studio server routes.
+- `tests/cli/studio-client` — React component and workflow tests.
+- `tests/project`, `tests/externaladapter`, `tests/certification`, `tests/fairness` — project
+  conversion, deployment adapters and evidence workflows.
+- `tests/v2` — cross-cutting runtime, math and package contracts.
+- `tests/packaging` — real archive/install checks.
 
-`--workerIdleMemoryLimit` is only checked *after* a file finishes, so it keeps the lane's footprint
-flat between files but cannot bound growth within one, and it does nothing about the deeper problem:
-**V8 sizes a process's old-space from `os.totalmem()`, which reports the host's RAM, not the cgroup
-the gate actually caps the run at.** Measured in the gate container:
-
-| | value |
-|---|---|
-| `os.totalmem()` | 7848 MiB (the host) |
-| cgroup `memory.max` | 2048 MiB (what the run really gets) |
-| worker `heap_size_limit`, default | **1120 MiB** |
-| worker `heap_size_limit`, under `--max-old-space-size=512` | **608 MiB** |
-
-At the default, `--maxWorkers=2` means one main process plus two workers each entitled to grow to
-1120 MiB — a ~3.3GB heap ceiling inside a 2GiB container. Every one of them is still far from the
-point where V8 collects hard when the container has already run out, so the kernel resolves it first
-and the file whose worker was killed is reported failed with no assertion named. That is precisely
-the signature this lane produced under `check:full` and never on its own (one file alone peaks at
-~620-735 MiB), and it is why five rounds of raising `testTimeout`/`asyncUtilTimeout` changed nothing:
-no per-test budget can outlive its own worker.
-
-Running Jest itself under `node --max-old-space-size=512` fixes it for the whole lane in one place:
-`jest-worker` forwards the parent's `execArgv` to each forked worker, so the bound reaches the
-processes that actually run the tests (verified above — the worker reports 608 MiB, not 1120 MiB).
-That puts the lane's worst-case ceiling comfortably inside the container while still leaving ~3x the
-~190-215MB a heavy suite of this lane retains, and it costs nothing measurable in wall clock
-(`HomePage.test.tsx`: 18.7s bounded vs 18.5s unbounded, same 4/4 green, same retained heap).
-
-## Baseline (before this stabilization pass)
-
-Measured on `develop` before any of the above changes, full `npm test` (single undifferentiated
-Jest run: full per-file type-checking, coverage always on, `npmPackSmoke` mixed into the same run):
-
-- Cold (`rm -rf node_modules/.cache && npm test`): **1253s** Jest-reported time (**~23m22s** wall
-  clock including `/usr/bin/time`'s own overhead), 330 test suites, 4057 tests.
-- Peak RSS: **~1.92GB**; CPU utilization ~229% (Jest's own default worker-count heuristic on a
-  4-CPU box).
-- 11 suites / 35 tests failed on real timeouts (45s/15s budgets exceeded) purely from CPU
-  contention under that default worker count — not genuine regressions, and a direct motivation for
-  pinning `maxWorkers` instead of leaving it to auto-scale.
-- Single representative file benchmark (`DefaultVideoSlotSessionWinCalculator.test.ts`, 36 tests,
-  barrel import, full type-check, coverage on): **71s**.
-
-## What each optimization contributed (same file, isolated)
-
-Measured by re-running `DefaultVideoSlotSessionWinCalculator.test.ts` alone after each change:
-
-| Configuration | Time |
-|---|---|
-| Baseline (barrel import, full type-check, coverage on) | 71s |
-| + `isolatedModules`, coverage off (still barrel import) | 44s |
-| + direct imports (isolatedModules, coverage off) | **7s** test time / 14.6s wall |
-
-Removing the barrel import was the single largest contributor once coverage/full-type-checking
-were already off — about 6x on its own, ~90% total reduction from the original baseline for this
-file.
-
-## After: final numbers, all lanes green
-
-- `npm test` / `check:fast` (`pokie` + `studio-client-components`): **~72-75s** Jest time /
-  **~2m15-21s** wall, 289 suites, 3471 tests, **0 failures**, consistent across repeated runs. Down
-  from 509.6s/9m40s after the first pass, and 1253s/23m22s from the original undifferentiated
-  baseline.
-- `npm run typecheck`: **23.6s**, clean.
-- `npm run test:integration` (`pokie-integration`, 20 suites, 385 tests): **~28-36s**, **all green**
-  across 5 consecutive runs (see "Fixed in this pass").
-- `npm run test:workflows` (`studio-client-workflows`, 22 suites, 198 tests): **~443-446s**, **all
-  green** across 3 consecutive runs.
-- `npm run test:packaging` (real build → pack → install → spawn): **~167-222s**, **all 3 tests
-  green** across repeated runs (see "Fixed in this pass").
-- `npm run check:release` (lint + typecheck + full coverage run + packaging): **all green**
-  end-to-end. Lint: 0 errors / 40 pre-existing warnings. Typecheck: clean. `test:coverage`: 331
-  suites / 4054 tests, **0 failures**, 93.67% statement coverage. `test:packaging`: 3/3 tests green
-  (190.5s, real build → pack → install → spawn).
-
-### Why `npm test` dropped from 509.6s to ~74s, not just from moving 7 files
-
-The first attempt moved only the 4 `ProjectDashboardPage.*Workflow.test.tsx` files + 2 poll-hook
-tests + `happyPath.test.tsx` (the ones a static/grep-based read suggested were heaviest) and barely
-moved the needle (509.6s → 490s) — real per-file profiling via `npm run test:report` showed the
-actual heaviest files were mostly *different* ones the initial read missed entirely:
-`BlueprintEditorPage.reelStripModeler.test.tsx` (93.9s), `openProjectGuard.test.tsx` (86.0s),
-`designNavigationGuard.test.tsx` (85.0s), `BlueprintEditorPage.validation.test.tsx` (80.1s),
-`navigationGuardModal.test.tsx` (67.7s), `HomePage.test.tsx` (62.8s), and several more
-`*Workflow.test.tsx`/`BlueprintEditorPage.*` files at 30-51s each — none of these were flagged by
-grepping for `setTimeout`/`waitFor` patterns, because their cost comes from real RTL interaction
-sequences (confirm-modal flows, stale-response guards), not an isolated delay constant. Moving all
-15 of these (measured ≥~15s) into `studio-client-workflows` alongside the original 7 (22 files
-total) is what actually got `npm test` down to ~74s. Lesson: for this class of problem, measure
-real per-file runtime before deciding what to move — grep-based heuristics on delay values
-substantially under-identified the actual cost.
-
-## Fixed in this pass (previously documented here as known-red gates)
-
-**`ProjectDashboard.test.ts`'s stale `blocking` expectation.** `describeValidationSummary` has
-always correctly returned a `blocking: boolean` field since commit `d61db4e`; one test predating
-that commit never got updated. Fixed by adding `blocking: false` to its expected object — no
-production behavior changed.
-
-**`npmPackSmoke.test.ts`'s `JSON.parse` failure.** Root cause: `npm pack` runs `prepack` → `npm run
-build` → `prebuild` → `npm run lint` first, and ESLint prints its (pre-existing, `warn`-level)
-output to stdout — the same stream `npm pack --json`'s own JSON array uses, corrupting the parse.
-Fixed entirely inside the test's `beforeAll`: run `npm run build` explicitly first, then
-`npm pack --json --ignore-scripts` (skips `prepack`/`postpack`, harmless since the build is already
-fresh) so the captured stdout is only npm's JSON. No production `lint`/`build`/`prepack` script
-changed. This also surfaced a second, previously-hidden pre-existing bug once the JSON parsing
-stopped masking it: the test's first case asserted fixed `/main.js`/`/style.css` asset paths, which
-predate the Studio frontend's migration to a real Vite build with content-hashed filenames. Fixed by
-parsing the actual served `index.html` for its real `<script src>`/`<link href>` paths instead of
-hardcoding them.
-
-**Real-worker `Cannot find module 'pokie'`.** This was 100% deterministic, not flaky: the fixture
-game packages under `tests/cli/fixtures/*/` each do a bare `require("@fromstan/pokie")` (deliberately, to
-simulate a real external game package), but nothing in a fresh checkout provides a resolvable
-`node_modules/@fromstan/pokie` for that specifier inside a real `worker_thread` (a fresh Node realm that never
-goes through ts-jest's `moduleNameMapper`) — Node's self-reference resolution only fires when the
-*nearest ancestor* `package.json` is itself named `"pokie"`, and each fixture's own `package.json`
-is named after the fixture, not `"pokie"`. Fixed by `tests/cli/fixtures/ensureFixturesCanRequirePokie.ts`,
-which creates a real `tests/cli/fixtures/node_modules/@fromstan/pokie` directory symlink to the repo root
-(building `dist/cjs` on demand first if missing) — called from `testWorkerEntryUrl.ts` (covering the
-3 real-worker unit test files) and from `npmPackSmoke.test.ts`'s `beforeAll` (covering its
-installed-package worker test, a separate code path). The fixtures' own `require("@fromstan/pokie")` and
-`SimulationWorkerCoordinator.ts`/`simulationWorkerEntry.ts` (already using fully-resolved absolute
-paths) were untouched. Verified deterministic: `pokie-integration` passed 5/5 consecutive runs,
-`npmPackSmoke` passed on 2 consecutive full builds.
+Use `npm run test:targeted -- path/to/file.test.ts` while iterating. A full `check:full` or
+`check:release` is still required before larger changes are considered complete.

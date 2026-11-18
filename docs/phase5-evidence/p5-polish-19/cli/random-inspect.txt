@@ -1,3 +1,0 @@
-Inspecting package at "."
-
-  package.json     name: "golden-comet", version: "0.1.0"

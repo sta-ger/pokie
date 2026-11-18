@@ -39,8 +39,6 @@
         "pokie": "./dist/cli/pokie.js"
     },
     "scripts": {
-        "site:build": "node site/build.mjs",
-        "site:preview": "node site/preview.mjs",
         "generate-barrels": "node generate-barrels.js",
         "lint": "eslint \"**/*.{ts,tsx}\"",
         "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && npm run typecheck-studio-client",
@@ -48,8 +46,6 @@
         "test": "mkdir -p \"$PWD/node_modules/.cache/pokie-tmp\" && TMPDIR=\"$PWD/node_modules/.cache/pokie-tmp\" NODE_OPTIONS=--experimental-vm-modules jest --selectProjects pokie pokie-examples studio-client-components --maxWorkers=\"${JEST_WORKERS:-2}\"",
         "test:integration": "jest --selectProjects pokie-integration --maxWorkers=2",
         "test:targeted": "mkdir -p \"$PWD/node_modules/.cache/pokie-tmp\" && TMPDIR=\"$PWD/node_modules/.cache/pokie-tmp\" NODE_OPTIONS=--experimental-vm-modules node --expose-gc --max-old-space-size=1408 scripts/run-targeted-tests.mjs",
-        "evidence:pc14-interoperability": "node scripts/generate-pc14-interoperability-evidence.mjs",
-        "check:cli-inventory": "npm run build-cli && node scripts/check-cli-inventory.mjs --cli dist/cli/pokie.js --evidence-dir docs/audit-corrections/current-cli-inventory",
         "test:workflows": "node --max-old-space-size=512 scripts/run-studio-workflow-tests.mjs",
         "test:coverage": "node --max-old-space-size=512 ./node_modules/jest/bin/jest.js --selectProjects pokie pokie-examples studio-client-components pokie-integration studio-client-workflows --coverage --maxWorkers=1 --workerIdleMemoryLimit=192MB",
         "test:packaging": "jest --selectProjects pokie-packaging --runInBand",
@@ -58,7 +54,6 @@
         "check:fast": "npm test",
         "check:full": "node scripts/run-full-check.mjs",
         "check:release": "npm run lint && npm run typecheck && npm run test:coverage && npm run test:packaging",
-        "release:pc20": "node scripts/pc-20-release-completion.mjs",
         "build-esm:compile": "tsc --project tsconfig.prod.json && shx cp src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs dist/esm/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs && shx mkdir -p dist/esm/gamepackage/internal && shx cp src/gamepackage/internal/runtimeLocation.mjs dist/esm/gamepackage/internal/runtimeLocation.mjs",
         "build-cjs:compile": "tsc --project tsconfig.prod.json --module CommonJS --outDir dist/cjs && node write-cjs-package-json.js && shx cp src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs dist/cjs/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs && shx mkdir -p dist/cjs/gamepackage/internal && shx cp src/gamepackage/internal/runtimeLocation.mjs dist/cjs/gamepackage/internal/runtimeLocation.mjs",
         "build-esm": "npm run generate-barrels && npm run build-esm:compile",
@@ -66,13 +61,7 @@
         "build-test-runtime": "npm run generate-barrels && npm run build-esm:compile && npm run build-cjs:compile",
         "build-client": "tsc --project tsconfig.client.json && shx cp cli/client/index.html cli/client/style.css dist/cli/client/",
         "typecheck-studio-client": "tsc --project cli/studio-client/tsconfig.json --noEmit",
-        "build-studio-client": "npm run typecheck-studio-client && vite build --config cli/studio-client/vite.config.ts && shx test -f dist/cli/studio-client/index.html && node site/build.mjs --out dist/cli/studio-client/help --base /help/",
-        "audit:studio-polish": "node scripts/p8-04-studio-polish-browser-audit.mjs",
-        "audit:product-readiness": "node scripts/p8-05-product-readiness-campaign.mjs",
-        "audit:product-readiness:browser": "node scripts/p8-05-valera-browser-audit.mjs",
-        "audit:product-readiness:campaign": "node scripts/p8-05-product-readiness-controller.mjs",
-        "release:p8-05": "node scripts/p8-05-release-completion.mjs",
-        "release:p8-05:gate": "node scripts/p8-05-release-completion.mjs --gate-only",
+        "build-studio-client": "npm run typecheck-studio-client && vite build --config cli/studio-client/vite.config.ts && shx test -f dist/cli/studio-client/index.html",
         "dev-studio-client": "npm run build-cli && node scripts/start-studio-client-dev.mjs",
         "build-cli:compile": "tsc --project tsconfig.cli.json && shx mkdir -p dist/src/gamepackage/internal && shx cp src/gamepackage/internal/runtimeLocation.mjs dist/src/gamepackage/internal/runtimeLocation.mjs && shx cp src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs dist/src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs && npm run build-client && npm run build-studio-client && shx chmod +x dist/cli/pokie.js",
         "build-cli": "npm run generate-barrels && npm run build-esm:compile && npm run build-cjs:compile && npm run build-cli:compile",
@@ -82,7 +71,7 @@
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/fromstan/pokie.git"
+        "url": "git+https://github.com/sta-ger/pokie.git"
     },
     "keywords": [
         "TypeScript",
@@ -95,7 +84,7 @@
         "email": "pascaldelger@gmail.com",
         "url": "https://github.com/sta-ger"
     },
-    "homepage": "https://pokie.fromstan.com",
+    "homepage": "https://github.com/sta-ger/pokie",
     "license": "ISC",
     "engines": {
         "node": "^20.19.0 || >=22.12.0"
@@ -146,50 +135,12 @@
         "dist/",
         "src/",
         "README.md",
+        "CHANGELOG.md",
         "LICENSE",
         "package.json",
-        "docs/README.md",
-        "docs/certification-evidence-bundle.md",
-        "docs/cli.md",
-        "docs/extension-points.md",
-        "docs/external-adapter-sdk.md",
-        "docs/free-games.md",
-        "docs/game-packages.md",
-        "docs/game-session.md",
-        "docs/getting-started.md",
-        "docs/math-modeling.md",
-        "docs/outcome-library-bundle.md",
-        "docs/paylines-and-patterns.md",
-        "docs/paytable-and-wins.md",
-        "docs/pregenerated-runtime.md",
-        "docs/provably-fair.md",
-        "docs/reel-strip-generation.md",
-        "docs/reels-and-sequences.md",
-        "docs/resizable-grid.md",
-        "docs/round-artifacts.md",
-        "docs/serialization.md",
-        "docs/simulation.md",
-        "docs/stake-engine-export.md",
-        "docs/stake-engine-import.md",
-        "docs/stake-engine-standalone.md",
-        "docs/studio-frontend.md",
-        "docs/studio-long-running-jobs.md",
-        "docs/testing.md",
-        "docs/wasm-compatibility-boundary.md",
-        "docs/weighted-outcome-library.md",
-        "docs/v2-completion/launch-mechanics-support.md",
-        "docs/weighted-bonus.md",
-        "examples/blueprints/bounded-*.blueprint.json",
-        "examples/blueprints/weighted-bonus.blueprint.json",
-        "examples/blueprints/wild-*.blueprint.json",
-        "docs/optimization.md",
-        "templates/certification-dossier.v1.json",
-        "CHANGELOG.md",
-        "docs/v2-completion/release-preparation.md",
-        "examples/blueprints/sample-slot.blueprint.json",
-        "docs/bounded-mechanics.md",
-        "examples/blueprints/README.md",
-        "examples/blueprints/generated-reels.blueprint.json"
+        "docs/",
+        "examples/blueprints/",
+        "templates/certification-dossier.v1.json"
     ],
     "dependencies": {
         "commander": "^14.0.3",
@@ -213,7 +164,6 @@
         }
     },
     "publishConfig": {
-        "access": "public",
-        "registry": "https://publication-disabled.invalid"
+        "access": "public"
     }
 }

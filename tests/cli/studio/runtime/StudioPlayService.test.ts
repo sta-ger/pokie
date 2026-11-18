@@ -331,7 +331,7 @@ describe("StudioPlayService", () => {
         const root = path.join(publicRuntime.directory, `audit-${weighted}-${typed}-${seed ?? "unseeded"}`);
         const blueprint = replayModesBlueprint(weighted);
         blueprint.availableBets = [0.05];
-        blueprint.manifest = {id: `v2c12-package-${weighted ? "weighted" : "ordinary"}`, name: `V2C12 Package ${weighted ? "Weighted" : "Ordinary"}`, version: "1.0.0"};
+        blueprint.manifest = {id: `package-${weighted ? "weighted" : "ordinary"}`, name: `Package ${weighted ? "Weighted" : "Ordinary"}`, version: "1.0.0"};
         const built = new GamePackageGenerator("1.3.0").generate(blueprint, root, undefined, undefined, {
             runtimePackageRoot: path.join(publicRuntime.directory, "node_modules/@fromstan/pokie"),
         });
@@ -1838,7 +1838,7 @@ it("forwards real portable purchases and continuations, retains mode controls an
         const blueprint = replayModesBlueprint();
         blueprint.paytable.A = {3: 2};
         fs.writeFileSync(source, JSON.stringify(blueprint));
-        await new WasmArtifactBuilder("1.3.0").build({type: "blueprint", rootPath: source, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "V2C-21"}, artifact);
+        await new WasmArtifactBuilder("1.3.0").build({type: "blueprint", rootPath: source, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test fixture"}, artifact);
         const created = await service.newSession(artifact, "feature-play");
         expect(created).toMatchObject({status: "ok", session: {logicalRoundDeliverySupported: true, availableBetModeIds: ["base", "ante", "buy", "buy-more"]}});
         if (created.status !== "ok") throw new Error(JSON.stringify(created));

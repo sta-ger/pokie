@@ -43,7 +43,7 @@ function LocationProbe() {
 // Keep the rendered tests connected to the real resolver, canonical-byte checks
 // and registry mutations. Only the HTTP transport is replaced; errors are the
 // service's actual errors, never canned component results or resolver strings.
-describe("V2C-22-SIDECAR-DIAGNOSTICS: rendered Home recovery", () => {
+describe("SIDECAR-DIAGNOSTICS: rendered Home recovery", () => {
     let directory: string;
     let location: string;
     let sidecar: string;
@@ -1591,7 +1591,7 @@ function removalFocusRoutes() {
         "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
         "/api/home/projects/registry": () => ({ok: true, status: 200, body: [
             {
-                location: "/home/stager/Work/sta-ger/agents/runtime/verifier-hrnesses/V2C-35-7b16e5934c65e89d/fixtures/stale-packae",
+                location: "/home/stager/Work/sta-ger/agents/runtime/verifier-hrnesses/7b16e5934c65e89d/fixtures/stale-packae",
                 name: "Graceful Serene Frontier", type: "tsPackage", capabilities: [], origin: "external", status: "ok",
             },
             {location: "/games/sibling", name: "Sibling", type: "tsPackage", capabilities: [], origin: "external", status: "ok"},
@@ -1778,10 +1778,10 @@ describe("V35 Home project removal focus", () => {
 });
 
 
-describe("V2C-36 projects-path-presentation", () => {
+describe("projects-path-presentation", () => {
     // Exact locations from the retained populated Projects transcript / 1-observation.png,
     // run-2026-10-29T00-54-08-240Z. Keep this regression independent of external evidence files.
-    const prefix = "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-36-44b807505b46534f/run-2026-10-29T00-33-24-451Z/application-BRYW4Y/Documents/POKIE Projects";
+    const prefix = "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/44b807505b46534f/run-2026-10-29T00-33-24-451Z/application-BRYW4Y/Documents/POKIE Projects";
     const available: StudioProjectRegistryView = {
         location: `${prefix}/royal-grand-stampede/blueprint.json`, name: "Royal Grand Stampede",
         type: "blueprint", capabilities: ["blueprint.build"], origin: "managed",

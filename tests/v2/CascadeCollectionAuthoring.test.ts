@@ -40,7 +40,7 @@ function played(result: api.SessionCommandResult) {
     return result;
 }
 
-describe("V2C-14 authored bounded mechanics", () => {
+describe("authored bounded mechanics", () => {
     let directory: string;
     beforeEach(() => {
         directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/v2c14-"));

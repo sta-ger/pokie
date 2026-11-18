@@ -14,7 +14,7 @@ import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 
 function projectValidationSurface() {
     let saved: GameBlueprint = {
-        manifest: {id: "v2c12-accum-recovery", name: "V2C12 Accumulating Recovery", version: "1.0.0"},
+        manifest: {id: "accum-recovery", name: "Accumulating Recovery", version: "1.0.0"},
         reels: 3, rows: 1, symbols: ["A", "C", "M", "J", "S"], scatters: ["S"], paytable: {A: {3: 0}},
         availableBets: [0.05, 7.5, 1e-7], reelStrips: [["C", "A", "S", "J", "M"], ["A", "S", "J", "C", "M"], ["A", "S", "J", "C", "M"]],
         mechanics: {
@@ -48,7 +48,7 @@ async function projectSection(legend: string): Promise<HTMLElement> {
     return (await screen.findByText(legend, {selector: "span"})).closest("fieldset")!;
 }
 
-it.each(["save", "discard"])("V2C-12 exposes whitespace-only Project name validation and recovers through %s", async finish => {
+it.each(["save", "discard"])("exposes whitespace-only Project name validation and recovers through %s", async finish => {
     const user = userEvent.setup();
     const routes = projectValidationSurface();
     const original = routes.getSaved();
@@ -100,7 +100,7 @@ it.each([
     {section: "Game basics", field: "Version", path: "manifest.version"},
     {section: "Layout", field: "Rows", path: "rows"},
     {section: "Layout", field: "Reels", path: "reels"},
-])("V2C-12 retains actionable Project $path diagnostics at the real validator boundary", async ({section, field, path}) => {
+])("retains actionable Project $path diagnostics at the real validator boundary", async ({section, field, path}) => {
     const user = userEvent.setup();
     const routes = projectValidationSurface();
     const original = routes.getSaved();
@@ -123,7 +123,7 @@ it.each([
     expect(routes.calls.some(call => call.url === "/api/home/blueprints/save")).toBe(false);
 }, 60000);
 
-it.each(["validate", "save"])("V2C-12 renders Project %s request failure and permits an explicit retry", async endpoint => {
+it.each(["validate", "save"])("renders Project %s request failure and permits an explicit retry", async endpoint => {
     const user = userEvent.setup();
     const routes = projectValidationSurface();
     const original = routes.getSaved();

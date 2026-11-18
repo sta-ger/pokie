@@ -1,7 +1,7 @@
 import {registerCliCommands} from "../../cli/registerCliCommands.js";
 import {PACKAGE_ONLY_COMMAND_INPUTS} from "./fixtures/packageOnlyCommandInputs.js";
 
-// Part of the Phase 3 current-state contract (docs/pokie-phase3-inventory.md): freezes exactly which
+// Part of the Phase 3 current-state contract (the Phase 3 inventory): freezes exactly which
 // public `pokie` commands require an already-loadable game package as their one input, cross-checked
 // against the real registered public tree. Private handler parser coverage is deliberately separate
 // and must never add a namespace to this public classification.

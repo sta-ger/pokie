@@ -362,7 +362,7 @@ Use a fresh support check and run after cancellation, operational failure, resta
 The generic recover endpoint only resumes separately supported generation jobs. Project close/switch
 and shutdown request cancellation and drain owned optimization executions/candidates; independently
 published artifacts survive candidate cleanup. Independent browser/API/CLI verification and production
-bundle/package gates remain controller-owned.
+bundle/package gates remain separate.
 
 CLI review identity also includes a declared package's executable dependency revision. An unchanged
 parameter file or selected candidate cannot authorize application after installed code changes. Exact

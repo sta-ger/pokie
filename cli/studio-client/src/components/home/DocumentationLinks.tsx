@@ -1,7 +1,9 @@
 import {Anchor, List, Title} from "@mantine/core";
 
-// Always visible below the Home tabs, regardless of which tab is active -- matches the old
-// index.html's #documentation section.
+const DOCS = "https://github.com/sta-ger/pokie/tree/develop/docs";
+const EXAMPLES = "https://github.com/sta-ger/pokie-examples";
+
+// Always visible below the Home tabs, regardless of which tab is active.
 export function DocumentationLinks() {
     return (
         <div>
@@ -10,23 +12,23 @@ export function DocumentationLinks() {
             </Title>
             <List size="sm">
                 <List.Item>
-                    <Anchor href="/help/docs/" target="_blank" rel="noreferrer">
-                        Public docs (included locally)
+                    <Anchor href={DOCS} target="_blank" rel="noreferrer">
+                        Documentation
                     </Anchor>
                 </List.Item>
                 <List.Item>
-                    <Anchor href="/help/docs/getting-started/" target="_blank" rel="noreferrer">
+                    <Anchor href={`${DOCS}/getting-started.md`} target="_blank" rel="noreferrer">
                         Getting started
                     </Anchor>
                 </List.Item>
                 <List.Item>
-                    <Anchor href="/help/docs/cli-api/" target="_blank" rel="noreferrer">
+                    <Anchor href={`${DOCS}/cli.md`} target="_blank" rel="noreferrer">
                         CLI reference
                     </Anchor>
                 </List.Item>
                 <List.Item>
-                    <Anchor href="/help/" target="_blank" rel="noreferrer">
-                        FromStan / POKIE — examples and boundaries
+                    <Anchor href={EXAMPLES} target="_blank" rel="noreferrer">
+                        Example games
                     </Anchor>
                 </List.Item>
             </List>

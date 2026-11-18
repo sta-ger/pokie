@@ -1,3 +1,0 @@
-studio_pid=1114803
-chrome_pid=1114804
-browser_driver_exit=1

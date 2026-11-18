@@ -56,7 +56,7 @@ describe("weighted-sequence real XLSX interchange", () => {
         expect(api.computeBlueprintHash(imported.blueprint)).toBe(api.computeBlueprintHash(original));
         expect(api.computeGameBlueprintHash(imported.blueprint)).toBe(api.computeGameBlueprintHash(original));
         console.info(
-            `V2C-09 artifact identities: XLSX sha256:${createHash("sha256")
+            ` artifact identities: XLSX sha256:${createHash("sha256")
                 .update(fs.readFileSync(file))
                 .digest("hex")}; structural ${api.computeBlueprintHash(
                 imported.blueprint,

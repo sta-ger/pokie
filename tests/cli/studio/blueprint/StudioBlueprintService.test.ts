@@ -1137,7 +1137,7 @@ describe("StudioBlueprintService", () => {
                 new PokiePathResolver({cwd: "/elsewhere"}, {platform: "linux", env: {}, homeDir: freshHome}),
             );
 
-            const result = service.saveManaged(buildBlueprint({manifest: {id: "valera-mathematician", name: "Valera Mathematician", version: "0.1.0"}}));
+            const result = service.saveManaged(buildBlueprint({manifest: {id: "sample-mathematician", name: "Sample Mathematician", version: "0.1.0"}}));
 
             expect(result).toMatchObject({
                 status: "ok",

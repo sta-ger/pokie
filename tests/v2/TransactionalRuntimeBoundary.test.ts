@@ -788,7 +788,7 @@ describe("public transactional runtime compositions", () => {
 
 });
 
-describe("V2C-12 authored mechanics durable restart", () => {
+describe("authored mechanics durable restart", () => {
     it.each(["hold-flat-modes", "accumulating-holdAndWin-modes", "fixed-freeGames-modes", "accumulating-freeGames-modes"])("retains %s prefix, results and financial state in file and transactional stores", async id => {
         const row = api.AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!;
         const blueprint = existingMechanicsBlueprint(row);

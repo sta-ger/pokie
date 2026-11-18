@@ -1,2 +1,0 @@
-Could not read "/tmp" as a PAR sheet XLSX workbook: EISDIR: illegal operation on a directory, read
-EXIT:1

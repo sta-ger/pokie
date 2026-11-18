@@ -504,7 +504,7 @@ it.each(["Home", "dashboard"])("V37 %s optimization Retry is consumed only by ac
 it.each([
     "/outputs/server returned artifact",
     // Exact regular-file output retained by the independent observer.
-    "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-37-9efe90de82cb1713/run-2026-10-30T00-50-08-535Z/application-KI62X7/Documents/project-input-ohZzDm/blueprint.json",
+    "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/9efe90de82cb1713/run-2026-10-30T00-50-08-535Z/application-KI62X7/Documents/project-input-ohZzDm/blueprint.json",
 ])("V37 Home completed output %s retains downloads, pending controls and host errors before successful Open and Reveal", async outputPath => {
     const user = userEvent.setup();
     const complete: StudioJobView = {...active, id: "completed", operation: "artifact-build", status: "completed", result: {

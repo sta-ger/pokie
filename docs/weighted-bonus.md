@@ -3,7 +3,7 @@
 `mechanics.weightedBonus` authors one finite table, independently of whole reel
 sequences, build-time symbol weights, and stored WeightedOutcomeLibrary artifacts.
 See [the runnable example](../examples/blueprints/weighted-bonus.blueprint.json)
-and [launch workflow coverage](v2-completion/launch-mechanics-support.md).
+and [launch workflow coverage](supported-mechanics.md).
 
 The table declares `id`, `context: "triggered-paid-entry"`, a symbol/count
 `trigger`, a `feature: {id, type: "bonus-respins", maxDuration}`, and an ordered

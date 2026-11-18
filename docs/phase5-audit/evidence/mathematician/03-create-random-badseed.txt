@@ -1,2 +1,0 @@
---seed requires an integer value. Usage: pokie create [name] --random [--seed <integer>] [--preset default|variant] [--out <file>]
-EXIT:1

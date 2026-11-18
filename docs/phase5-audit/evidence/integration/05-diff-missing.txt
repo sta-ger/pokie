@@ -1,2 +1,0 @@
-Could not read simulation report at "/nonexistent/a.json": ENOENT: no such file or directory, open '/nonexistent/a.json'
-EXIT:1

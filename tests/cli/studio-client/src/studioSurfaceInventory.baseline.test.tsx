@@ -315,7 +315,7 @@ describe("Design Game start action surface baseline", () => {
 // roster; which path/text fields exist and what (if any) placeholder they show; which actions are
 // disabled at first mount and why; and a representative sample of the raw-error-surface pattern (every
 // tab funnels a caught exception's message straight into the shared, no-wrapping `ErrorState` component --
-// see docs/studio-phase2-inventory.md for the full, line-cited enumeration of every occurrence, including
+// see the Studio surface inventory for the full, line-cited enumeration of every occurrence, including
 // the ones not re-demonstrated here as an executable fixture).
 
 describe("Advanced tab Stepper inventory baseline", () => {
@@ -430,7 +430,7 @@ describe("Advanced tab path-field & disabled-action baseline", () => {
 // Was "raw-error surface baseline" -- pinned the pre-[P2-POLISH-25] behavior where these fetch
 // failures rendered the server's own raw message verbatim, with no remediation copy added. Both are
 // now translated (Deployment/Export & Deploy's targetsError via domain/projectActionError.ts, Replay's
-// listError via domain/replayActionError.ts -- see docs/studio-phase2-workflow-audit-matrix.md) -- this
+// listError via domain/replayActionError.ts -- see the Studio workflow audit matrix) -- this
 // now pins the corrected behavior instead, same role reversed.
 describe("Advanced tab subject-specific recovery copy baseline", () => {
     it("Build/Export: a failed targets fetch shows a subject-specific recovery message, never the raw server text", async () => {
@@ -470,7 +470,7 @@ describe("Advanced tab subject-specific recovery copy baseline", () => {
 });
 
 // [P2-POLISH-04]: unlike Replay/Deployment's targets fetch above (none of which take a user-typed
-// path -- see docs/studio-phase2-inventory.md's "Raw-error surfaces" per-section notes), every scoped
+// path -- see the Studio surface inventory's "Raw-error surfaces" per-section notes), every scoped
 // path-based action below now turns its raw backend failure into inline, subject-specific status +
 // remediation copy via `domain/pathActionError.ts`'s `describePathActionError` -- the raw server text is
 // never rendered verbatim. See pathActionError.test.ts for the classifier's own reason-by-reason coverage.

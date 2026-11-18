@@ -19,7 +19,7 @@ import {
 
 describe("VideoSlotWithResizableGridSession", () => {
     test.each([0.05, 7.5, 1e-7].flatMap(stake => [0, 2.5].map(multiplier => ({stake, multiplier}))))(
-        "V2C-37-PAYOUT-RESIZABLE preserves exact payout at $stake x $multiplier", ({stake, multiplier}) => {
+        "PAYOUT-RESIZABLE preserves exact payout at $stake x $multiplier", ({stake, multiplier}) => {
             const config = new VideoSlotConfig();
             config.setAvailableBets([stake]);
             config.setBet(stake);

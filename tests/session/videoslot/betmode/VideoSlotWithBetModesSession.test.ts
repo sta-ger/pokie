@@ -414,7 +414,7 @@ describe("VideoSlotWithBetModesSession", () => {
     });
 });
 
-describe("V2C-12 generated purchase intent", () => {
+describe("generated purchase intent", () => {
     it.each([0.05, 7.5, 1e-7])("charges once at %s, retains original purchase and requires another action after restart", bet => {
         const b = existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === "accumulating-freeGames-modes")!);
         b.reelStrips = [["A"], ["A"], ["A"]];

@@ -479,7 +479,7 @@ describe("ReplayCommand runtime package materialization boundary", () => {
         }
     });
 
-    it("V2C-21 completes seed-7 cascade logical replay and persists its RNG continuation", async () => {
+    it("completes seed-7 cascade logical replay and persists its RNG continuation", async () => {
         const {boundedBlueprint} = await import("../../v2/fixtures/BoundedMechanicsGame.js");
         const {instantiatePokieWasm, SeededPokieWasmHost} = await import("../../../src/wasm/PokieWasmRuntime.js");
         const blueprint = boundedBlueprint("cascade");

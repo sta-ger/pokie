@@ -347,6 +347,6 @@ const issues = await new FairnessRoundProofVerifier().verify(proof, {commitment,
 ```
 
 
-## Canonical dossier preparation (V2C-27)
+## Canonical dossier preparation
 
 Dossier preparation currently marks fairness evidence unavailable rather than inferring it from a model or bundle. The supported `pokie-fairness-hmac-sha256-v1` proof/commitment checks remain separate, scoped to the selected library/index/outcome identities. Deterministic/HMAC selection does not establish precommit publication timing, general game fairness or certification. See [dossier boundaries](certification-evidence-bundle.md).

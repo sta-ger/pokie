@@ -22,7 +22,7 @@ const staleDeliveryIdentity = /(?:\bfrom\s*|\brequire\s*\(\s*|\bimport\s*(?:\(\s
 
 function fixtureDirectory(): string {
     fs.mkdirSync(tempRoot, {recursive: true});
-    return fs.mkdtempSync(path.join(tempRoot, "v2c01-identity-"));
+    return fs.mkdtempSync(path.join(tempRoot, "package-identity-"));
 }
 
 function executeNativeConsumer(directory: string, timeout = PACKAGE_EXTRACTION_TEST_TIMEOUT): string {
@@ -73,17 +73,17 @@ function nativeRuntimeFixture(directory: string): void {
     execFileSync(process.execPath, [path.join(root, "tests/testUtils/stageRuntimeLocation.mjs"), "--output-root", packageRoot, "esm", "cjs"], {cwd: root});
     // Execute the maintained metadata writer in the fixture, not a production build.
     execFileSync(process.execPath, [path.join(root, "write-cjs-package-json.js")], {cwd: packageRoot});
-    fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({name: "v2c01-private-consumer", private: true, type: "module", dependencies: {[identity]: `^${metadata.version}`}}));
+    fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({name: "private-consumer", private: true, type: "module", dependencies: {[identity]: `^${metadata.version}`}}));
 }
 
-describe("V2C-01 delivery identity", () => {
+describe("Package delivery identity", () => {
     it("binds metadata, lockfile, binary, pack declarations and explicit ESM-only subpaths", () => {
         const lock = JSON.parse(fs.readFileSync(path.join(root, "package-lock.json"), "utf8"));
         expect(metadata.name).toBe(identity);
         expect(lock.name).toBe(identity);
         expect(lock.packages[""].name).toBe(identity);
-        expect(metadata.repository.url).toBe("git+https://github.com/fromstan/pokie.git");
-        expect(metadata.homepage).toBe("https://pokie.fromstan.com");
+        expect(metadata.repository.url).toBe("git+https://github.com/sta-ger/pokie.git");
+        expect(metadata.homepage).toBe("https://github.com/sta-ger/pokie");
         expect(metadata.bin).toEqual({pokie: "./dist/cli/pokie.js"});
         expect(Object.keys(metadata.exports).sort()).toEqual([".", "./browser", "./client/player", "./wasm"]);
         for (const subpath of ["./browser", "./wasm", "./client/player"]) {
@@ -91,7 +91,7 @@ describe("V2C-01 delivery identity", () => {
             expect(metadata.exports[subpath].import.types).toMatch(/\.d\.ts$/);
         }
         expect(metadata.files).toEqual(expect.arrayContaining(["dist/", "src/", "LICENSE", "CHANGELOG.md"]));
-        expect(metadata.files).not.toContain("docs/*.md");
+        expect(metadata.publishConfig).toEqual({access: "public"});
         for (const name of metadata.files.filter((name: string) => name.startsWith("docs/"))) expect(name).not.toMatch(/phase|\/evidence\/|inventory|report/);
     });
 
@@ -152,7 +152,7 @@ describe("V2C-01 delivery identity", () => {
                 try { assert.equal(loaded.game.getManifest().id, 'private-slot'); assert.ok(loaded.game.createSession({seed:'generated-native'})); }
                 finally { await loaded.release(); }
                 const fs = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
-                const isolated = fs.mkdtempSync(path.join(os.tmpdir(), 'v2c01-external-'));
+                const isolated = fs.mkdtempSync(path.join(os.tmpdir(), 'external-consumer-'));
                 try {
                     fs.writeFileSync(path.join(isolated, 'package.json'), JSON.stringify({private:true, pokie:{entry:'./game.cjs'}}));
                     fs.writeFileSync(path.join(isolated, 'game.cjs'), "const runtime = require('@fromstan/pokie'); module.exports = {getManifest(){return {id:'external',name:'External',version:'1'};}, createSession(){return new runtime.SeededRandomNumberGenerator('external');}};");
@@ -269,28 +269,6 @@ describe("V2C-01 delivery identity", () => {
         }
     });
 
-    it("keeps every publication entry inert, including transitive npm lifecycle hooks", () => {
-        const visited = new Set<string>();
-        const inspect = (name: string): void => {
-            if (visited.has(name)) return;
-            visited.add(name);
-            for (const hook of [`pre${name}`, name, `post${name}`]) {
-                const command = metadata.scripts[hook] ?? "";
-                expect(command).not.toMatch(/npm\s+publish|npm\s+exec|npx|authorized-release-runner/);
-                for (const match of command.matchAll(/npm run ([\w:-]+)/g)) inspect(match[1]);
-            }
-        };
-        ["build", "prepack", "test", "postinstall", "release:pc20", "release:p8-05"].forEach(inspect);
-        expect(metadata.publishConfig.registry).toBe("https://publication-disabled.invalid");
-        const runner = fs.readFileSync(path.join(root, "scripts/pc-20-authorized-release-runner.mjs"), "utf8");
-        expect(runner).toContain("throw new Error(\"Public publication is disabled");
-        expect(runner).not.toMatch(/execFile|fetch\(|writeFile|services\.run/);
-        const completion = fs.readFileSync(path.join(root, "scripts/p8-05-release-completion.mjs"), "utf8");
-        expect(completion).not.toContain("runAuthorizedLifecycle");
-        expect(completion).toContain("public publication is disabled");
-        expect(fs.readFileSync(path.join(root, ".github/workflows/publish.yml"), "utf8")).not.toMatch(/workflow_dispatch|npm publish|secrets\./);
-    });
-
     it.each([
         'npx\n  pokie dev ./game', 'npx --yes\n pokie dev ./game', 'npm install\n  -g pokie', 'npm i --global\n pokie', 'npm install --save-dev pokie',
         'exports from `"pokie"`', 'GameBlueprint imported from `pokie`',
@@ -308,14 +286,5 @@ describe("V2C-01 delivery identity", () => {
         'pokie.entry .pokie pokie-manifest.json pokie.state.v2', 'https://github.com/sta-ger/pokie-examples',
     ])("preserves product contracts and explicit scoped launch guidance: %s", text => {
         expect(staleDeliveryIdentity.test(text)).toBe(false);
-    });
-
-    it("classifies maintained delivery text separately from immutable history and product contracts", () => {
-        const maintained = [path.join(root, "README.md"), ...metadata.files.filter((name: string) => name.startsWith("docs/")).map((name: string) => path.join(root, name)), ...["src", "cli", "examples", "site/content", "site/examples"].flatMap(name => files(path.join(root, name)))];
-
-        expect(maintained.filter(file => (/\.(?:ts|tsx|js|mjs|md|html|json)$/).test(file) && staleDeliveryIdentity.test(fs.readFileSync(file, "utf8")))).toEqual([]);
-        expect(fs.readFileSync(path.join(root, "docs/pokie-phase4-inventory.md"), "utf8")).toContain("sta-ger/pokie-examples");
-        expect(fs.readFileSync(path.join(root, "src/wasm/PokieWasmCanonicalModule.ts"), "utf8")).toContain('POKIE_WASM_IMPORT_MODULE = "pokie"');
-        expect(buildPackageJsonPatch({}, metadata.version).pokie).toEqual({entry: "./dist/index.js"});
     });
 });

@@ -53,7 +53,7 @@ function direct(blueprint = weightedBonusBlueprint(), seed = 31) {
     return {config, rng, generator, session: new api.BoundedVideoSlotSession(config, generator, blueprint.mechanics!)};
 }
 
-describe("V2C-15 weighted bonus authoring", () => {
+describe("weighted bonus authoring", () => {
     let directory: string;
     beforeEach(() => {
         directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/v2c15-"));

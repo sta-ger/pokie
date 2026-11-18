@@ -749,7 +749,7 @@ describe("StudioJobService executor bridge routes", () => {
         await expect(first).resolves.toMatchObject({status: 200, body: {context: {mode: "project", projectRoot: physicalProject}}});
     });
 
-    it("V2C-37 retains cancelled opening history while a retry owns the source and permits later reuse after failure", async () => {
+    it("retains cancelled opening history while a retry owns the source and permits later reuse after failure", async () => {
         let nextId = 0;
         jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "retry-jobs")), () => 100, () => `opening-${++nextId}`);
         let entered!: () => void;

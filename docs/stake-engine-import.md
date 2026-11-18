@@ -278,7 +278,7 @@ Standalone reading supports positive UInt64 weights with exact BigInt weight acc
 while native persisted bundles and import/export retain their existing numeric weight restrictions.
 Numeric analytics are approximate; standalone decimal fractions are capped at 40 fractional digits.
 
-## Exact wide-weight interchange (V2C-26)
+## Exact wide-weight interchange
 
 Positive CSV weights range from 1 through **18446744073709551615** (UInt64).
 Aggregate totals are accumulated as BigInt and may exceed UInt64; the required

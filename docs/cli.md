@@ -883,7 +883,7 @@ real build would produce, with no `--out` destination created or touched.
 The minimal loop from a blueprint to a running local server, chaining every command this file documents. Unlike
 the [`init` workflow](#workflow) below, there's no `npm run build` step in the middle — `pokie build`
 output is locally loadable immediately through a link to the running POKIE installation. Its `file:`
-dependency keeps a later `npm install` bound to that installation, including unpublished candidates.
+dependency keeps a later `npm install` bound to that installation, including local checkouts without a registry release.
 Keep the installation at its recorded location. To move the output to another machine, explicitly
 select an available POKIE archive or installation there before installing developer dependencies;
 see [the package dependency contract](game-packages.md#native-imports-and-moving-a-generated-package) and the generated README.
@@ -3779,15 +3779,12 @@ a gap in coverage.
 
 Property-based and golden-output testing are implemented, as recorded in the
 [storage and recovery contracts](game-session.md#durable-external-wallet-reconciliation), alongside
-[performance benchmarks](testing.md#benchmarks). The local static documentation site, gallery and playground
-are implemented; see [local preparation](v2-completion/release-preparation.md) for build/preview commands.
-The playground runs bounded supported Blueprint/WASM models in a local Worker, with seeded Play, Simulation,
-Replay, optimization preview and reproducible downloads. It does not execute arbitrary visitor-supplied
-JavaScript. A local build does not establish hosted availability or candidate acceptance.
+[performance benchmarks](testing.md#benchmarks). The local Studio provides Play, Simulation, Replay and
+Build/Export surfaces. It does not execute arbitrary visitor-supplied JavaScript.
 
 Current authored support includes free games, Hold&Win, jackpots, bet modes, wild/screen modifiers,
 bounded cascades/respins/collections and weighted bonuses through the supported editor, build, extraction,
-PAR, simulation and replay paths. The [launch support register](v2-completion/launch-mechanics-support.md)
+PAR, simulation and replay paths. The [launch support register](supported-mechanics.md)
 names the supported compositions and artifact targets; arbitrary callbacks and dynamic targets remain
 custom-only, and lossy extraction is blocked. Blueprint `screenGeometry` distinguishes generated, visible
 and evaluated coordinates, including fractional visible windows with discrete evaluation cells;
@@ -3797,14 +3794,12 @@ reachability, all-path termination and invariant analysis. These analyses do not
 behavior; exhausted budgets remain unknown. Simulation reports include canonical lifecycle/component
 analytics when supplied by the runtime; amount-only or custom sources cannot supply missing attribution.
 Ordinary simulation reports support JSON, Markdown and HTML; canonical dossiers separately support console
-text and local selectable-text PDF as well. YAML remains unimplemented. Historical assessments are retained
-as engineering history, not current support guidance.
+text and local selectable-text PDF as well. YAML remains unimplemented.
 
 The optional local transactional reference adapter is documented below; independent external stores remain
 outside its guarantee. Compensation and reconciliation do not provide a cross-store transaction.
 [Math optimization](optimization.md) supports exact finite and bounded seeded same-type tuning, with explicit
-source authority, held-out assessment and candidate-only saves on nonattainment. Organization/npm migration
-and every public release action require separate authorization under the preparation plan.
+source authority, held-out assessment and candidate-only saves on nonattainment.
 
 ## Headless runtime contract
 
@@ -3911,7 +3906,7 @@ libraries retain their capability-directed report/diff routes; they are not reel
 variants or per-symbol weights. Canonical WASM preserves `reelSequences` and eligible selection counts.
 
 
-## Package extraction preview and save (V2C-11)
+## Package extraction preview and save
 
 Use the canonical artifact route; there is no top-level `export` command:
 
@@ -3955,7 +3950,7 @@ does not update its original extraction hash or rewrite the source package.
 
 Hold&Win, fixed/session-local accumulating jackpots and executable base/ante/free-game purchase modes use the existing authoring, `validate`, `build SOURCE --target tsPackage|blueprint|parWorkbook`, `par`, `sim --mode <id|all>`, `report` and `replay` commands. Extended mechanic configuration survives package extraction and XLSX conversion. Canonical WASM supports these declared feature histories; paid-grid outcome-library/Stake targets still fail with a support diagnostic for histories they cannot preserve. There is no top-level export command. See [authored mechanics](game-packages.md#authored-holdwin-jackpot-and-bet-modes).
 
-## Bounded authored mechanics (V2C-14)
+## Bounded authored mechanics
 
 See [cascades, respins and collections](bounded-mechanics.md) for the declarative
 contracts, supported compositions, authoring/build/extraction/PAR workflow,
@@ -4031,7 +4026,7 @@ existing report or input. Write failures leave no partial report.
 
 Definition `diff` includes advanced validation changes. Its existing opt-in
 `--ci` policy treats unresolved advanced analysis as exit 2, rather than accepting
-an unchanged unknown source. [V2C-19](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-19.md) lists assumptions,
+an unchanged unknown source. The advanced-validation report lists assumptions,
 adapter support and the separate structural save/build gates.
 
 See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.
@@ -4068,7 +4063,7 @@ Exit codes remain success/attained 0, operational failure 1, infeasible 2, inval
 exhausted 5, SIGINT cancellation 6 and inconclusive 7. See [optimization](optimization.md) for the six
 conditional adapters, author opt-in, confidence evidence, apply rollback and restart limits.
 
-### V2C-26 interchange domains
+### Interchange domains
 
 PAR preserves represented weighted sequence identities/order/context, launch mechanics,
 retrigger and bet-mode contracts, explicit zero/omitted payouts (including empty symbol
@@ -4097,6 +4092,6 @@ companions. Retired direct Studio Stake routes remain retired in favor of prepar
 artifact preview/build and pollable jobs.
 
 
-## Canonical dossier preparation (V2C-27)
+## Canonical dossier preparation
 
 Canonical assessment dossiers use `pokie certification build BUNDLE CONFIG.json --out NEW_OR_EMPTY_DIRECTORY`, with explicit `dossier` authorities and `output` template/formats. Verify with `--source BUNDLE --authorities authorities.json`; render a validated dossier through `pokie report DOSSIER/manifest.json --format json|console|markdown|html|pdf [--template presentation.json] [--out NEW_FILE]`. PDF requires `--out`. Simulation/outcome reporting keeps JSON/Markdown/HTML. See [the dossier contract](certification-evidence-bundle.md). Preparation only; successful verification is not regulatory or RNG certification.

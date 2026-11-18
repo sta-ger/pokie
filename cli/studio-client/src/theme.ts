@@ -2,7 +2,7 @@ import {createTheme, virtualColor} from "@mantine/core";
 
 // Shared task, section and supporting-text scale for both Home and saved projects.
 export const theme = createTheme({
-    // Match the built public docs/gallery/playground's navy, cream and copper identity.
+    // Studio's navy, cream and copper identity.
     primaryColor: "primary",
     primaryShade: {light: 8, dark: 3},
     autoContrast: true,

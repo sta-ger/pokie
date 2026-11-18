@@ -90,7 +90,7 @@ async function initialize(game: PokieGame, seed: string | number, repository: In
     return state;
 }
 
-describe("V2C-02 canonical runtime contracts", () => {
+describe("canonical runtime contracts", () => {
     it("validates actual ESM/CJS host/game instances in both directions before publication and recovery", () => {
         const runtime = emitPublicRuntime();
         try {

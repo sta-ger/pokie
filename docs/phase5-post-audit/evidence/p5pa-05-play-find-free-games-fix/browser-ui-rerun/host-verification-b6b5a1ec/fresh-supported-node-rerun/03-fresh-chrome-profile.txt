@@ -1,2 +1,0 @@
-/tmp/p5pa05-fresh-chrome.xFAHFb
-chrome_pid=1152420

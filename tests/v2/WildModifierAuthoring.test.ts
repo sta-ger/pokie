@@ -40,7 +40,7 @@ function directConfig(blueprint: api.GameBlueprint): api.VideoSlotConfig {
     return config;
 }
 
-describe("V2C-13 finite modifier authoring", () => {
+describe("finite modifier authoring", () => {
     let directory: string;
     beforeEach(() => {
         directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/v2c13-"));

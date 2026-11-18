@@ -10,7 +10,7 @@ import {measureFinalWorkerContinuation} from "../fixtures/math/FinalWorkerContin
 // Source-level convergence regression only. The packaging owner runs the shared
 // money/continuation assertions with native exports and real Workers.
 // Authoritative N01/N02/A01–A06 mapping is controller input, not invented here.
-describe("V2C-37 final math convergence", () => {
+describe("final math convergence", () => {
     it("preserves canonical money, additive grants, purchased rounds and durable restart through public consumers", async () => {
         const directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/final-math-"));
         try {

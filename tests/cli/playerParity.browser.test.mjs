@@ -21,7 +21,7 @@ import {
     pc12FixtureSeed,
     studioLaunchArguments,
     validatePc12FixtureContract,
-} from "../../scripts/pc-12-player-parity-browser.mjs";
+} from "../../scripts/playerParityBrowser.mjs";
 
 const region = {
     cells: [{id: "0:0", symbol: "cherry", color: "rgb(255, 255, 0)"}],
@@ -131,7 +131,7 @@ test("PC-12 browser parity's executable fixture preflight binds Studio and examp
     expect(desktopViewport).toEqual({width: 1280, height: 800});
     expect(narrowViewport).toEqual({width: 390, height: 844});
 
-    const execution = spawnSync(process.execPath, [resolve(process.cwd(), "scripts/pc-12-player-parity-browser.mjs"), "--fixture-preflight"], {
+    const execution = spawnSync(process.execPath, [resolve(process.cwd(), "scripts/playerParityBrowser.mjs"), "--fixture-preflight"], {
         cwd: process.cwd(),
         encoding: "utf8",
         env: {...process.env, PC_12_STUDIO_PROJECT: studioProject, PC_12_SUPERSEDING_PROJECT: supersedingProject, POKIE_EXAMPLES_PATH: examplesRoot},
@@ -149,7 +149,7 @@ test("PC-12 browser parity compares canonical screenshots as pixels, with an ant
 });
 
 test("PC-12 browser parity invokes its executable runner before browser setup", () => {
-    const execution = spawnSync(process.execPath, [resolve(process.cwd(), "scripts/pc-12-player-parity-browser.mjs")], {
+    const execution = spawnSync(process.execPath, [resolve(process.cwd(), "scripts/playerParityBrowser.mjs")], {
         cwd: process.cwd(),
         encoding: "utf8",
         env: {PATH: process.env.PATH ?? ""},
@@ -168,7 +168,7 @@ test("PC-12 browser parity executes Studio and an isolated exact-consumer browse
 
     try {
         await prepareFixtureBrowserRuntime();
-        const execution = spawnSync(process.execPath, [resolve(process.cwd(), "scripts/pc-12-player-parity-browser.mjs")], {
+        const execution = spawnSync(process.execPath, [resolve(process.cwd(), "scripts/playerParityBrowser.mjs")], {
             cwd: process.cwd(),
             encoding: "utf8",
             timeout: 300_000,

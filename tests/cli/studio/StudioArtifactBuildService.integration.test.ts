@@ -263,7 +263,7 @@ describe("StudioArtifactBuildService (integration)", () => {
         const stakeDir = path.join(workDir, "stake");
         // Bind the real install to the compiled runtime, not the checkout: each
         // registry inspection snapshots the complete installed dependency graph.
-        // Copying checkout tests/docs/evidence at every step is unrelated work.
+        // Copying checkout tests/support files at every step is unrelated work.
         const runtimePackageRoot = stageCompiledTestRuntime(workDir);
         const installRuntime = withLocalPokieInstall(runtimePackageRoot, (command, args, cwd) =>
             runBundledNpmCommand(command, args[0] === "install" ? [...args, "--offline", "--no-audit", "--no-fund"] : args, cwd));

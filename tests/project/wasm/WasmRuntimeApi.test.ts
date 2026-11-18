@@ -372,7 +372,7 @@ describe("Pokie WASM runtime API", () => {
 });
 
 
-it.each(["stepwise", "composite"] as const)("V2C-21 validates retained %s results before direct/replay host mutation", async delivery => {
+it.each(["stepwise", "composite"] as const)("validates retained %s results before direct/replay host mutation", async delivery => {
     const fixture = createCanonicalWasmFixture({blueprint: weightedBonusBlueprint()});
     const host = new SeededPokieWasmHost("receipt");
     const restore = jest.spyOn(host, "restoreState");

@@ -7,7 +7,7 @@ import type {PlaySessionView} from "../../../../../../cli/studio-client/src/hook
 import {PlayTab} from "../../../../../../cli/studio-client/src/components/project/PlayTab";
 import {boundedPlayChain} from "../../../../studio/runtime/fixtures/boundedPlayChain";
 
-describe("V2C-14 real bounded Play accounting", () => {
+describe("real bounded Play accounting", () => {
     let combined: StudioRuntimeSessionView[];
     let cascade: StudioRuntimeSessionView[];
     beforeAll(async () => {
@@ -90,7 +90,7 @@ describe("V2C-14 real bounded Play accounting", () => {
 // P5-POLISH-19: proves the real Studio Play presentation entry point (PlayTab -> RoundSummary ->
 // RoundArtifactInspector -> GameScreenView -> CanonicalPlayerView -> cli/client/player's own DOM
 // functions) actually renders the exact fixture round captured live from a real Studio Play session --
-// not the shared player module mounted in isolation (see docs/phase5-evidence/p5-polish-19/README.md's
+// not the shared player module mounted in isolation (see the Studio Play capture fixture notes
 // own "Rendered, not just JSON" section for the prior round review correctly rejected). The fixture file
 // loaded below is the unmodified capture from that same round's own evidence table (Studio Play row):
 // `pokie studio --no-open`, a real `POST /api/project/play/session {seed: "fixture-round"}` then a real
@@ -109,7 +109,7 @@ describe("PlayTab renders a real captured Studio Play round through the actual p
     function loadFixtureSession(): StudioRuntimeSessionView {
         const fixturePath = path.resolve(
             __dirname,
-            "../../../../../../docs/phase5-evidence/p5-polish-19/parity/after-fix-studio-play-spin.json",
+            "../../fixtures/studio-play-spin.json",
         );
         const captured = JSON.parse(readFileSync(fixturePath, "utf-8")) as {status: "ok"; session: StudioRuntimeSessionView};
         return captured.session;
@@ -419,7 +419,7 @@ it("clears consumed purchase UI intent even when the confirmed default mode has 
     expect(onSpin).toHaveBeenLastCalledWith(0.05, "base", "stepwise");
 });
 
-it("V2C-13 presents a real transformed multiplier round with payout evidence and visible win highlights", async () => {
+it("presents a real transformed multiplier round with payout evidence and visible win highlights", async () => {
     const {generatedMechanicsGame} = await import("../../../../../v2/fixtures/ExistingMechanicsGame");
     const {StudioPlayService} = await import("../../../../../../cli/studio/runtime/StudioPlayService");
     const blueprint = JSON.parse(readFileSync(path.resolve(__dirname, "../../../../../../examples/blueprints/wild-transform.blueprint.json"), "utf8"));
@@ -486,7 +486,7 @@ it("renders portable selection identity and configured versus observed frequency
 });
 
 
-it("V2C-22-REPLACEMENT-PLAY-SELECTION reconciles removed modes and disjoint bets while preserving recoverable intent", () => {
+it("REPLACEMENT-PLAY-SELECTION reconciles removed modes and disjoint bets while preserving recoverable intent", () => {
     const onSpin = jest.fn();
     const original: StudioRuntimeSessionView = {sessionId: "old", game: {id: "same-path", name: "G", version: "1"}, bet: 0.05,
         availableBets: [0.05, 7.5], availableBetModeIds: ["base", "buy"], betModeId: "base", screen: [["A"]]};

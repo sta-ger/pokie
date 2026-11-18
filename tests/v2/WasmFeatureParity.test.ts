@@ -191,7 +191,7 @@ it("fails consistent feature preflight before publication and retains unsupporte
                 destination = path.join(directory, `${field}.wasm`);
             fs.writeFileSync(source, JSON.stringify(blueprint));
             const original = fs.readFileSync(source);
-            const project = {type: "blueprint" as const, rootPath: source, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "V2C-21"};
+            const project = {type: "blueprint" as const, rootPath: source, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test fixture"};
             expect(() => resolveCanonicalWasmGameModel(blueprint)).toThrow(/weightedBonus|services|evaluator/);
             expect(new ArtifactConversionPlanner().plan(project, "wasm").status).toBe("unavailable");
             await expect(new WasmArtifactBuilder("1.3.0").build(project, destination)).rejects.toThrow();
@@ -240,7 +240,7 @@ it("runs a public CLI composite purchase with reel-major JSON observations and a
         const source = path.join(directory, "game.blueprint.json"),
             artifact = path.join(directory, "game.wasm");
         fs.writeFileSync(source, JSON.stringify(blueprint));
-        await new WasmArtifactBuilder("1.3.0").build({type: "blueprint", rootPath: source, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "V2C-21"}, artifact);
+        await new WasmArtifactBuilder("1.3.0").build({type: "blueprint", rootPath: source, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test fixture"}, artifact);
         expect(await new RunWasmCommand().run([artifact, "--seed", "purchase", "--bet", "0.05", "--mode", "buy", "--delivery", "composite", "--format", "json"])).toBe(0);
         const result = JSON.parse(log.mock.calls[log.mock.calls.length - 1][0] as string);
         expect(result).toMatchObject({round: {stake: 0.5, win: 0.2, screen: [["A"], ["A"], ["A"]], logicalRound: {status: "completed", totalStake: 0.5}}, state: {schemaVersion: "pokie.state.v4"}});
@@ -252,7 +252,7 @@ it("runs a public CLI composite purchase with reel-major JSON observations and a
 });
 
 
-it("V2C-21 classifies seed-7 cascades across stepwise, composite, resumed and replay boundaries", async () => {
+it("classifies seed-7 cascades across stepwise, composite, resumed and replay boundaries", async () => {
     const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");
     const {advancePokieWasmReplay} = await import("../../src/wasm/PokieWasmCommands.js");
     const blueprint = boundedBlueprint("cascade");

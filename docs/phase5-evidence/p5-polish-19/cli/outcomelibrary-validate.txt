@@ -1,1 +1,0 @@
-"./bundle" is a valid outcome library bundle (deep check).

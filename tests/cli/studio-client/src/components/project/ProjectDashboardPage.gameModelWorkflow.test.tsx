@@ -970,7 +970,7 @@ describe("ProjectDashboardPage - Game Model tab editing", () => {
         fireEvent.blur(id);
         const label = within(bets).getByLabelText("Bet mode 1 label");
         await user.clear(label);
-        await user.type(label, "Valera mode");
+        await user.type(label, "Feature mode");
         fireEvent.blur(label);
         const costMultiplier = within(bets).getByLabelText("Bet mode 1 cost multiplier");
         await user.type(costMultiplier, "1");
@@ -985,7 +985,7 @@ describe("ProjectDashboardPage - Game Model tab editing", () => {
         const saved = calls.find((call) => call.url === "/api/home/blueprints/save");
         expect(JSON.parse(saved!.init!.body!).blueprint.availableBets).toEqual([1, 10]);
         expect(JSON.parse(saved!.init!.body!).blueprint.betModes).toEqual([
-            {id: "base", label: "Valera mode", costMultiplier: 1, targetRtp: 96, isDefault: true},
+            {id: "base", label: "Feature mode", costMultiplier: 1, targetRtp: 96, isDefault: true},
         ]);
     });
 

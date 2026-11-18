@@ -397,9 +397,9 @@ that, treat any future "just make Stake Engine a target" request as reopening a 
 answered here.
 
 Cloud and private RGS remain product hypotheses. Local `serve`/`dev` and this SDK are implemented primitives;
-they do not establish either product. See the [reviewed status register](https://github.com/fromstan/pokie/blob/develop/docs/audit-corrections/README.md).
+they do not establish either product. See the reviewed status register.
 
 
-## Canonical dossier preparation (V2C-27)
+## Canonical dossier preparation
 
 Dossier preparation does not infer SDK acceptance from artifact identity. The current dossier explicitly marks SDK evidence unavailable. A local versioned SDK diagnostic and target capabilities are engineering compatibility evidence, never provider acceptance or regulatory approval. See [dossier boundaries](certification-evidence-bundle.md).

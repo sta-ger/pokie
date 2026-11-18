@@ -1276,7 +1276,7 @@ it.each(["simulation", "replay"] as const)("preserves rejected admission and fai
     }
 });
 
-it("V2C-22-SIMULATION-REPLAY-BINDING admits only retained single/all-mode steps through the production browser API", async () => {
+it("SIMULATION-REPLAY-BINDING admits only retained single/all-mode steps through the production browser API", async () => {
     const path = await import("path");
     const {FileStudioJobRepository} = await import("../../../cli/studio/jobs/FileStudioJobRepository.js");
     const {bindReplayToSimulationReport, validateReplayRequest} = await import("../../../cli/studio/replay/validateReplayRequest.js");
@@ -1414,7 +1414,7 @@ it("V2C-22-SIMULATION-REPLAY-BINDING admits only retained single/all-mode steps 
     }
 });
 
-it("V2C-22-OPTIONAL-SEED executes replay-only requests with one retained seed and safely reuses admission after rejection", async () => {
+it("OPTIONAL-SEED executes replay-only requests with one retained seed and safely reuses admission after rejection", async () => {
     const {StudioReplayExecutionService} = await import("../../../cli/studio/replay/StudioReplayExecutionService.js");
     const {validateReplayRequest} = await import("../../../cli/studio/replay/validateReplayRequest.js");
     const {collectPokieWasmReplay} = await import("../../../src/wasm/PokieWasmReplay.js");
@@ -1498,7 +1498,7 @@ it("V2C-22-OPTIONAL-SEED executes replay-only requests with one retained seed an
     }
 });
 
-it("V2C-22-RESTORE-REJECTION retains an executed foreign-checkpoint failure and the original playable owner", async () => {
+it("RESTORE-REJECTION retains an executed foreign-checkpoint failure and the original playable owner", async () => {
     const fixture = createCanonicalWasmFixture({availableBets: [0.05, 7.5, 1e-7]});
     const test = await browserOwner(fixture);
     const reference = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("0"));
@@ -1555,7 +1555,7 @@ it("V2C-22-RESTORE-REJECTION retains an executed foreign-checkpoint failure and 
     }
 });
 
-it.each(["stepwise", "composite"] as const)("V2C-22-RESTORE-CURSOR projects pending %s progress without recording a new spin", async delivery => {
+it.each(["stepwise", "composite"] as const)("RESTORE-CURSOR projects pending %s progress without recording a new spin", async delivery => {
     const {weightedBonusBlueprint} = await import("../../v2/fixtures/WeightedBonusGame.js");
     const blueprint = weightedBonusBlueprint();
     blueprint.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
@@ -1583,7 +1583,7 @@ it.each(["stepwise", "composite"] as const)("V2C-22-RESTORE-CURSOR projects pend
         await test.close();
     }
 });
-it.each([true, false])("V2C-22-PUBLICATION-RECOVERY retries dropped requests/responses with serialize=%s without another play", async serialize => {
+it.each([true, false])("PUBLICATION-RECOVERY retries dropped requests/responses with serialize=%s without another play", async serialize => {
     const fixture = createCanonicalWasmFixture({capabilities: serialize ? ["runtime.play", "runtime.serialize"] : ["runtime.play"]});
     const test = await browserOwner(fixture);
     try {
@@ -1627,7 +1627,7 @@ it.each([true, false])("V2C-22-PUBLICATION-RECOVERY retries dropped requests/res
         await test.close();
     }
 });
-it.each([true, false].flatMap(serialize => ["new", "spin"].flatMap(action => ["request", "response"].map(drop => ({serialize, action, drop})))))("V2C-22-PUBLICATION-RECOVERY recovers $action after dropped $drop beyond the lease with serialize=$serialize", async ({serialize, action, drop}) => {
+it.each([true, false].flatMap(serialize => ["new", "spin"].flatMap(action => ["request", "response"].map(drop => ({serialize, action, drop})))))("PUBLICATION-RECOVERY recovers $action after dropped $drop beyond the lease with serialize=$serialize", async ({serialize, action, drop}) => {
     jest.useFakeTimers({doNotFake: ["nextTick", "queueMicrotask", "setImmediate"]});
     const fixture = createCanonicalWasmFixture({capabilities: serialize ? ["runtime.play", "runtime.serialize"] : ["runtime.play"]});
     const test = await browserOwner(fixture);
@@ -1691,7 +1691,7 @@ it.each([true, false].flatMap(serialize => ["new", "spin"].flatMap(action => ["r
         jest.useRealTimers();
     }
 });
-it.each(["artifact", "generation"].flatMap(replacement => ["new", "spin"].map(action => ({replacement, action}))))("V2C-22-PUBLICATION-BINDING preserves historical $action results without installing a session after $replacement replacement", async ({replacement, action}) => {
+it.each(["artifact", "generation"].flatMap(replacement => ["new", "spin"].map(action => ({replacement, action}))))("PUBLICATION-BINDING preserves historical $action results without installing a session after $replacement replacement", async ({replacement, action}) => {
     const test = await browserOwner();
     const fs = await import("fs");
     try {
@@ -1729,7 +1729,7 @@ it.each(["artifact", "generation"].flatMap(replacement => ["new", "spin"].map(ac
         await test.close();
     }
 });
-it("V2C-22-PUBLICATION-BINDING cannot reattach an historical session after shutdown begins during recovery validation", async () => {
+it("PUBLICATION-BINDING cannot reattach an historical session after shutdown begins during recovery validation", async () => {
     const test = await browserOwner();
     const entered = controlled<void>();
     const release = controlled<void>();
@@ -1766,7 +1766,7 @@ it("V2C-22-PUBLICATION-BINDING cannot reattach an historical session after shutd
         await test.close();
     }
 });
-it("V2C-22-PUBLICATION-RECOVERY carries a real committed feature prefix through Worker errors and the Play error DTO", async () => {
+it("PUBLICATION-RECOVERY carries a real committed feature prefix through Worker errors and the Play error DTO", async () => {
     const {weightedBonusBlueprint} = await import("../../v2/fixtures/WeightedBonusGame.js");
     const blueprint = weightedBonusBlueprint();
     blueprint.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
@@ -1812,7 +1812,7 @@ it("V2C-22-PUBLICATION-RECOVERY carries a real committed feature prefix through 
         await test.close();
     }
 });
-it.each(["cancel", "reject"] as const)("V2C-22-ASYNC-OWNERSHIP ignores a delayed execution heartbeat %s after completion and Worker rebinding", async outcome => {
+it.each(["cancel", "reject"] as const)("ASYNC-OWNERSHIP ignores a delayed execution heartbeat %s after completion and Worker rebinding", async outcome => {
     jest.useFakeTimers({doNotFake: ["nextTick", "queueMicrotask", "setImmediate"]});
     const test = await browserOwner();
     const heartbeat = controlled<OwnerResponse>();
@@ -1864,7 +1864,7 @@ it.each(["cancel", "reject"] as const)("V2C-22-ASYNC-OWNERSHIP ignores a delayed
         jest.useRealTimers();
     }
 });
-it("V2C-22-ASYNC-OWNERSHIP ignores an idle-session heartbeat after the Worker is rebound", async () => {
+it("ASYNC-OWNERSHIP ignores an idle-session heartbeat after the Worker is rebound", async () => {
     jest.useFakeTimers({doNotFake: ["nextTick", "queueMicrotask", "setImmediate"]});
     const test = await browserOwner();
     const heartbeat = controlled<OwnerResponse>();
@@ -1893,7 +1893,7 @@ it("V2C-22-ASYNC-OWNERSHIP ignores an idle-session heartbeat after the Worker is
         jest.useRealTimers();
     }
 });
-it("V2C-22-ASYNC-OWNERSHIP permits a validated replacement when the previous idle heartbeat fails during publication", async () => {
+it("ASYNC-OWNERSHIP permits a validated replacement when the previous idle heartbeat fails during publication", async () => {
     jest.useFakeTimers({doNotFake: ["nextTick", "queueMicrotask", "setImmediate"]});
     const test = await browserOwner();
     const heartbeat = controlled<OwnerResponse>();
@@ -1924,7 +1924,7 @@ it("V2C-22-ASYNC-OWNERSHIP permits a validated replacement when the previous idl
     }
 });
 
-it.each(["switch", "dispose"] as const)("V2C-22-ASYNC-OWNERSHIP cannot install delayed Play/context ownership after %s", async action => {
+it.each(["switch", "dispose"] as const)("ASYNC-OWNERSHIP cannot install delayed Play/context ownership after %s", async action => {
     const test = await browserOwner();
     const finish = controlled<OwnerResponse>();
     const accepted = controlled<OwnerResponse>();
@@ -1972,7 +1972,7 @@ it.each(["switch", "dispose"] as const)("V2C-22-ASYNC-OWNERSHIP cannot install d
         await test.close();
     }
 });
-it("V2C-22-ASYNC-OWNERSHIP orders concurrent Project context responses by request generation", async () => {
+it("ASYNC-OWNERSHIP orders concurrent Project context responses by request generation", async () => {
     const test = await browserOwner();
     const old = controlled<OwnerResponse>();
     try {
@@ -1987,7 +1987,7 @@ it("V2C-22-ASYNC-OWNERSHIP orders concurrent Project context responses by reques
         await test.close();
     }
 });
-it("V2C-22-PUBLICATION-RECOVERY pagehide publishes the latest cancellation prefix before asynchronous finish", async () => {
+it("PUBLICATION-RECOVERY pagehide publishes the latest cancellation prefix before asynchronous finish", async () => {
     const test = await browserOwner();
     const beaconSent = controlled<{url: string; body: string}>();
     const holdFinish = controlled<void>();
@@ -2031,7 +2031,7 @@ it("V2C-22-PUBLICATION-RECOVERY pagehide publishes the latest cancellation prefi
 });
 
 
-it("V2C-22-SIMULATION-REPLAY-FUNDING reproduces a loss-making accepted sample beyond standalone funding through browser admission and Worker execution", async () => {
+it("SIMULATION-REPLAY-FUNDING reproduces a loss-making accepted sample beyond standalone funding through browser admission and Worker execution", async () => {
     const {collectPokieWasmReplay} = await import("../../../src/wasm/PokieWasmReplay.js");
     const {POKIE_WASM_SIMULATION_CREDITS} = await import("../../../src/wasm/PokieWasmCommands.js");
     const fixture = createCanonicalWasmFixture({availableBets: [7.5], paytable: {A: {2: 0}, B: {2: 0}}});

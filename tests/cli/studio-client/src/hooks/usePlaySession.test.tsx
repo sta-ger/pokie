@@ -35,7 +35,7 @@ function strictModeWrapper(fetchImpl: FetchLike) {
     };
 }
 
-it.each(["error", "messageerror"])("V2C-22-WORKER-RETRY recovers the rendered browser-play %s through a fresh admitted session", async failure => {
+it.each(["error", "messageerror"])("WORKER-RETRY recovers the rendered browser-play %s through a fresh admitted session", async failure => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-rendered-retry-"));
     const file = path.join(directory, "game.wasm");
     const fixture = createCanonicalWasmFixture({id: GAME.id});
@@ -139,7 +139,7 @@ it.each(["error", "messageerror"])("V2C-22-WORKER-RETRY recovers the rendered br
         expect(created).toBe(2);
         expect(terminated).toBe(1);
         session.dispose();
-        // V2C-22-REPLACEMENT-PLAY-SELECTION: follow Retry through actual replacement spins.
+        // REPLACEMENT-PLAY-SELECTION: follow Retry through actual replacement spins.
         fs.writeFileSync(file, modes.bytes);
         fs.writeFileSync(`${file}.pokie-wasm.json`, JSON.stringify(modes.manifest));
         await user.click(screen.getByRole("button", {name: "Reset Play session"}));
@@ -181,7 +181,7 @@ it.each(["error", "messageerror"])("V2C-22-WORKER-RETRY recovers the rendered br
     expect(terminated).toBe(created);
 }, 90_000);
 
-it.each([true, false])("V2C-22-BET-COMMITMENT renders the exact selection before and after ordered fractional plays with artifact.inspect=%s", async inspect => {
+it.each([true, false])("BET-COMMITMENT renders the exact selection before and after ordered fractional plays with artifact.inspect=%s", async inspect => {
     const bets = [0.05, 7.5, 1e-7];
     const fixture = createCanonicalWasmFixture({id: GAME.id, availableBets: bets,
         reelStrips: [["A", "B", "C"], ["A", "B", "C"], ["A", "B", "C"]], paytable: {A: {3: 5}, B: {3: 0}},

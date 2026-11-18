@@ -24,7 +24,7 @@ const manifest = {id: "precision", name: "Precision fixture", version: "1"};
 const adaptive = {minRounds: 2, rtpTolerance: 0.001, checkIntervalRounds: 2, stableChecks: 1};
 
 /** Known-answer data traverse the actual public projections; no alternative denominator calculator. */
-describe("V2C-17 public analytics parity", () => {
+describe("public analytics parity", () => {
     afterEach(() => jest.restoreAllMocks());
 
     it.each(["populated", "incomplete", "empty"] as const)("keeps a %s saved report authoritative across service, CLI, renderers, downloads and Studio", async kind => {

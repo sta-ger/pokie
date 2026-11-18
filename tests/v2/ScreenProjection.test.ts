@@ -1308,7 +1308,7 @@ describe("Generated / visible / evaluated screen contracts", () => {
     });
 });
 
-it.each([false, true])("V2C-13 ignores hidden expansion/sticky triggers and winning multiplier wilds (validation disabled %s)", validateOnEvaluate => {
+it.each([false, true])("ignores hidden expansion/sticky triggers and winning multiplier wilds (validation disabled %s)", validateOnEvaluate => {
     const config = overscanConfig();
     config.setScreenModifiers({wilds: [{symbol: "W", factor: 100, substitutes: ["B"]}], rules: [
         {id: "hidden-transform", type: "transform", space: "generated", positions: [[0, 0], [0, 6]], from: "S", to: "W"},

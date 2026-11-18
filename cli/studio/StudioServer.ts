@@ -1570,28 +1570,6 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        // Installed help is a static public site with its own routes, never a Studio route.
-        if (url.pathname === "/help") {
-            res.writeHead(308, {Location: `/help/${url.search}`});
-            res.end();
-            return;
-        }
-        if (url.pathname.startsWith("/help/")) {
-            const requested = url.pathname.endsWith("/") ? `${url.pathname}index.html` : url.pathname;
-            const helpFile = this.resolveStaticFilePath(requested);
-            if (helpFile === undefined && !url.pathname.endsWith("/")) {
-                const index = this.resolveStaticFilePath(`${url.pathname}/index.html`);
-                if (index !== undefined && isPathWithin(path.join(this.studioRoot, "help"), index)) {
-                    res.writeHead(308, {Location: `${url.pathname}/${url.search}`});
-                    res.end();
-                    return;
-                }
-            }
-            if (helpFile !== undefined && isPathWithin(path.join(this.studioRoot, "help"), helpFile)) this.sendFile(res, helpFile);
-            else this.sendJson(res, 404, {error: "Documentation page not found. Return to /help/docs/."});
-            return;
-        }
-
         // Studio uses hash routing, but public links and browser refreshes can still arrive at a
         // client route such as /home/projects. Serve the app shell for those extensionless routes
         // so the client can restore its Home/project state instead of exposing a server 404.

@@ -1,3 +1,0 @@
-Reel strip generation for "mathgame.json"
-Materialized 4 reel(s) into "mathgame.materialized.json" -- "reelStripGeneration" removed, "reelStrips" is now literal.
-EXIT:0

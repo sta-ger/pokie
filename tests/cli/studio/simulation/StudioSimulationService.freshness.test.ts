@@ -8,7 +8,7 @@ import {StudioJobService} from "../../../../cli/studio/jobs/StudioJobService.js"
 import {validateSimulationRequest} from "../../../../cli/studio/simulation/validateSimulationRequest.js";
 import {createCanonicalWasmFixture} from "../../../fixtures/wasm/createCanonicalWasmFixture.js";
 
-it("V2C-36 binds restoration to accepted authored bytes across every simulation projection and service reuse", async () => {
+it("binds restoration to accepted authored bytes across every simulation projection and service reuse", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "v36-source-"));
     const artifact = path.join(directory, "game.wasm");
     const sidecar = `${artifact}.pokie-wasm.json`;
@@ -104,7 +104,7 @@ it("V2C-36 binds restoration to accepted authored bytes across every simulation 
     }
 });
 
-it("V2C-36 cannot accept a browser-supplied source revision or validate a legacy durable job without source authority", () => {
+it("cannot accept a browser-supplied source revision or validate a legacy durable job without source authority", () => {
     const submitted = {rounds: 2, sourceRevision: `sha256:${"0".repeat(64)}`};
     const request = validateSimulationRequest(submitted);
     expect(request).toEqual({rounds: 2, workers: 1});

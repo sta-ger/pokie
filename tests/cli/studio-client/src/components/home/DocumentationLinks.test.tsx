@@ -2,20 +2,18 @@ import {MantineProvider} from "@mantine/core";
 import {render, screen} from "@testing-library/react";
 import {DocumentationLinks} from "../../../../../../cli/studio-client/src/components/home/DocumentationLinks";
 
-it("renders the local Home documentation destinations without deployment dependencies", () => {
+it("links Home documentation to the repository docs", () => {
     render(
         <MantineProvider>
             <DocumentationLinks />
         </MantineProvider>,
     );
+    const docs = "https://github.com/sta-ger/pokie/tree/develop/docs";
     const expected = [
-        ["Public docs (included locally)", "/help/docs/"],
-        ["Getting started", "/help/docs/getting-started/"],
-        ["CLI reference", "/help/docs/cli-api/"],
-        [
-            "FromStan / POKIE — examples and boundaries",
-            "/help/",
-        ],
+        ["Documentation", docs],
+        ["Getting started", `${docs}/getting-started.md`],
+        ["CLI reference", `${docs}/cli.md`],
+        ["Example games", "https://github.com/sta-ger/pokie-examples"],
     ];
     for (const [name, href] of expected) {
         const link = screen.getByRole("link", {name});

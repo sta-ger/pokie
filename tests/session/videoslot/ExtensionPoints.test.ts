@@ -573,7 +573,7 @@ const accountingWrappers: Record<string, (fixture: ReturnType<typeof accountingF
         new VideoSlotWithFreeGamesSession(fixture.config, fixture.generator, fixture.calculator, fixture.base))),
 };
 
-describe("V2C-37-PAYOUT-CUSTOM accounting capability", () => {
+describe("PAYOUT-CUSTOM accounting capability", () => {
     test("a complete legacy codec preserves fractional balances through rejection, restore and subsequent play", () => {
         const game = legacyFractionalGame(0.1, 2),
             session = game.createSession(),

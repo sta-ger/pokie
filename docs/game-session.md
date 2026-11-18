@@ -475,9 +475,7 @@ operator recovery and keeps the session reserved.
 The controllable independent provider for controller verification is
 `tests/server/wallet/fixtures/ControllableDurableWallet.ts`. Its separate SQLite database,
 pre/post-action disconnects, missing acknowledgement, inspection overrides and debit/payout
-counters exercise the lifecycle without substituting the local reference ledger. Candidate
-implementation checks and pending independent evidence are recorded in
-[V2C-05](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-05.md).
+counters exercise the lifecycle without substituting the local reference ledger.
 
 ### Logical entry and continuation
 

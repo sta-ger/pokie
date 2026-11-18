@@ -306,7 +306,7 @@ const typescriptRules = {
 
 export default [
     {
-        ignores: ["dist/**", "docs/phase4-evidence/pokie-examples-migration/**"],
+        ignores: ["dist/**"],
     },
     {
         files: ["**/*.ts", "**/*.tsx"],

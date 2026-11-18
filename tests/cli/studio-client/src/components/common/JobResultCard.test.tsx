@@ -6,7 +6,7 @@ import {JobResultCard} from "../../../../../../cli/studio-client/src/components/
 import {jobFocusLayout} from "../../testUtils/jobFocusLayout";
 
 describe("JobResultCard", () => {
-    it.each(["retry", "resume"] as const)("V2C-37 retains disabled %s/output controls and releases them without changing the receipt", action => {
+    it.each(["retry", "resume"] as const)("retains disabled %s/output controls and releases them without changing the receipt", action => {
         const onRecover = jest.fn();
         const onRecoveryAction = jest.fn();
         const onOpenOutput = jest.fn();

@@ -58,7 +58,7 @@ export async function optimizeBrowserBlueprint(
         sampling.workers !== 1 ||
         p.tunables.length > 4
     ) throw new Error(
-        "invalid: playground limits are 16 candidates, 8192 search/assessment samples, 2048 per candidate, four tunables and one Worker.",
+        "invalid: browser limits are 16 candidates, 8192 search/assessment samples, 2048 per candidate, four tunables and one Worker.",
     );
     if (control.signal?.aborted) throw new Error("cancelled: optimization drained");
     await createBlueprintWasmArtifact(source);

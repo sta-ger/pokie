@@ -90,7 +90,7 @@ describe("WasmArtifactBuilder", () => {
         expect(fs.readFileSync(sourcePath, "utf8")).toBe(JSON.stringify(corrected));
     });
 
-    it.each(["literal", "generated"])("V2C-21 resolves %s reel precedence through planning, preview and publication without changing source", async kind => {
+    it.each(["literal", "generated"])("resolves %s reel precedence through planning, preview and publication without changing source", async kind => {
         const authored = {...blueprint, symbolWeights: {A: 1, B: 20, C: 30}, mechanics: {cascade: {maxCascades: 10}}};
         if (kind === "generated") {
             Reflect.deleteProperty(authored, "reelStrips");

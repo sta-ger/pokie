@@ -450,8 +450,8 @@ body,
     transition-property: opacity !important;
 }
 
-/* The public site's dark masthead, copper rule and cream workspace carry through
-   to Studio. Semantic status colours remain separate from the brand accent. */
+/* Studio's dark masthead, copper rule and cream workspace.
+   Semantic status colours remain separate from the brand accent. */
 .studio-app-masthead {
     background: #172d3b;
     color: #fff9ed;

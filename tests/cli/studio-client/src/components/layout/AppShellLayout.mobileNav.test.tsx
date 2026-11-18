@@ -205,8 +205,8 @@ describe("AppShellLayout - mobile navigation", () => {
             expect(burger).toHaveAttribute("aria-expanded", "false");
             expect(document.activeElement).toBe(burger);
             const draft = screen.getByRole("textbox", {name: "Game name"});
-            await user.type(draft, " P805 unsaved");
-            expect(draft).toHaveValue("Starter game P805 unsaved");
+            await user.type(draft, " unsaved");
+            expect(draft).toHaveValue("Starter game unsaved");
             expect(panel).toHaveAttribute("inert");
             for (const label of ["Projects", "Start a game"]) {
                 burger.focus();
@@ -220,7 +220,7 @@ describe("AppShellLayout - mobile navigation", () => {
                 expect(burger).toHaveAttribute("aria-expanded", "false");
                 expect(panel).toHaveAttribute("inert");
                 expect(document.activeElement).toBe(burger);
-                expect(draft).toHaveValue("Starter game P805 unsaved");
+                expect(draft).toHaveValue("Starter game unsaved");
                 if (label === "Projects") {
                     expect(screen.getByRole("status")).toHaveTextContent("projects terminal result");
                     expect(draft).not.toBeVisible();

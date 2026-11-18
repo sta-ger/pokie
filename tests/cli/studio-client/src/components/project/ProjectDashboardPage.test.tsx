@@ -617,7 +617,7 @@ it.each(["blueprint", "parWorkbook", "tsPackage", "outcomeLibrary", "stakeAdapte
 
 // Source-aware regression for the retained 100-round, 94% report followed by
 // the rendered Paytable Save (A x3: 10 -> 11). This is not cold collection.
-describe("V2C-34 saved-design simulation freshness", () => {
+describe("saved-design simulation freshness", () => {
     function fixture() {
         let blueprint = {
             manifest: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"},
@@ -707,7 +707,7 @@ describe("V2C-34 saved-design simulation freshness", () => {
         return paytable;
     }
 
-    it("V2C-34-SIMULATION-REATTACH keeps real pre-save durable work historical on first discovery, then accepts new execution", async () => {
+    it("SIMULATION-REATTACH keeps real pre-save durable work historical on first discovery, then accepts new execution", async () => {
         const user = userEvent.setup();
         const test = fixture();
         const directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/v2c34-reattach-"));
@@ -800,7 +800,7 @@ describe("V2C-34 saved-design simulation freshness", () => {
         }
     });
 
-    it.each(["loading", "fetch", "body"])("V2C-34-NAVIGATION-RECOVERY reaches guarded Configure after saved payout and %s exhaustion with the same real job", async phase => {
+    it.each(["loading", "fetch", "body"])("NAVIGATION-RECOVERY reaches guarded Configure after saved payout and %s exhaustion with the same real job", async phase => {
         const user = userEvent.setup();
         const test = fixture();
         const root = "/games/sample-slot";
@@ -904,7 +904,7 @@ describe("V2C-34 saved-design simulation freshness", () => {
         }
     });
 
-    it("V2C-34-SAVE-SUPERSEDE carries a pending selection to the accepted Save generation", async () => {
+    it("SAVE-SUPERSEDE carries a pending selection to the accepted Save generation", async () => {
         const user = userEvent.setup();
         const test = fixture();
         let finishSave: (() => void) | undefined;
@@ -956,7 +956,7 @@ describe("V2C-34 saved-design simulation freshness", () => {
         expect(test.payout()).toBe(11);
     });
 
-    it("V2C-34-SIMULATION-SAVE invalidates the current report on accepted Save and preserves explicit historical inspection", async () => {
+    it("SIMULATION-SAVE invalidates the current report on accepted Save and preserves explicit historical inspection", async () => {
         const user = userEvent.setup();
         const test = fixture();
         const view = renderRoutedApp({fetchImpl: test.fetchImpl, initialEntries: ["/project/simulation"]});
@@ -999,7 +999,7 @@ describe("V2C-34 saved-design simulation freshness", () => {
         expect(within(restored).getByText(/Historical simulation result/)).toBeVisible();
     });
 
-    it.each(["invalid", "conflict", "cancel"])("V2C-34-SIMULATION-REJECT preserves current results through %s and allows a later accepted Save", async rejection => {
+    it.each(["invalid", "conflict", "cancel"])("SIMULATION-REJECT preserves current results through %s and allows a later accepted Save", async rejection => {
         const user = userEvent.setup();
         const test = fixture();
         renderRoutedApp({fetchImpl: test.fetchImpl, initialEntries: ["/project/simulation"]});
@@ -1033,7 +1033,7 @@ describe("V2C-34 saved-design simulation freshness", () => {
         expect(await screen.findByText(/The saved design changed/)).toBeVisible();
     });
 
-    it.each(["report", "comparison"])("V2C-34-SIMULATION-LATE retires a pending %s on Save", async pending => {
+    it.each(["report", "comparison"])("SIMULATION-LATE retires a pending %s on Save", async pending => {
         const user = userEvent.setup();
         const test = fixture();
         let delay = false;
@@ -1158,7 +1158,7 @@ describe("V2C-34 saved-design simulation freshness", () => {
         expect(test.payout()).toBe(10);
     });
 
-    it("V2C-34-SIMULATION-APPLY invalidates through the sibling authored Apply but preserves Save-as", async () => {
+    it("SIMULATION-APPLY invalidates through the sibling authored Apply but preserves Save-as", async () => {
         const user = userEvent.setup();
         const test = fixture();
         let exposeOptimization = false;

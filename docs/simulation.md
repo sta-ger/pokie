@@ -18,7 +18,7 @@ overlapping lifecycle summaries are separate from the additive base/feature/jack
 partition. Canonical feature WASM supplies lifecycle/component evidence; ordinary amount-only WASM,
 flattened outcome events and custom sessions cannot establish missing lifecycle attribution. Missing
 capabilities remain unavailable rather than observed zero. See the
-[launch support register](v2-completion/launch-mechanics-support.md) for composition and target limits.
+[launch support register](supported-mechanics.md) for composition and target limits.
 
 Ordinary simulation reports support JSON, Markdown and HTML. Canonical certification dossiers separately
 support JSON, console text, Markdown, HTML and local selectable-text PDF through
@@ -635,7 +635,7 @@ Reports without sequence fields remain comparable. Cancelled/failed simulation j
 keep their existing partial-result/completion contract; editor previews are not
 observed simulation results.
 
-Authored Hold&Win/jackpot/mode compositions use the existing aggregate/parallel runners and report renderers. Actual charged stake remains the denominator; zero-stake continuation payouts retain feature attribution. Jackpot statistics are run-local deltas, including reused/restored sessions. Each simulation worker owns independent session-local accumulating pools; reports do not represent one shared progressive. Fixed pools count contributions without growing their balance. A fixed mode selector intentionally repeats purchases when available, unlike Play's fresh-action purchase controls. Incomplete feature tails remain incomplete observations. See [the catalogue](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-12.md).
+Authored Hold&Win/jackpot/mode compositions use the existing aggregate/parallel runners and report renderers. Actual charged stake remains the denominator; zero-stake continuation payouts retain feature attribution. Jackpot statistics are run-local deltas, including reused/restored sessions. Each simulation worker owns independent session-local accumulating pools; reports do not represent one shared progressive. Fixed pools count contributions without growing their balance. A fixed mode selector intentionally repeats purchases when available, unlike Play's fresh-action purchase controls. Incomplete feature tails remain incomplete observations. See the catalogue.
 
 Authored modifier reports expose `modifiers.steps`, `ruleApplications`,
 `stickySteps` (including the expiry application) and `multipliedComponents`.
@@ -644,7 +644,7 @@ then summed across chunks/workers. Sticky state stays with each session across
 chunks and starts empty in each worker/job. Existing worker seed partitioning
 still applies: serial and parallel sticky trajectories are not promised identical.
 
-## Bounded authored mechanics (V2C-14)
+## Bounded authored mechanics
 
 See [cascades, respins and collections](bounded-mechanics.md) for the declarative
 contracts, supported compositions, authoring/build/extraction/PAR workflow,
@@ -654,10 +654,10 @@ logical-round accounting, continuation and durability boundaries.
 
 See [finite weighted bonus outcomes](weighted-bonus.md) for selection identity,
 payout/duration units, authoring/interchange, restoration/replay, statistics and
-custom-rule/target boundaries. The [launch support register](v2-completion/launch-mechanics-support.md)
+custom-rule/target boundaries. The [launch support register](supported-mechanics.md)
 maps every mandatory family separately from arbitrary custom callbacks.
 
-## Feature analytics aggregates (V2C-16)
+## Feature analytics aggregates
 
 `AggregateSimulationRunner` and `Simulation` share the accepted mathematical-play
 observer. `SimulationAccumulator.addRound(stake, win, observation?)` accepts its
@@ -781,6 +781,6 @@ A normal-approximation 95% interval is an empirical estimate. Adaptive precision
 Native sampled outcome-library outputs retain their library provenance and statistics and now also project the ordinary saved simulation report. `pokie report` accepts both that projection and the older sampled shape. These sampled estimates are separate from static outcome-source analysis. Flattened artifact events cannot prove lifecycle; ordinary amount-only WASM artifacts supply amount-only observations, and custom sessions may lack lifecycle/component capabilities. Unassignable money stays in `unavailable` without losing total-win accounting.
 
 
-## Canonical dossier preparation (V2C-27)
+## Canonical dossier preparation
 
 Assessment dossiers attach canonical schema-1 simulation reports and reproduce seeded mathematics through the same runner, preserving CI availability, worker seed strategy, feature attribution, logical/subround populations and per-mode denominators. Outcome-source projections label `reproducibility.libraryHash` separately from runtime `configHash`. Exact library distributions do not create sampled CIs or prove full model coverage. See [dossier reproduction](certification-evidence-bundle.md).
