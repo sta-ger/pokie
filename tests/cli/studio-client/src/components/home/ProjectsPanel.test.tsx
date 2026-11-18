@@ -1624,8 +1624,8 @@ describe("V35 Home project removal focus", () => {
     it("V35-HOME-REMOVE-FOCUS-RESIZE keeps the cancelled launcher's visibility through reflow and delayed layout", async () => {
         const user = userEvent.setup();
         const layout = jobFocusLayout();
-        const width = jest.replaceProperty(window, "innerWidth", 1439);
-        const height = jest.replaceProperty(window, "innerHeight", 956);
+        const width = jest.spyOn(window, "innerWidth", "get").mockReturnValue(1439);
+        const height = jest.spyOn(window, "innerHeight", "get").mockReturnValue(956);
         const {fetchImpl, calls} = removalFocusRoutes();
         const rendered = renderWithProviders(<ProjectsFocusHarness />, {fetchImpl});
         let bounds: jest.SpyInstance | undefined;
@@ -1651,8 +1651,8 @@ describe("V35 Home project removal focus", () => {
             expect(layout.scroll).not.toHaveBeenCalled();
             expect(layout.observing(region)).toBe(true);
 
-            width.replaceValue(800);
-            height.replaceValue(650);
+            width.mockReturnValue(800);
+            height.mockReturnValue(650);
             x = 524.171875;
             y = 891.75;
             await resizeProjects();
@@ -1672,7 +1672,7 @@ describe("V35 Home project removal focus", () => {
 
             layout.scroll.mockClear();
             y = 600;
-            height.replaceValue(600);
+            height.mockReturnValue(600);
             await resizeProjects();
             expect(layout.scroll.mock.instances).toEqual([remove]);
 
@@ -1680,8 +1680,8 @@ describe("V35 Home project removal focus", () => {
             layout.scroll.mockClear();
             x = 1294.125;
             y = -24;
-            width.replaceValue(1439);
-            height.replaceValue(956);
+            width.mockReturnValue(1439);
+            height.mockReturnValue(956);
             await resizeProjects();
             expect(layout.scroll.mock.instances).toEqual([remove]);
             expect(remove).toHaveFocus();
@@ -1689,8 +1689,8 @@ describe("V35 Home project removal focus", () => {
         } finally {
             rendered.unmount();
             bounds?.mockRestore();
-            width.restore();
-            height.restore();
+            width.mockRestore();
+            height.mockRestore();
             layout.restore();
         }
     });

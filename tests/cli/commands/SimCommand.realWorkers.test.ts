@@ -8,6 +8,7 @@ import {resolvePokieGameDependencyRoots} from "../../../src/gamepackage/resolveP
 import {createPackageExtractionTestEnvironment} from "../../v2/fixtures/PackageExtractionFixture.js";
 import {SimCommand} from "../../../cli/commands/SimCommand.js";
 import {stageCompiledTestRuntime} from "../../testUtils/stageCompiledTestRuntime.js";
+import {createNativeRequire} from "../../testUtils/createNativeRequire.js";
 
 // Extracted from SimCommand.test.ts: this describe spawns real worker_threads,
 // which is why it lives in the "pokie-integration" lane instead of the default fast
@@ -68,7 +69,7 @@ describe("SimCommand (integration, real loadPokieGame + --workers, real worker t
         // Jest replaces module.createRequire and remaps bare POKIE imports to
         // source. Use Node's actual loader so metadata, sessions and workers all
         // consume the compiled runtime and release its native module cache.
-        const nativeRequire = process.getBuiltinModule("module").createRequire(path.join(runtimeDirectory, "consumer.cjs"));
+        const nativeRequire = createNativeRequire(path.join(runtimeDirectory, "consumer.cjs"));
         nativeLoadGame = (nativeRequire("@fromstan/pokie") as {loadPokieGame: typeof loadPokieGame}).loadPokieGame;
         fixtureRoot = path.join(runtimeDirectory, "playable-game");
         configFixture = path.join(runtimeDirectory, "playable-game-with-config-hash");

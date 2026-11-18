@@ -3,6 +3,32 @@
 This file is for people working on POKIE itself (contributors), not for consumers of the `pokie`
 npm package — see [`docs/README.md`](README.md) for the library's own API reference.
 
+## Dependency maintenance
+
+Use Node 24 (`nvm use`) and `npm ci` for a clean contributor install. ESLint 10 uses
+`eslint.config.mjs`; the former `.eslintrc.json` rules and `.eslintignore` patterns
+are carried into that configuration. The React 7 plugin still needs
+`@eslint/compat` and its scoped ESLint peer override until it supports ESLint 10.
+
+The dependency overrides in `package.json` also keep installs free of deprecated
+packages while upstream packages still request older dependencies:
+
+- ExcelJS 4 uses Fast-CSV 5 and Unzipper 0.12 to remove its deprecated
+  `lodash.isequal` and Fstream/Rimraf dependencies. Keep the PAR workbook
+  import/export tests green when changing these overrides. Retain its Archiver 5
+  dependency: Archiver 6 and 7 reject ExcelJS's custom streams.
+- Jest 30's jsdom dependency is pinned to the 27.4 series, which replaces
+  `whatwg-encoding` and retains the project's Node compatibility range.
+  Native package-copy tests use `tests/testUtils/createNativeRequire.ts` because
+  Jest 30 also redirects `process.getBuiltinModule()` through its module registry.
+- Glob 14 and Minimatch 11 (only for consumers already using Minimatch 7 or newer)
+  fix advisories in the versions requested by Jest, Archiver and coverage tools.
+  Test-Exclude 8 removes the legacy Glob 7 API from the coverage dependency path.
+
+Remove each override when its upstream dependency adopts a supported, patched
+version. The separate vendored Picomatch patch is documented in
+[`vendor/README.md`](../vendor/README.md).
+
 ## Lanes
 
 | Command | What it runs | Coverage | When to use it |

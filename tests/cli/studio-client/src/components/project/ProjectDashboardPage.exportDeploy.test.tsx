@@ -1945,8 +1945,8 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         it.each(["input", "sibling", "dialog"] as const)("handles the retained 375×667 to 1439×956 destination reflow while %s owns focus", async owner => {
             const user = userEvent.setup();
             const layout = jobFocusLayout();
-            const width = jest.replaceProperty(window, "innerWidth", 375);
-            const height = jest.replaceProperty(window, "innerHeight", 667);
+            const width = jest.spyOn(window, "innerWidth", "get").mockReturnValue(375);
+            const height = jest.spyOn(window, "innerHeight", "get").mockReturnValue(667);
             const fetchImpl = fetchImplFrom({
                 ...BASE_ROUTES,
                 "/api/project/artifacts/preview": () => ({ok: false, status: 409, body: {
@@ -2004,8 +2004,8 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                 });
                 layout.scroll.mockClear();
                 desktop = true;
-                width.replaceValue(1439);
-                height.replaceValue(956);
+                width.mockReturnValue(1439);
+                height.mockReturnValue(956);
                 await resize(owner === "sibling" ? () => focusOwner.focus() : undefined);
                 expect(focusOwner).toHaveFocus();
                 expect(input).toHaveValue(".");
@@ -2022,8 +2022,8 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                 rendered.unmount();
                 bounds?.mockRestore();
                 ownerBounds?.mockRestore();
-                width.restore();
-                height.restore();
+                width.mockRestore();
+                height.mockRestore();
                 layout.restore();
             }
         });

@@ -1,6 +1,7 @@
 import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../../../v2/fixtures/PackageExtractionFixture.js";
 import {existingMechanicsBlueprint, generatedMechanicsGame, replayModesBlueprint} from "../../../v2/fixtures/ExistingMechanicsGame.js";
 import {emitPublicRuntime} from "../../../v2/helpers/publicRuntime.js";
+import {createNativeRequire} from "../../../testUtils/createNativeRequire.js";
 import ts from "typescript";
 import {StudioReplayExecutionService} from "../../../../cli/studio/replay/StudioReplayExecutionService.js";
 import {buildReplayDownload} from "../../../../cli/studio/replay/buildReplayDownload.js";
@@ -1518,7 +1519,7 @@ describe("V2C-12 separately loaded package simulation to Replay", () => {
             compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
         }).outputText);
         // Native package resolution deliberately avoids Jest's @fromstan/pokie source alias.
-        const game = process.getBuiltinModule("module").createRequire(path.join(runtime.directory, "consumer.cjs"))(entry) as PokieGame;
+        const game = createNativeRequire(path.join(runtime.directory, "consumer.cjs"))(entry) as PokieGame;
         const session = game.createSession({seed: "v2c12-ordinary-buy-recent"}) as GameSessionHandling & BetModeSelecting;
         session.setCreditsAmount(1000);
         session.setBetMode("buy");
