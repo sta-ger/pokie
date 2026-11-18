@@ -121,9 +121,19 @@ Logical-round and accepted-subround populations are distinct. Missing CI/converg
 never zero. Formatting preserves fractional stakes and tiny nonzero probabilities with round-trip
 number/scientific notation. There is no invented blended all-mode RTP.
 
-The public [template asset](../templates/certification-dossier.v1.json) documents the complete template
-language: a JSON object with exactly `schemaVersion`, nonempty `title`, `introduction` and a permutation
-of **all six** mandatory `sections`. Customization changes title (up to 200 characters), introduction (up to 4000 characters) and section order only;
+A template is a JSON object with exactly `schemaVersion`, nonempty `title`, `introduction` and a
+permutation of **all six** mandatory `sections`:
+
+```json
+{
+    "schemaVersion": 1,
+    "title": "POKIE evidence dossier",
+    "introduction": "Independent assessment preparation",
+    "sections": ["identity", "rules", "statistics", "validation", "reproduction", "support"]
+}
+```
+
+Customization changes title (up to 200 characters), introduction (up to 4000 characters) and section order only;
 it cannot remove identities, semantics, tables or support disclosures. Unknown fields, missing sections,
 duplicate keys, incompatible versions and invalid JSON fail. There is no executable interpolation,
 external stylesheet, image include, resource path or network fetch. Resource/include requests are

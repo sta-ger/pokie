@@ -126,8 +126,7 @@
         "LICENSE",
         "package.json",
         "docs/",
-        "examples/blueprints/",
-        "templates/certification-dossier.v1.json"
+        "examples/blueprints/"
     ],
     "dependencies": {
         "commander": "^14.0.3",
