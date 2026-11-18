@@ -2,13 +2,54 @@
 
 `mechanics.weightedBonus` authors one finite table, independently of whole reel
 sequences, build-time symbol weights, and stored WeightedOutcomeLibrary artifacts.
-See [the runnable example](../examples/blueprints/weighted-bonus.blueprint.json)
-and [launch workflow coverage](supported-mechanics.md).
+See [launch workflow coverage](supported-mechanics.md).
 
 The table declares `id`, `context: "triggered-paid-entry"`, a symbol/count
 `trigger`, a `feature: {id, type: "bonus-respins", maxDuration}`, and an ordered
 `outcomes` array. Each outcome declares `id`, `weight`, `targetId`, `payout`,
 `payoutUnits` (`currency` or `bet-multiple`), and `duration`.
+
+```json
+{
+    "id": "prizes",
+    "context": "triggered-paid-entry",
+    "trigger": {
+        "symbolId": "C",
+        "minimumCount": 3
+    },
+    "feature": {
+        "id": "bonus-respins",
+        "type": "bonus-respins",
+        "maxDuration": 2
+    },
+    "outcomes": [
+        {
+            "id": "small",
+            "weight": 1,
+            "targetId": "bonus-respins",
+            "payout": 3,
+            "payoutUnits": "currency",
+            "duration": 0
+        },
+        {
+            "id": "large",
+            "weight": 3,
+            "targetId": "bonus-respins",
+            "payout": 5,
+            "payoutUnits": "bet-multiple",
+            "duration": 2
+        },
+        {
+            "id": "zero",
+            "weight": 0,
+            "targetId": "bonus-respins",
+            "payout": 0,
+            "payoutUnits": "currency",
+            "duration": 0
+        }
+    ]
+}
+```
 
 - IDs use lowercase ASCII letters, digits and hyphens, start with a letter, and
   contain at most 64 characters. Reserved object names are forbidden. Comparison

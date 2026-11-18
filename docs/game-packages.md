@@ -400,7 +400,7 @@ Generated CommonJS and TypeScript modules retain `mechanics.modifiers` verbatim
 and assemble the shared `VideoSlotSession` modifier runtime. The effective-model
 descriptor, extraction and XLSX Mechanics JSON rows preserve rule order, zero
 factors and empty substitution lists. Changing rule order changes configuration
-identity. Build the `examples/blueprints/wild-*.blueprint.json` examples with
+identity. Build any Blueprint using `mechanics.modifiers` with
 `pokie build SOURCE --target tsPackage --out NEW_DIRECTORY`, then open that
 package with `pokie PACKAGE`. Stateless modifiers retain exact enumeration;
 sticky games explicitly lack independent-spin enumeration. See the

@@ -3,8 +3,7 @@
 `mechanics.cascade`, `mechanics.respins` and `mechanics.collection` are finite
 contracts, implemented by `BoundedVideoSlotSession` using the existing slot,
 cascade evaluator, grid transformer and runtime command boundaries. The seven
-nonempty combinations are listed in `AUTHORED_BOUNDED_MECHANIC_CATALOG` and have
-examples in `examples/blueprints/bounded-*.blueprint.json`.
+nonempty combinations are listed in `AUTHORED_BOUNDED_MECHANIC_CATALOG`.
 
 ```json
 {
@@ -176,8 +175,8 @@ sample estimates, not a claim of independent rounds or certification.
 
 ## Public workflow
 
-Build an example with `pokie build examples/blueprints/bounded-collection.blueprint.json
---target tsPackage --out <new-or-empty-directory>`, then use the existing
+Build an example using the combined `mechanics` block above with
+`pokie build bounded.blueprint.json --target tsPackage --out <new-or-empty-directory>`, then use the existing
 `validate`, `sim`, `report`, `replay` and `serve` commands. `pokie` opens Studio
 Home; `pokie <project>` opens the Project. Form/JSON edits remain recoverable
 drafts until explicit Apply/Save. Building and PAR conversion do not implicitly

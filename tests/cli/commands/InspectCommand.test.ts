@@ -184,7 +184,7 @@ describe("InspectCommand (integration, real GamePackageInspector)", () => {
     it("inspects a real package built by the current \"pokie build\" and prints runnable next actions", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-inspect-workflow-test-"));
         const outDir = path.join(workDir, "built-game");
-        const blueprintPath = path.join(__dirname, "..", "..", "..", "examples", "blueprints", "sample-slot.blueprint.json");
+        const blueprintPath = path.join(__dirname, "..", "fixtures", "sample-slot.blueprint.json");
         try {
             const buildExitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--target", "tsPackage", "--out", outDir]);
             expect(buildExitCode).toBe(0);

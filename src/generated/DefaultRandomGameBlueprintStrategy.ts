@@ -4,8 +4,8 @@ import type {RandomGameBlueprintMechanics} from "./RandomGameBlueprintMechanics.
 import type {RandomGameBlueprintStrategy} from "./RandomGameBlueprintStrategy.js";
 import type {ReelStripGenerationSpec} from "./ReelStripGenerationSpec.js";
 
-// A fixed pool of ordinary line-pay symbol ids (the same convention as examples/blueprints and
-// createStarterGameBlueprint.ts) -- large enough for the widest symbol count this strategy ever picks
+// A fixed pool of ordinary line-pay symbol ids (the same convention as createStarterGameBlueprint.ts and the
+// sample-slot test fixture) -- large enough for the widest symbol count this strategy ever picks
 // (see MAX_SYMBOLS_EXCLUSIVE below).
 const SYMBOL_POOL = ["A", "K", "Q", "J", "10", "9", "8", "7"];
 

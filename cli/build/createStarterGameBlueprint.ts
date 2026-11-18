@@ -6,7 +6,7 @@ import type {GameBlueprint} from "@fromstan/pokie";
 // pressing Enter through the whole wizard yields this same known-good game). Small enough to read and
 // edit by hand in one sitting, but a complete example of every field a first "pokie build <file>" needs —
 // paylines, paytable, and symbolWeights are all present with valid example values (not omitted to
-// fall back on VideoSlotConfig's own defaults, unlike examples/blueprints/sample-slot.blueprint.json)
+// fall back on VideoSlotConfig's own defaults, unlike a fully authored sample blueprint)
 // so there's something concrete to edit for each one. Passes GameBlueprintValidator with zero errors
 // or warnings as-is — see createStarterGameBlueprint.test.ts.
 export function createStarterGameBlueprint(): GameBlueprint {

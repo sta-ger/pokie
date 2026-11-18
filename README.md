@@ -151,7 +151,7 @@ See [docs/README.md](docs/README.md) for the full reference:
 
 See [pokie-examples](https://github.com/sta-ger/pokie-examples) for working games covering ways wins,
 cluster pays, sticky respins, growing grids, value pays, mixed evaluators and verifiable spins. Local
-Blueprint examples live in [examples/blueprints](examples/blueprints).
+Blueprint examples are inline in the [CLI documentation](docs/cli.md).
 
 ## License
 

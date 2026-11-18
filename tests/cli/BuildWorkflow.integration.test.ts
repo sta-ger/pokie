@@ -16,15 +16,15 @@ import {SimCommand} from "../../cli/commands/SimCommand.js";
 import {localPokieDependencyRunner} from "../testUtils/offlinePokieDependencyOverride.js";
 import {prepareExactCodeFirstPackage} from "../testUtils/prepareExactCodeFirstPackage.js";
 
-// End-to-end happy path for "pokie build": the actual example blueprint shipped in
-// examples/blueprints/ (see also examples/blueprints/README.md), generated into a package with
+// End-to-end happy path for "pokie build": the sample fixture at
+// tests/cli/fixtures/sample-slot.blueprint.json, generated into a package with
 // BuildCommand, then run through the same commands' worth of the rest of the CLI foundation as
 // Workflow.integration.test.ts covers for "pokie create" output — the point of "pokie build" is
 // that its output needs no separate compile step to already satisfy all of them. Exercising the
-// shipped example here (rather than an inline duplicate) keeps the example and the docs/cli.md
-// workflow section it demonstrates from silently drifting out of sync with what actually works.
+// same fixture here (rather than an inline duplicate) keeps it and the docs/cli.md workflow section
+// it demonstrates from silently drifting out of sync with what actually works.
 describe("CLI workflow (integration): pokie build output passes validate/sim/report/replay/serve/dev", () => {
-    const blueprintPath = path.join(__dirname, "..", "..", "examples", "blueprints", "sample-slot.blueprint.json");
+    const blueprintPath = path.join(__dirname, "fixtures", "sample-slot.blueprint.json");
 
     let workDir: string;
     let outDir: string;

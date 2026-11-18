@@ -31,7 +31,7 @@ Fixture groups:
   and additive grants, lock/reset/exhaustion awards, jackpot resets and
   base/ante/purchase behavior per applicable row. F1–F9 continuation/ownership
   regressions remain part of the retained public-runtime coverage.
-- **W**: `examples/blueprints/wild-<variant>.blueprint.json`; the support contract covers
+- **W**: the inline modifier shapes in `docs/math-modeling.md`; the support contract covers
   negative fields/coordinates/factors, custom evaluators/callbacks, Hold&Win
   conflicts, invalid expiry and overflow.
 - **D**: `tests/v2/fixtures/BoundedMechanicsGame.ts`; the support contract covers negative

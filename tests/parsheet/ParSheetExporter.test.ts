@@ -234,7 +234,7 @@ describe("ParSheetExporter", () => {
 
         // exportToFile runs the same GameBlueprintValidator "pokie build" uses (see requirement that
         // it validates fully on its own) — this fixture blueprint isn't tuned to be warning-free (see
-        // examples/parsheets/starter.blueprint.json, which isn't either), just error-free.
+        // the PAR starter Blueprint, which isn't either), just error-free.
         expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
         expect(await readSheetNames()).toEqual(["Manifest", "Symbols", "Paytable", "ReelStrips", "Paylines", "AvailableBets", "Meta"]);
     });

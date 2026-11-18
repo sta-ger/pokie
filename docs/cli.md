@@ -482,7 +482,7 @@ pokie build <project> --target <artifact> [--exact | --sample <n> --seed <string
 ```
 
 ```
-pokie build examples/blueprints/sample-slot.blueprint.json --target tsPackage --out sample-slot
+pokie build sample-slot.blueprint.json --target tsPackage --out sample-slot
 cd sample-slot
 npm install
 ```
@@ -675,11 +675,36 @@ A minimal example (5x3, 3 symbols, no wilds/scatters, default paylines and reel 
 }
 ```
 
-A complete example using every optional field (wilds, scatters, `symbolWeights`, `availableBets`) lives at
-[`examples/blueprints/sample-slot.blueprint.json`](../examples/blueprints/sample-slot.blueprint.json) in this
-repository — see [`examples/blueprints/README.md`](../examples/blueprints/README.md) for how to try it directly
-from a checkout. It's also what the workflow below and `pokie build`'s own smoke test
-(`tests/cli/BuildWorkflow.integration.test.ts`) both run, so it's guaranteed to actually work, not just parse.
+A complete example using every optional field (wilds, scatters, `symbolWeights`, `availableBets`):
+
+```json
+{
+    "manifest": {
+        "id": "sample-slot",
+        "name": "Sample Slot",
+        "version": "0.1.0",
+        "description": "A pokie build example: 5x3, wilds, scatters, weighted reels."
+    },
+    "reels": 5,
+    "rows": 3,
+    "symbols": ["A", "K", "Q", "J", "10", "W", "S"],
+    "wilds": ["W"],
+    "scatters": ["S"],
+    "paytable": {
+        "A": {"3": 4, "4": 7, "5": 14},
+        "K": {"3": 3, "4": 6, "5": 11},
+        "Q": {"3": 2, "4": 5, "5": 9},
+        "J": {"3": 1, "4": 3, "5": 7},
+        "10": {"3": 1, "4": 2, "5": 4},
+        "S": {"2": 2, "3": 5, "4": 20, "5": 100}
+    },
+    "symbolWeights": {"A": 4, "K": 6, "Q": 8, "J": 10, "10": 12, "W": 3, "S": 2},
+    "availableBets": [1, 2, 5, 10]
+}
+```
+
+It's also what the workflow below and `pokie build`'s own smoke test
+(`tests/cli/BuildWorkflow.integration.test.ts`) run, so it's guaranteed to actually work, not just parse.
 
 ### `reelStripGeneration` (build-time reel strip generation)
 
@@ -732,9 +757,72 @@ type ReelStripConstraintSpec =
 ```
 
 A complete example (one hand-placed literal reel, four independently generated reels — different lengths, seeds,
-constraints, `symbolCounts` vs. `symbolWeights`, and a locked position) lives at
-[`examples/blueprints/generated-reels.blueprint.json`](../examples/blueprints/generated-reels.blueprint.json) — see
-[`examples/blueprints/README.md`](../examples/blueprints/README.md) to try it directly from a checkout.
+constraints, `symbolCounts` vs. `symbolWeights`, and a locked position):
+
+```json
+{
+    "manifest": {
+        "id": "generated-reels",
+        "name": "Generated Reels",
+        "version": "0.1.0",
+        "description": "A pokie build example: 5x3, wilds, scatters, per-reel reel strips - one hand-placed, four generated at build time."
+    },
+    "reels": 5,
+    "rows": 3,
+    "symbols": ["A", "K", "Q", "J", "10", "W", "S"],
+    "wilds": ["W"],
+    "scatters": ["S"],
+    "paytable": {
+        "A": {"3": 4, "4": 7, "5": 14},
+        "K": {"3": 3, "4": 6, "5": 11},
+        "Q": {"3": 2, "4": 5, "5": 9},
+        "J": {"3": 1, "4": 3, "5": 7},
+        "10": {"3": 1, "4": 2, "5": 4},
+        "S": {"2": 2, "3": 5, "4": 20, "5": 100}
+    },
+    "reelStripGeneration": [
+        {
+            "type": "literal",
+            "strip": ["A", "10", "K", "10", "Q", "10", "J", "10", "A", "10", "K", "10", "Q", "10", "J", "10", "S", "W"]
+        },
+        {
+            "type": "generated",
+            "length": 30,
+            "symbolWeights": {"A": 4, "K": 6, "Q": 8, "J": 10, "10": 12, "W": 2, "S": 2},
+            "seed": 20260713,
+            "constraints": [
+                {"type": "maximumConsecutiveOccurrences", "maximumConsecutive": 3},
+                {"type": "minimumCircularDistance", "minimumDistance": 6, "symbolIds": ["W"]}
+            ]
+        },
+        {
+            "type": "generated",
+            "length": 28,
+            "symbolWeights": {"A": 4, "K": 6, "Q": 8, "J": 10, "10": 12, "W": 2, "S": 2},
+            "seed": 20260714,
+            "constraints": [
+                {"type": "maximumConsecutiveOccurrences", "maximumConsecutive": 3},
+                {"type": "minimumCircularDistance", "minimumDistance": 6, "symbolIds": ["S"]}
+            ]
+        },
+        {
+            "type": "generated",
+            "length": 34,
+            "symbolCounts": {"A": 4, "K": 5, "Q": 7, "J": 9, "10": 7, "W": 1, "S": 1},
+            "seed": 7,
+            "lockedPositions": {"0": "W"},
+            "constraints": [{"type": "maximumConsecutiveOccurrences", "maximumConsecutive": 2}]
+        },
+        {
+            "type": "generated",
+            "length": 24,
+            "symbolWeights": {"A": 4, "K": 6, "Q": 8, "J": 10, "10": 12, "W": 2, "S": 2},
+            "seed": 999
+        }
+    ],
+    "availableBets": [1, 2, 5, 10]
+}
+```
 
 **When generation fails** — a "generated" entry's constraints can't be satisfied within its own `maxAttempts` —
 `pokie build` reports it exactly like a validation error: printed per failing reel with its index, seed, attempt
@@ -831,8 +919,7 @@ their economics (paying from 2-of-a-kind, much bigger multipliers) are legitimat
   `symbolWeights`/`reelStripGeneration`/`reelStrips`) than a lower-paying one. This is the most common way a
   blueprint's RTP quietly runs away: identical weights across symbols with different payouts (every symbol equally
   likely, but some worth much more) mean the high-value symbol lands just as often as the low-value one — see
-  [`examples/blueprints/sample-slot.blueprint.json`](../examples/blueprints/sample-slot.blueprint.json)'s own
-  `symbolWeights`/`paytable` for what a fix looks like (low-pay symbols weighted heavier, high-pay symbols rarer).
+  the complete example above's own `symbolWeights`/`paytable` for what a fix looks like (low-pay symbols weighted heavier, high-pay symbols rarer).
 
 None of these check the actual math (that's what [`pokie sim`](#pokie-sim-packageroot) is for) — they flag shapes
 that are very likely to be a mistake, so run `pokie sim --rounds 100000` on anything they flag before trusting the
@@ -891,7 +978,7 @@ Direct `GamePackageGenerator` library callers must supply/install runtime depend
 pass `runtimePackageRoot` in the generation options. No TypeScript compile step is required for the generated entry:
 
 ```
-pokie build examples/blueprints/sample-slot.blueprint.json --target tsPackage --out sample-slot
+pokie build sample-slot.blueprint.json --target tsPackage --out sample-slot
 # Optional for local developer dependencies: cd sample-slot && npm install && cd ..
 
 pokie inspect ./sample-slot
@@ -934,7 +1021,7 @@ seed; PAR snapshots never fall back to nondeterministic generation. The workbook
 `reelStrips`, `paytable`, `paylines`, `availableBets`, `winModel`, `mechanics.freeGames`, and `betModes`.
 
 ```
-pokie par export examples/parsheets/starter.blueprint.json --out starter.par.xlsx
+pokie par export starter.blueprint.json --out starter.par.xlsx
 pokie par import starter.par.xlsx --out starter.blueprint.json
 ```
 
@@ -945,8 +1032,38 @@ POKIE-produced export with `pokie-manifest.json`. For a compatible foreign Stake
 use `pokie report` or `pokie diff`, which intentionally do not require that
 manifest and do not claim to reconstruct missing POKIE provenance.
 
-See `examples/parsheets/` for a worked example (`starter.blueprint.json` and the `starter.par.xlsx` exported from
-it).
+A minimal starter Blueprint:
+
+```json
+{
+    "manifest": {
+        "id": "par-sheet-starter",
+        "name": "PAR Sheet Starter",
+        "version": "0.1.0",
+        "description": "A pokie par export/import example: 3x3, a wild, literal reel strips, and 3 horizontal paylines."
+    },
+    "reels": 3,
+    "rows": 3,
+    "symbols": ["A", "K", "Q", "W"],
+    "wilds": ["W"],
+    "paytable": {
+        "A": {"3": 10},
+        "K": {"3": 6},
+        "Q": {"3": 3}
+    },
+    "paylines": [
+        [0, 0, 0],
+        [1, 1, 1],
+        [2, 2, 2]
+    ],
+    "reelStrips": [
+        ["A", "K", "Q", "K", "A", "Q", "K", "Q", "W"],
+        ["K", "Q", "A", "Q", "K", "A", "Q", "A", "W"],
+        ["Q", "A", "K", "A", "Q", "K", "A", "K", "W"]
+    ],
+    "availableBets": [1, 2, 5]
+}
+```
 
 ### Workbook format
 
@@ -1144,8 +1261,7 @@ pokie reel generate game.blueprint.json --reel 2 --seed 4242 --apply
 pokie reel generate game.blueprint.json --materialize --out game.materialized.json
 ```
 
-See [`examples/blueprints/generated-reels.blueprint.json`](../examples/blueprints/generated-reels.blueprint.json)
-for a `reelStripGeneration` blueprint to try this against.
+Use the inline `reelStripGeneration` example above to try this against.
 
 ## Canonical artifact builds and standalone descriptors
 

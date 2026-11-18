@@ -181,14 +181,14 @@ catalogue below. Wild symbols must also appear in `blueprint.wilds`. Omitted
 `substitutes` means unrestricted substitution; `[]` forbids it. An omitted
 factor means 1; an explicit 0 suppresses that component's payout.
 
-| Catalogue variant | Rule / declaration | Playable Blueprint |
+| Catalogue variant | Rule / declaration | Inline shape |
 | --- | --- | --- |
-| Expanding wild | `expand`, `symbol`, trigger `positions` | `examples/blueprints/wild-expanding.blueprint.json` |
-| Sticky wild | `sticky`, `symbol`, acquisition `positions`, integer `lifetime` | `examples/blueprints/wild-sticky.blueprint.json` |
-| Restricted wild | Wild `substitutes` array | `examples/blueprints/wild-restricted.blueprint.json` |
-| Multiplier wild | Wild nonnegative finite `factor` | `examples/blueprints/wild-multiplier.blueprint.json` |
-| Symbol transform | `transform`, `from`, `to`, target `positions` | `examples/blueprints/wild-transform.blueprint.json` |
-| Reel fill | `reel`, `symbol`, `reels`, empty `positions` | `examples/blueprints/wild-reel.blueprint.json` |
+| Expanding wild | `expand`, `symbol`, trigger `positions` | `{"id":"expand","type":"expand","space":"evaluated","positions":[[1,0]],"symbol":"W2"}` |
+| Sticky wild | `sticky`, `symbol`, acquisition `positions`, integer `lifetime` | `{"id":"sticky","type":"sticky","space":"evaluated","positions":[[1,0]],"symbol":"W2","lifetime":3}` |
+| Restricted wild | Wild `substitutes` array | `{"symbol":"W3","substitutes":[],"factor":0}` |
+| Multiplier wild | Wild nonnegative finite `factor` | `{"symbol":"W2","substitutes":["A"],"factor":2}` |
+| Symbol transform | `transform`, `from`, `to`, target `positions` | `{"id":"transform","type":"transform","space":"evaluated","positions":[[0,0]],"from":"B","to":"A"}` |
+| Reel fill | `reel`, `symbol`, `reels`, empty `positions` | `{"id":"reel","type":"reel","space":"evaluated","positions":[],"symbol":"A","reels":[0]}` |
 
 Every rule has a unique nonempty `id`, `space` and explicit `positions` array.
 Positions are integer `[reel,row]` pairs in `generated`, `visible` or `evaluated`

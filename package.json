@@ -125,8 +125,7 @@
         "CHANGELOG.md",
         "LICENSE",
         "package.json",
-        "docs/",
-        "examples/blueprints/"
+        "docs/"
     ],
     "dependencies": {
         "commander": "^14.0.3",

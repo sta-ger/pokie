@@ -214,7 +214,7 @@ export const AUTHORED_WORKFLOW_SUPPORT_CATALOG: readonly AuthoredWorkflowSupport
             `modifier-${variant}`,
             [modifierFamily(variant)],
             "WildModifierAuthoring",
-            `examples/blueprints/wild-${variant}.blueprint.json`,
+            "docs/math-modeling.md",
             "wildModifiers",
             `${variant} attribution retains ordered rules, evaluated coordinates and expiry through lines/ways/clusters; unsupported evaluators and competing owners reject.`,
         ),
