@@ -27,7 +27,6 @@ patched version.
 | `npm run test:coverage` | Unit, examples and integration lanes with coverage | Checking coverage |
 | `npm run test:packaging` | Real `npm pack` → install → spawn smoke test | Verifying the published package boundary |
 | `npm run audit:prod` | `npm audit --omit=dev` | Verifying production dependencies before a release |
-| `npm run test:report -- --lane <fast\|full\|release>` | Runs a lane through `jest --json` and prints the slowest suites | Diagnosing test performance |
 
 `npm test` does not collect coverage and does not run the packaging smoke test. Those have their own
 commands and are included in `check:release`.
