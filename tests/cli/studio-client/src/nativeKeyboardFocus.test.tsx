@@ -52,6 +52,7 @@ it('natively returns from all six validated sections to enabled Create game and 
         <Tabs defaultValue="basics">
             <Tabs.List aria-label="Game design sections">
                 {BLUEPRINT_SECTIONS.map(section => <Tabs.Tab key={section.id} value={section.id}
+                    aria-label={`${section.label} valid`}
                     rightSection={<StatusBadge status={{tone: 'success', errorCount: 0, warningCount: 0}} />}>
                     {section.label}
                 </Tabs.Tab>)}

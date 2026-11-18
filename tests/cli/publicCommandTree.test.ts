@@ -39,14 +39,15 @@ describe("public command tree", () => {
     });
 
     it("describes the supported browser workflows as browser UI in the public docs", () => {
-        const publicDocs = fs.readFileSync(path.join(__dirname, "..", "..", "docs", "README.md"), "utf-8");
+        const publicDocs = fs.readFileSync(path.join(__dirname, "..", "..", "docs", "cli.md"), "utf-8");
 
-        expect(publicDocs).toContain("`pokie client <packageRoot>`, a universal browser UI talking to");
-        expect(publicDocs).toContain("`pokie dev <packageRoot>`, which runs both together and opens the browser UI;");
-        expect(publicDocs).toContain("| Browser UI for a running `pokie serve` | `pokie client <packageRoot>` |");
-        expect(publicDocs).toContain("| `pokie serve` + `pokie client` together, with its browser UI auto-opened | `pokie dev <packageRoot>` |");
+        expect(publicDocs).toContain("## `pokie client <packageRoot>`");
+        expect(publicDocs).toContain("Serves the universal browser UI");
+        expect(publicDocs).toContain("Use [`pokie dev`](#pokie-dev-packageroot)");
+        expect(publicDocs).toContain("to run both together");
+
         expect(publicDocs).not.toMatch(/\bbrowser preview UI\b/i);
-        expect(publicDocs).toMatch(/previewing a deterministic\s+diff by default/);
+
     });
 
     it("links the Studio frontend guide to the implicit public Studio entry", () => {

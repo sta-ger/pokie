@@ -26,7 +26,7 @@ afterAll(() => restoreNodeServiceTimers());
 
 // Production HTTP, generation, destination planning and persistence with the
 // candidate-generated Node game; no compiler/build subprocess or browser receipt.
-describe("P9-07 library publication and refreshed generation", () => {
+describe("Studio library publication and refreshed generation", () => {
     let workspace: string;
     let blueprintPath: string;
     let server: StudioServer;
@@ -67,9 +67,9 @@ describe("P9-07 library publication and refreshed generation", () => {
     };
 
     beforeEach(async () => {
-        workspace = fs.mkdtempSync(path.join(os.tmpdir(), "p907-library-durability-"));
+        workspace = fs.mkdtempSync(path.join(os.tmpdir(), "studio-library-durability-"));
         blueprintPath = path.join(workspace, "blueprint.json");
-        const model = JSON.parse(fs.readFileSync(path.join(__dirname, "../../../../fixtures/p907/model.blueprint.json"), "utf8")) as GameBlueprint;
+        const model = JSON.parse(fs.readFileSync(path.join(__dirname, "../../../../fixtures/studio-library.blueprint.json"), "utf8")) as GameBlueprint;
         model.paytable = {A: {2: 2}, B: {2: 2}};
         fs.writeFileSync(blueprintPath, JSON.stringify(model));
         const runtimeRoot = path.join(workspace, "runtime");

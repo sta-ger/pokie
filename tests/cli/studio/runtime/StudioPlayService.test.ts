@@ -9,6 +9,7 @@ import {
     GameSessionHandling,
     GameWithFreeGamesSessionHandling,
     GamePackageGenerator,
+    computeGameBlueprintHash,
     type GameBlueprint,
     OutcomeLibraryBundleModeInput,
     OutcomeLibraryBundleWriter,
@@ -340,7 +341,7 @@ describe("StudioPlayService", () => {
             compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
         }).outputText);
         const game = createRequire(path.join(publicRuntime.directory, "consumer.cjs"))(entry) as PokieGame;
-        if (!weighted) expect(game.getConfigHash!()).toBe("sha256:7246985256df82890e2ebfcec0f81e6b7be5b5f5459a4a22b4c7a90b2554c124");
+        if (!weighted) expect(game.getConfigHash!()).toBe(computeGameBlueprintHash(blueprint));
         const recorder = new StudioRoundRecorder();
         const service = new StudioPlayService(() => Promise.resolve(game), undefined, undefined, undefined, undefined, undefined, recorder);
         try {

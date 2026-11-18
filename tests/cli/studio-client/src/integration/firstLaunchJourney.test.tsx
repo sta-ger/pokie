@@ -54,6 +54,7 @@ describe("clean first-launch journey", () => {
         expect(screen.getByRole("button", {name: "Open a saved game design"})).toBeInTheDocument();
         await user.keyboard("{Escape}");
 
+        await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeEnabled());
         fireEvent.click(screen.getByRole("button", {name: "Create game"}));
         await waitFor(() => expect(calls.some((call) => call.url === "/api/home/blueprints/save-managed")).toBe(true));
         expect(await screen.findByRole("heading", {name: "Starter Slot"})).toBeInTheDocument();

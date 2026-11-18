@@ -157,6 +157,8 @@ const pokieExamplesModuleNameMapper = {
     "^pokie/client/player$": "<rootDir>/cli/client/player/index.ts",
     "^pokie$": "<rootDir>/src/index.ts",
     "^@fromstan/pokie/client/player$": "<rootDir>/cli/client/player/index.ts",
+    "^@fromstan/pokie/browser$": "<rootDir>/src/browser.ts",
+    "^@fromstan/pokie/wasm$": "<rootDir>/src/wasm/browser.ts",
     "^@fromstan/pokie$": "<rootDir>/src/index.ts",
     "^(\\.\\.?\\/.+)\\.jsx?$": "$1",
 };

@@ -1141,10 +1141,10 @@ describe("StudioBlueprintService", () => {
 
             expect(result).toMatchObject({
                 status: "ok",
-                path: path.join(freshHome, "POKIE Projects", "valera-mathematician", "blueprint.json"),
-                name: "valera-mathematician",
+                path: path.join(freshHome, "POKIE Projects", "sample-mathematician", "blueprint.json"),
+                name: "sample-mathematician",
             });
-            expect(fs.existsSync(path.join(freshHome, "POKIE Projects", "valera-mathematician", "blueprint.json"))).toBe(true);
+            expect(fs.existsSync(path.join(freshHome, "POKIE Projects", "sample-mathematician", "blueprint.json"))).toBe(true);
         });
 
         it("creates the missing POKIE Projects child in an explicitly configured clean Documents root", () => {

@@ -9,6 +9,7 @@ import {
     classifyIssuesBySection,
     crossFieldOnly,
     describeSectionStatus,
+    describeSectionStatusText,
     type BlueprintSectionId,
 } from "../../domain/interpret/BlueprintSections";
 import type {BlueprintValidationView} from "../../domain/interpret/BlueprintEditor";
@@ -118,16 +119,21 @@ export function SectionedFormEditor({
                 {/* Fit the available editor column, including desktop widths with the navigation
                     rail still open. Every section and its status stays visible without scrolling. */}
                 <Tabs.List aria-label="Game design sections" style={{flexWrap: "wrap"}}>
-                    {BLUEPRINT_SECTIONS.map((section) => (
-                        <Tabs.Tab
-                            key={section.id}
-                            value={section.id}
-                            ref={tabRefs[section.id]}
-                            rightSection={<StatusBadge status={describeSectionStatus(section.id, validationView)} />}
-                        >
-                            {section.label}
-                        </Tabs.Tab>
-                    ))}
+                    {BLUEPRINT_SECTIONS.map((section) => {
+                        const status = describeSectionStatus(section.id, validationView);
+                        const statusText = describeSectionStatusText(status);
+                        return (
+                            <Tabs.Tab
+                                key={section.id}
+                                value={section.id}
+                                ref={tabRefs[section.id]}
+                                aria-label={`${section.label}${statusText.length > 0 ? ` ${statusText}` : ""}`}
+                                rightSection={<StatusBadge status={status} />}
+                            >
+                                {section.label}
+                            </Tabs.Tab>
+                        );
+                    })}
                 </Tabs.List>
 
                 <Tabs.Panel value="basics">
