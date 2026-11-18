@@ -150,7 +150,7 @@ try {
         }}],
         build: {ssr: path.join(root, 'site/examples/reproduce.mjs'), target: 'node20',
             outDir: path.join(staging, 'downloads'), emptyOutDir: false, minify: false,
-            rollupOptions: {output: {entryFileNames: 'reproduce.mjs', inlineDynamicImports: true}}}});
+            rolldownOptions: {output: {entryFileNames: 'reproduce.mjs', codeSplitting: false}}}});
     await bundle({configFile: false, logLevel: 'error', root,
         plugins: [{name: 'local-browser-boundary', resolveId(id) {
             if (id.startsWith('node:') || builtinModules.includes(id)) throw new Error(`Node import in public playground: ${id}`);

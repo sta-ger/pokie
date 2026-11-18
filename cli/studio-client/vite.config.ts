@@ -24,6 +24,22 @@ export default defineConfig(({command}) => {
             outDir: path.resolve(projectRoot, "../../dist/cli/studio-client"),
             emptyOutDir: true,
             sourcemap: false,
+            rolldownOptions: {
+                output: {
+                    // Preserve initialization order across the UI and its shared dependencies.
+                    strictExecutionOrder: true,
+                    codeSplitting: {
+                        includeDependenciesRecursively: false,
+                        // Bound source chunk sizes before minification; retain Vite's 500 kB warning.
+                        minSize: 50_000,
+                        maxSize: 900_000,
+                        groups: [
+                            {name: "vendor", test: /[\\/]node_modules[\\/]/},
+                            {name: "studio", test: /[\\/]cli[\\/]studio-client[\\/]src[\\/]/},
+                        ],
+                    },
+                },
+            },
         },
         server: {
             // Dev-only: StudioServer serves the frontend + JSON API same-origin in production, but the Vite
