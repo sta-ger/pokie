@@ -29,7 +29,6 @@ The vendored Picomatch patch is documented in [`vendor/README.md`](../vendor/REA
 | `npm run test:coverage` | Unit, component, integration and workflow lanes with coverage | Checking coverage |
 | `npm run test:packaging` | Real `npm pack` → install → spawn smoke test | Verifying the published package boundary |
 | `npm run test:report -- --lane <fast\|full\|release>` | Runs a lane through `jest --json` and prints the slowest suites | Diagnosing test performance |
-| `npm run bench` | Informational performance benchmarks | Comparing throughput or memory |
 
 `npm test` does not collect coverage and does not run the packaging smoke test. Those have their own
 commands and are included in `check:release`.
@@ -45,7 +44,6 @@ commands and are included in `check:release`.
   guards. They run in a separate process with a bounded heap.
 - **`pokie-integration`** — real HTTP servers, worker threads and heavier filesystem workflows.
 - **`pokie-packaging`** — the real package tarball, install and installed-CLI smoke test.
-- **`pokie-benchmarks`** — performance baselines, run only via `npm run bench`.
 
 The workflow runner starts each heavy file in its own Node process so one suite cannot exhaust the
 shared heap for the next one. `test:targeted` resolves the named files across Jest projects and runs

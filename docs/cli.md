@@ -3778,9 +3778,8 @@ bespoke route on `StudioServer`, not through that seam — kept only as a docume
 a gap in coverage.
 
 Property-based and golden-output testing are implemented, as recorded in the
-[storage and recovery contracts](game-session.md#durable-external-wallet-reconciliation), alongside
-[performance benchmarks](testing.md#benchmarks). The local Studio provides Play, Simulation, Replay and
-Build/Export surfaces. It does not execute arbitrary visitor-supplied JavaScript.
+[storage and recovery contracts](game-session.md#durable-external-wallet-reconciliation). The local Studio
+provides Play, Simulation, Replay and Build/Export surfaces. It does not execute arbitrary visitor-supplied JavaScript.
 
 Current authored support includes free games, Hold&Win, jackpots, bet modes, wild/screen modifiers,
 bounded cascades/respins/collections and weighted bonuses through the supported editor, build, extraction,
