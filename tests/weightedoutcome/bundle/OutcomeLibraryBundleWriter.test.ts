@@ -1,4 +1,4 @@
-import {supportsAtomicDirectoryExchange} from "../../testUtils/atomicDirectoryExchange.js";
+import {ensureAtomicDirectoryExchange} from "../../testUtils/atomicDirectoryExchange.js";
 import crypto from "crypto";
 import fs from "fs";
 import os from "os";
@@ -22,9 +22,9 @@ function siblingLeftovers(outDir: string): string[] {
     return fs.readdirSync(parentDir).filter((name) => name !== base && name.startsWith(`${base}.`));
 }
 
-const describeAtomic = supportsAtomicDirectoryExchange() ? describe : describe.skip;
+ensureAtomicDirectoryExchange();
 
-describeAtomic("OutcomeLibraryBundleWriter", () => {
+describe("OutcomeLibraryBundleWriter", () => {
     let outDir: string;
 
     beforeEach(() => {

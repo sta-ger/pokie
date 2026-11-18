@@ -1,4 +1,4 @@
-import {supportsAtomicDirectoryExchange} from "../testUtils/atomicDirectoryExchange.js";
+import {ensureAtomicDirectoryExchange} from "../testUtils/atomicDirectoryExchange.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -46,9 +46,9 @@ function siblingLeftovers(outDir: string): string[] {
     return fs.readdirSync(parentDir).filter((name) => name !== base && name.startsWith(`${base}.`));
 }
 
-const describeAtomic = supportsAtomicDirectoryExchange() ? describe : describe.skip;
+ensureAtomicDirectoryExchange();
 
-describeAtomic("StakeEngineExporter", () => {
+describe("StakeEngineExporter", () => {
     let tmpRoot: string;
     let outDir: string;
     let baseLibrary: WeightedOutcomeLibrary<string>;

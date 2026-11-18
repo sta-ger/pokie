@@ -53,5 +53,6 @@ commands and are included in `check:release`.
 Use `npm run test:targeted -- path/to/file.test.ts` while iterating. A full `check:full` or
 `check:release` is still required before larger changes are considered complete.
 
-Platform-specific tests may require a real browser or GNU coreutils with `mv --exchange`; keep those
-in their own lane rather than weakening assertions in the main suite.
+Atomic-directory publication tests exercise the real `renameat2` syscall. When the host `mv` predates
+`--exchange` but the Linux kernel supports the syscall, the test harness installs a test-only `mv` shim;
+production still requires a capable host. No assertions are skipped or weakened.

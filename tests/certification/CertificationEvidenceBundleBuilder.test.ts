@@ -1,4 +1,4 @@
-import {supportsAtomicDirectoryExchange} from "../testUtils/atomicDirectoryExchange.js";
+import {ensureAtomicDirectoryExchange} from "../testUtils/atomicDirectoryExchange.js";
 import crypto from "crypto";
 import fs from "fs";
 import os from "os";
@@ -41,9 +41,9 @@ function readSampleLines(certDir: string, samplesFile: string): CertificationEvi
         .map((line) => JSON.parse(line) as CertificationEvidenceSampleRecord);
 }
 
-const describeAtomic = supportsAtomicDirectoryExchange() ? describe : describe.skip;
+ensureAtomicDirectoryExchange();
 
-describeAtomic("CertificationEvidenceBundleBuilder", () => {
+describe("CertificationEvidenceBundleBuilder", () => {
     let tmpRoot: string;
     let bundleDir: string;
     let certDir: string;
