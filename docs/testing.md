@@ -21,15 +21,28 @@ patched version.
 |---|---|---|
 | `npm test` / `npm run check:fast` | Unit tests plus the companion examples suite | Everyday development |
 | `npm run check:full` | Fast tests, typecheck and integration tests | Before opening a PR |
-| `npm run check:release` | Lint, typecheck, coverage and the real pack/install smoke test | Before a release |
+| `npm run check:release` | Lint, typecheck, coverage, the real pack/install smoke test and the production dependency audit | Before a release |
 | `npm run test:integration` | Integration lane only | Server, worker and real-filesystem changes |
 | `npm run test:targeted -- <files...>` | Exact named files, one process per file | Verifying a focused correction |
 | `npm run test:coverage` | Unit, examples and integration lanes with coverage | Checking coverage |
 | `npm run test:packaging` | Real `npm pack` → install → spawn smoke test | Verifying the published package boundary |
+| `npm run audit:prod` | `npm audit --omit=dev` | Verifying production dependencies before a release |
 | `npm run test:report -- --lane <fast\|full\|release>` | Runs a lane through `jest --json` and prints the slowest suites | Diagnosing test performance |
 
 `npm test` does not collect coverage and does not run the packaging smoke test. Those have their own
 commands and are included in `check:release`.
+
+## Dependency audit
+
+`npm run audit:prod` is the release gate and must stay at zero. The full `npm audit` also covers
+development tooling. It currently reports the upstream `picomatch` ReDoS advisory
+([GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)) because Jest, Vite and
+`ts-loader` still resolve `picomatch@4.0.7` (and a few transitive 2.x copies), and npm has no patched
+release yet.
+
+Those findings are recorded here instead of being hidden with overrides, audit settings or a
+vendored fork. Re-run both audits when dependencies change, and remove this note once a fixed
+`picomatch` release is available.
 
 ## Jest projects
 

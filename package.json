@@ -43,10 +43,11 @@
         "test:targeted": "mkdir -p \"$PWD/node_modules/.cache/pokie-tmp\" && TMPDIR=\"$PWD/node_modules/.cache/pokie-tmp\" NODE_OPTIONS=--experimental-vm-modules node --expose-gc --max-old-space-size=1408 scripts/run-targeted-tests.mjs",
         "test:coverage": "node --max-old-space-size=512 ./node_modules/jest/bin/jest.js --selectProjects pokie pokie-examples pokie-integration --coverage --maxWorkers=1 --workerIdleMemoryLimit=192MB",
         "test:packaging": "jest --selectProjects pokie-packaging --runInBand",
+        "audit:prod": "npm audit --omit=dev",
         "test:report": "node scripts/report-test-timings.mjs",
         "check:fast": "npm test",
         "check:full": "node scripts/run-full-check.mjs",
-        "check:release": "npm run lint && npm run typecheck && npm run test:coverage && npm run test:packaging",
+        "check:release": "npm run lint && npm run typecheck && npm run test:coverage && npm run test:packaging && npm run audit:prod",
         "build-esm:compile": "tsc --project tsconfig.prod.json && shx cp src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs dist/esm/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs && shx mkdir -p dist/esm/gamepackage/internal && shx cp src/gamepackage/internal/runtimeLocation.mjs dist/esm/gamepackage/internal/runtimeLocation.mjs",
         "build-esm": "npm run generate-barrels && npm run build-esm:compile",
         "build-test-runtime": "npm run generate-barrels && npm run build-esm:compile",
@@ -107,7 +108,6 @@
         "globals": "^16.5.0",
         "jest": "^30.5.2",
         "jest-environment-jsdom": "^30.5.2",
-        "picomatch": "file:vendor/picomatch",
         "postcss": "^8.5.33",
         "postcss-preset-mantine": "^1.18.0",
         "postcss-simple-vars": "^7.0.1",
@@ -142,7 +142,6 @@
             "fast-csv": "^5.0.8",
             "unzipper": "^0.12.5"
         },
-        "picomatch": "$picomatch",
         "jest-environment-jsdom": {
             "jsdom": "~27.4.0"
         },
