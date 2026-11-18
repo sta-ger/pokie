@@ -12,8 +12,7 @@ import {SimCommand} from "../../cli/commands/SimCommand.js";
 import {localPokieDependencyRunner, REPO_ROOT} from "../testUtils/offlinePokieDependencyOverride.js";
 import {ensureCompiledTestOutput} from "../testUtils/ensureCompiledTestOutput.js";
 
-const COMPILED_CJS_ENTRY = path.join(REPO_ROOT, "dist", "cjs", "index.js");
-const COMPILED_CJS_PACKAGE_JSON = path.join(REPO_ROOT, "dist", "cjs", "package.json");
+const COMPILED_ESM_ENTRY = path.join(REPO_ROOT, "dist", "esm", "index.js");
 const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulation", "parallel", "internal", "simulationWorkerEntry.js");
 
 beforeAll(() => {
@@ -21,7 +20,7 @@ beforeAll(() => {
     // Existing dist entries can belong to an earlier candidate with a different public API.
     ensureCompiledTestOutput({
         repositoryRoot: REPO_ROOT,
-        outputPaths: [COMPILED_CJS_ENTRY, COMPILED_CJS_PACKAGE_JSON, COMPILED_ESM_WORKER_ENTRY],
+        outputPaths: [COMPILED_ESM_ENTRY, COMPILED_ESM_WORKER_ENTRY],
         lockName: "compiled-runtime",
         command: ["npm", "run", "build-test-runtime"],
         forceRebuild: true,

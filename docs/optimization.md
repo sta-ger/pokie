@@ -2,7 +2,7 @@
 
 `pokie optimize SOURCE --policy request.json [--out NEW_DESTINATION]` and
 Studio Project → Overview → **Optimize math** use `ProjectOptimizationService`,
-the same operation available from the package root to ESM and CommonJS callers.
+the same operation available from the package root to ESM and `require()` callers.
 Studio checks tuning support, starts a durable cancellable job, retains its
 verdict/evidence across reload, and saves a reviewed candidate only on request.
 The ordinary `pokie` / `pokie SOURCE` Studio startup is unchanged.
@@ -65,11 +65,12 @@ before accepting publication, then releases its game resources and loader lease.
 Every load copies the resolved runtime dependency graph to invocation-owned paths, including
 transitive and peer dependencies and the host runtime. Enumeration, search, held-out assessment and
 publication therefore cannot reuse exports from an earlier installation revision. Existing live
-consumers keep their own modules; releasing a runtime removes only its private files and CJS cache.
+consumers keep their own modules; releasing a runtime removes only its private files and CommonJS
+module cache.
 For an older game that omits its POKIE dependency, the host fallback binds the enclosing POKIE
-installation, including its runtime dependencies. The nested `dist/cjs/package.json` controls
-CommonJS scope and self-references; it does not replace the installation manifest as dependency
-authority. Runtime copies, detached candidate links and executable revisions use that same root.
+installation, including its runtime dependencies. The installation manifest owns exports, assets
+and runtime dependencies; runtime copies, detached candidate links and executable revisions use that
+same root.
 Dependencies remain ordinary external package dependencies;
 `node_modules`, `.git` and loader caches are excluded from authored-byte identity.
 Filesystem aliases in authored input/publication paths are rejected.

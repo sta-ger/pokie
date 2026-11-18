@@ -47,11 +47,12 @@ async function importPokieGameEntryModule(entryPath: string): Promise<Record<str
 }
 
 async function createRuntimeSnapshot(packageRoot: string, entryPath: string): Promise<{root: string; entryPath: string; release: () => Promise<void>}> {
-    // `entryPath` may be inside a nested module-type scope (for example
-    // dist/cjs/package.json). That file controls how Node interprets modules,
-    // not what belongs to the game package. The resolver has already identified
-    // the canonical package root from its `pokie.entry`; snapshot that complete
-    // package so root assets and declared dependencies remain available.
+    // `entryPath` may be inside a nested module-type scope (for example a nested
+    // package.json that changes how Node interprets a generated directory). That
+    // file controls module type, not what belongs to the game package. The resolver
+    // has already identified the canonical package root from its `pokie.entry`;
+    // snapshot that complete package so root assets and declared dependencies remain
+    // available.
     const relativeEntry = path.relative(packageRoot, entryPath);
     if (relativeEntry.startsWith(`..${path.sep}`) || path.isAbsolute(relativeEntry)) {
         throw new Error(`Could not locate package root for entry "${entryPath}".`);
@@ -294,8 +295,7 @@ async function resolveHostPokieRuntimeRoot(): Promise<string | undefined> {
 function findHostInstallationRoot(filePath: string): string | undefined {
     let installationRoot: string | undefined;
     let current = path.dirname(filePath);
-    // dist/cjs/package.json repeats the name for self-references and sets module scope,
-    // but the enclosing installation owns exports, assets and runtime dependencies.
+    // The enclosing installation owns exports, assets and runtime dependencies.
     // Keep that entire installation as the shared overlay/copy/revision authority.
     // Stop at node_modules so a containing application's manifests cannot replace it.
     while (path.dirname(current) !== current && path.basename(current) !== "node_modules") {
@@ -384,8 +384,8 @@ export async function resolvePokieGameEntryModule(
     let entryModule: Record<string, unknown>;
     try {
         // A plain absolute path, not a file:// URL: TypeScript downlevels `import()` to
-        // `require()` in the CJS build (dist/cjs and ts-jest both compile to CommonJS), and
-        // require() does not accept file:// URLs as module specifiers.
+        // `require()` in ts-jest's CommonJS transform, and require() does not accept file://
+        // URLs as module specifiers.
         entryModule = await loadEntryModule(snapshot.entryPath);
     } catch (error) {
         await snapshot.release();

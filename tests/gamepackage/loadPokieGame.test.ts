@@ -51,11 +51,11 @@ it("reports native probe rejection and timeout without circular worker errors", 
     }
 });
 
-it("preserves the installed host closure across its nested CommonJS scope for unchanged external games", async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-cjs-host-"));
+it("preserves the installed host closure for unchanged external games", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-host-"));
     const host = path.join(root, "host");
     const installation = path.join(host, "node_modules", "@fromstan", "pokie");
-    const cjs = path.join(installation, "dist", "cjs");
+    const runtimeTree = path.join(installation, "dist", "esm");
     const game = path.join(root, "external-game");
     const runtimeTemporaryRoot = path.join(root, "runtime-tmp");
     // Emit only the affected production modules and their value imports. This is an ordinary
@@ -65,28 +65,29 @@ it("preserves the installed host closure across its nested CommonJS scope for un
         if (emitted.has(relative)) return;
         emitted.add(relative);
         const output = ts.transpileModule(fs.readFileSync(path.resolve("src", relative), "utf8"), {
-            compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true},
+            compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, esModuleInterop: true},
         }).outputText;
-        const file = path.join(cjs, relative.replace(/\.ts$/, ".js"));
+        const file = path.join(runtimeTree, relative.replace(/\.ts$/, ".js"));
         fs.mkdirSync(path.dirname(file), {recursive: true});
         fs.writeFileSync(file, output);
-        for (const match of output.matchAll(/require\("(\.[^"]+\.js)"\)/g)) {
-            emit(path.join(path.dirname(relative), match[1]).replace(/\.js$/, ".ts"));
+        for (const match of output.matchAll(/["'](\.[^"']+\.js)["']/g)) {
+            const dependency = path.join(path.dirname(relative), match[1]).replace(/\.js$/, ".ts");
+            if (fs.existsSync(path.resolve("src", dependency))) emit(dependency);
         }
     };
     try {
         fs.mkdirSync(runtimeTemporaryRoot);
         emit("gamepackage/loadPokieGame.ts");
         emit("optimization/internal/optimizationData.ts");
+        fs.mkdirSync(path.join(runtimeTree, "gamepackage", "internal"), {recursive: true});
+        fs.copyFileSync(path.resolve("src/gamepackage/internal/runtimeLocation.mjs"), path.join(runtimeTree, "gamepackage", "internal", "runtimeLocation.mjs"));
         const manifest = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf8"));
         fs.writeFileSync(path.join(installation, "package.json"), JSON.stringify({
             name: manifest.name, version: manifest.version, type: "module",
-            exports: {".": {require: "./dist/cjs/index.js"}},
+            exports: {".": {types: "./dist/esm/index.d.ts", default: "./dist/esm/index.js"}},
             dependencies: {...manifest.dependencies, "host-behavior": "1"},
             optionalDependencies: {"missing-host-optional": "1"},
         }));
-        runNativeProbe([path.resolve("write-cjs-package-json.js")], {cwd: installation});
-        expect(JSON.parse(fs.readFileSync(path.join(cjs, "package.json"), "utf8")).dependencies).toBeUndefined();
         fs.mkdirSync(path.join(installation, "node_modules"));
         // Keep the real executable dependency graph, including package scopes, assets,
         // cycles and peers. Maps/declarations are irrelevant to these native JS consumers;
@@ -119,12 +120,15 @@ it("preserves the installed host closure across its nested CommonJS scope for un
         fs.writeFileSync(path.join(behavior, "index.js"), "module.exports = require('host-leaf');");
         fs.writeFileSync(path.join(leaf, "package.json"), JSON.stringify({name: "host-leaf", main: "index.js"}));
         fs.writeFileSync(path.join(leaf, "index.js"), "module.exports = 'before';");
-        fs.writeFileSync(path.join(cjs, "index.js"), `Object.assign(exports,
- require('./gamepackage/loadPokieGame.js'), require('./gamepackage/resolvePokieGameEntryModule.js'),
- require('./optimization/internal/optimizationData.js'));
+        fs.writeFileSync(path.join(runtimeTree, "index.js"), `import {createRequire} from 'node:module';
+import {fileURLToPath} from 'node:url';
+const require = createRequire(import.meta.url);
+export * from './gamepackage/loadPokieGame.js';
+export * from './gamepackage/resolvePokieGameEntryModule.js';
+export * from './optimization/internal/optimizationData.js';
 const {Workbook} = require('exceljs'), {Command} = require('commander'), behavior = require('host-behavior');
-exports.hostProbe = () => [typeof new Workbook().addWorksheet, typeof new Command().parse, behavior];
-exports.hostPaths = () => [__filename, require.resolve('exceljs'), require.resolve('commander'), require.resolve('host-behavior')];`);
+export const hostProbe = () => [typeof new Workbook().addWorksheet, typeof new Command().parse, behavior];
+export const hostPaths = () => [fileURLToPath(import.meta.url), require.resolve('exceljs'), require.resolve('commander'), require.resolve('host-behavior')];`);
         fs.mkdirSync(game);
         fs.writeFileSync(path.join(game, "package.json"), JSON.stringify({name: "unchanged-game", pokie: {entry: "game.cjs"}}));
         fs.writeFileSync(path.join(game, "game.cjs"), `const runtime = require('@fromstan/pokie');
@@ -140,7 +144,6 @@ const phase = name => { timings[name] = Math.round(performance.now() - started);
  assert.equal(require('os').tmpdir(), temporaryRoot);
  assert.deepEqual(fs.readdirSync(temporaryRoot), []);
  assert.throws(() => require('module').createRequire(path.join(game, 'game.cjs')).resolve('@fromstan/pokie'), /Cannot find module/);
- const outside = require.cache[require.resolve('@fromstan/pokie')];
  const first = await runtime.loadPokieGameRuntime(game);
  phase('first acquisition');
  const firstSession = first.game.createSession();
@@ -189,7 +192,6 @@ const phase = name => { timings[name] = Math.round(performance.now() - started);
    assert.ok(Object.keys(require.cache).every(file => !file.startsWith(session.root + path.sep)));
  }
  assert.deepEqual(fs.readdirSync(temporaryRoot), []);
- assert.equal(require.cache[require.resolve('@fromstan/pokie')], outside);
  assert.deepEqual(runtime.hostProbe(), ['function', 'function', 'before']);
  assert.equal(fs.existsSync(path.join(game, 'node_modules')), false);
  assert.equal(JSON.parse(fs.readFileSync(path.join(game, 'package.json'))).dependencies, undefined);
@@ -237,7 +239,7 @@ describe("loadPokieGame", () => {
         // These cases exercise entry validation, not host-runtime discovery (covered above).
         // Bind every sibling to stable executable output instead of copying the entire
         // checkout, docs and build products on every successful/invalid acquisition.
-        stageCompiledTestRuntime(root, ["cjs"], {runtimeFilesOnly: true});
+        stageCompiledTestRuntime(root, {runtimeFilesOnly: true});
         isolatedFixturesRoot = path.join(root, "fixtures");
         fs.cpSync(fixturesRoot, isolatedFixturesRoot, {recursive: true});
         for (const name of fs.readdirSync(isolatedFixturesRoot)) {
@@ -415,7 +417,7 @@ it.each(["cjs", "esm"])("isolates direct/transitive %s code, lazy imports and li
     fs.mkdirSync(nested, {recursive: true});
     // Bind the current native runtime explicitly. The host-fallback contract is
     // covered separately above; these repeated acquisitions own dependency edits.
-    stageCompiledTestRuntime(root, ["cjs"], {runtimeFilesOnly: true});
+    stageCompiledTestRuntime(root, {runtimeFilesOnly: true});
     fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({pokie: {entry: `index.${suffix}`}, dependencies: {"@fromstan/pokie": "*", direct: "1"}}));
     for (const [name, location, dependencies] of [["direct", direct, {nested: "1"}], ["nested", nested, {}]] as const) {
         fs.writeFileSync(path.join(location, "package.json"), JSON.stringify({name, main: `index.${suffix}`, dependencies, peerDependencies: name === "nested" ? {direct: "1"} : {}}));

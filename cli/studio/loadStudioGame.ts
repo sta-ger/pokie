@@ -5,8 +5,8 @@ import path from "path";
 
 type DynamicModuleImporting = (entryPath: string) => Promise<Record<string, unknown>>;
 
-// Keep this native dynamic import even when Studio's own CJS build is executing under Jest or an
-// embedded host.  TypeScript otherwise rewrites `import()` to require(), which cannot load an ESM
+// Keep this native dynamic import even when the calling Studio/CLI host is transpiled to CommonJS
+// under Jest or embedded in a CommonJS process.  TypeScript otherwise rewrites `import()` to require(), which cannot load an ESM
 // package entry at all and would make the Studio injection path diverge from the normal loader.
 // eslint-disable-next-line no-new-func -- preserves native ESM loading in CJS/Jest hosts.
 const importEntryModule: DynamicModuleImporting = (entryPath) => {

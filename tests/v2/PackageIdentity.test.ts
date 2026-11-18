@@ -26,8 +26,7 @@ function fixtureDirectory(): string {
 }
 
 function executeNativeConsumer(directory: string, timeout = PACKAGE_EXTRACTION_TEST_TIMEOUT): string {
-    // Three independent acquisitions copy the real dual-format runtime and its
-    // dependency graph. Use the established package-fixture budget under worker
+    // Three independent acquisitions copy the real runtime and its dependency graph. Use the established package-fixture budget under worker
     // contention, and keep native failures serializable across Jest workers.
     // execFileSync's timeout Error contains a circular `.error` reference.
     const execution = spawnSync(process.execPath, [path.join(directory, "consumer.mjs")], {
@@ -54,7 +53,6 @@ function nativeRuntimeFixture(directory: string): void {
     fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({...metadata, private: true, scripts: {}}));
     for (const [sourceRoot, destination, module] of [
         ["src", "dist/esm", ts.ModuleKind.ESNext],
-        ["src", "dist/cjs", ts.ModuleKind.CommonJS],
         ["cli/client", "dist/cli/client", ts.ModuleKind.ESNext],
     ] as const) {
         for (const file of files(path.join(root, sourceRoot))) {
@@ -70,9 +68,7 @@ function nativeRuntimeFixture(directory: string): void {
             }
         }
     }
-    execFileSync(process.execPath, [path.join(root, "tests/testUtils/stageRuntimeLocation.mjs"), "--output-root", packageRoot, "esm", "cjs"], {cwd: root});
-    // Execute the maintained metadata writer in the fixture, not a production build.
-    execFileSync(process.execPath, [path.join(root, "write-cjs-package-json.js")], {cwd: packageRoot});
+    execFileSync(process.execPath, [path.join(root, "tests/testUtils/stageRuntimeLocation.mjs"), "--output-root", packageRoot, "esm"], {cwd: root});
     fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({name: "private-consumer", private: true, type: "module", dependencies: {[identity]: `^${metadata.version}`}}));
 }
 
@@ -85,6 +81,14 @@ describe("Package delivery identity", () => {
         expect(metadata.repository.url).toBe("git+https://github.com/sta-ger/pokie.git");
         expect(metadata.homepage).toBe("https://github.com/sta-ger/pokie");
         expect(metadata.bin).toEqual({pokie: "./dist/cli/pokie.js"});
+        expect(metadata.main).toBe("./dist/esm/index.js");
+        expect(metadata.types).toBe("./dist/esm/index.d.ts");
+        expect(metadata.exports["."]).toEqual({
+            types: "./dist/esm/index.d.ts",
+            import: "./dist/esm/index.js",
+            default: "./dist/esm/index.js",
+        });
+        expect(metadata.exports["."].require).toBeUndefined();
         expect(Object.keys(metadata.exports).sort()).toEqual([".", "./browser", "./client/player", "./wasm"]);
         for (const subpath of ["./browser", "./wasm", "./client/player"]) {
             expect(Object.keys(metadata.exports[subpath])).toEqual(["import"]);
@@ -95,7 +99,7 @@ describe("Package delivery identity", () => {
         for (const name of metadata.files.filter((name: string) => name.startsWith("docs/"))) expect(name).not.toMatch(/phase|\/evidence\/|inventory|report/);
     });
 
-    it("executes code-first and generated consumers through native ESM/CJS exports and resolves declarations", () => {
+    it("executes code-first and generated consumers through the native ESM export and resolves declarations", () => {
         const directory = fixtureDirectory();
         try {
             nativeRuntimeFixture(directory);
@@ -137,8 +141,6 @@ describe("Package delivery identity", () => {
                 import * as player from '${identity}/client/player';
                 const require = createRequire(import.meta.url);
                 const {SeededRandomNumberGenerator: CJS} = require('${identity}');
-                const nested = createRequire(new URL('./node_modules/@fromstan/pokie/dist/cjs/self.cjs', import.meta.url));
-                assert.equal(nested('${identity}').SeededRandomNumberGenerator, CJS);
                 assert.equal(new ESM('native').getRandomInt(0, 100), new CJS('native').getRandomInt(0, 100));
                 assert.equal(new Browser('native').getRandomInt(0, 100), new ESM('native').getRandomInt(0, 100));
                 assert.equal(typeof instantiatePokieWasm, 'function'); assert.ok(Object.keys(player).length);
@@ -171,7 +173,7 @@ describe("Package delivery identity", () => {
                 expect(result.resolvedModule?.resolvedFileName).toMatch(/\.d\.ts$/);
             }
             const cjs = ts.resolveModuleName(identity, path.join(directory, "consumer.cts"), {module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext}, ts.sys, undefined, undefined, ts.ModuleKind.CommonJS);
-            expect(cjs.resolvedModule?.resolvedFileName).toContain("dist/cjs/index.d.ts");
+            expect(cjs.resolvedModule?.resolvedFileName).toBe(path.join(directory, "node_modules", identity, "dist/esm/index.d.ts"));
         } finally {
             fs.rmSync(directory, {recursive: true, force: true});
         }

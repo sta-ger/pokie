@@ -25,24 +25,21 @@ This document describes implementation coverage and supported compositions. It i
 | P — PAR | Actual XLSX export/import/rebuild retains effective rules and rejects invalid imported values. |
 | A — replay | Seeded/exact audit preserves canonical feature events and rejects incompatible model/state. |
 
-Fixture/owner groups (references now use complete declared test titles, with
-the row identifying the parameterized case; no generic substring is coverage):
+Fixture groups:
 
-- **M**: `tests/v2/fixtures/ExistingMechanicsGame.ts`,
-  `tests/v2/ExistingMechanicsAuthoring.test.ts`; the exact generated lifecycle case asserts zero and additive
-  grants, lock/reset/exhaustion awards, jackpot resets and base/ante/purchase
-  behavior per applicable row. F1–F9 continuation/ownership regressions remain. Editor owner: `BlueprintEditorPage.existingMechanics.test.tsx`.
-- **W**: `examples/blueprints/wild-<variant>.blueprint.json`,
-  `tests/v2/WildModifierAuthoring.test.ts`; negative fields/coordinates/factors,
-  custom evaluators/callbacks, Hold&Win conflicts, invalid expiry and overflow.
-- **D**: `tests/v2/fixtures/BoundedMechanicsGame.ts`,
-  `tests/v2/CascadeCollectionAuthoring.test.ts`; negative direct constructor/
-  rendering combinations, malformed policies, unreachable progress and bound
-  exhaustion.
-- **Q**: `tests/v2/fixtures/WeightedBonusGame.ts`,
-  `tests/v2/WeightedBonusAuthoring.test.ts`; parameterized negative weight,
-  total, ID/effect ambiguity, target, context, payout/duration, schema/state,
-  owner/geometry and artifact-target boundaries.
+- **M**: `tests/v2/fixtures/ExistingMechanicsGame.ts`; the support contract covers zero
+  and additive grants, lock/reset/exhaustion awards, jackpot resets and
+  base/ante/purchase behavior per applicable row. F1–F9 continuation/ownership
+  regressions remain part of the retained public-runtime coverage.
+- **W**: `examples/blueprints/wild-<variant>.blueprint.json`; the support contract covers
+  negative fields/coordinates/factors, custom evaluators/callbacks, Hold&Win
+  conflicts, invalid expiry and overflow.
+- **D**: `tests/v2/fixtures/BoundedMechanicsGame.ts`; the support contract covers negative
+  direct constructor/rendering combinations, malformed policies, unreachable
+  progress and bound exhaustion.
+- **Q**: `tests/v2/fixtures/WeightedBonusGame.ts`; the support contract covers parameterized
+  negative weight, total, ID/effect ambiguity, target, context, payout/duration,
+  schema/state, owner/geometry and artifact-target boundaries.
 
 The catalog remains a design-time support map. Executable coverage lives in the retained
 library, CLI, integration and browser suites; editor component tests are not part of the lean default lane.
@@ -191,25 +188,21 @@ without invented feature events. See
 
 ## Portable feature execution
 
-All 36 rows above now have a WASM execution cell owned by
-`tests/v2/WasmFeatureParity.test.ts` and its native public-runtime consumer.
-The matrix freezes the 22 existing-mechanic IDs, six modifier IDs, seven bounded
-IDs and weighted-bonus ID. It generates real packages and artifacts, compiles
-all generated TypeScript, and uses fresh root CJS/ESM, browser and wasm exports.
+Portable feature execution is exercised by the retained native public-runtime and
+browser suites. They generate real packages and artifacts, compile all generated
+TypeScript, and use fresh root ESM and `require(esm)`, browser and wasm exports.
 Independent amounts, screens, feature progress, settlement, selected identity,
 JSON restoration, replay and next RNG are checked at meaningful boundaries.
 
-Additional cells cover all modifier/evaluator/denomination pairs, declared
+The support matrix records modifier/evaluator/denomination pairs, declared
 modifier/free-game/purchase/jackpot/weighted combinations, full-board Hold&Win,
 both bonus payout units/zero duration, exact cascade terminal delivery, binary64
 weighted mass and projected/fractional viewports with hidden wilds/scatters.
-The public matrix contains 137 cells, including weighted Hold&Win, all seven
-bounded combinations and weighted bonus through their supported evaluators, plus
-known weighted cascade refill/draw accounting. Every catalogue row and four
-representative weighted models have bounded 128-play restore loops. Executable snapshots
-retain current progress and one delivery, with no completed-round history.
+It includes weighted Hold&Win, all seven bounded combinations and weighted bonus
+through their supported evaluators, plus known weighted cascade refill/draw
+accounting.
 
-This adds supported portable cells; it does not widen incompatible compositions,
+This records supported portable cells; it does not widen incompatible compositions,
 custom code/services, PAR geometry, or paid-grid outcome-library/Stake targets.
 See [the current WASM boundary](wasm-compatibility-boundary.md).
 

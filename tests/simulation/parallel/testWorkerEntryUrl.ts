@@ -12,8 +12,8 @@ const COMPILED_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulation", 
 // dist/esm/simulation/parallel/internal/simulationWorkerEntry.js — the exact file
 // ParallelSimulationRunner's own default resolution (see src/simulation/parallel/internal/
 // defaultWorkerEntryUrl.ts) points at in a real build. ensureFixturesCanRequirePokie performs that
-// one shared runtime build when it is missing (e.g. a fresh checkout), including the CJS output its
-// fixture packages require. If you're iterating on
+// one shared runtime build when it is missing (e.g. a fresh checkout). Node loads that ESM tree
+// through require(esm) for the fixture packages' bare require("@fromstan/pokie"). If you're iterating on
 // src/simulation/parallel/*.ts locally, re-run `npm run build` yourself so these tests pick up
 // your changes — this module only builds when the compiled file is missing, not when it's merely
 // stale.

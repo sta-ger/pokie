@@ -240,8 +240,8 @@ ${winCalculatorDeclaration}        return ${wrapJackpot(sessionConstructionExpre
     // "any" either way, so this never depends on "pokie"'s own exported method signatures) and the
     // final "module.exports" -- is byte-identical in both, so a real "npm run build" here reproduces
     // an equivalent, working dist/index.js.
-    // Built packages compile as CommonJS, while Pokie's package exports separate ESM and CommonJS
-    // declarations. Pin the erased type import to the CommonJS condition so Node16 resolution does
+    // Built packages compile as CommonJS, while Pokie's package root resolves to its ESM
+    // declarations. Pin the erased type import to require resolution so Node16-style consumers do
     // not reject it as an ESM type import from a CommonJS generated module.
     const typeImport = format === "ts" ? `import type {GameBlueprint, PokieGameContext} from "@fromstan/pokie" with { "resolution-mode": "require" };\n\n` : "";
     const weightedReels = blueprint.reelSequences?.flatMap((reel, reelIndex) => reel.type === "weighted" ? [{reelIndex, variants: reel.variants}] : []);

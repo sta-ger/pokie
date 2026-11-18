@@ -8,14 +8,15 @@ type ResolveDefaultWorkerEntryUrlModule = {
 // CommonJS downleveling (require cannot load this .mjs on all supported Node versions) and to
 // browser bundlers inspecting the public simulation API. No caller input is evaluated.
 function importResolver(): Promise<ResolveDefaultWorkerEntryUrlModule> {
-    // eslint-disable-next-line no-eval -- native import must retain this module's scope in ESM and CJS.
+    // eslint-disable-next-line no-eval -- native import must retain this module's scope in the ESM build and ts-jest's CommonJS transform.
     return eval('import("./resolveDefaultWorkerEntryUrl.mjs")') as Promise<ResolveDefaultWorkerEntryUrlModule>;
 }
 
 // Like resolvePokieGameEntryModule's CommonJS entry fallback, this is only for Jest's VM: it does
 // not provide a dynamic-import callback, so even the scoped native import above
 // rejects before resolving this module. The normal path remains native import, because the .mjs
-// resolver is what lets the same source work in both the ESM and CommonJS package builds.
+// resolver is what lets the same source work in the published ESM build and in ts-jest's CommonJS
+// transform.
 //
 // Keep Node builtins out of this module's static dependency graph. This internal resolver is
 // reachable from the public package root, and browser bundlers must not discover a Node-only
@@ -34,10 +35,9 @@ let cachedUrlPromise: Promise<URL> | undefined;
 
 // The default `workerEntryUrl` ParallelSimulationRunner/SimulationWorkerCoordinator use when the
 // caller doesn't supply their own — resolves to this package's own compiled
-// internal/simulationWorkerEntry.js, in whichever of dist/esm or dist/cjs is actually running. Only
-// ever consulted when workers > 1 and no explicit/overriding workerEntryUrl was given, so a caller
-// that always supplies one never pays for or depends on this
-// resolution at all.
+// internal/simulationWorkerEntry.js beside the running ESM module. Only ever consulted when
+// workers > 1 and no explicit/overriding workerEntryUrl was given, so a caller that always supplies
+// one never pays for or depends on this resolution at all.
 export function getDefaultWorkerEntryUrl(): Promise<URL> {
     if (!cachedUrlPromise) {
         // Jest's VM tears down before a native dynamic import can settle when it is exercised late

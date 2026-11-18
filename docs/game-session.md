@@ -413,7 +413,7 @@ legacy independent-port constructor or `settlementGuarantee: "compensation"` for
 weaker local/dev configurations. A strong selection without its capable store fails at
 construction/open, before calculation or settlement. SQLite is optional, loaded only on
 explicit open; Node with `node:sqlite` transaction inspection and WAL/FULL support is required.
-Unsupported selections never fall back to memory. Existing ESM/CJS root exports include
+Unsupported selections never fall back to memory. Existing root exports include
 both composition and capability contracts; browser/WASM entries remain portable.
 
 The external store first reserves the session and freezes the command envelope. It restores

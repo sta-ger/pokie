@@ -26,9 +26,10 @@ describe("browser-safe WASM runtime API", () => {
 
     it("replays the string-zero initial round through both portable public exports", async () => {
         const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "../../package.json"), "utf8"));
-        expect(pkg.exports["."].import.default).toBe("./dist/esm/index.js");
-        expect(pkg.exports["."].require.default).toBe("./dist/cjs/index.js");
-        expect(pkg.main).toBe(pkg.exports["."].require.default);
+        expect(pkg.exports["."].import).toBe("./dist/esm/index.js");
+        expect(pkg.exports["."].default).toBe("./dist/esm/index.js");
+        expect(pkg.exports["."].require).toBeUndefined();
+        expect(pkg.main).toBe(pkg.exports["."].default);
         expect(pkg.exports["./browser"].import.default).toBe("./dist/esm/browser.js");
         expect(pkg.exports["./wasm"].import.default).toBe("./dist/esm/wasm/browser.js");
         expect(browser.instantiatePokieWasm).toBe(instantiatePokieWasm);

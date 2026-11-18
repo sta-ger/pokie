@@ -5,14 +5,9 @@
     "type": "module",
     "exports": {
         ".": {
-            "import": {
-                "types": "./dist/esm/index.d.ts",
-                "default": "./dist/esm/index.js"
-            },
-            "require": {
-                "types": "./dist/cjs/index.d.ts",
-                "default": "./dist/cjs/index.js"
-            }
+            "types": "./dist/esm/index.d.ts",
+            "import": "./dist/esm/index.js",
+            "default": "./dist/esm/index.js"
         },
         "./client/player": {
             "import": {
@@ -33,13 +28,13 @@
             }
         }
     },
-    "main": "./dist/cjs/index.js",
-    "types": "./dist/cjs/index.d.ts",
+    "main": "./dist/esm/index.js",
+    "types": "./dist/esm/index.d.ts",
     "bin": {
         "pokie": "./dist/cli/pokie.js"
     },
     "scripts": {
-        "generate-barrels": "node generate-barrels.js",
+        "generate-barrels": "node scripts/generate-barrels.mjs",
         "lint": "eslint \"**/*.{ts,tsx}\"",
         "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && npm run typecheck-studio-client",
         "pretest": "npm run lint",
@@ -53,18 +48,16 @@
         "check:full": "node scripts/run-full-check.mjs",
         "check:release": "npm run lint && npm run typecheck && npm run test:coverage && npm run test:packaging",
         "build-esm:compile": "tsc --project tsconfig.prod.json && shx cp src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs dist/esm/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs && shx mkdir -p dist/esm/gamepackage/internal && shx cp src/gamepackage/internal/runtimeLocation.mjs dist/esm/gamepackage/internal/runtimeLocation.mjs",
-        "build-cjs:compile": "tsc --project tsconfig.prod.json --module CommonJS --outDir dist/cjs && node write-cjs-package-json.js && shx cp src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs dist/cjs/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs && shx mkdir -p dist/cjs/gamepackage/internal && shx cp src/gamepackage/internal/runtimeLocation.mjs dist/cjs/gamepackage/internal/runtimeLocation.mjs",
         "build-esm": "npm run generate-barrels && npm run build-esm:compile",
-        "build-cjs": "npm run generate-barrels && npm run build-cjs:compile",
-        "build-test-runtime": "npm run generate-barrels && npm run build-esm:compile && npm run build-cjs:compile",
+        "build-test-runtime": "npm run generate-barrels && npm run build-esm:compile",
         "build-client": "tsc --project tsconfig.client.json && shx cp cli/client/index.html cli/client/style.css dist/cli/client/",
         "typecheck-studio-client": "tsc --project cli/studio-client/tsconfig.json --noEmit",
         "build-studio-client": "npm run typecheck-studio-client && vite build --config cli/studio-client/vite.config.ts && shx test -f dist/cli/studio-client/index.html",
         "dev-studio-client": "npm run build-cli && node scripts/start-studio-client-dev.mjs",
         "build-cli:compile": "tsc --project tsconfig.cli.json && shx mkdir -p dist/src/gamepackage/internal && shx cp src/gamepackage/internal/runtimeLocation.mjs dist/src/gamepackage/internal/runtimeLocation.mjs && shx cp src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs dist/src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs && npm run build-client && npm run build-studio-client && shx chmod +x dist/cli/pokie.js",
-        "build-cli": "npm run generate-barrels && npm run build-esm:compile && npm run build-cjs:compile && npm run build-cli:compile",
+        "build-cli": "npm run generate-barrels && npm run build-esm:compile && npm run build-cli:compile",
         "prebuild": "npm run lint",
-        "build": "npm run generate-barrels && shx rm -rf ./dist && npm run build-esm:compile && npm run build-cjs:compile && npm run build-cli:compile",
+        "build": "npm run generate-barrels && shx rm -rf ./dist && npm run build-esm:compile && npm run build-cli:compile",
         "prepack": "npm run build"
     },
     "repository": {
@@ -111,7 +104,6 @@
         "eslint-config-prettier": "^8.8.0",
         "eslint-plugin-react": "^7.37.5",
         "eslint-plugin-react-hooks": "^7.1.1",
-        "fs-extra": "^11.1.1",
         "globals": "^16.5.0",
         "jest": "^30.5.2",
         "jest-environment-jsdom": "^30.5.2",

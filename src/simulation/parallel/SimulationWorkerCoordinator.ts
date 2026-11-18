@@ -15,7 +15,7 @@ type WorkerThreadsModule = {
 // Keep the Node-only worker_threads dependency out of browser bundles. The public package root also
 // exports client-facing code, so a literal dynamic import would still let a browser bundler discover
 // and externalize this Node builtin before a simulation ever asks to use worker threads.
-// eslint-disable-next-line no-new-func -- preserves a native runtime import in both ESM and CJS output.
+// eslint-disable-next-line no-new-func -- preserves a native runtime import in the ESM build and ts-jest's CommonJS transform.
 const importWorkerThreads = new Function("specifier", "return import(specifier)") as (specifier: string) => Promise<WorkerThreadsModule>;
 
 // Jest evaluates source modules in a VM without a dynamic-import callback. Keep the CommonJS

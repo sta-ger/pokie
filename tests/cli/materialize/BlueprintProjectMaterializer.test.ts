@@ -366,10 +366,10 @@ describe("BlueprintProjectMaterializer", () => {
         const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
         const pokiePackageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-local-runtime-"));
         try {
-            const runtimeEntry = path.join(pokiePackageRoot, "dist", "cjs", "index.js");
+            const runtimeEntry = path.join(pokiePackageRoot, "dist", "esm", "index.js");
             fs.mkdirSync(path.dirname(runtimeEntry), {recursive: true});
             fs.writeFileSync(path.join(pokiePackageRoot, "package.json"), JSON.stringify({name: "@fromstan/pokie", private: true, version: "1.3.0"}));
-            fs.writeFileSync(runtimeEntry, "module.exports = {build: 1};\n");
+            fs.writeFileSync(runtimeEntry, "export const build = 1;\n");
             const firstIdentity = createLocalRuntimeIdentity(pokiePackageRoot);
             const firstRunner = createRecordingRunner();
 
@@ -377,7 +377,7 @@ describe("BlueprintProjectMaterializer", () => {
                 "1.3.0", undefined, undefined, undefined, firstRunner, createStubPackageValidator(validReport), cacheRoot, firstIdentity,
             ).materialize(blueprintProjectOf(blueprintPath));
 
-            fs.writeFileSync(runtimeEntry, "module.exports = {build: 2};\n");
+            fs.writeFileSync(runtimeEntry, "export const build = 2;\n");
             const secondIdentity = createLocalRuntimeIdentity(pokiePackageRoot);
             const secondRunner = createRecordingRunner();
             const second = await new BlueprintProjectMaterializer(
@@ -396,7 +396,7 @@ describe("BlueprintProjectMaterializer", () => {
     it("tolerates only a confirmed runtime file disappearance while computing a cache identity", () => {
         const pokiePackageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-runtime-identity-"));
         try {
-            const runtimeEntry = path.join(pokiePackageRoot, "dist", "cjs", "index.js");
+            const runtimeEntry = path.join(pokiePackageRoot, "dist", "esm", "index.js");
             fs.mkdirSync(path.dirname(runtimeEntry), {recursive: true});
             fs.writeFileSync(path.join(pokiePackageRoot, "package.json"), JSON.stringify({name: "@fromstan/pokie", private: true, version: "1.3.0"}));
             fs.writeFileSync(runtimeEntry, "export {};\n");

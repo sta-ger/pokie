@@ -91,7 +91,7 @@ async function initialize(game: PokieGame, seed: string | number, repository: In
 }
 
 describe("canonical runtime contracts", () => {
-    it("validates actual ESM/CJS host/game instances in both directions before publication and recovery", () => {
+    it("validates independently loaded host/game instances in both directions before publication and recovery", () => {
         const runtime = emitPublicRuntime();
         try {
             const probe = fs.readFileSync(path.join(root, "tests/v2/fixtures/PublicRuntimeBoundaryProbe.ts"), "utf8");
@@ -100,6 +100,7 @@ describe("canonical runtime contracts", () => {
             }).outputText);
             fs.writeFileSync(path.join(runtime.directory, "run.mjs"), `
                 import * as esm from "@fromstan/pokie";
+                import * as guest from "./guest/node_modules/@fromstan/pokie/dist/esm/index.js";
                 import * as browser from "@fromstan/pokie/browser";
                 import {createRequire} from "node:module";
                 import {legacyComposedGame as esmGame} from "./game.mjs";
@@ -120,7 +121,7 @@ describe("canonical runtime contracts", () => {
                     if (publicWin.winningPositions.some(([reel, row]) => reel < 0 || reel >= 5 || row < 0 || row >= 3)) throw new Error("Public win-result serializer returned off-viewport positions.");
                     if (session.getSymbolsCombination().toMatrix()[0].length !== 7 || new api.VideoSlotSessionSerializer().getRoundData(session).reelsSymbols[0].length !== 3) throw new Error("Public runtime lost generated/visible ownership.");
                 }
-                for (const [host, source] of [[esm, cjs], [cjs, esm]]) {
+                for (const [host, source] of [[esm, guest], [guest, esm]]) {
                     const config = new source.VideoSlotConfig();
                     config.setReelsNumber(3);
                     config.setReelsSymbolsNumber(1);
@@ -129,11 +130,11 @@ describe("canonical runtime contracts", () => {
                     free.play();
                     if (free.getScreenGeometry() !== undefined || free.getSymbolsCombination().toMatrix().length !== 3 || free.getSymbolsCombination().toMatrix()[0].length !== 1) throw new Error("Cross-module ordinary free-games wrapper changed screen ownership.");
                 }
-                await probe(esm, cjs, require("./game.cjs").legacyComposedGame, require("./extension.cjs").legacyRoundGame);
-                await probe(cjs, esm, esmGame, esmRoundGame);
-                console.log("Both public ESM/CJS runtime directions passed.");
+                await probe(esm, guest, require("./game.cjs").legacyComposedGame, require("./extension.cjs").legacyRoundGame);
+                await probe(guest, esm, esmGame, esmRoundGame);
+                console.log("Both public runtime directions passed.");
             `);
-            expect(execFileSync(process.execPath, [path.join(runtime.directory, "run.mjs")], {encoding: "utf8", timeout: 60000})).toContain("Both public ESM/CJS runtime directions passed.");
+            expect(execFileSync(process.execPath, [path.join(runtime.directory, "run.mjs")], {encoding: "utf8", timeout: 60000})).toContain("Both public runtime directions passed.");
         } finally {
             runtime.dispose();
         }
@@ -1539,7 +1540,7 @@ describe("canonical runtime contracts", () => {
         expect(inspectRuntimeGraph([path.join(root, "src/runtime/SessionRuntime.ts"), path.join(root, "src/browser.ts")], {portable: true}).length).toBeGreaterThan(1);
     });
 
-    it("strictly compiles a real ESM/CJS consumer against freshly emitted package declarations and export conditions", () => {
+    it("strictly compiles real ESM and require() consumers against freshly emitted package declarations and export conditions", () => {
         const directory = fs.mkdtempSync(path.join(root, "node_modules/.cache/pokie-tmp/v2c02-consumer-"));
         try {
             // Give the consumer its own package scope so NodeNext cannot self-reference
@@ -1554,8 +1555,6 @@ describe("canonical runtime contracts", () => {
             const program = ts.createProgram(parsed.fileNames, {...parsed.options, declaration: true, emitDeclarationOnly: true, rootDir: path.join(root, "src"), outDir: path.join(packageRoot, "dist/esm")});
             expect(ts.getPreEmitDiagnostics(program).map(d => ts.flattenDiagnosticMessageText(d.messageText, "\n"))).toEqual([]);
             expect(program.emit().emitSkipped).toBe(false);
-            fs.cpSync(path.join(packageRoot, "dist/esm"), path.join(packageRoot, "dist/cjs"), {recursive: true});
-            fs.writeFileSync(path.join(packageRoot, "dist/cjs/package.json"), JSON.stringify({type: "commonjs"}));
             const fixture = fs.readFileSync(path.join(root, "tests/v2/fixtures/RuntimeExtension.ts"), "utf8");
             for (const extension of ["mts", "cts"]) {
                 const file = path.join(directory, `consumer.${extension}`);
@@ -1563,7 +1562,7 @@ describe("canonical runtime contracts", () => {
                 const consumer = ts.createProgram([file], {strict: true, noEmit: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, types: ["node"]});
                 expect(ts.getPreEmitDiagnostics(consumer).map(d => ts.flattenDiagnosticMessageText(d.messageText, "\n"))).toEqual([]);
                 const resolved = ts.resolveModuleName("@fromstan/pokie", file, consumer.getCompilerOptions(), ts.sys, undefined, undefined, extension === "mts" ? ts.ModuleKind.ESNext : ts.ModuleKind.CommonJS);
-                const declaration = path.join(packageRoot, `dist/${extension === "mts" ? "esm" : "cjs"}/index.d.ts`);
+                const declaration = path.join(packageRoot, "dist/esm/index.d.ts");
                 expect(resolved.resolvedModule?.resolvedFileName).toBe(declaration);
                 expect(consumer.getSourceFile(declaration)).toBeDefined();
                 expect(consumer.getSourceFiles().some(source => source.fileName.startsWith(path.join(root, "dist") + path.sep))).toBe(false);

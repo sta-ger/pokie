@@ -13,7 +13,7 @@ import type {GameSessionHandling} from "../session/GameSessionHandling.js";
 // ForcingBetModeSelectionRejectedError) -- that specific, expected rejection is swallowed here (this
 // round simply continues the round the mode already bought), while any other error (e.g.
 // UnknownBetModeError for a typo'd mode id) still propagates, surfacing as a clear simulation failure.
-// A loaded game may own another ESM/CJS copy of POKIE, so constructor identity cannot recognize its
+// A loaded game may own another loaded copy of POKIE, so constructor identity cannot recognize its
 // error. Match the public error contract, requested mode and live zero stake before continuing.
 //
 // A session that doesn't support BetModeSelecting at all makes this throw BetModeSimulationUnsupportedError

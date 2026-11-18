@@ -40,7 +40,7 @@ describe("packed package", () => {
 
             const packageRoot = path.join(installDir, "node_modules", "@fromstan", "pokie");
             expect(fs.existsSync(path.join(packageRoot, "dist", "esm", "index.js"))).toBe(true);
-            expect(fs.existsSync(path.join(packageRoot, "dist", "cjs", "index.js"))).toBe(true);
+            expect(fs.existsSync(path.join(packageRoot, "dist", "cjs"))).toBe(false);
             expect(fs.existsSync(path.join(packageRoot, "dist", "cli", "pokie.js"))).toBe(true);
 
             const cli = path.join(packageRoot, "dist", "cli", "pokie.js");

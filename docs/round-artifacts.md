@@ -378,7 +378,7 @@ fail validation or reproduction. Content hashes detect corruption relative to a
 trusted digest; a consistently rewritten and rehashed recording is not authenticated.
 No signatures, KMS, notarization or stronger fairness claim are added.
 
-Root ESM/CJS exports provide recording and replay. The browser entry exports the
+Root exports provide recording and replay. The browser entry exports the
 recording types only; Studio uses the server verifier's verdict. Native outcome
 libraries retain their selection/hash profile; portable WASM retains its current
 runtime replay and compact state, without package audit support.

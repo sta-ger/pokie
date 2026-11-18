@@ -19,6 +19,34 @@ export const REPO_ROOT = path.join(__dirname, "..", "..");
 // all. "pokie" itself is never rewritten here -- that's production's own job (withLocalPokieInstall, the same
 // mechanism BlueprintProjectMaterializer's real materialize() calls go through), so exercising it here proves
 // the real, shipped offline-materialization behavior rather than a test-only stand-in for it.
+function resolvePackageJson(name: string, resolver: NodeRequire): string {
+    try {
+        return resolver.resolve(`${name}/package.json`);
+    } catch {
+        // Modern packages commonly block deep package.json imports through "exports".
+        // Resolve the public entry instead and walk to the package that owns it, which
+        // also finds legitimately nested transitive installs.
+        let current: string;
+        try {
+            current = resolver.resolve(name);
+        } catch {
+            current = path.join(REPO_ROOT, "node_modules", name);
+        }
+        let directory = fs.existsSync(current) && fs.statSync(current).isDirectory() ? current : path.dirname(current);
+        for (;;) {
+            const candidate = path.join(directory, "package.json");
+            if (fs.existsSync(candidate)) {
+                const manifest = JSON.parse(fs.readFileSync(candidate, "utf-8")) as {name?: string};
+                if (manifest.name === name) return candidate;
+            }
+            const parent = path.dirname(directory);
+            if (parent === directory) break;
+            directory = parent;
+        }
+        throw new Error(`Cannot locate package.json for "${name}".`);
+    }
+}
+
 export function collectTransitiveDependencies(rootNames: string[]): Map<string, string> {
     const collected = new Map<string, string>();
     const rootRequire = createRequire(path.join(REPO_ROOT, "package.json"));
@@ -28,12 +56,7 @@ export function collectTransitiveDependencies(rootNames: string[]): Map<string, 
         if (collected.has(name)) {
             continue;
         }
-        let pkgPath: string;
-        try {
-            pkgPath = resolver.resolve(`${name}/package.json`);
-        } catch {
-            pkgPath = path.join(REPO_ROOT, "node_modules", name, "package.json");
-        }
+        const pkgPath = resolvePackageJson(name, resolver);
         const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {dependencies?: Record<string, string>};
         collected.set(name, path.dirname(pkgPath));
         const childRequire = createRequire(pkgPath);

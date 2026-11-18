@@ -77,8 +77,8 @@ function referenceCalculator(model) {
     return new pokie.VideoSlotWinCalculator(config);
 }
 async function main() {
-    // Resolve actual ESM/CJS and browser-safe exports with native Node conditions.
-    const packageRoot = path.dirname(nativeRequire.resolve('@fromstan/pokie')).replace(/[/\\]dist[/\\]cjs$/, '');
+    // Resolve the actual ESM package root and browser-safe exports with native Node conditions.
+    const packageRoot = nativeRequire.resolve('@fromstan/pokie').replace(/[/\\]dist[/\\]esm[/\\]index\.js$/, '');
     const esm = await import(pathToFileURL(path.join(packageRoot, 'dist/esm/index.js')).href);
     const browser = await import(pathToFileURL(path.join(packageRoot, 'dist/esm/browser.js')).href);
     const portable = await import(pathToFileURL(path.join(packageRoot, 'dist/esm/wasm/browser.js')).href);

@@ -21,7 +21,7 @@ describe("ParSheetExporter", () => {
         const cache = path.resolve(__dirname, "../../node_modules/.cache/pokie-tmp");
         fs.mkdirSync(cache, {recursive: true});
         runtimeDirectory = fs.mkdtempSync(path.join(cache, "parsheet-native-runtime-"));
-        runtimePackageRoot = stageCompiledTestRuntime(runtimeDirectory, ["cjs"], {runtimeFilesOnly: true});
+        runtimePackageRoot = stageCompiledTestRuntime(runtimeDirectory, {runtimeFilesOnly: true});
     });
 
     afterAll(() => {

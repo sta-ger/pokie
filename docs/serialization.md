@@ -374,7 +374,7 @@ durable codecs. Free-game counters, banks and nested built-in snapshots remain r
 bet-mode node is checked against the selected game's declared modes or that live node's trusted modes,
 including current state and both states of cached/captured results, before publication or recovery writes.
 
-The trusted composition policy follows constructed children across the public ESM and CommonJS
+The trusted composition policy follows constructed children across independently loaded public
 module instances; constructor identity in the host is not composition authority. An injected RNG
 whose capture is finite opaque data can continue in its primed live session without adopting the
 built-in seeded numeric codec. This does not certify reconstruction: loss of live authority refuses
@@ -384,7 +384,7 @@ node, the selected mode must also satisfy any applicable validated stored capabi
 
 The plain built-in `GameSession` retains its strict empty executable codec. Existing subclasses with
 `toSessionState(): {round: number}` and `fromSessionState(state: {round: number}): this` keep those
-signatures through the public ESM/CJS declarations. An inherited base codec does not describe their
+signatures through the public declarations. An inherited base codec does not describe their
 custom state: without an explicit complete codec they capture a custom, opaque, live-only snapshot.
 An unchanged package can play that subclass through direct execution, primed repository commands,
 HTTP and Studio without new declarations. Losing its trusted live state refuses reconstruction and

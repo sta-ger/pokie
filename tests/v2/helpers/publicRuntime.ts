@@ -13,7 +13,11 @@ export function emitPublicRuntime(options: {runtimeFilesOnly?: boolean; temporar
     fs.mkdirSync(temporaryRoot, {recursive: true});
     const directory = fs.mkdtempSync(path.join(temporaryRoot, "v2c02-public-"));
     try {
-        stageCompiledTestRuntime(directory, ["esm", "cjs"], options);
+        stageCompiledTestRuntime(directory, options);
+        // A second, independently staged copy preserves the public cross-instance boundary
+        // contract now that the package no longer has separate ESM and CommonJS builds.
+        fs.mkdirSync(path.join(directory, "guest"));
+        stageCompiledTestRuntime(path.join(directory, "guest"), options);
     } catch (error) {
         fs.rmSync(directory, {recursive: true, force: true});
         // Node spawn errors can self-reference through .error; retain the real

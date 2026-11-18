@@ -8,7 +8,7 @@
 - Authored free games, bet modes, Hold & Win, jackpots, cascades, resizable grids, weighted bonuses and screen modifiers.
 - Seeded simulation, parallel workers, adaptive early stop, exact weighted-outcome analysis and finite math optimization.
 - Round artifacts, deterministic replay, audit records, commit-reveal fairness proofs and certification evidence bundles.
-- Root ESM/CommonJS library builds and declarations; ESM-only browser, WASM and player subpaths.
+- Single ESM library build and declarations, with Node `require(esm)` compatibility; ESM-only browser, WASM and player subpaths.
 - Local/reference HTTP server with replaceable session storage and wallet ports. Not a casino backend or RGS.
 
 Independent RNG certification, regulatory compliance and production operator integration remain outside POKIE's scope.

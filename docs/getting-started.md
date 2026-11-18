@@ -12,7 +12,10 @@ checkout, then use the installed `pokie` executable.
 npm install @fromstan/pokie
 ```
 
-POKIE ships both ESM and CJS builds plus type declarations, so it works from `import` or `require` in JS or TS.
+POKIE ships one ESM build plus type declarations. It works from `import` everywhere, and from
+`require()` on Node `^20.19.0 || >=22.12.0` through Node's `require(esm)` support. TypeScript
+consumers should use `module`/`moduleResolution` `NodeNext` (or `Node20`); the older `Node16` mode
+cannot type-check an ESM dependency from a CommonJS file.
 
 ## Design and test in Studio
 

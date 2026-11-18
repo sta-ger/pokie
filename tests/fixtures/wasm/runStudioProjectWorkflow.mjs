@@ -3,15 +3,13 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import {createRequire} from "node:module";
-import {fileURLToPath} from "node:url";
+import {fileURLToPath, pathToFileURL} from "node:url";
 import {spawnSync} from "node:child_process";
 
 assert(process.argv[2], "Supply the prepared candidate package root; this runner never builds or installs it.");
 const candidate = path.resolve(process.argv[2]);
 assert(fs.existsSync(path.join(candidate, "dist/cli/pokie.js")), "The candidate must contain its built public CLI.");
-const require = createRequire(import.meta.url);
-const {GamePackageGenerator, loadPokieGameRuntime, WasmArtifactBuilder, PROJECT_TYPE_CAPABILITIES} = require(path.join(candidate, "dist/cjs/index.js"));
+const {GamePackageGenerator, loadPokieGameRuntime, WasmArtifactBuilder, PROJECT_TYPE_CAPABILITIES} = await import(pathToFileURL(path.join(candidate, "dist/esm/index.js")).href);
 const temporaryRoot = fileURLToPath(new URL("../../../node_modules/.cache/pokie-tmp/", import.meta.url));
 fs.mkdirSync(temporaryRoot, {recursive: true});
 const directory = fs.mkdtempSync(path.join(temporaryRoot, "v2c22-installed-workflow-"));

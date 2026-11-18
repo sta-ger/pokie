@@ -27,7 +27,7 @@ export function createPackageExtractionTestEnvironment(options: {stageRuntime?: 
     const directory = fs.mkdtempSync(path.join(parent, "pokie-package-extraction-"));
     // Bind declared fixture dependencies to stable compiled bytes, outside mutable checkout dist.
     try {
-        if (options.stageRuntime !== false) stageCompiledTestRuntime(directory, ["cjs"], {runtimeFilesOnly: options.runtimeFilesOnly});
+        if (options.stageRuntime !== false) stageCompiledTestRuntime(directory, {runtimeFilesOnly: options.runtimeFilesOnly});
     } catch (error) {
         fs.rmSync(directory, {recursive: true, force: true});
         // Native spawn errors can reference themselves through .error, which Jest's

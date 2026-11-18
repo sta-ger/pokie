@@ -4,15 +4,9 @@ import path from "path";
 import {ensureCompiledTestOutput} from "../../testUtils/ensureCompiledTestOutput.js";
 
 const REPO_ROOT = path.join(__dirname, "..", "..", "..");
-const COMPILED_CJS_ENTRY = path.join(REPO_ROOT, "dist", "cjs", "index.js");
-// build-cjs's tsc pass emits dist/cjs/index.js first and only writes this package.json (via
-// write-cjs-package-json.js) as its last step. Without waiting for it too, a waiting Jest worker can
-// observe dist/cjs/index.js already on disk while dist/cjs/package.json is still missing, declare the
-// build done, and let a worker_thread's `require("@fromstan/pokie")` fall through to the *root* package.json's
-// "type": "module" -- loading dist/cjs/index.js's CommonJS `exports` syntax as ESM and crashing with
-// "exports is not defined in ES module scope".
-const COMPILED_CJS_PACKAGE_JSON = path.join(REPO_ROOT, "dist", "cjs", "package.json");
+const COMPILED_ESM_ENTRY = path.join(REPO_ROOT, "dist", "esm", "index.js");
 const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulation", "parallel", "internal", "simulationWorkerEntry.js");
+const COMPILED_ESM_RUNTIME_LOCATION = path.join(REPO_ROOT, "dist", "esm", "gamepackage", "internal", "runtimeLocation.mjs");
 const FIXTURES_NODE_MODULES = path.join(__dirname, "node_modules");
 
 // The fixture game packages in this directory (playable-game, -with-bonus-round, -with-free-games,
@@ -25,14 +19,14 @@ const FIXTURES_NODE_MODULES = path.join(__dirname, "node_modules");
 // fixture, so self-reference never fires, and with no node_modules/@fromstan/pokie anywhere, resolution fails
 // deterministically (not intermittently) every time. This gives fixtures a real, resolvable "@fromstan/pokie"
 // without touching their bare `require("@fromstan/pokie")` (which would make them less representative of a
-// real consumer). The real-worker tests need both CJS (the fixture's bare require) and ESM (their
-// worker entry), so build the package once as one atomic test prerequisite. In a fresh clone two Jest
-// workers used to race and launch multiple overlapping CJS/ESM compilers; the shared lock below makes
-// all waiters reuse one complete runtime build instead.
+// real consumer). Node >=20.19 loads this ESM package through require(esm), so one ESM build serves both the
+// fixture's bare require and the worker's native import. In a fresh clone two Jest workers used to race and
+// launch multiple overlapping compilers; the shared lock below makes all waiters reuse one complete runtime
+// build instead.
 export function ensureFixturesCanRequirePokie(): void {
     ensureCompiledTestOutput({
         repositoryRoot: REPO_ROOT,
-        outputPaths: [COMPILED_CJS_ENTRY, COMPILED_CJS_PACKAGE_JSON, COMPILED_ESM_WORKER_ENTRY, ...["esm", "cjs"].map(tree => path.join(REPO_ROOT, "dist", tree, "gamepackage/internal/runtimeLocation.mjs"))],
+        outputPaths: [COMPILED_ESM_ENTRY, COMPILED_ESM_WORKER_ENTRY, COMPILED_ESM_RUNTIME_LOCATION],
         lockName: "compiled-runtime",
         command: ["npm", "run", "build-test-runtime"],
     });

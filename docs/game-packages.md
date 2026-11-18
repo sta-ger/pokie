@@ -93,8 +93,8 @@ behalf.
 `pokie build SOURCE --target tsPackage` writes both `src/index.ts` and immediately executable
 `dist/index.js`. Both use the bare scoped dependency `@fromstan/pokie`. After installing dependencies,
 the package's own `npm run build` recompiles that source without source aliases, `tsconfig` path
-overrides or rewritten runtime imports. Root ESM imports and CommonJS `require` have corresponding
-shipped declarations. The `/browser`, `/wasm` and `/client/player` exports are ESM-only; package
+overrides or rewritten runtime imports. Root ESM imports and CommonJS `require()` calls resolve the
+same shipped declaration. The `/browser`, `/wasm` and `/client/player` exports remain ESM-only; package
 metadata and private deep imports are not public exports. See the [WASM boundary](wasm-compatibility-boundary.md)
 for portable execution and independent format versions.
 
@@ -250,7 +250,7 @@ play and legacy seed-forward replay available, with exact audit explicitly unava
 ## Whole-sequence variants
 
 Generated and recompiled typed packages preserve `reelSequences`, complete variant
-arrays, IDs and relative weights. Public ESM and CommonJS consumers use the same
+arrays, IDs and relative weights. Public ESM and `require()` consumers use the same
 context contract; weighted-definition recognition survives that module boundary.
 The model hash includes authored variants and versioned context/sampling semantics.
 Existing exact-only models keep their stop draws and seeded mathematics.
