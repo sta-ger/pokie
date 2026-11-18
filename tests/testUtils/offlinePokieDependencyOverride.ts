@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import {execFile} from "child_process";
+import {createRequire} from "module";
 import util from "util";
 import {PackageCommandResult, PackageCommandRunning, withLocalPokieInstall} from "../../cli/prepare/PackageCommandRunner.js";
 
@@ -18,20 +19,27 @@ export const REPO_ROOT = path.join(__dirname, "..", "..");
 // all. "pokie" itself is never rewritten here -- that's production's own job (withLocalPokieInstall, the same
 // mechanism BlueprintProjectMaterializer's real materialize() calls go through), so exercising it here proves
 // the real, shipped offline-materialization behavior rather than a test-only stand-in for it.
-export function collectTransitiveDependencyNames(rootNames: string[]): string[] {
-    const collected = new Set<string>();
-    const queue = [...rootNames];
+export function collectTransitiveDependencies(rootNames: string[]): Map<string, string> {
+    const collected = new Map<string, string>();
+    const rootRequire = createRequire(path.join(REPO_ROOT, "package.json"));
+    const queue = rootNames.map((name) => ({name, resolver: rootRequire}));
     while (queue.length > 0) {
-        const name = queue.shift() as string;
+        const {name, resolver} = queue.shift()!;
         if (collected.has(name)) {
             continue;
         }
-        collected.add(name);
-        const pkgPath = path.join(REPO_ROOT, "node_modules", name, "package.json");
+        let pkgPath: string;
+        try {
+            pkgPath = resolver.resolve(`${name}/package.json`);
+        } catch {
+            pkgPath = path.join(REPO_ROOT, "node_modules", name, "package.json");
+        }
         const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {dependencies?: Record<string, string>};
-        queue.push(...Object.keys(pkg.dependencies ?? {}));
+        collected.set(name, path.dirname(pkgPath));
+        const childRequire = createRequire(pkgPath);
+        queue.push(...Object.keys(pkg.dependencies ?? {}).map((dependency) => ({name: dependency, resolver: childRequire})));
     }
-    return [...collected];
+    return collected;
 }
 
 const execFileAsync = util.promisify(execFile);
@@ -75,27 +83,27 @@ export function localPokieDependencyRunner(realRunCommand: PackageCommandRunning
             const repoPackageJson = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8")) as {
                 dependencies?: Record<string, string>;
             };
-            const localFileSpec = (name: string): string => `file:${path.join(REPO_ROOT, "node_modules", name)}`;
-            packageJson.devDependencies = {...packageJson.devDependencies, typescript: localFileSpec("typescript")};
-            const transitiveNames = collectTransitiveDependencyNames(Object.keys(repoPackageJson.dependencies ?? {}));
-            const overrideNames: string[] = [];
-            for (const name of transitiveNames) {
+            const localFileSpec = (packagePath: string): string => `file:${packagePath}`;
+            packageJson.devDependencies = {...packageJson.devDependencies, typescript: localFileSpec(path.join(REPO_ROOT, "node_modules", "typescript"))};
+            const transitiveDependencies = collectTransitiveDependencies(Object.keys(repoPackageJson.dependencies ?? {}));
+            const overrideNames: Array<{name: string; packagePath: string}> = [];
+            for (const [name, packagePath] of transitiveDependencies) {
                 // npm rejects an `overrides` entry for a package that's also a *direct* dependency/devDependency
                 // unless the override matches that direct spec exactly (EOVERRIDE) -- e.g. the generated
                 // blueprint package.json (GamePackageGenerator) already declares its own "@types/node" devDependency,
                 // which collides with this closure's own entry for the same package. Rewriting the direct spec
                 // in place (same as "typescript" above) keeps both pinned to this checkout without that conflict.
                 if (packageJson.dependencies && name in packageJson.dependencies) {
-                    packageJson.dependencies[name] = localFileSpec(name);
+                    packageJson.dependencies[name] = localFileSpec(packagePath);
                 } else if (packageJson.devDependencies && name in packageJson.devDependencies) {
-                    packageJson.devDependencies[name] = localFileSpec(name);
+                    packageJson.devDependencies[name] = localFileSpec(packagePath);
                 } else {
-                    overrideNames.push(name);
+                    overrideNames.push({name, packagePath});
                 }
             }
             packageJson.overrides = {
                 ...packageJson.overrides,
-                ...Object.fromEntries(overrideNames.map((name) => [name, localFileSpec(name)])),
+                ...Object.fromEntries(overrideNames.map(({name, packagePath}) => [name, localFileSpec(packagePath)])),
             };
             fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 4));
         }

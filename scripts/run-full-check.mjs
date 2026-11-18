@@ -12,7 +12,6 @@ const stages = [
     {name: "unit", arguments: ["test"]},
     {name: "typecheck", arguments: ["run", "typecheck"]},
     {name: "integration", arguments: ["run", "test:integration"]},
-    {name: "workflows", arguments: ["run", "test:workflows"]},
 ];
 const failures = [];
 

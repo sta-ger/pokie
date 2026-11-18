@@ -53,7 +53,7 @@ describe("packed package", () => {
                     'import {VideoSlotSession} from "@fromstan/pokie";',
                     "const session = new VideoSlotSession();",
                     "session.play();",
-                    "console.log(JSON.stringify({win: session.getWinAmount(), credits: session.getCredits()}));",
+                    "console.log(JSON.stringify({win: session.getWinAmount(), credits: session.getCreditsAmount()}));",
                 ].join("\n"),
             );
             const esm = JSON.parse(run(process.execPath, [esmScript], installDir));

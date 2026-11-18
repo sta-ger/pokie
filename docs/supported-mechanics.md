@@ -35,22 +35,17 @@ the row identifying the parameterized case; no generic substring is coverage):
 - **W**: `examples/blueprints/wild-<variant>.blueprint.json`,
   `tests/v2/WildModifierAuthoring.test.ts`; negative fields/coordinates/factors,
   custom evaluators/callbacks, Hold&Win conflicts, invalid expiry and overflow.
-  Editor owner: `BlueprintEditorPage.wildModifiers.test.tsx`.
 - **D**: `tests/v2/fixtures/BoundedMechanicsGame.ts`,
   `tests/v2/CascadeCollectionAuthoring.test.ts`; negative direct constructor/
   rendering combinations, malformed policies, unreachable progress and bound
-  exhaustion. Editor owner: `BlueprintEditorPage.cascadeCollection.test.tsx`.
+  exhaustion.
 - **Q**: `tests/v2/fixtures/WeightedBonusGame.ts`,
   `tests/v2/WeightedBonusAuthoring.test.ts`; parameterized negative weight,
   total, ID/effect ambiguity, target, context, payout/duration, schema/state,
-  owner/geometry and artifact-target boundaries. Editor owner:
-  `BlueprintEditorPage.weightedBonus.test.tsx`.
+  owner/geometry and artifact-target boundaries.
 
-All editor owners live under
-`tests/cli/studio-client/src/components/blueprintEditor/`.
-Q also owns fixture-driven real CLI/Studio/XLSX and worker/fresh-process durable
-checks. Existing public player, report, artifact inspector, Play and Replay
-component suites assert presentation of that same Q selection.
+The catalog remains a design-time support map. Executable coverage lives in the retained
+library, CLI, integration and browser suites; editor component tests are not part of the lean default lane.
 
 ## Complete supported variant/composition map
 

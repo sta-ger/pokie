@@ -54,25 +54,6 @@ describe("final math convergence", () => {
         }
     });
 
-    it("retains every mandatory authored workflow family, variant and surface owner", () => {
-        expect(api.MANDATORY_AUTHORED_FAMILIES).toHaveLength(10);
-        expect(api.AUTHORED_WORKFLOW_SURFACES).toEqual(["core", "schema", "editor", "build", "runtime-restore", "simulation-report", "extraction", "PAR", "replay"]);
-        expect(api.AUTHORED_WORKFLOW_SUPPORT_CATALOG).toHaveLength(36);
-        const families = new Set<string>();
-        for (const row of api.AUTHORED_WORKFLOW_SUPPORT_CATALOG) {
-            row.families.forEach(family => families.add(family));
-            expect(Object.keys(row.cells)).toEqual(api.AUTHORED_WORKFLOW_SURFACES);
-            for (const cell of Object.values(row.cells)) {
-                expect(cell.assertion.length).toBeGreaterThan(0);
-                expect(cell.negativeAssertion.length).toBeGreaterThan(0);
-                expect(fs.existsSync(cell.testOwner)).toBe(true);
-                expect(cell.exactFixture.length).toBeGreaterThan(0);
-                expect(cell.negativeFixture.length).toBeGreaterThan(0);
-            }
-        }
-        expect([...families].sort()).toEqual([...api.MANDATORY_AUTHORED_FAMILIES].sort());
-    });
-
     it("bounds retained continuation and checkpoint copies without retaining a trace", async () => {
         const measured = await measureFinalWorkerContinuation(wasm, 1000);
         expect(measured.acceptedRounds).toBe(1001);

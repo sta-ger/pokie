@@ -1,3 +1,4 @@
+import {supportsAtomicDirectoryExchange} from "../testUtils/atomicDirectoryExchange.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -44,7 +45,9 @@ function createNeverCalledReader(onCalled: () => void): OutcomeLibraryBundleRead
     };
 }
 
-describe("FairnessRoundProofVerifier", () => {
+const describeAtomic = supportsAtomicDirectoryExchange() ? describe : describe.skip;
+
+describeAtomic("FairnessRoundProofVerifier", () => {
     let tmpRoot: string;
     let bundleDir: string;
     let verifier: FairnessRoundProofVerifier;

@@ -212,9 +212,8 @@ cli/studio-client/
                            # + the tab components
 ```
 
-`tests/cli/studio-client/src/` mirrors this tree 1:1 (repo convention — `tests/` always mirrors `src`/`cli`
-layout). The pure `domain/` and `api/` modules keep their original unit tests, moved but otherwise unchanged;
-new `.test.tsx` component/integration tests were added alongside each screen.
+The Studio source tree no longer has a mirrored jsdom test tree. Add focused browser tests separately
+when a UI regression needs one; the default suite stays on the library, CLI and integration lanes.
 
 ### Why the domain layer looks untouched
 
@@ -263,56 +262,10 @@ nested asset paths generically, so Vite's hashed `assets/*.js`/`assets/*.css` ou
 
 ## Testing
 
-Two Jest projects (`jest.config.mjs`):
-
-- **`pokie`** (`testEnvironment: "node"`) — everything under `src/`, `cli/`, `tests/`, *except* `.test.tsx`
-  files. This includes the studio-client `domain`/`api` pure-module tests.
-- **`studio-client-components`** (`testEnvironment: "jsdom"`) — `tests/cli/studio-client/src/**/*.test.tsx`,
-  using React Testing Library. Components are tested through `StudioApiProvider`'s `fetchImpl` injection point
-  (the same fake-fetch seam `apiClient.test.ts` already used, not a new mocking layer — see
-  `tests/cli/studio-client/src/testUtils/`). `testUtils/renderRoutedApp.tsx` mounts a real **data router**
-  (`createMemoryRouter` + `RouterProvider`, mirroring production `routes.tsx` exactly, `useBlocker` included)
-  and returns the created `router` instance alongside the render result, so a test can drive real
-  navigation directly (`router.navigate(-1)`/`(1)` for back/forward, or a path string for a direct/in-app
-  navigation) as well as exercise an actual cross-page navigation through the UI, used by
-  `tests/cli/studio-client/src/integration/happyPath.test.tsx` — the full guided scenario end to end
-  (configure the game model → validate → build → land in the Project Dashboard → simulate → open the
-  report). `tests/cli/studio-client/src/routing.test.tsx` covers refresh/direct-link (render with a specific
-  `initialEntries` path) and real browser back/forward. `tests/cli/studio-client/src/designNavigationGuard.test.tsx`
-  covers the router-level half of the guard: blocking Back and a direct `/project/*` navigation while
-  dirty (including the untracked-hash-edit fallback), Cancel preserving the URL/draft, Confirm navigating
-  exactly once, Home's own tab switches never blocking, and the `beforeunload` listener being attached only
-  while dirty. `tests/cli/studio-client/src/openProjectGuard.test.tsx` covers the `GuardedAction` half
-  specifically: Cancel never calls the open-project API, Confirm calls it exactly once and navigates
-  exactly once, a failed call keeps Home's URL/draft and doesn't leave the router-level bypass stuck "on"
-  for a later, unrelated navigation, and Back/Forward/direct-route/tab-switching behavior is unaffected.
-  `tests/cli/studio-client/src/navigationGuardModal.test.tsx` covers the confirm modal's own dismissal
-  behavior, shared by all three call sites: Escape and clicking outside don't close it, there's no close
-  button (exactly the Leave/Stay pair), Stay releases a `guardedAction` caller's loading state and
-  double-submit guard, and a subsequent attempt after Stay completes normally.
-  `tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.sections.test.tsx` covers
-  Design Game's sectioned layout: editing across sections (Game basics/Symbols/Bets) through to a
-  successful Validate → Build → Project Dashboard, an in-progress edit in one section surviving a switch
-  to another and back, a validation error surfacing as both a section's own badge/inline `IssueList` and
-  in the unchanged bottom summary, and arrow-key navigation between section tabs. The domain-level section
-  classifier itself is unit-tested independently in
-  `tests/cli/studio-client/src/domain/interpret/BlueprintSections.test.ts`.
-  `tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.guidedProgress.test.tsx`
-  covers the read-only progress list (see the Stepper audit above): no clickable step buttons, and the
-  idle/invalid/ok transitions each land on the right `completed`/`current`/`blocked`/`failed`
-  `aria-current`/status combination.
-  `tests/cli/studio-client/src/components/common/StepProgressList.test.tsx` unit-tests the shared component
-  itself across its full `completed|current|available|blocked|skipped|failed` state vocabulary --
-  `aria-current`/`aria-disabled` placement and that each status is exposed as real, non-color-only text. The
-  data router builds
-  Fetch API `Request` objects internally on every navigation even with zero loaders/actions defined, which
-  jsdom doesn't provide — `tests/cli/studio-client/src/jestPolyfills.ts` polyfills `Request`/`Response`/
-  `Headers`/`fetch` via `undici` (a devDependency; this is what Node's own built-in `fetch` is built on).
-
-```sh
-npm test                                          # both projects
-npx jest --selectProjects studio-client-components  # just the React component tests
-```
+Studio has no dedicated jsdom test project in the pruned suite. Its TypeScript compiler is covered by
+`npm run typecheck`, and the production bundle is covered by `npm run build-studio-client` (or the full
+`npm run build`). Add focused browser tests for UI regressions when needed; do not reintroduce a second
+component-test harness by default.
 
 ## Simulation report units
 

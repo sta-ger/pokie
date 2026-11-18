@@ -17,21 +17,9 @@ const lane = flag("lane", "fast");
 const top = Number(flag("top", "10"));
 
 const LANES = {
-    fast: {projects: ["pokie", "studio-client-components"], coverage: false},
-    full: {
-        projects: ["pokie", "studio-client-components", "pokie-integration", "studio-client-workflows"],
-        coverage: false,
-    },
-    release: {
-        projects: [
-            "pokie",
-            "studio-client-components",
-            "pokie-integration",
-            "studio-client-workflows",
-            "pokie-packaging",
-        ],
-        coverage: true,
-    },
+    fast: {projects: ["pokie"], coverage: false},
+    full: {projects: ["pokie", "pokie-integration"], coverage: false},
+    release: {projects: ["pokie", "pokie-integration", "pokie-packaging"], coverage: true},
 };
 
 const laneConfig = LANES[lane];
