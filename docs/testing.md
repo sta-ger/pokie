@@ -19,8 +19,8 @@ patched version.
 
 | Command | What it runs | When to use it |
 |---|---|---|
-| `npm test` / `npm run check:fast` | Unit tests plus the companion examples suite | Everyday development |
-| `npm run check:full` | Fast tests, typecheck and integration tests | Before opening a PR |
+| `npm test` | Unit tests plus the companion examples suite | Everyday development |
+| `npm run check:full` | Lint, fast tests, typecheck and integration tests | Before opening a PR |
 | `npm run check:release` | Lint, typecheck, coverage, the real pack/install smoke test and the production dependency audit | Before a release |
 | `npm run test:integration` | Integration lane only | Server, worker and real-filesystem changes |
 | `npm run test:targeted -- <files...>` | Exact named files, one process per file | Verifying a focused correction |
@@ -28,8 +28,9 @@ patched version.
 | `npm run test:packaging` | Real `npm pack` → install → spawn smoke test | Verifying the published package boundary |
 | `npm run audit:prod` | `npm audit --omit=dev` | Verifying production dependencies before a release |
 
-`npm test` does not collect coverage and does not run the packaging smoke test. Those have their own
-commands and are included in `check:release`.
+`npm test` runs only the fast Jest lane. It does not lint, collect coverage or run the packaging
+smoke test; `check:full` adds lint, typecheck and integration, and `check:release` adds coverage,
+packaging and the production audit.
 
 ## Dependency audit
 

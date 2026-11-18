@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Run every independent check:full lane before returning failure. A shell `&&` chain hid
 // downstream failures and forced one expensive official rerun per newly exposed lane.
+// Lint is an explicit stage here: `npm test` itself is now a pure test lane.
 import {spawnSync} from "node:child_process";
 import path from "node:path";
 import process from "node:process";
@@ -9,6 +10,7 @@ import {fileURLToPath} from "node:url";
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const stages = [
+    {name: "lint", arguments: ["run", "lint"]},
     {name: "unit", arguments: ["test"]},
     {name: "typecheck", arguments: ["run", "typecheck"]},
     {name: "integration", arguments: ["run", "test:integration"]},
