@@ -11,6 +11,7 @@
 - Single ESM library build and declarations, with Node `require(esm)` compatibility; ESM-only browser, WASM and player subpaths.
 - Local/reference HTTP server with replaceable session storage and wallet ports. Not a casino backend or RGS.
 - Release checks audit both the repository lockfile and the installed tarball; all dependency overrides were removed, and unresolved development-tooling advisories are reported rather than hidden.
+- Directory publication uses `mv --exchange` where available and a same-directory rename fallback elsewhere, so replacing an existing artifact no longer requires GNU coreutils 9.5+.
 - Documentation is user-facing only; the package no longer ships contributor, testing or frontend implementation guides.
 - PAR workbooks use `@xlvane/exceljs`, a dependency-light ExcelJS-compatible API. POKIE 2.0 requires Node >=22.12.0.
 

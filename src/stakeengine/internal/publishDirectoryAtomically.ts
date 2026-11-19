@@ -18,6 +18,8 @@ export type PublishDirectoryAtomicallyOptions = {
     readonly beforeCommit?: () => void;
     /** Test seam after the namespace commit, before the old payload is removed. */
     readonly afterCommit?: () => void;
+    /** Test seam for the host move primitive; production uses the system mv. */
+    readonly runMove?: AtomicMoveRunning;
 };
 
 // An inode alone is not an ownership token: a fast remove/recreate can reuse
@@ -82,8 +84,8 @@ export type PublishDirectoryAtomicallyResult = {
     readonly cleanupWarning?: string;
 };
 
-type AtomicMoveResult = {error?: Error; status?: number | null; stderr?: string | Buffer | null};
-type AtomicMoveRunning = (
+export type AtomicMoveResult = {error?: Error; status?: number | null; stderr?: string | Buffer | null};
+export type AtomicMoveRunning = (
     command: string,
     args: readonly string[],
     options: {encoding: "utf-8"},
@@ -109,10 +111,11 @@ export function preflightAtomicDirectoryPublication(
             const source = path.join(probeRoot, "source");
             const target = path.join(probeRoot, "target");
             fs.mkdirSync(source);
-            assertAtomicMoveSupported(runMove("mv", ["--no-clobber", "--no-target-directory", source, target], {encoding: "utf-8"}), "--no-clobber", destination);
-            if (capturePublishDirectoryIdentity(source) !== undefined || capturePublishDirectoryIdentity(target) === undefined) {
-                throw new Error(`Cannot atomically publish directory "${destination}": --no-clobber did not perform the expected directory move.`);
+            const result = runMove("mv", ["--no-clobber", "--no-target-directory", source, target], {encoding: "utf-8"});
+            if (moveSucceeded(result) && capturePublishDirectoryIdentity(source) === undefined && capturePublishDirectoryIdentity(target) !== undefined) {
+                return;
             }
+            probePortableAbsentInstall(probeRoot, destination);
             return;
         }
 
@@ -122,13 +125,39 @@ export function preflightAtomicDirectoryPublication(
         fs.mkdirSync(right);
         const leftIdentity = capturePublishDirectoryIdentity(left)!;
         const rightIdentity = capturePublishDirectoryIdentity(right)!;
-        assertAtomicMoveSupported(runMove("mv", ["--exchange", "--no-target-directory", left, right], {encoding: "utf-8"}), "--exchange", destination);
-        if (!sameIdentity(capturePublishDirectoryIdentity(left), rightIdentity) || !sameIdentity(capturePublishDirectoryIdentity(right), leftIdentity)) {
-            throw new Error(`Cannot atomically publish directory "${destination}": --exchange did not atomically exchange two directories.`);
+        const result = runMove("mv", ["--exchange", "--no-target-directory", left, right], {encoding: "utf-8"});
+        if (moveSucceeded(result) && sameIdentity(capturePublishDirectoryIdentity(left), rightIdentity) && sameIdentity(capturePublishDirectoryIdentity(right), leftIdentity)) {
+            return;
+        }
+        try {
+            exchangeDirectoriesPortable(left, right);
+            if (!sameIdentity(capturePublishDirectoryIdentity(left), rightIdentity) || !sameIdentity(capturePublishDirectoryIdentity(right), leftIdentity)) {
+                throw new Error("the portable replacement probe did not exchange the two directories");
+            }
+        } catch (error) {
+            throw new Error(`Cannot publish directory "${destination}": this host supports neither mv --exchange nor a same-directory replacement fallback (${errorMessage(error)}).`);
         }
     } finally {
         fs.rmSync(probeRoot, {recursive: true, force: true});
     }
+}
+
+function probePortableAbsentInstall(probeRoot: string, destination: string): void {
+    const source = path.join(probeRoot, "portable-source");
+    const target = path.join(probeRoot, "portable-target");
+    fs.mkdirSync(source);
+    try {
+        fs.renameSync(source, target);
+    } catch (error) {
+        throw new Error(`Cannot publish directory "${destination}": this host supports neither mv --no-clobber nor a same-directory directory rename (${errorMessage(error)}).`);
+    }
+    if (capturePublishDirectoryIdentity(source) !== undefined || capturePublishDirectoryIdentity(target) === undefined) {
+        throw new Error(`Cannot publish directory "${destination}": the portable same-directory rename did not install the probe directory.`);
+    }
+}
+
+function moveSucceeded(result: AtomicMoveResult): boolean {
+    return result.error === undefined && result.status === 0;
 }
 
 /**
@@ -141,7 +170,7 @@ export function preflightAtomicDirectoryPublication(
  * test here nevertheless makes every normal post-publication rollback
  * explicit and fail-closed instead of blindly deleting a pathname.
  */
-export function removePublishedDirectoryIfOwned(publication: PublishedDirectoryOwnership): boolean {
+export function removePublishedDirectoryIfOwned(publication: PublishedDirectoryOwnership, runMove: AtomicMoveRunning = spawnSync): boolean {
     const outDir = path.resolve(publication.outDir);
     if (publication.members !== undefined) {
         if (!sameIdentity(capturePublishDirectoryIdentity(outDir), publication.identity)) return false;
@@ -165,7 +194,7 @@ export function removePublishedDirectoryIfOwned(publication: PublishedDirectoryO
     const privateIdentity = capturePublishDirectoryIdentity(privateDir)!;
     try {
         if (!sameIdentity(capturePublishDirectoryIdentity(outDir), publication.identity)) return false;
-        exchangeDirectories(outDir, privateDir);
+        exchangeDirectories(outDir, privateDir, runMove);
 
         // The exchange is a single namespace operation, but an unrelated
         // writer is still free to race the pathname just before it.  Never
@@ -173,7 +202,7 @@ export function removePublishedDirectoryIfOwned(publication: PublishedDirectoryO
         // its public name intact.
         if (!sameIdentity(capturePublishDirectoryIdentity(privateDir), publication.identity)) {
             if (sameIdentity(capturePublishDirectoryIdentity(outDir), privateIdentity)) {
-                exchangeDirectories(outDir, privateDir);
+                exchangeDirectories(outDir, privateDir, runMove);
             }
             return false;
         }
@@ -210,7 +239,14 @@ export function withPublishedDirectoryOwnership<T extends object>(result: T, pub
 // and all existing planner rollbacks remove the complete invocation payload.
 // No live directory is emptied or populated entry-by-entry: the complete
 // prepared directory is renamed into the public name only after it is ready.
+//
+// Replacement is a single atomic exchange where the host provides
+// `mv --exchange`. Hosts without it use a same-directory rename fallback: the
+// public name is briefly absent while the old directory is moved aside and the
+// staged directory is moved in. The fallback never exposes a partial payload
+// and restores the old directory if the publish rename fails.
 export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOptions): PublishDirectoryAtomicallyResult {
+    const runMove = options.runMove ?? spawnSync;
     const removeDirectory = options.removeDirectory ?? ((dirPath: string) => fs.rmSync(dirPath, {recursive: true, force: true}));
     const claimed = (message: string): Error => options.destinationClaimedError?.(message) ?? new PublishDirectoryDestinationClaimedError(message);
     const outDir = path.resolve(options.outDir);
@@ -268,20 +304,20 @@ export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOp
             }
         }
         const newMembers = options.preserveEmptyDestination ? fs.readdirSync(tempDir).map(name => ({name, identity: capturePublishDirectoryIdentity(path.join(tempDir, name))!, hash: crypto.createHash("sha256").update(fs.readFileSync(path.join(tempDir, name))).digest("hex")})) : undefined;
-        if (expectedAbsent) installAbsentDirectory(tempDir, outDir, claimed);
-        else exchangeDirectories(tempDir, outDir);
+        if (expectedAbsent) installAbsentDirectory(tempDir, outDir, claimed, runMove);
+        else exchangeDirectories(tempDir, outDir, runMove);
 
         const installedIdentity = capturePublishDirectoryIdentity(outDir);
         if (installedIdentity === undefined) {
-            restoreDisplacedDestination(tempDir, outDir, tempIdentity);
+            restoreDisplacedDestination(tempDir, outDir, tempIdentity, runMove);
             throw claimed(`Destination "${outDir}" disappeared during publication commit.`);
         }
         if (!sameIdentity(installedIdentity, tempIdentity)) {
-            restoreDisplacedDestination(tempDir, outDir, tempIdentity);
+            restoreDisplacedDestination(tempDir, outDir, tempIdentity, runMove);
             throw claimed(`Destination "${outDir}" was claimed during publication commit.`);
         }
         if (!expectedAbsent && !isExpectedDisplacedDestination(tempDir, ownership)) {
-            restoreDisplacedDestination(tempDir, outDir, tempIdentity);
+            restoreDisplacedDestination(tempDir, outDir, tempIdentity, runMove);
             throw claimed(`Destination "${outDir}" was claimed during publication commit.`);
         }
         const publication: PublishedDirectoryOwnership = {outDir, identity: installedIdentity, ...(newMembers ? {members: newMembers} : {})};
@@ -303,8 +339,13 @@ export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOp
             }, publication);
         }
     } catch (error) {
-        if (options.preserveEmptyDestination && installedPublication && !removePublishedDirectoryIfOwned(installedPublication)) throw new Error(`Publication rollback cleanup failed at "${outDir}"; ownership changed. Original error: ${String(error)}`);
-        removeScratch();
+        if (options.preserveEmptyDestination && installedPublication && !removePublishedDirectoryIfOwned(installedPublication, runMove)) throw new Error(`Publication rollback cleanup failed at "${outDir}"; ownership changed. Original error: ${String(error)}`);
+        // Once the staging name has been exchanged or renamed, it may hold the
+        // displaced destination. Never delete that payload: only the staging
+        // directory itself is safe to discard here.
+        const currentTempIdentity = capturePublishDirectoryIdentity(tempDir);
+        const tempHoldsDisplacedDestination = !expectedAbsent && sameIdentity(currentTempIdentity, ownership.destinationIdentity);
+        if (!tempHoldsDisplacedDestination) removeScratch();
         throw error;
     }
 }
@@ -317,10 +358,26 @@ function resolveOwnership(options: PublishDirectoryAtomicallyOptions): PublishDi
     return capturePublishDirectoryOwnership(options.outDir);
 }
 
-function installAbsentDirectory(tempDir: string, outDir: string, claimed: (message: string) => Error): void {
-    const result = spawnSync("mv", ["--no-clobber", "--no-target-directory", tempDir, outDir], {encoding: "utf-8"});
-    assertAtomicMoveSupported(result, "--no-clobber", outDir);
-    if (capturePublishDirectoryIdentity(tempDir) !== undefined) {
+function installAbsentDirectory(
+    tempDir: string,
+    outDir: string,
+    claimed: (message: string) => Error,
+    runMove: AtomicMoveRunning,
+): void {
+    const tempIdentity = capturePublishDirectoryIdentity(tempDir);
+    const result = runMove("mv", ["--no-clobber", "--no-target-directory", tempDir, outDir], {encoding: "utf-8"});
+    if (moveSucceeded(result)) {
+        if (capturePublishDirectoryIdentity(tempDir) === undefined && sameIdentity(capturePublishDirectoryIdentity(outDir), tempIdentity)) return;
+        throw claimed(`Destination "${outDir}" was claimed during publication commit.`);
+    }
+
+    // Portable fallback for hosts whose mv lacks --no-clobber. There is no
+    // portable no-clobber rename primitive, so a writer creating the name
+    // between the check and the rename can still win; the common case is safe
+    // and the caller's identity check still rejects a changed destination.
+    if (capturePublishDirectoryIdentity(outDir) !== undefined) throw claimed(`Destination "${outDir}" was claimed during publication commit.`);
+    fs.renameSync(tempDir, outDir);
+    if (capturePublishDirectoryIdentity(tempDir) !== undefined || !sameIdentity(capturePublishDirectoryIdentity(outDir), tempIdentity)) {
         throw claimed(`Destination "${outDir}" was claimed during publication commit.`);
     }
 }
@@ -342,26 +399,111 @@ function exerciseRenameTestSeam(tempDir: string, renameDirectory: PublishDirecto
     }
 }
 
-function exchangeDirectories(left: string, right: string): void {
-    const result = spawnSync("mv", ["--exchange", "--no-target-directory", left, right], {encoding: "utf-8"});
-    assertAtomicMoveSupported(result, "--exchange", right);
+function exchangeDirectories(left: string, right: string, runMove: AtomicMoveRunning = spawnSync): void {
+    const result = runMove("mv", ["--exchange", "--no-target-directory", left, right], {encoding: "utf-8"});
+    if (moveSucceeded(result)) return;
+    exchangeDirectoriesPortable(left, right);
 }
 
-function assertAtomicMoveSupported(result: AtomicMoveResult, operation: string, outDir: string): void {
-    if (result.error === undefined && result.status === 0) return;
-    const detail = result.error?.message ?? String(result.stderr ?? `mv exited with status ${result.status ?? "unknown"}`).trim();
-    throw new Error(`Cannot atomically publish directory "${outDir}": this host does not provide ${operation} directory replacement (${detail}).`);
+// Portable equivalent of mv --exchange: move the old destination aside, move
+// the staged directory into the public name, then move the old payload into
+// the staging name. The final namespace state matches the exchange operation;
+// the middle step necessarily leaves the public name briefly absent.
+function exchangeDirectoriesPortable(left: string, right: string): void {
+    const leftIdentity = capturePublishDirectoryIdentity(left);
+    const rightIdentity = capturePublishDirectoryIdentity(right);
+    if (leftIdentity === undefined || rightIdentity === undefined) {
+        throw new Error(`Cannot replace directory "${right}": both the staged and destination directories must exist.`);
+    }
+    const swap = path.join(path.dirname(right), `.${path.basename(right)}.swap-${crypto.randomBytes(12).toString("hex")}`);
+    try {
+        fs.renameSync(right, swap);
+    } catch (error) {
+        throw new Error(`Cannot replace directory "${right}": ${errorMessage(error)}`);
+    }
+
+    try {
+        if (!sameIdentity(capturePublishDirectoryIdentity(swap), rightIdentity)) {
+            if (capturePublishDirectoryIdentity(right) === undefined) fs.renameSync(swap, right);
+            throw new Error(`Cannot replace directory "${right}": destination changed during publication.`);
+        }
+        fs.renameSync(left, right);
+    } catch (error) {
+        const restored = restorePortableExchange(left, right, swap, leftIdentity, rightIdentity);
+        if (!restored && sameIdentity(capturePublishDirectoryIdentity(swap), rightIdentity)) {
+            throw new Error(`Cannot replace directory "${right}": ${errorMessage(error)}. The previous directory remains at "${swap}".`);
+        }
+        throw error instanceof Error ? error : new Error(String(error));
+    }
+
+    try {
+        fs.renameSync(swap, left);
+    } catch (error) {
+        if (capturePublishDirectoryIdentity(left) === undefined) {
+            try {
+                fs.renameSync(right, left);
+            } catch {
+                // Leave both paths for recovery.
+            }
+        }
+        if (capturePublishDirectoryIdentity(right) === undefined) {
+            try {
+                fs.renameSync(swap, right);
+            } catch {
+                // Leave the displaced directory at its private name.
+            }
+        }
+        if (sameIdentity(capturePublishDirectoryIdentity(swap), rightIdentity)) {
+            throw new Error(`Cannot replace directory "${right}": ${errorMessage(error)}. The previous directory remains at "${swap}".`);
+        }
+        throw error instanceof Error ? error : new Error(String(error));
+    }
 }
 
-function restoreDisplacedDestination(tempDir: string, outDir: string, installedIdentity: PublishDirectoryAtomicallyDestinationIdentity): void {
+function restorePortableExchange(
+    left: string,
+    right: string,
+    swap: string,
+    leftIdentity: PublishDirectoryAtomicallyDestinationIdentity,
+    rightIdentity: PublishDirectoryAtomicallyDestinationIdentity,
+): boolean {
+    try {
+        if (!sameIdentity(capturePublishDirectoryIdentity(swap), rightIdentity)) return false;
+        const currentRight = capturePublishDirectoryIdentity(right);
+        if (currentRight === undefined) {
+            fs.renameSync(swap, right);
+            return true;
+        }
+        if (sameIdentity(currentRight, leftIdentity) && capturePublishDirectoryIdentity(left) === undefined) {
+            fs.renameSync(right, left);
+            fs.renameSync(swap, right);
+            return true;
+        }
+        return false;
+    } catch {
+        return false;
+    }
+}
+
+function restoreDisplacedDestination(
+    tempDir: string,
+    outDir: string,
+    installedIdentity: PublishDirectoryAtomicallyDestinationIdentity | undefined,
+    runMove: AtomicMoveRunning,
+): void {
+    if (installedIdentity === undefined) return;
     try {
         // Exchange back only while both names still identify the two paths
         // created by this operation.  A later claimant is never moved.
-        if (sameIdentity(capturePublishDirectoryIdentity(outDir), installedIdentity)) exchangeDirectories(tempDir, outDir);
+        if (sameIdentity(capturePublishDirectoryIdentity(outDir), installedIdentity)) exchangeDirectories(tempDir, outDir, runMove);
     } catch {
-        // The ownership failure remains authoritative.  Scratch cleanup below
-        // is identity-free only for our random private staging name.
+        // The ownership failure remains authoritative. The caller retains any
+        // displaced destination rather than deleting it.
     }
+}
+
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
 }
 
 function isExpectedDisplacedDestination(tempDir: string, ownership: PublishDirectoryAtomicallyOwnership): boolean {

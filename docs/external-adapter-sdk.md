@@ -316,7 +316,7 @@ if (result.delivery?.delivered) {
 `LocalFileExternalDeploymentRuntimeAdapter` delivers via `atomicallyWriteExternalDeploymentArtifactsToDirectory`
 — the whole artifact set is built into a fresh temporary sibling directory first, and only swapped into `outDir`
 (a directory rename) once every file has been written successfully. That gives the same guarantees
-`StakeEngineExporter`'s own directory publish does (see [Stake Engine Export](stake-engine-export.md#rebuild-safety--the-whole-directory-is-replaced-atomically)):
+`StakeEngineExporter`'s own directory publish does (see [Stake Engine Export](stake-engine-export.md#rebuild-safety--the-programmatic-writer-replaces-the-whole-directory)):
 a write failure anywhere before the swap leaves an existing `outDir` completely untouched with no temp directory
 left behind; a failure during the swap itself either leaves `outDir` untouched or is rolled back to exactly what
 it was; only removing the now-superseded stale backup after a successful publish is treated as cosmetic (a
@@ -369,8 +369,8 @@ not an oversight**, for two independent reasons:
    targets." Adding a `cost`-shaped context to the generic projector/mode-input contracts just to fit one
    target would make every other target's implementation carry a field it can never use.
 2. **A real Stake export's atomicity spans modes with *different* costs.** A base game (`cost: 1`) and a
-   bonus-buy mode (`cost: 100`) are routinely published together as a single atomic directory swap (see
-   [Rebuild safety](stake-engine-export.md#rebuild-safety--the-whole-directory-is-replaced-atomically)).
+   bonus-buy mode (`cost: 100`) are routinely published together as one directory (see
+   [Rebuild safety](stake-engine-export.md#rebuild-safety--the-programmatic-writer-replaces-the-whole-directory)).
    `ExternalDeploymentTarget` is a fixed descriptor per `deploy()` call — there's no per-mode slot for a
    varying `cost`, and even a target that closed over one fixed `cost` at construction time could only ever
    support single-cost deployments. Splitting a real Stake export into one `deploy()` call per cost bucket

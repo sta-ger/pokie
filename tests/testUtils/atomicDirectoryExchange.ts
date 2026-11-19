@@ -5,9 +5,10 @@ import path from "node:path";
 
 // GNU coreutils exposes `mv --exchange` from 9.5 onward. The kernel commonly
 // supports renameat2 long before the host `mv` exposes the option. These
-// platform-specific publication tests must exercise the real syscall, not a
-// mock, so install a test-only `mv` shim when the native command lacks it.
-// Production still requires a capable host; this helper is test infrastructure.
+// platform-specific publication tests exercise the real syscall, not a mock,
+// so install a test-only `mv` shim when the native command lacks it. Production
+// falls back to same-directory renames; this helper keeps the exchange fast
+// path covered on older hosts.
 function probeNativeExchange(): boolean {
     const root = mkdtempSync(path.join(tmpdir(), "pokie-atomic-probe-"));
     try {

@@ -238,7 +238,7 @@ a mode's weights overflowing a safe integer) means nothing is written for that c
 
 Runs a small upfront check (mode name format/duplicates/case collisions, non-empty `libraryId`) before consuming
 any mode's outcomes, plus a cross-mode provenance check (same game/config/pokieVersion across modes) once each
-mode's first outcome has streamed through. The whole output directory is then published atomically via the same
+mode's first outcome has streamed through. The whole output directory is then published as one unit via the same
 `publishDirectoryAtomically` helper `StakeEngineImportWriter` uses: built into a fresh temporary sibling
 directory first, swapped into place only once every file has been written successfully. A failure anywhere
 before the swap leaves an existing `outDir` completely untouched; a re-write into the same `outDir` starts from

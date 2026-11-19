@@ -246,7 +246,7 @@ Default `--out` is `<stakeDir>` plus `-imported`. On any error-level issue from 
 written and the exit code is non-zero. Feed the result straight back into
 `pokie build <outDir>/config.json --target stakeAdapter` to exercise the round-trip property above.
 
-`StakeEngineImportWriter` publishes the whole `--out` directory atomically — the same temp-dir-then-swap
+`StakeEngineImportWriter` publishes the whole `--out` directory as one unit — the same temp-dir-then-swap
 discipline `StakeEngineExporter` uses for `export` (build into a sibling temp directory, then rename-swap it
 into place; if `--out` already exists, move it aside first and restore it if the swap itself fails). A write
 failure never leaves partial files behind and never alters an existing `--out` in place; re-running an import

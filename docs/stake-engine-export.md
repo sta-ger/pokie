@@ -165,11 +165,14 @@ the last two codes above only ever surface at this stage) before writing anythin
 issue from either stage, nothing is written — the same "no partial export" guarantee as
 `ParSheetExporter`/`GamePackageGenerator`.
 
-## Rebuild safety — the programmatic writer replaces the whole directory atomically
+## Rebuild safety — the programmatic writer replaces the whole directory
 
 A `StakeEngineExporter` API export doesn't add/overwrite individual files in `outDir` — it builds the *entire* output
-into a fresh temporary sibling directory first, and only swaps it into place (a directory rename) once every
-file has been written successfully. That has two consequences:
+into a fresh temporary sibling directory first, and only publishes it once every file has been written successfully.
+Where the host provides `mv --exchange` (GNU coreutils 9.5 or newer), the replacement is one atomic directory
+exchange. Other hosts use a same-directory rename fallback: the old directory is moved aside and the staged
+directory is moved in. That fallback has a brief window where `outDir` does not exist, restores the old directory
+if the publish rename fails, and never exposes a partially written directory. Both paths have two consequences:
 
 - **A failure anywhere before the swap — a validation error, a projector throwing, a disk write failing — leaves
   an existing `--out` directory completely untouched**, byte for byte; there's no window where a reader could
@@ -188,24 +191,24 @@ touched. Conceptually the same rebuild-safety guarantee as `GamePackageGenerator
 
 ### How the swap itself fails safely
 
-Re-exporting into an existing `--out` is really three filesystem operations, and each one has a distinct,
-deliberate failure behavior:
+On hosts with `mv --exchange`, re-exporting into an existing `--out` is one atomic exchange. The portable fallback
+uses three same-directory renames, and each one has a distinct, deliberate failure behavior:
 
-1. **Move the existing directory aside** (to a `.stale-<random>` sibling). If this fails, `--out` was never
-   touched — nothing to restore, just the leftover temp directory is cleaned up (best-effort) before the error
-   propagates.
+1. **Move the existing directory aside** (to a private sibling name). If this fails, `--out` was never touched —
+   nothing to restore, just the leftover temp directory is cleaned up (best-effort) before the error propagates.
 2. **Move the freshly-built temp directory into `--out`** — the actual publish step. If *this* fails, the old
    directory is restored back to `--out` (a third rename) before the error propagates, so the export still fails
    with `--out` exactly as it was, byte for byte. In the one truly unrecoverable case — the restore itself also
-   fails — the thrown error names the `.stale-<random>` path the old directory's contents are still sitting at,
-   so it can be renamed back by hand.
-3. **Remove the now-superseded stale directory.** By this point the new export is already live at `--out` — a
-   failure here is cosmetic, not a failed export: it's reported as a `stakeengine-stale-export-cleanup-failed`
-   warning (not an error) in the result's `issues`, and the stale directory is simply left behind for manual
-   cleanup rather than causing the whole export to be reported as failed.
+   fails — the thrown error names the private backup path the old directory's contents are still sitting at, so
+   it can be renamed back by hand.
+3. **Remove the now-superseded directory.** By this point the new export is already live at `--out` — a failure
+   here is cosmetic, not a failed export: it's reported as a `stakeengine-stale-export-cleanup-failed` warning
+   (not an error) in the result's `issues`, and the superseded directory is simply left behind for manual cleanup
+   rather than causing the whole export to be reported as failed.
 
-Every one of these failure branches also guarantees the temp directory itself never lingers past the call that
-created it (removed best-effort, without ever masking whichever error is actually being thrown/returned).
+Every one of these failure branches also guarantees the staging directory itself never lingers past the call that
+created it (removed best-effort, without ever masking whichever error is actually being thrown/returned). A
+private backup path is retained only when it holds the previous payload for manual recovery.
 
 The canonical CLI build, `pokie build <config.json> --target stakeAdapter`, deliberately has a stricter public
 contract: it rejects every occupied destination before this writer is invoked. Choose a different unused `--out`
