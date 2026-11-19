@@ -143,7 +143,7 @@ PDF 1.4 uses selectable standard Courier text, wrapped two-column evidence table
 repeated section/column context and explicit pagination. Non-ASCII characters use **lossless
 `[U+XXXX]` notation** because the self-contained standard font has no universal Unicode glyph coverage;
 JSON/HTML retain Unicode text. PDF is intended for printable assessment evidence, not branded artwork.
-Independent visual/PDF-reader review remains separate from source tests.
+Independent visual/PDF-reader review remains separate from source-level checks.
 
 ## Publication, cancellation and Studio
 

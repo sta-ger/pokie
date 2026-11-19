@@ -23,15 +23,10 @@ The file repository writes each JSON record through a temporary file and rename.
 
 Cancellation is deliberately two-stage. `cancel` records `cancelling` and aborts the executor; it is `cancelled` only after that executor has completed its staging cleanup. A terminal cancellation is idempotent. A conflicting request with the same conflict key and a different immutable request receives a typed conflict with its active job id and retry guidance; an exact retry reattaches to the active record.
 
-## Checked Studio API operation inventory
+## Studio API operation inventory
 
-This is the complete Studio API inventory, not a list of only the routes that happened to
-need a job first. `StudioLongRunningOperationInventory.contract.test.ts` extracts every
-literal method/path guard from `StudioServer` and requires it to appear below. Parameterised
-routes and the extension route are listed explicitly as well. When a route is added, its
-classification and its concrete reason must be added in the same change. The contract test also
-parses the table below: each route family must have exactly one lifecycle classification and a
-non-empty, concrete reason, so a route cannot be "covered" only by nearby prose.
+This is the complete Studio API inventory, not a list of only the routes that happen to need a job
+first. Parameterised routes and the extension route are listed explicitly as well.
 
 `Common job` means the route creates, observes, cancels, or recovers the durable server-owned
 lifecycle described above. Compatibility routes retain their established response DTOs, but first

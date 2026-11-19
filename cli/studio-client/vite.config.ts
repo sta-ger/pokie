@@ -44,7 +44,7 @@ export default defineConfig(({command}) => {
         server: {
             // Dev-only: StudioServer serves the frontend + JSON API same-origin in production, but the Vite
             // dev server needs to proxy /api to a separately running `pokie` instance for local HMR
-            // development (see docs/studio-frontend.md).
+            // development.
             proxy: {
                 "/api": {
                     target: "http://127.0.0.1:3200",

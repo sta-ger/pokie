@@ -145,7 +145,6 @@ See [docs/README.md](docs/README.md) for the full reference:
 - [WASM compatibility](docs/wasm-compatibility-boundary.md)
 - [Provably fair](docs/provably-fair.md)
 - [Supported mechanics](docs/supported-mechanics.md)
-- [Testing](docs/testing.md)
 
 ## Examples
 

@@ -159,8 +159,8 @@ interface OutcomeLibraryBundleReading<T extends string | number = string> {
   [`WeightedOutcomeSelector`](pregenerated-runtime.md) uses, deliberately mirrored rather than called directly
   (that class's own type requires every outcome's full `RoundArtifact`, which is exactly what a streaming,
   index-only weighted draw exists to avoid loading) — over the index's own entries, then loads exactly the one
-  winning outcome via `readOutcomeById`. A dedicated test cross-checks this against `WeightedOutcomeSelector`'s
-  own pick for the same inputs across many seeds, so the two can never silently diverge.
+  winning outcome via `readOutcomeById`. The two algorithms are deliberately kept in lockstep for the same
+  inputs, so they cannot silently diverge.
 - `readLibrary` drains `iterateModeOutcomes` into `buildWeightedOutcomeLibrary` — the same builder every other
   in-memory library goes through, so the result carries the exact same validation/sort/freeze guarantees as any
   other `WeightedOutcomeLibrary`. This is the one shared "give me everything" path both integration points below

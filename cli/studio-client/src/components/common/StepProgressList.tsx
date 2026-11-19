@@ -8,9 +8,8 @@ import type {ReactNode} from "react";
 // users get an affordance that lies about being interactive. This renders as a plain `<ol>` of `<li>`s
 // (no button/tabindex), and each stage's status (both the decorative icon and the color) is mirrored as
 // real text via `VisuallyHidden` -- same icon+VisuallyHidden split StatusBadge.tsx already uses, so the
-// same information never depends on color or icon shape alone. See docs/studio-frontend.md's Stepper/
-// wizard UX audit for why this exists alongside the interactive `Stepper` usages the rest of Studio's
-// project tabs keep.
+// same information never depends on color or icon shape alone. Keep this read-only variant alongside
+// the interactive `Stepper` usages the rest of Studio's project tabs use.
 //
 // `aria-current="step"` marks the caller's *position* in the flow -- "current" (in progress, healthy) and
 // "failed" (attempted at this position, but it errored) both describe that position; the other four

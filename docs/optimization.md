@@ -314,7 +314,7 @@ snapshots are still validated during cancellation drainage; all accepted counts 
 and a late release failure takes precedence over cancellation. Publication
 uses existing new/empty destination and ownership-aware rollback rules, including the evidence and
 WASM companions. Independent review, production bundle/packaging and controller gates remain separate
-from these implementation tests.
+from these implementation checks.
 
 ## Reviewed authored apply
 

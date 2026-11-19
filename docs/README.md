@@ -66,11 +66,8 @@ are local/reference tools, not production infrastructure.
 31. **[Optimization](optimization.md)** — finite exact and bounded seeded math optimization.
 32. **[Supported mechanics](supported-mechanics.md)** — the authored workflow and composition support
     matrix.
-33. **[Studio frontend](studio-frontend.md)** — the local React + Mantine Studio architecture and
-    development workflow.
-34. **[Studio long-running jobs](studio-long-running-jobs.md)** — job lifecycle, progress and
+33. **[Studio long-running jobs](studio-long-running-jobs.md)** — job lifecycle, progress and
     cancellation.
-35. **[Testing](testing.md)** — running the test suite and the contributor workflow.
 
 ## Core concepts at a glance
 

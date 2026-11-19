@@ -49,12 +49,4 @@ describe("public command tree", () => {
         expect(publicDocs).not.toMatch(/\bbrowser preview UI\b/i);
 
     });
-
-    it("links the Studio frontend guide to the implicit public Studio entry", () => {
-        const studioFrontendDocs = fs.readFileSync(path.join(__dirname, "..", "..", "docs", "studio-frontend.md"), "utf-8");
-
-        expect(studioFrontendDocs).toContain("cli.md#pokie");
-        expect(studioFrontendDocs).not.toContain("cli.md#pokie--pokie-studio-experimental");
-        expect(studioFrontendDocs).not.toMatch(/\bpokie studio\b/);
-    });
 });

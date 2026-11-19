@@ -472,9 +472,8 @@ error and also permits a fresh round. Transport loss, errors without the disposi
 they never authorize a new charge key. A rejected payout after committed debit still requires
 operator recovery and keeps the session reserved.
 
-The controllable independent provider for controller verification is
-`tests/server/wallet/fixtures/ControllableDurableWallet.ts`. Its separate SQLite database,
-pre/post-action disconnects, missing acknowledgement, inspection overrides and debit/payout
+A controllable independent provider can be used for controller verification. Its separate SQLite
+database, pre/post-action disconnects, missing acknowledgement, inspection overrides and debit/payout
 counters exercise the lifecycle without substituting the local reference ledger.
 
 ### Logical entry and continuation

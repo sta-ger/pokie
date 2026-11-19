@@ -361,8 +361,8 @@ that wants to clamp/validate a user-supplied worker count itself before construc
 - `--workers > 1` requires `<packageRoot>` to be a real, on-disk directory `loadPokieGame` can resolve — the same
   requirement `pokie sim`/`pokie serve`/Studio already have for a real project, just enforced per-worker instead
   of once.
-- Programmatic callers that inject a custom/in-memory `loadGame` (as `pokie`'s own test suite does) only get that
-  behavior for `workers === 1` — the in-process path. `workers > 1` always uses the real `loadPokieGame` inside
+- Programmatic callers that inject a custom/in-memory `loadGame` only get that behavior for `workers === 1` —
+  the in-process path. `workers > 1` always uses the real `loadPokieGame` inside
   each worker thread and has no injection point for a substitute loader, by design (there is no way to hand a
   worker thread a live object graph to use instead).
 - Studio's simulation service behaves the same way: a project must be a real on-disk package (which every open

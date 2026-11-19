@@ -58,7 +58,7 @@ member — so overriding a method or two is all you need to write. Both `VideoSl
 
 ## Headless runtime contract
 
-The public root exports `SessionRuntimeHandling`, `SessionRuntime`, `SessionCommand`, `SessionCommandResult`, `RepositoryCommandHandling`, `RepositoryCommand`, `GameSessionIdentity`, `SessionStateRestoring`, `SpinCommandHandler`, and the existing repository/codec interfaces. Compose these around `PokieGame` and injected `GameSessionHandling` collaborators; no private imports or new package subpath are required. The maintained consumer example is `tests/v2/fixtures/RuntimeExtension.ts` in the repository; its focused test emits candidate declarations and strictly resolves the root ESM export and declaration. Custom durable sessions explicitly promise a complete codec and validate opaque state before recovery; built-in subclasses do not inherit a completeness promise for added hidden state.
+The public root exports `SessionRuntimeHandling`, `SessionRuntime`, `SessionCommand`, `SessionCommandResult`, `RepositoryCommandHandling`, `RepositoryCommand`, `GameSessionIdentity`, `SessionStateRestoring`, `SpinCommandHandler`, and the existing repository/codec interfaces. Compose these around `PokieGame` and injected `GameSessionHandling` collaborators; no private imports or new package subpath are required. Custom durable sessions explicitly promise a complete codec and validate opaque state before recovery; built-in subclasses do not inherit a completeness promise for added hidden state.
 
 ### Transactional round storage
 

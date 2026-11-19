@@ -22,9 +22,7 @@ not runnable until rebuilt as a canonical artifact.
 ## Current execution and mechanics
 
 Generated CJS, recompilable TypeScript and portable artifacts share `pokie.math.v2`.
-The maintained kernel is `src/wasm/math/shared-math.wat`; regenerate it with
-`node src/wasm/math/generate-kernel.mjs` (WABT is a development dependency on PATH,
-not a consumer requirement). `SharedSlotMath` evaluates lines, ways and clusters,
+The maintained kernel is `src/wasm/math/shared-math.wat`. `SharedSlotMath` evaluates lines, ways and clusters,
 including restricted wild substitution. The existing pipeline applies authored
 multiplier attribution and preserves stake multiplication before aggregation.
 Missing and explicit-zero payout entries remain distinct from fallback awards.
@@ -293,6 +291,6 @@ maps every mandatory family separately from arbitrary custom callbacks.
 
 A tab owns its Workers; `StudioJobService` owns durable jobs and downloads. Reload/pagehide disposes owned Workers and reports cancellation. A lost owner expires to `recovery-required` with an explicit retry; another tab discovers that job rather than resubmitting it. Play retains one idle session Worker until reset, replacement, pagehide or connection loss. Checkpoint restore creates and validates a replacement before releasing a valid session. Restore controls require `runtime.serialize`; Play/Simulation require `runtime.play`; Replay requires `runtime.replay`; detail projection requires `artifact.inspect`. The combined `wasm.runtime.execute` capability is never required to grant an individual operation. Unsupported adaptive stopping or multiple simulation Workers fail before admission.
 
-Installed/rendered browser verification, same-candidate packaging and controller gates are independent requirements. Source tests and the standalone Chromium runtime fixture support that verification; they do not establish installed workflow approval.
+Installed/rendered browser verification, same-candidate packaging and controller gates are independent requirements. Source-level checks and the standalone Chromium runtime fixture support that verification; they do not establish installed workflow approval.
 
 See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.

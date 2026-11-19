@@ -703,8 +703,7 @@ A complete example using every optional field (wilds, scatters, `symbolWeights`,
 }
 ```
 
-It's also what the workflow below and `pokie build`'s own smoke test
-(`tests/cli/BuildWorkflow.integration.test.ts`) run, so it's guaranteed to actually work, not just parse.
+The workflow below uses the same shape, so it is guaranteed to work, not just parse.
 
 ### `reelStripGeneration` (build-time reel strip generation)
 
@@ -3265,8 +3264,7 @@ stand up an HTTP server for external clients to hit, use [`pokie serve`](#pokie-
 or [`pokie dev`](#pokie-dev-packageroot) directly.
 
 The frontend itself is a React + Mantine single-page app built with Vite (`cli/studio-client/`); its API/
-behavior is exactly what's documented below, unchanged from the sections that follow. See
-[`studio-frontend.md`](studio-frontend.md) for the frontend's own stack, layout, dev workflow, and test setup.
+behavior is exactly what's documented below, unchanged from the sections that follow.
 
 Several invocations launch it, resolved by `resolveCliInvocation` (`cli/resolveCliInvocation.ts`):
 
@@ -3304,9 +3302,7 @@ POKIE Studio listening on http://127.0.0.1:3200
 
 A browser tab opens automatically (same best-effort `open`/`start`/`xdg-open` mechanism as `pokie dev`, and the
 same `--no-open` escape hatch) showing the opened package's Project Dashboard. Home is task-oriented, with exactly
-2 tabs —
-**Design Game** (`/home/design`, the default) and **Projects** (`/home/projects`) — see
-[`studio-frontend.md`](studio-frontend.md#ux--information-architecture) for the full layout/navigation detail.
+2 tabs — **Design Game** (`/home/design`, the default) and **Projects** (`/home/projects`).
 Home offers one editable design path, including loading an existing Blueprint. Package scaffolding with
 `pokie init` remains a CLI developer workflow. Save/Create game opens the design’s workspace; its
 **Build/Export** section owns package builds and PAR exports.
@@ -3382,8 +3378,7 @@ The Dashboard has several tabs today, switched client-side with no full page rel
 Model**, **Play**, and **Simulation** first (the primary flow, in that order), then **Replay**,
 **Build/Export**, **Certification**, and **Fairness** grouped as "Advanced" in the navigation (still one click
 away, just visually secondary — a tab is only offered at all once the loaded project's own resolved capabilities
-support it; see [`studio-frontend.md`](studio-frontend.md#ux--information-architecture) for the exact, current
-tab list). There is no standalone "Validate" tab any more — validation is automatic diagnostics folded into
+support it). There is no standalone "Validate" tab any more — validation is automatic diagnostics folded into
 Overview itself, run on load and re-run on demand — and no standalone Deployment/Outcome Libraries/Stake Engine
 Export tabs either. Deployment and Stake Engine Export have moved to **Build/Export** cards, so their legacy deep
 links redirect there with migration guidance. Outcome Libraries' retired select-existing/inspect/compare work has
@@ -3885,17 +3880,11 @@ covers most of these workflows with a real GUI, not just the CLI: designing/buil
 tab, including PAR Sheet import and reel strip generation), and, once a project is open, inspection/
 validation (Overview), the Game Model view, Play, Simulation, Replay, Build/Export (outcome library generation,
 local build artifacts, and remote deployment via the External Adapter SDK), Certification/Evidence
-Bundle, and Fairness all have a working Studio surface — see [`HomePage`/`ProjectDashboardPage`](studio-frontend.md)
-for each tab. `pokie serve`/`pokie dev`/`pokie client` have no Studio GUI
+Bundle, and Fairness all have a working Studio surface. `pokie serve`/`pokie dev`/`pokie client` have no Studio GUI
 counterpart — Studio's own Play tab drives a real session entirely in-process instead; use the CLI directly to
-stand up an HTTP server. The generic `StudioToolHandling` extension seam
-(`cli/studio/StudioToolHandling.ts`) is unused dead code today — every Studio surface above is wired as its own
-bespoke route on `StudioServer`, not through that seam — kept only as a documented possible future refactor, not
-a gap in coverage.
+stand up an HTTP server.
 
-Property-based and golden-output testing are implemented, as recorded in the
-[storage and recovery contracts](game-session.md#durable-external-wallet-reconciliation). The local Studio
-provides Play, Simulation, Replay and Build/Export surfaces. It does not execute arbitrary visitor-supplied JavaScript.
+The local Studio provides Play, Simulation, Replay and Build/Export surfaces. It does not execute arbitrary visitor-supplied JavaScript.
 
 Current authored support includes free games, Hold&Win, jackpots, bet modes, wild/screen modifiers,
 bounded cascades/respins/collections and weighted bonuses through the supported editor, build, extraction,
