@@ -10,12 +10,12 @@ export function JobObservationNotice({discoveryStatus, connectionError, actionEr
     if (discoveryStatus !== "pending" && connectionError === undefined && actionError === undefined) return null;
     return (
         <Stack gap="xs">
-            {discoveryStatus === "pending" && <Text role="status">Checking for retained work…</Text>}
+            {discoveryStatus === "pending" && <Text role="status">Checking for saved work…</Text>}
             {connectionError !== undefined && <Alert role="alert" color="orange">{connectionError}</Alert>}
             {actionError !== undefined && <Alert role="alert" color="red">{actionError}</Alert>}
             {(connectionError !== undefined || actionError !== undefined) && <Button variant="default" size="xs" onClick={() => {
                 onReattach();
-            }}>Reattach to retained work</Button>}
+            }}>Reattach to saved work</Button>}
         </Stack>
     );
 }

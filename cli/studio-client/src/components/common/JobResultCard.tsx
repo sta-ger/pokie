@@ -136,18 +136,18 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
                         <Stack gap={2}>
                             {libraryHash !== undefined && <Text size="sm">Library hash: {libraryHash}</Text>}
                             {configurationHash !== undefined && <Text size="sm">Configuration hash: {configurationHash}</Text>}
-                            {(generatorAlgorithm !== undefined || generatorStrategy !== undefined) && <Text size="sm">Generation provenance: {[generatorAlgorithm, generatorStrategy].filter((entry): entry is string => entry !== undefined).join(" · ")}</Text>}
+                            {(generatorAlgorithm !== undefined || generatorStrategy !== undefined) && <Text size="sm">Generation origin: {[generatorAlgorithm, generatorStrategy].filter((entry): entry is string => entry !== undefined).join(" · ")}</Text>}
                             {generatorGame !== undefined && <Text size="sm">Source game: {generatorGame}</Text>}
                             {generatedAt !== undefined && <Text size="sm">Generated: {generatedAt}</Text>}
                             {selector !== undefined && <Text size="sm">Selector: {selectorLabel(selector)}</Text>}
                         </Stack>
                     )}
                     {job.result?.provenance !== undefined &&
-                        <details className="studio-job-details"><summary>Inspect provenance</summary><Text size="xs">{JSON.stringify(job.result.provenance)}</Text></details>}
+                        <details className="studio-job-details"><summary>Where this came from</summary><Text size="xs">{JSON.stringify(job.result.provenance)}</Text></details>}
                     {job.result?.detail !== undefined &&
                         <details className="studio-job-details"><summary>Inspect operation result</summary><Text size="xs">{JSON.stringify(job.result.detail)}</Text></details>}
                     <details className="studio-job-details">
-                        <summary>Inspect retained request</summary>
+                        <summary>Inspect saved request</summary>
                         <Text size="xs">{JSON.stringify(job.request)}</Text>
                     </details>
                 </details>

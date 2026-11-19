@@ -393,7 +393,7 @@ export function ParSheetImportExportPanel({
 
                         {previewReachable && (
                             <QuickActions>
-                                <Button onClick={() => setActiveStep(2)}>Continue to Preview canonical model</Button>
+                                <Button onClick={() => setActiveStep(2)}>Continue to preview the game model</Button>
                             </QuickActions>
                         )}
 

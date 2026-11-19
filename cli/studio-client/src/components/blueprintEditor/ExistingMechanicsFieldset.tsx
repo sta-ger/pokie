@@ -38,7 +38,7 @@ export function ExistingMechanicsFieldset({blueprint, mutate}: {blueprint: Recor
         <PageSection legend="Hold & Win">
             {hold === undefined && <Button onClick={() => set("holdAndWin", {minimumCount: 1, initialRespins: 3, retriggerPolicy: "reset-on-new-lock", symbolEffects: {[symbols[0] ?? ""]: {kind: "value", amount: 1}}, payout: {type: "sum-with-multiplier", amountsAreBetMultiples: false}})}>Add Hold & Win</Button>}
             {hold !== undefined && !holdEditable && <Stack>
-                <Text>The Hold & Win draft is incomplete or malformed. Correct mechanics.holdAndWin in JSON and Apply JSON, or remove the mechanic. Your draft is retained.</Text>
+                <Text>The Hold & Win draft is incomplete or malformed. Correct mechanics.holdAndWin in JSON and Apply JSON, or remove the mechanic. Your draft is saved.</Text>
                 <Button onClick={() => set("holdAndWin", undefined)}>Remove Hold & Win</Button>
             </Stack>}
             {hold !== undefined && holdEditable && <Stack>
@@ -64,7 +64,7 @@ export function ExistingMechanicsFieldset({blueprint, mutate}: {blueprint: Recor
         <PageSection legend="Jackpot">
             {jackpot === undefined && <Button onClick={() => set("jackpot", {pool: {id: "mini", type: "fixed", amount: 10}, contribution: {type: "percentage", percentage: 0.01}, trigger: {type: "symbol-count", symbolId: symbols[0] ?? "", minimumCount: 1}, award: "single-tier"})}>Add jackpot</Button>}
             {jackpot !== undefined && !jackpotEditable && <Stack>
-                <Text>The jackpot draft is incomplete or malformed. Correct mechanics.jackpot in JSON and Apply JSON, or remove the mechanic. Your draft is retained.</Text>
+                <Text>The jackpot draft is incomplete or malformed. Correct mechanics.jackpot in JSON and Apply JSON, or remove the mechanic. Your draft is saved.</Text>
                 <Button onClick={() => set("jackpot", undefined)}>Remove jackpot</Button>
             </Stack>}
             {jackpot !== undefined && jackpotEditable && <Stack>

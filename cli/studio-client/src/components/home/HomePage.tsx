@@ -195,7 +195,7 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
                 actionsDisabledReason={openingDisabledReason(job)} />,
             )}
             {(recoveryOpeningError !== undefined || homeJobs.jobs.some((job) => job.result?.outputs?.some((output) => output.unavailableReason !== undefined))) &&
-                <Button variant="default" onClick={() => navigate("/home/projects")}>Find retained project in Projects</Button>}
+                <Button variant="default" onClick={() => navigate("/home/projects")}>Find saved project in Projects</Button>}
             {jobOutputNotice !== undefined && <Text size="xs" aria-live="polite" c="dimmed">{jobOutputNotice}</Text>}
         </Stack>
     );

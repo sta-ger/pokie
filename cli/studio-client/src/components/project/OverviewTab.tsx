@@ -134,7 +134,7 @@ export function OverviewTab({
             </Table>
 
             <PageSection legend="Validation">
-                <Text size="sm" c="dimmed" mb="sm">Structural validation checks the project contract. It does not establish mathematical balance or certification.</Text>
+                <Text size="sm" c="dimmed" mb="sm">Structural validation checks the project format. It does not establish mathematical balance or certification.</Text>
                 <ValidationDiagnostics view={validation} onRevalidate={onRevalidate} />
             </PageSection>
         </div>

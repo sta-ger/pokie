@@ -810,7 +810,7 @@ export type StudioSimulationReportListEntry = {
 // The server's copies of this whole RoundRecord family live in "pokie" itself (src/artifact/*.ts) —
 // kept as their own client-side copies here, same convention as every other type in this file. Deeply
 // readonly to match the server's own guarantee (a RoundRecord is deep-frozen at build time).
-export type RoundRecordProvenance = {
+export type RoundRecordOrigin = {
     readonly game: PokieGameManifest;
     readonly pokieVersion: string;
     readonly configHash?: string;
@@ -855,7 +855,7 @@ export type RoundRecord = {
     readonly generatedScreen?: readonly (readonly (string | number)[])[];
     readonly schemaVersion: number;
     readonly roundId: string;
-    readonly provenance: RoundRecordProvenance;
+    readonly origin: RoundRecordOrigin;
     readonly betMode: string;
     readonly stake: number;
     readonly totalWin: number;

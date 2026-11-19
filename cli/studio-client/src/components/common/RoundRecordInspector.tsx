@@ -167,7 +167,7 @@ export function RoundRecordInspector({
                 currentModeId={presentation.currentModeId}
             />
 
-            <Text size="xs" c="dimmed">Screens use the visible projection. Full artifact JSON contains canonical generated and debug data; exact replay also requires the separate audit recording.</Text>
+            <Text size="xs" c="dimmed">Screens use the visible view. The full round-record JSON contains generated and debug data; exact replay also requires the separate audit recording.</Text>
 
             {artifact.sequenceSelections && <PageSection legend="Whole-sequence selections">
                 {artifact.sequenceSelections.map(selection => <Text key={selection.reelIndex}>Reel {selection.reelIndex + 1}: {selection.variantId} ({selection.context})</Text>)}
@@ -209,7 +209,7 @@ export function RoundRecordInspector({
                         State snapshot unavailable for this game/session type.
                     </Text>
                 ) : (
-                    <Text size="sm">Snapshot captured for this round — see Advanced details for the full before/after state.</Text>
+                    <Text size="sm">Saved state captured for this round — see Advanced details for the full before/after state.</Text>
                 )}
             </PageSection>
 

@@ -75,7 +75,7 @@ const GROUP_LABELS: Record<ExportDeployTargetKind, {legend: string; blurb: strin
         blurb: "Optional advanced outcome generation. Stake Engine export can automatically reuse or generate its outcome library.",
     },
     buildArtifact: {
-        legend: "Build artifact",
+        legend: "Build output",
         blurb: "Create a project file or package that can be opened or shared.",
     },
     remoteDeployment: {
@@ -95,7 +95,7 @@ function artifactDestinationTitle(target: StudioArtifactTargetType): string {
     if (target === "parWorkbook") return "Choose a PAR workbook destination";
     if (target === "blueprint") return "Choose a Blueprint destination";
     if (target === "wasm") return "Choose a portable WASM game destination";
-    return "Choose an artifact output directory";
+    return "Choose an output folder";
 }
 
 function isFileArtifactTarget(target: StudioArtifactTargetType): boolean {
@@ -230,7 +230,7 @@ function describeGenerateResultError(view: Exclude<StudioOutcomeLibraryGenerateR
 }
 
 function describePreflightError(view: Exclude<StudioOutcomeLibraryGenerateEstimateView, {status: "ok"}>): string {
-    if (view.status === "invalid") return "This generation request is invalid. Correct the settings below, then refresh the preflight.";
+    if (view.status === "invalid") return "This generation request is invalid. Correct the settings below, then refresh the check.";
     return describeOutcomeLibraryGenerationTerminalOutcome(view);
 }
 
@@ -412,15 +412,15 @@ function TargetCard({
     const previewedOk = isActiveTarget && deployment.runResult?.ok === true && deployment.runResult.publish === false;
     const canBuildArtifact = artifactPreview.status === "ok" && artifactBuildRun.status !== "running" &&
         (!(card.artifactTarget === "blueprint" && artifactPreview.result.plan?.packageExtraction) || artifactPreview.result.preparedOperationId !== undefined);
-    let artifactBuildDisabledReason = "Fix the displayed build preflight issue before building this artifact.";
-    if (artifactBuildRun.status === "running") artifactBuildDisabledReason = "This artifact is already building. Wait for it to finish or cancel it before starting another build.";
-    else if (artifactPreview.status === "loading") artifactBuildDisabledReason = "Waiting for the build destination preflight to finish.";
+    let artifactBuildDisabledReason = "Fix the displayed build check issue before building this output.";
+    if (artifactBuildRun.status === "running") artifactBuildDisabledReason = "This output is already building. Wait for it to finish or cancel it before starting another build.";
+    else if (artifactPreview.status === "loading") artifactBuildDisabledReason = "Waiting for the build destination check to finish.";
     else if (artifactPreview.status === "conflict") artifactBuildDisabledReason = "Choose a different destination before building; Studio will not overwrite existing files.";
-    else if (artifactPreview.status === "unsupported") artifactBuildDisabledReason = "This project cannot build this artifact until the displayed prerequisite is available.";
+    else if (artifactPreview.status === "unsupported") artifactBuildDisabledReason = "This project cannot build this output until the displayed requirement is available.";
     const outcomeLibraryPending = outcomeLibraryRun.status === "starting" || outcomeLibraryRun.status === "running";
     const outcomeLibraryDisabled = outcomeLibraryPending || outcomeLibraryPreflight.status !== "ok" || (outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded");
     let outcomeLibraryDisabledReason = outcomeLibraryPreflight.status !== "ok"
-        ? "Outcome Library generation becomes available after its preflight succeeds."
+        ? "Outcome Library generation becomes available after its check succeeds."
         : "Choose sampled or conditional bounded coverage before generating this Outcome Library.";
     if (outcomeLibraryPending) outcomeLibraryDisabledReason = "Wait for the current generation request to finish.";
     let lifecycleForm: string | undefined;
@@ -536,7 +536,7 @@ function TargetCard({
                                 />
                                 <TextInput
                                     label="Configuration identity"
-                                    description="Optional loaded configuration identity to verify; it never overrides loaded provenance."
+                                    description="Optional loaded configuration identity to verify; it never overrides loaded origin."
                                     value={outcomeLibraryGenerationOptions.configHash}
                                     onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, configHash: event.currentTarget.value})}
                                 />
@@ -559,7 +559,7 @@ function TargetCard({
                                 />
                             )}
                         </AdvancedDisclosure>
-                        <Text size="sm" mt="sm" fw={600}>Generation preflight</Text>
+                        <Text size="sm" mt="sm" fw={600}>Generation check</Text>
                         <div
                             data-pokie-lifecycle-preflight={OUTCOME_LIBRARY_TRANSACTION.formId}
                             data-pokie-lifecycle-preflight-control={OUTCOME_LIBRARY_TRANSACTION.controlId}
@@ -568,7 +568,7 @@ function TargetCard({
                             {outcomeLibraryPreflight.status === "loading" && <Text size="sm" c="dimmed">Checking outcome space and generation plan…</Text>}
                             {outcomeLibraryPreflight.status === "error" && (
                                 <>
-                                    <Text size="sm" c="red">{outcomeLibraryPreflight.result === undefined ? outcomeLibraryPreflight.message ?? "Preflight could not be prepared." : describePreflightError(outcomeLibraryPreflight.result)} Refresh the preflight after resolving this issue.</Text>
+                                    <Text size="sm" c="red">{outcomeLibraryPreflight.result === undefined ? outcomeLibraryPreflight.message ?? "Check could not be prepared." : describePreflightError(outcomeLibraryPreflight.result)} Refresh the check after resolving this issue.</Text>
                                     {outcomeLibraryPreflight.result !== undefined && <AdvancedDisclosure label="Preflight diagnostic"><Text size="sm">{outcomeLibraryPreflight.result.error}</Text></AdvancedDisclosure>}
                                 </>
                             )}
@@ -725,7 +725,7 @@ function TargetCard({
                                     {artifactPreview.status === "ok" ? "Ready to build" : "Choose a different destination"}
                                 </Text>
                                 <Text className="studio-technical-text" size="sm">Resolved absolute path: {artifactPreview.result.destination}</Text>
-                                <AdvancedDisclosure label="Build plan and provenance">
+                                <AdvancedDisclosure label="Build plan and origin">
                                     <Text size="sm">Target: {card.label}</Text>
                                     <Text size="sm">Selected destination: {artifactDestination.trim() || "Default destination"}</Text>
                                     <Text size="sm">Destination kind: {artifactPreview.result.destinationKind}</Text>
@@ -747,7 +747,7 @@ function TargetCard({
                                                 </Text>
                                             ))}
                                             {artifactPreview.result.plan.steps.some((step) => step.kind === "importParWorkbook") && (
-                                                <Text size="sm" c="dimmed">PAR evidence eligibility is verified from explicit import facts and Meta/hash provenance.</Text>
+                                                <Text size="sm" c="dimmed">PAR support is checked against the import details and file hashes.</Text>
                                             )}
                                         </>
                                     )}
@@ -759,9 +759,9 @@ function TargetCard({
                                     </>
                                 )}
                                 {card.artifactTarget === "blueprint" && artifactPreview.result.plan?.packageExtraction && (
-                                    <Text size="sm">Conversion evidence: {artifactPreview.result.destination}.conversion-evidence.json. Preview publishes no files; Save Blueprint explicitly creates a separate editable project.</Text>
+                                    <Text size="sm">Conversion details: {artifactPreview.result.destination}.conversion-evidence.json. Preview publishes no files; Save Blueprint explicitly creates a separate editable project.</Text>
                                 )}
-                                {artifactPreview.result.plan?.packageExtraction && artifactPreview.result.plan.source.configurationProvenance?.inputBindingHash && <Text size="sm">Source binding: {artifactPreview.result.plan.source.configurationProvenance.inputBindingHash}</Text>}
+                                {artifactPreview.result.plan?.packageExtraction && artifactPreview.result.plan.source.configurationProvenance?.inputBindingHash && <Text size="sm">Source link: {artifactPreview.result.plan.source.configurationProvenance.inputBindingHash}</Text>}
                                 <PackageExtractionDiagnostics extraction={artifactPreview.result.plan?.packageExtraction} />
                                 <ParConversionDiagnostics report={artifactPreview.result.plan?.parConversion} />
                                 {artifactPreview.result.plan?.preflight.losses.map((loss, index) => <Text key={index} size="sm" c="orange">Data boundary: {loss}</Text>)}
@@ -811,7 +811,7 @@ function TargetCard({
                                 {artifactBuildRun.status === "running" && artifactBuildRun.progress.status !== "preflight" && (
                                     <>
                                         <br />
-                                        {`Building artifact${artifactBuildRun.progress.message ? `: ${artifactBuildRun.progress.message}` : ""}` +
+                                        {`Building output${artifactBuildRun.progress.message ? `: ${artifactBuildRun.progress.message}` : ""}` +
                                             `${artifactBuildRun.progress.completed !== undefined ? ` (${artifactBuildRun.progress.completed}${artifactBuildRun.progress.total !== undefined ? `/${artifactBuildRun.progress.total}` : ""}${artifactBuildRun.progress.unit === undefined ? "" : ` ${artifactBuildRun.progress.unit}`})` : ""}`}
                                     </>
                                 )}
@@ -821,7 +821,7 @@ function TargetCard({
                         {artifactBuildRun.status === "running" && artifactBuildRun.progress?.preflight === undefined && (
                             <Text size="sm" c="dimmed" mt={4}>
                                 {artifactBuildRun.progress?.status !== "preflight" &&
-                                    (`${artifactBuildRun.jobId ? "Building artifact" : "Starting artifact build"}${artifactBuildRun.progress?.message ? `: ${artifactBuildRun.progress.message}` : ""}` +
+                                    (`${artifactBuildRun.jobId ? "Building output" : "Starting build"}${artifactBuildRun.progress?.message ? `: ${artifactBuildRun.progress.message}` : ""}` +
                                         `${artifactBuildRun.progress?.completed !== undefined ? ` (${artifactBuildRun.progress.completed}${artifactBuildRun.progress.total !== undefined ? `/${artifactBuildRun.progress.total}` : ""}${artifactBuildRun.progress.unit === undefined ? "" : ` ${artifactBuildRun.progress.unit}`})` : ""}`)}
                                 {artifactBuildRun.cancellationRequested ? " Cancellation requested…" : ""}
                             </Text>
@@ -855,10 +855,10 @@ function TargetCard({
                                 <Text className="studio-technical-text" size="sm" mt={4}>
                                     Built to {artifactBuildRun.result.outputPath}.
                                     {artifactBuildRun.result.importedBlueprintPath !== undefined && ` Imported Blueprint: ${artifactBuildRun.result.importedBlueprintPath}.`}
-                                    {artifactBuildRun.result.conversionEvidencePath !== undefined && ` Conversion evidence: ${artifactBuildRun.result.conversionEvidencePath}.`}
+                                    {artifactBuildRun.result.conversionEvidencePath !== undefined && ` Conversion details: ${artifactBuildRun.result.conversionEvidencePath}.`}
                                 </Text>
                                 <ParConversionDiagnostics report={artifactBuildRun.result.parConversion ?? artifactBuildRun.result.plan?.parConversion} />
-                                {artifactBuildRun.result.plan?.packageExtraction && <Text size="sm" c="dimmed">Extraction evidence records this original publication. Subsequent Blueprint edits preserve it as historical provenance.</Text>}
+                                {artifactBuildRun.result.plan?.packageExtraction && <Text size="sm" c="dimmed">Extraction records this original publication. Later game-design edits keep it as historical origin.</Text>}
                                 {artifactBuildRun.result.plan !== undefined && (
                                     <Text size="sm" c="dimmed" mt={4}>
                                         Executed plan: {artifactBuildRun.result.plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No executable steps"}.
@@ -866,7 +866,7 @@ function TargetCard({
                                 )}
                                 {artifactBuildRun.result.stakeManifest !== undefined && (
                                     <Text size="sm" c="dimmed" mt={4}>
-                                        Stake manifest: {artifactBuildRun.result.stakeManifest.modes.map((mode) => `${mode.name} (cost ${mode.cost})`).join(", ") || "no modes"}. Files: {artifactBuildRun.result.stakeFiles?.join(", ") || "none"}.
+                                        Stake package info: {artifactBuildRun.result.stakeManifest.modes.map((mode) => `${mode.name} (cost ${mode.cost})`).join(", ") || "no modes"}. Files: {artifactBuildRun.result.stakeFiles?.join(", ") || "none"}.
                                     </Text>
                                 )}
                                 {artifactBuildRun.result.stakePrerequisiteProvenance !== undefined && (
@@ -1255,7 +1255,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                 setOutcomeLibraryPreflight(result.status === "ok" ? {status: "ok", result} : {status: "error", result});
             })
             .catch((error: unknown) => {
-                if (!cancelled) setOutcomeLibraryPreflight({status: "error", message: describeProjectActionError("The outcome library preflight", errorMessage(error))});
+                if (!cancelled) setOutcomeLibraryPreflight({status: "error", message: describeProjectActionError("The outcome library check", errorMessage(error))});
             });
         return () => {
             cancelled = true;
@@ -1275,7 +1275,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                 if (!controller.signal.aborted) setArtifactTargetsView({status: "loaded", targets, owner: fetchImpl});
             })
             .catch((error: unknown) => {
-                if (!controller.signal.aborted) setArtifactTargetsView(current => ({status: "failed", owner: fetchImpl, targets: current.owner === fetchImpl ? current.targets : undefined, message: describeProjectActionError("The build artifact target list", errorMessage(error))}));
+                if (!controller.signal.aborted) setArtifactTargetsView(current => ({status: "failed", owner: fetchImpl, targets: current.owner === fetchImpl ? current.targets : undefined, message: describeProjectActionError("The output format list", errorMessage(error))}));
             });
         return () => {
             controller.abort();
@@ -1700,7 +1700,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                 } else {
                     activateArtifactBuild(fetchImpl, job.id).catch((error: unknown) => {
                         if (artifactMounted.current && artifactRunVersions.current[target] === version && artifactActiveBuilds.current[target]) {
-                            setArtifactActionError(describeProjectActionError("Starting the artifact build", errorMessage(error)));
+                            setArtifactActionError(describeProjectActionError("Starting the build", errorMessage(error)));
                             // Release the queued reservation and settle cleanup even if activation failed.
                             requestArtifactCancellation(target, job.id, version);
                         }
@@ -1711,7 +1711,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             .catch((error: unknown) => {
                 if (!artifactMounted.current || artifactRunVersions.current[target] !== version) return;
                 Reflect.deleteProperty(artifactActiveBuilds.current, target);
-                setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "error", message: describeProjectActionError("The artifact build", errorMessage(error))}}));
+                setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "error", message: describeProjectActionError("The build", errorMessage(error))}}));
                 refreshArtifactPreviews(target);
             });
     }
@@ -1740,7 +1740,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                     const run = runs[target];
                     return run?.status === "running" ? {...runs, [target]: {...run, cancellationRequested: false}} : runs;
                 });
-                setArtifactActionError(describeProjectActionError("The artifact build cancellation", errorMessage(error)));
+                setArtifactActionError(describeProjectActionError("The build cancellation", errorMessage(error)));
                 // Keep ownership and allow a retry even if the cancellation request failed.
                 pollArtifactBuild(target, jobId, version);
             });
@@ -1789,7 +1789,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                     setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "cancelled", plan: job.result!.plan}}));
                 } else if (job.status === "completed" && cancellationRequested) {
                     setArtifactBuildRuns((runs) => ({...runs, [target]: {
-                        status: "error", message: "The artifact completed before cancellation reached the server. Inspect the retained operation before retrying.",
+                        status: "error", message: "The build completed before cancellation reached the server. Inspect the saved operation before retrying.",
                     }}));
                 } else if (job.status === "completed" && job.result !== undefined && job.result.status === "ok") {
                     const result = job.result;
@@ -1820,7 +1820,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             })
             .catch((error: unknown) => {
                 if (!artifactMounted.current || artifactRunVersions.current[target] !== version || artifactPollReads.current[target] !== read) return;
-                setArtifactActionError(describeProjectActionError("The artifact build", errorMessage(error)));
+                setArtifactActionError(describeProjectActionError("The build", errorMessage(error)));
                 clearTimeout(artifactBuildPollTimers.current[target]);
                 artifactBuildPollTimers.current[target] = setTimeout(() => pollArtifactBuild(target, jobId, version), 100);
             });
@@ -1863,7 +1863,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             </Text>
             <QuickActions>
                 <Button variant="default" size="xs" onClick={refreshArtifactTargets} disabled={artifactTargetsView.status === "pending"}>
-                    {artifactTargetsView.status === "failed" ? "Retry artifact discovery" : "Refresh artifact targets"}
+                    {artifactTargetsView.status === "failed" ? "Retry output discovery" : "Refresh output formats"}
                 </Button>
                 <Button variant="default" size="xs" onClick={deployment.refreshTargets}>
                     Refresh registered targets
@@ -1875,7 +1875,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             {artifactActionError && <ErrorState message={artifactActionError} />}
 
             {cards.length === 0 && artifactTargetsView.status === "loaded" ? (
-                <EmptyState message="This project can't be built or exported from Studio -- see the current project's own capabilities." />
+                <EmptyState message="This project can't be built or exported from Studio -- see the current project's own supported actions." />
             ) : (
                 GROUP_ORDER.map((kind) => {
                     const groupCards = cards.filter((card) => card.kind === kind);
@@ -1886,7 +1886,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                             </Text>
                             {kind !== "remoteDeployment" && artifactTargetsView.status !== "loaded" && (
                                 artifactTargetsView.status === "pending"
-                                    ? <LoadingState label="Discovering artifact targets…" />
+                                    ? <LoadingState label="Discovering output formats…" />
                                     : <ErrorState message={artifactTargetsView.message} />
                             )}
                             {(kind === "remoteDeployment" || artifactTargetsView.status === "loaded" || artifactTargetsView.targets !== undefined && groupCards.length > 0) && (groupCards.length === 0 ? (

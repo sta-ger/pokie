@@ -203,7 +203,7 @@ function legacyProjectRouteMigration(tab: string | undefined): LegacyProjectRout
         case "deployment":
             return {destination: "exportDeploy", message: "Deployment has moved into Build/Export. Choose Remote delivery there to preview or publish to a configured target."};
         case "stakeEngineExport":
-            return {destination: "exportDeploy", message: "Stake Engine Export has moved into Build/Export. Choose the Stake Engine export artifact there."};
+            return {destination: "exportDeploy", message: "Stake Engine Export has moved into Build/Export. Choose the Stake Engine export target there."};
         case "outcomeLibraries":
             return {
                 destination: "overview",
@@ -375,14 +375,14 @@ function WasmManifestInspection({projectRoot, summary}: {projectRoot: string; su
     }, [fetchImpl, projectRoot]);
 
     if (error !== undefined) return <ErrorState message={error} />;
-    if (inspection === undefined) return <LoadingState label="Reading declared WASM manifest…" />;
-    if (!inspection.valid || inspection.wasmManifest === undefined) return <ErrorState message={inspection.error ?? "The WASM manifest is unavailable for inspection."} />;
+    if (inspection === undefined) return <LoadingState label="Reading WASM package info…" />;
+    if (!inspection.valid || inspection.wasmManifest === undefined) return <ErrorState message={inspection.error ?? "The WASM package info is unavailable for inspection."} />;
 
     const {component, schemaVersion, serialization, host, capabilities, minPokieVersion, artifact} = inspection.wasmManifest;
     return (
         <div>
             <Text mb="sm">{summary}</Text>
-            <Table withRowBorders={false} aria-label="Declared WASM component manifest">
+            <Table withRowBorders={false} aria-label="Declared WASM package info">
                 <Table.Tbody>
                     <Table.Tr><Table.Th>Component ID</Table.Th><Table.Td>{component.id}</Table.Td></Table.Tr>
                     <Table.Tr><Table.Th>Component version</Table.Th><Table.Td>{component.version}</Table.Td></Table.Tr>
@@ -390,16 +390,16 @@ function WasmManifestInspection({projectRoot, summary}: {projectRoot: string; su
                     <Table.Tr><Table.Th>Session serialization</Table.Th><Table.Td>{serialization.session}</Table.Td></Table.Tr>
                     <Table.Tr><Table.Th>Play serialization</Table.Th><Table.Td>{serialization.play}</Table.Td></Table.Tr>
                     <Table.Tr><Table.Th>State serialization</Table.Th><Table.Td>{serialization.state}</Table.Td></Table.Tr>
-                    <Table.Tr><Table.Th>RNG host binding</Table.Th><Table.Td>{host.rng}</Table.Td></Table.Tr>
+                    <Table.Tr><Table.Th>RNG host link</Table.Th><Table.Td>{host.rng}</Table.Td></Table.Tr>
                     <Table.Tr><Table.Th>Host services</Table.Th><Table.Td>{host.services.length === 0 ? "None declared" : host.services.join(", ")}</Table.Td></Table.Tr>
-                    <Table.Tr><Table.Th>Declared capabilities</Table.Th><Table.Td>{capabilities.length === 0 ? "None declared" : capabilities.join(", ")}</Table.Td></Table.Tr>
+                    <Table.Tr><Table.Th>Supported actions</Table.Th><Table.Td>{capabilities.length === 0 ? "None declared" : capabilities.join(", ")}</Table.Td></Table.Tr>
                     <Table.Tr><Table.Th>Minimum POKIE version</Table.Th><Table.Td>{minPokieVersion ?? "Not declared"}</Table.Td></Table.Tr>
                     {artifact !== undefined && <>
-                        <Table.Tr><Table.Th>Artifact format</Table.Th><Table.Td>{artifact.format}</Table.Td></Table.Tr>
-                        <Table.Tr><Table.Th>Artifact ABI</Table.Th><Table.Td>{artifact.abiVersion}</Table.Td></Table.Tr>
-                        <Table.Tr><Table.Th>Host adapter</Table.Th><Table.Td>{artifact.adapter}</Table.Td></Table.Tr>
-                        <Table.Tr><Table.Th>Artifact byte count</Table.Th><Table.Td>{artifact.bytes}</Table.Td></Table.Tr>
-                        <Table.Tr><Table.Th>Artifact SHA-256</Table.Th><Table.Td style={{overflowWrap: "anywhere"}}>{artifact.sha256}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Output format</Table.Th><Table.Td>{artifact.format}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>WASM interface version</Table.Th><Table.Td>{artifact.abiVersion}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Host connector</Table.Th><Table.Td>{artifact.adapter}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>File size</Table.Th><Table.Td>{artifact.bytes}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>File SHA-256</Table.Th><Table.Td style={{overflowWrap: "anywhere"}}>{artifact.sha256}</Table.Td></Table.Tr>
                         <Table.Tr><Table.Th>Configuration hash</Table.Th><Table.Td style={{overflowWrap: "anywhere"}}>{artifact.configurationHash}</Table.Td></Table.Tr>
                     </>}
                 </Table.Tbody>
@@ -628,7 +628,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         if (job?.operation === "simulation" && simulation.canRestore && !["queued", "running", "cancelling"].includes(job.status)) return;
         consumedRecoveryNavigation.current = location.key;
         if (job === undefined || job.recovery === undefined || job.recovery.action === "resume" || ["queued", "running", "cancelling"].includes(job.status)) {
-            setRecoveryNavigationError("This retained job is no longer available for retry. Review current project operations or reattach to retained work.");
+            setRecoveryNavigationError("This saved job is no longer available for retry. Review current project operations or reattach to saved work.");
             return;
         }
         setRecoveryNavigationError(undefined);
@@ -707,9 +707,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     if (simulation.restoringJobId !== undefined || (simulation.canRestore && restorableSimulation !== undefined)) {
         simulationRestorationMessage = "Reattaching to retained simulation; waiting for its details…";
     } else if (simulation.canRestore && commonJobs.discoveryStatus === "pending") {
-        simulationRestorationMessage = "Checking for retained simulations…";
+        simulationRestorationMessage = "Checking for saved simulations…";
     } else if (simulation.canRestore && commonJobs.discoveryStatus === "failed") {
-        simulationRestorationMessage = "Cannot check retained simulations. Reconnect to Studio before starting another run.";
+        simulationRestorationMessage = "Cannot check saved simulations. Reconnect to Studio before starting another run.";
     }
 
     // A reload recreates the hook, but the server-owned project-job list
@@ -1172,7 +1172,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         setReportDetail({status: "empty"});
         setSelectedReportId(undefined);
         setCompareDetail({status: "empty"});
-        setRunAgainNotice("The saved design changed. Run a new simulation for the current design. Retained reports remain available as historical results.");
+        setRunAgainNotice("The saved design changed. Run a new simulation for the current design. Saved reports remain available as historical results.");
         const next = ++contextRefreshGenerationRef.current;
         setPendingNavigation((pending) => pending === undefined ? undefined : {...pending, refreshGeneration: next});
         setContextRefreshGeneration(next);
@@ -1668,7 +1668,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     {visibleCommonJobs.length > 0 && (
                         <Stack gap="xs" mb="md" aria-labelledby="studio-operations-heading">
                             <Title id="studio-operations-heading" order={3}>Studio operations</Title>
-                            <Text size="sm" c="dimmed">Current and retained work stays available here while you continue through this project.</Text>
+                            <Text size="sm" c="dimmed">Current and saved work stays available here while you continue through this project.</Text>
                             {visibleCommonJobs.map((job) => {
                                 // This is display-only guidance; retain the durable job, request,
                                 // provenance and original report bytes unchanged.
@@ -1683,7 +1683,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     {jobProjectOpeningError !== undefined && <Alert role="alert" color="red">{jobProjectOpeningError}</Alert>}
                     {recoveryNavigationError !== undefined && <Alert role="alert" color="orange">{recoveryNavigationError}</Alert>}
                     {(jobProjectOpeningError !== undefined || visibleCommonJobs.some((job) => job.operation === "project-open-materialization" && job.result?.outputs?.some((output) => output.unavailableReason !== undefined))) &&
-                        <Button variant="default" onClick={() => navigate("/home/projects")}>Find retained project in Projects</Button>}
+                        <Button variant="default" onClick={() => navigate("/home/projects")}>Find saved project in Projects</Button>}
                     {jobOutputNotice !== undefined && <Text size="xs" aria-live="polite" c="dimmed">{jobOutputNotice}</Text>}
                 </div>
             )}

@@ -19,7 +19,7 @@ function AnalyticsTable({label, headers, rows}: {label: string; headers: string[
 }
 
 export function SimulationAnalyticsDisplay({analytics: a}: {analytics?: FeatureAnalytics}) {
-    if (!a) return <PageSection legend="Feature analytics"><Text size="sm">Feature analytics unavailable (older report or no canonical observations).</Text></PageSection>;
+    if (!a) return <PageSection legend="Feature analytics"><Text size="sm">Feature analytics unavailable (older report or no observations).</Text></PageSection>;
     const supported = FEATURE_NAMES.filter(name => a.envelope.supportedFeatures.includes(name));
     return <PageSection legend="Feature analytics">
         <Text size="sm" mb="sm">Accepted-subround sampling. Ratios show numerator / denominator = value; zero denominator yields 0.</Text>
@@ -27,17 +27,17 @@ export function SimulationAnalyticsDisplay({analytics: a}: {analytics?: FeatureA
             ["Paid entries", a.paidEntries], ["Logical entries", a.logicalEntries], ["Completed logical rounds", a.logicalCompletions],
             ["Accepted subrounds", a.subrounds], ["Mathematical cascade steps", a.cascadeSteps], ["Carried-in subrounds", a.carriedSubrounds],
         ]} />
-        <Text fw={600} mt="md">Feature lifecycle</Text>
-        {!a.envelope.lifecycle ? <Text size="sm">Feature lifecycle unavailable: canonical entry/exit evidence absent; event presence is not duration.</Text>
+        <Text fw={600} mt="md">Feature stages</Text>
+        {!a.envelope.lifecycle ? <Text size="sm">Feature stages unavailable: entry/exit evidence is missing; an event does not measure duration.</Text>
             : <>
-                <AnalyticsTable label="Feature lifecycle summary" headers={["Feature", "Entries / paid rounds", "Completions", "Incomplete", "Mean duration (plays)", "Mean bonus win (currency)"]}
+                <AnalyticsTable label="Feature stages summary" headers={["Feature", "Entries / paid rounds", "Completions", "Incomplete", "Mean duration (plays)", "Mean bonus win (currency)"]}
                     rows={supported.map(name => [name, ratio(a.lifecycle[name].entryPerPaidRound), a.features[name].completions,
                         a.lifecycle[name].incomplete, ratio(a.lifecycle[name].averageDuration), ratio(a.lifecycle[name].averageWin)])} />
-                {supported.filter(name => a.features[name].entries === 0).map(name => <Text size="sm" key={name}>{name}: configured and supported, no entries observed; zero is not evidence of absence or precise feature RTP.</Text>)}
-                {supported.length === 0 && <Text size="sm">No configured features support lifecycle observations.</Text>}
+                {supported.filter(name => a.features[name].entries === 0).map(name => <Text size="sm" key={name}>{name}: configured and supported, no entries seen; zero does not prove absence or exact feature RTP.</Text>)}
+                {supported.length === 0 && <Text size="sm">No configured features support stage tracking.</Text>}
                 <Text size="sm">Lifecycle unavailable or feature not configured: {FEATURE_NAMES.filter(name => !supported.includes(name)).join(", ") || "none"}.</Text>
             </>}
-        <Text size="sm" mt="md">Feature lifecycle wins can overlap; do not sum them as additive payouts. Base/feature/jackpot/unavailable partitions are additive; bet modes are a separate dimension.</Text>
+        <Text size="sm" mt="md">Feature stages wins can overlap; do not sum them as additive payouts. Base/feature/jackpot/unavailable partitions are additive; bet modes are a separate dimension.</Text>
         <AnalyticsTable label="Payout attribution" headers={["Partition", "RTP contribution / actual charged stake", "Payout share / total win"]}
             rows={Object.entries(a.contribution).map(([name, c]) => [name, ratio(c.rtp), ratio(c.payoutShare)])} />
         <AdvancedDisclosure label="win and feature details">
@@ -68,14 +68,14 @@ export function SimulationAnalyticsDisplay({analytics: a}: {analytics?: FeatureA
             {Object.keys(a.betModeContribution).length === 0 && <Text size="sm">No bet mode attribution observed.</Text>}
         </AdvancedDisclosure>
         <AdvancedDisclosure label="canonical hits and components">
-            {!a.envelope.components ? <Text size="sm">Canonical symbol/line/scatter hits unavailable.</Text> : <>
-                <Text size="sm">Hits are deduplicated within each accepted subround; landed display symbols are not canonical hits.</Text>
+            {!a.envelope.components ? <Text size="sm">Symbol, line and scatter hit counts are not available for this report.</Text> : <>
+                <Text size="sm">Hits are counted once per accepted subround; symbols that merely land on screen are not hits.</Text>
                 <AnalyticsTable label="Canonical hit rates" headers={["Kind", "ID", "Hits / accepted subrounds"]}
                     rows={Object.entries(a.hitRates).flatMap(([kind, group]) => Object.keys(group).length
                         ? Object.entries(group).map(([id, r]) => [kind, id, ratio(r)]) : [[kind, "No hits", `0 / ${a.subrounds} = 0`]])} />
                 <AnalyticsTable label="Component statistics" headers={["Type", "ID", "Symbol", "Samples", "Occurrences", "Amount (currency)"]}
                     rows={Object.values(a.components).map(c => [c.type, c.id, c.symbol ?? "none", c.samples, c.occurrences, c.amount])} />
-                {Object.keys(a.components).length === 0 && <Text size="sm">No canonical components observed.</Text>}
+                {Object.keys(a.components).length === 0 && <Text size="sm">No components observed.</Text>}
             </>}
         </AdvancedDisclosure>
         <AdvancedDisclosure label="analytics provenance">

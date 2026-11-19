@@ -17,19 +17,19 @@ export function RoundDetailsTable({
                 <Table.Tr>
                     <Table.Th>Game</Table.Th>
                     <Table.Td style={{overflowWrap: "anywhere"}}>
-                        {artifact.provenance.game
-                            ? `${artifact.provenance.game.name} (id: "${artifact.provenance.game.id}", v${artifact.provenance.game.version})`
-                            : "Unavailable -- this artifact has no recorded game id/version provenance."}
+                        {artifact.origin.game
+                            ? `${artifact.origin.game.name} (id: "${artifact.origin.game.id}", v${artifact.origin.game.version})`
+                            : "Unavailable -- this artifact has no recorded game id/version origin."}
                     </Table.Td>
                 </Table.Tr>
                 <Table.Tr>
                     <Table.Th>Pokie version</Table.Th>
-                    <Table.Td>{artifact.provenance.pokieVersion}</Table.Td>
+                    <Table.Td>{artifact.origin.pokieVersion}</Table.Td>
                 </Table.Tr>
-                {artifact.provenance.configHash && (
+                {artifact.origin.configHash && (
                     <Table.Tr>
                         <Table.Th>Config hash</Table.Th>
-                        <Table.Td style={{overflowWrap: "anywhere"}}>{artifact.provenance.configHash}</Table.Td>
+                        <Table.Td style={{overflowWrap: "anywhere"}}>{artifact.origin.configHash}</Table.Td>
                     </Table.Tr>
                 )}
                 <Table.Tr>

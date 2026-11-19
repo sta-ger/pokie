@@ -121,8 +121,8 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
     if (active) runDisabledReason = "Wait for the active optimization to finish or cancel it before starting another.";
     else if (busy) runDisabledReason = "Wait for the current optimization request to finish.";
     else if (discoveryUnresolved) runDisabledReason = jobs.discoveryStatus === "failed"
-        ? "Reattach to retained work before starting optimization."
-        : "Checking for retained work before starting optimization.";
+        ? "Reattach to saved work before starting optimization."
+        : "Checking for saved work before starting optimization.";
     else if (!support?.supported) runDisabledReason = support ? `Optimization is unavailable: ${support.reason}` : "Check tuning support for the current targets and policy before running optimization.";
     const action = async (kind: "support" | "start" | "save" | "apply"): Promise<void> => {
         if (kind === "start" && (discoveryUnresolved || !support?.supported)) return;
@@ -245,16 +245,16 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
             )}
             {stale && <Alert color="yellow" role="alert">
                 Stale optimization result — the saved design changed. Check tuning support and run a new optimization for the current design. Retained evidence remains available as history.
-                {retainedResult && <details><summary>Historical optimization evidence</summary><Code block>{JSON.stringify(retainedResult, null, 2)}</Code></details>}
+                {retainedResult && <details><summary>Historical optimization details</summary><Code block>{JSON.stringify(retainedResult, null, 2)}</Code></details>}
             </Alert>}
             {result && (
                 <>
                     <Text>Verdict: {result.status}</Text>
-                    {result.candidate && !["success", "attained"].includes(result.status) && <Alert color="yellow">Best-so-far candidate; targets are not approved. Saving preserves this verdict.</Alert>}
+                    {result.candidate && !["success", "attained"].includes(result.status) && <Alert color="yellow">Best-so-far candidate; targets are not approved. Saving keeps this result.</Alert>}
                     {result.diagnostics.length > 0 && <Alert color="red" role="alert">{result.diagnostics.map((item) => `${item.path}: ${item.message}`).join("; ")}</Alert>}
                     {result.evidence && <>
                         <OptimizationPreview evidence={result.evidence} />
-                        <details><summary>Full evidence and provenance</summary><Code block>{JSON.stringify(result.evidence, null, 2)}</Code></details>
+                        <details><summary>Full details and origin</summary><Code block>{JSON.stringify(result.evidence, null, 2)}</Code></details>
                     </>}
                 </>
             )}

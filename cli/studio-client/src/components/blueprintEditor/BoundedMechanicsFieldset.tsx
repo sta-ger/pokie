@@ -35,7 +35,7 @@ export function BoundedMechanicsFieldset({blueprint, mutate}: {blueprint: Record
                 (key === "collection" && (typeof raw.symbolId !== "string" || (raw.reset !== "zero" && raw.reset !== "subtract-threshold")));
             return <PageSection key={key} legend={`Bounded ${key}`}>
                 {rule === undefined ? <Button onClick={() => set(key, defaults[key])}>Add {key}</Button> : <Stack>
-                    {invalid ? <Text>Correct mechanics.{key} in JSON and Apply JSON. The current draft is retained.</Text> : <>
+                    {invalid ? <Text>Correct mechanics.{key} in JSON and Apply JSON. The current draft is saved.</Text> : <>
                         {key === "cascade" && cascade && numeric("Maximum winning cascades", cascade.maxCascades, maxCascades => set("cascade", {...cascade, maxCascades}))}
                         {key === "respins" && respins && <>
                             <Select label="Respin trigger symbol" data={symbols} value={respins.trigger.symbolId} onChange={v => set("respins", {...respins, trigger: {...respins.trigger, symbolId: v ?? ""}})} />

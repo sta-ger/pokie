@@ -347,7 +347,7 @@ export function SimulationTab({
                             key={form.key("modeName")}
                         />
                     )}
-                    {capturedConvergence && <Text size="sm">Captured adaptive stopping: minimum {capturedConvergence?.minRounds} usable samples per worker; tolerance {capturedConvergence?.rtpTolerance} RTP units; check every {capturedConvergence?.checkIntervalRounds} accepted plays; stable checks {capturedConvergence?.stableChecks ?? 3}. These settings will be retained on retry. <Button variant="subtle" size="xs" onClick={() => setCapturedConvergence(undefined)}>Use fixed budget</Button></Text>}
+                    {capturedConvergence && <Text size="sm">Captured adaptive stopping: minimum {capturedConvergence?.minRounds} usable samples per worker; tolerance {capturedConvergence?.rtpTolerance} RTP units; check every {capturedConvergence?.checkIntervalRounds} accepted plays; stable checks {capturedConvergence?.stableChecks ?? 3}. These settings will be saved for retry. <Button variant="subtle" size="xs" onClick={() => setCapturedConvergence(undefined)}>Use fixed limit</Button></Text>}
                     <AdvancedDisclosure detail="seed, workers">
                         <QuickActions>
                             <TextInput label="Seed (optional)" {...form.getInputProps("seed")} key={form.key("seed")} />
@@ -362,7 +362,7 @@ export function SimulationTab({
                     {progress === undefined && <EmptyState message="No simulation has been run yet." />}
                     {progress !== undefined && (
                         <div>
-                            <Text role="status">Phase: {progress.phase ?? progress.status}{progress.percent === 100 && active ? " — accepted-play budget reached; awaiting cleanup and report publication." : ""}</Text>
+                            <Text role="status">Phase: {progress.phase ?? progress.status}{progress.percent === 100 && active ? " — accepted-play limit reached; awaiting cleanup and report publication." : ""}</Text>
                             <Progress value={progress.percent} mb="sm" />
                             <QuickActions>
                                 {active && !cancellationPending && (

@@ -12,7 +12,7 @@ export function AdvancedValidationPanel({report}: {report?: AdvancedModelValidat
             <IssueList title="Advanced checks" issues={report.checks.map(check => ({code: check.id, path: check.path, message: `${check.status}: ${check.message}`, details: check.evidence === undefined ? undefined : {evidence: check.evidence}}))} />
             <IssueList title="Analysis assumptions" issues={report.assumptions.map(message => ({message}))} />
             <IssueList title="Analysis limitations" issues={report.limitations.map(message => ({message}))} />
-            <details><summary>Analysis budget and work</summary><pre>{JSON.stringify({limits: report.limits, work: report.work}, null, 2)}</pre></details>
+            <details><summary>Analysis limits and work</summary><pre>{JSON.stringify({limits: report.limits, work: report.work}, null, 2)}</pre></details>
         </AdvancedDisclosure>
     </div>;
 }

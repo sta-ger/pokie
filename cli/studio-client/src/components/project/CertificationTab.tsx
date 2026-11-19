@@ -229,7 +229,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
         }
     }, [projectRoot, recoveryRequest]);
 
-    // ---- Source bundle autodetection ----
+    // ---- Source outcome library autodetection ----
     const [detectedBundle, setDetectedBundle] = useState<DetectedBundleView>({status: "loading"});
     const [generatePanelOpened, {toggle: toggleGeneratePanel}] = useDisclosure(false);
 
@@ -417,16 +417,16 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
     // hidden/disabled button as the only signal something is still missing.
     function buildContinueBlockers(): string[] {
         if (validateView.status === "idle") {
-            return ['Run "Validate source bundle" above first.'];
+            return ['Run "Validate source outcome library" above first.'];
         }
         if (validateView.status === "loading") {
             return ["Validation is still running."];
         }
         if (validateView.status === "network-error" || validateView.status === "load-error") {
-            return ["Fix the validation request error above, then run Validate source bundle again."];
+            return ["Fix the validation request error above, then run Validate source outcome library again."];
         }
         if (validateOutcome === "invalid") {
-            return ["The source bundle failed validation -- fix the errors above before continuing."];
+            return ["The source outcome library failed validation -- fix the errors above before continuing."];
         }
         if (hasIncompleteModeRow) {
             return [
@@ -438,13 +438,13 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
 
     function inspectContinueBlockers(): string[] {
         if (buildView.status === "idle") {
-            return ['Run "Build certification bundle" above first.'];
+            return ['Run "Build certification pack" above first.'];
         }
         if (buildView.status === "loading") {
             return ["The build is still running."];
         }
         if (buildView.status === "network-error" || buildView.status === "load-error") {
-            return ["Fix the build request error above, then run Build certification bundle again."];
+            return ["Fix the build request error above, then run Build certification pack again."];
         }
         if (buildOutcome === "invalid") {
             return ["The build failed -- fix the errors above before continuing."];
@@ -489,14 +489,14 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                 </Text>
                 <QuickActions>
                     <Button id="certification-validate-source" data-pokie-lifecycle="operation" data-pokie-transaction-state="editable-submission" data-pokie-lifecycle-operation="certification" onClick={runValidate} loading={validateView.status === "loading"}>
-                        Validate source bundle
+                        Validate source outcome library
                     </Button>
                 </QuickActions>
                 {validateView.status === "network-error" && (
-                    <ErrorState message={describePathActionError("The certification bundle directory", validateView.message)} />
+                    <ErrorState message={describePathActionError("The certification pack directory", validateView.message)} />
                 )}
                 {validateView.status === "load-error" && (
-                    <ErrorState message={describePathActionError("The certification bundle directory", validateView.error)} />
+                    <ErrorState message={describePathActionError("The certification pack directory", validateView.error)} />
                 )}
                 {validateOutcome !== undefined && (
                     <div role="status" aria-live="polite" tabIndex={-1} data-pokie-lifecycle-result="certification" data-pokie-lifecycle-result-control="certification-validate-source" data-pokie-lifecycle-result-state="editable-submission" data-pokie-lifecycle-terminal={validateOutcome}>
@@ -522,7 +522,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
 
     function renderBuildStep(): ReactNode {
         if (!buildReachable) {
-            return <EmptyState message="Validate the source bundle first." />;
+            return <EmptyState message="Validate the source outcome library first." />;
         }
         return (
             <div>
@@ -530,7 +530,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                     label="Output directory"
                     kind="directory"
                     pathPurpose="destination"
-                    browseTitle="Browse for a certification output directory"
+                    browseTitle="Browse for a certification output folder"
                     browseId="certification-out-dir"
                     relevantDirectory={projectRoot}
                     value={outDir}
@@ -543,14 +543,14 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                 )}
                 <QuickActions>
                     <Button onClick={runBuild} loading={buildView.status === "loading"} disabled={toModeInputs(modes).length === 0 || hasIncompleteModeRow}>
-                        Build certification bundle
+                        Build certification pack
                     </Button>
                 </QuickActions>
                 {buildView.status === "network-error" && (
-                    <ErrorState message={describePathActionError("The certification bundle directory", buildView.message)} />
+                    <ErrorState message={describePathActionError("The certification pack directory", buildView.message)} />
                 )}
                 {buildView.status === "load-error" && (
-                    <ErrorState message={describePathActionError("The certification bundle directory", buildView.error)} />
+                    <ErrorState message={describePathActionError("The certification pack directory", buildView.error)} />
                 )}
                 {buildOutcome !== undefined && (
                     <OutcomeBanner
@@ -581,35 +581,35 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                 by pokie&apos;s own CertificationPackBuilder/Validator, never re-derived in this UI.
             </Text>
 
-            <Alert color="blue" mb="sm">Certification-ready preparation only. Integrity verification is not regulatory approval, independent RNG certification, compliance sign-off or a guarantee of executable correctness.</Alert>
+            <Alert color="blue" mb="sm">Preparation only. Verification is not regulatory approval, independent RNG certification, compliance sign-off or a guarantee that the game runs correctly.</Alert>
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
                 <Stepper.Step label="Select/configure" description="Bundle & modes" aria-current={activeStep === 0 ? "step" : undefined} />
                 <Stepper.Step
                     label="Validate"
                     description="Preflight"
                     disabled={!validateReachable}
-                    title={validateReachable ? undefined : "Configure a valid source bundle before validation."}
+                    title={validateReachable ? undefined : "Configure a valid source outcome library before validation."}
                     aria-current={activeStep === 1 ? "step" : undefined}
                 />
                 <Stepper.Step
                     label="Build bundle"
                     description="Sample & publish"
                     disabled={!buildReachable}
-                    title={buildReachable ? undefined : "Validate the source bundle before building certification evidence."}
+                    title={buildReachable ? undefined : "Validate the source outcome library before building the certification pack."}
                     aria-current={activeStep === 2 ? "step" : undefined}
                 />
                 <Stepper.Step
                     label="Inspect"
                     description="Manifest & artifacts"
                     disabled={!inspectReachable}
-                    title={inspectReachable ? undefined : "Build a certification bundle before inspecting its manifest and artifacts."}
+                    title={inspectReachable ? undefined : "Build a certification pack before inspecting its package info and files."}
                     aria-current={activeStep === 3 ? "step" : undefined}
                 />
                 <Stepper.Step
                     label="Export"
                     description="Download manifest"
                     disabled={!inspectReachable}
-                    title={inspectReachable ? undefined : "Build a certification bundle before exporting its manifest."}
+                    title={inspectReachable ? undefined : "Build a certification pack before exporting its package info."}
                     aria-current={activeStep === 4 ? "step" : undefined}
                 />
             </Stepper>
@@ -690,8 +690,8 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                             </CopyButton>
                         </QuickActions>
                     </PageSection>
-                    <PageSection legend="Model and evidence authorities">
-                        <Text size="sm">For model-bound evidence, keep the runtime package open, select its generated outcome-library directory above, and use . as the model source. An outcome-library directory is not an executable model. Omitted model, simulation or runtime replay evidence stays visibly unavailable. Evidence inputs belong to the opened project. When the package itself is the model, choose an absolute, new or empty output directory outside that package.</Text>
+                    <PageSection legend="Model and audit sources">
+                        <Text size="sm">For model-bound packs, keep the runtime package open, select its generated outcome-library directory above, and use . as the model source. An outcome-library directory is not an executable model. Omitted model, simulation or runtime replay evidence stays visibly unavailable. Audit inputs belong to the opened project. When the package itself is the model, choose an absolute, new or empty output directory outside that package.</Text>
                         {([
                             ["modelSource", "Model source path"], ["reportFiles", "Simulation report paths (comma separated)"], ["replayFiles", "Audit replay paths (comma separated)"], ["sourceRevision", "Source revision"], ["candidateRevision", "Candidate revision"], ["templateFile", "Presentation template path (optional)"], ["formats", "Output formats (comma separated; empty means all)"],
                         ] as const).map(([key, label]) => <TextInput key={key} label={label} value={packFields[key]} onChange={event => changePackField(key, event.currentTarget.value)} mb="xs" />)}
@@ -766,7 +766,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
 
             {activeStep === 3 &&
                 (buildResult === undefined ? (
-                    <EmptyState message="Build a certification bundle first." />
+                    <EmptyState message="Build a certification pack first." />
                 ) : (
                     <div>
                         <PageSection legend="Summary">
@@ -775,7 +775,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                             </Text>
                         </PageSection>
 
-                        <PageSection legend="Pack support and model rules">
+                        <PageSection legend="Certification pack support and model rules">
                             <Text size="sm">Coverage: {buildResult.manifest.pack?.support.coverage ?? "unavailable"}</Text>
                             <Text size="sm">{buildResult.manifest.pack?.support.limitations.join(" ")}</Text>
                             <CodeBlock>{JSON.stringify(buildResult.manifest.pack, null, 2)}</CodeBlock>
@@ -831,7 +831,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                         </PageSection>
 
                         {buildResult.manifest.deepValidation.issues.length > 0 && (
-                            <PageSection legend="Source bundle deep-validation (embedded verbatim)">
+                            <PageSection legend="Source outcome library deep-validation (embedded verbatim)">
                                 <IssueList title="Issues" issues={[...buildResult.manifest.deepValidation.issues]} />
                             </PageSection>
                         )}
@@ -856,7 +856,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
 
             {activeStep === 4 &&
                 (buildResult === undefined ? (
-                    <EmptyState message="Build a certification bundle first." />
+                    <EmptyState message="Build a certification pack first." />
                 ) : (
                     <div>
                         <Alert color="blue" variant="light" mb="sm">
@@ -880,7 +880,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                             }}>Download {file}</Button>)}
                             <Button onClick={() => {
                                 return downloadPack("manifest.json");
-                            }}>Download manifest.json</Button>
+                            }}>Download package info</Button>
                         </QuickActions>
                     </div>
                 ))}

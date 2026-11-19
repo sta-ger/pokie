@@ -9,7 +9,7 @@ export function OptimizationPreview({evidence}: {evidence: OptimizationEvidence}
         <p>Precision: {evidence.numericRepresentation}</p>
         {request && <>
             <table aria-label="Target comparison">
-                <thead><tr>{["Metric", "Units", "Population", "Requested", "Tolerance", "Measured", "Confidence interval", "Verdict"].map(label => <th key={label}>{label}</th>)}</tr></thead>
+                <thead><tr>{["Metric", "Units", "Population", "Requested", "Tolerance", "Measured", "Confidence interval", "Result"].map(label => <th key={label}>{label}</th>)}</tr></thead>
                 <tbody>{request.targets.map((target, index) => {
                     const sampled = evidence.strategy === "seeded-search-v1";
                     const result = assessment?.targets[index];
@@ -19,19 +19,19 @@ export function OptimizationPreview({evidence}: {evidence: OptimizationEvidence}
                     let verdict = "Unavailable";
                     if (measured !== undefined) verdict = Math.abs(measured - target.value) <= allowance ? "attained" : "missed";
                     let interval = sampled ? "Assessment unavailable" : "Not applicable (exact)";
-                    if (sampled && result) interval = `[${result.confidence.low}, ${result.confidence.high}]; confidence ${request.policy.sampling?.confidence}; ${result.observations} observations`;
+                    if (sampled && result) interval = `[${result.confidence.low}, ${result.confidence.high}]; confidence ${request.policy.sampling?.confidence}; ${result.observations} samples`;
                     return <tr key={index}>
                         <td>{target.metric}{target.event ? ` (${target.event})` : ""}{target.bucket ? ` [${target.bucket.min}, ${target.bucket.max ?? "∞"})` : ""}</td>
                         <td>{target.unit}</td><td>{request.policy.mode}, {request.policy.scope}, stake {request.policy.stake}</td>
                         <td>{target.value}</td><td>{target.tolerance?.kind ?? "absolute"}: {tolerance}</td>
-                        <td>{measured ?? "Unavailable"} {sampled ? "held-out estimate" : "exact"}</td>
+                        <td>{measured ?? "Unavailable"} {sampled ? "validation estimate" : "exact"}</td>
                         <td>{interval}</td>
                         <td>{sampled ? result?.verdict ?? "Unavailable" : verdict}{result && `: ${result.reason}`}</td>
                     </tr>;
                 })}</tbody>
             </table>
-            <p>Limits: {request.policy.strategy}; candidate budget {request.policy.budget}; maximum native population {request.policy.maxOutcomes}.</p>
-            {request.policy.sampling && <p>Sampling limits: search budget {request.policy.sampling.searchBudget}; held-out samples {request.policy.sampling.assessmentSamples}; minimum samples {request.policy.sampling.minSamples}; minimum event count {request.policy.sampling.minEventCount}; workers {request.policy.sampling.workers}.</p>}
+            <p>Limits: {request.policy.strategy}; candidate limit {request.policy.budget}; maximum native population {request.policy.maxOutcomes}.</p>
+            {request.policy.sampling && <p>Sampling limits: search limit {request.policy.sampling.searchBudget}; validation samples {request.policy.sampling.assessmentSamples}; minimum samples {request.policy.sampling.minSamples}; minimum event count {request.policy.sampling.minEventCount}; workers {request.policy.sampling.workers}.</p>}
             <p>Tunables: {request.policy.tunables.map(field => `${field.path}: ${field.values.join(", ")}`).join("; ")}</p>
             <p>Locks: {request.policy.locks.join(", ") || "None"}</p>
             <p>Protected files: {request.policy.protectedFiles?.join(", ") || "None"}</p>

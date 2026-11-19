@@ -265,7 +265,7 @@ export type ReplayComparisonSide = {
 };
 
 function describeComparisonSide(role: "recorded" | "recreated", side: ComparableReplayResult): ReplayComparisonSide {
-    const provenanceGame = side.artifact?.provenance?.game;
+    const provenanceGame = side.artifact?.origin?.game;
     const versionHashParts: string[] = [];
     if (provenanceGame?.id && provenanceGame.version) {
         versionHashParts.push(`${provenanceGame.id} v${provenanceGame.version}`);
@@ -554,7 +554,7 @@ function describeLibraryRecordIssue(record: ComparableReplayResult): string | un
     }
     const artifact = resolveReplayArtifact(record)!;
     if (source.seed !== record.seed || source.round !== record.round || source.modeName !== record.modeName ||
-        !deepEqualJson(source.game, artifact.provenance?.game) ||
+        !deepEqualJson(source.game, artifact.origin?.game) ||
         source.stake !== artifact.stake || source.totalWin !== artifact.totalWin || source.payoutMultiplier !== artifact.payoutMultiplier ||
         !screensEqual(source.screen, artifact.screen)) {
         return "Library provenance does not agree with the loaded seed, round, mode or recorded artifact. Restore the original downloaded descriptor.";
@@ -600,14 +600,14 @@ export function describeReplayReproducibility(
         return {status: "ready"};
     }
 
-    const provenanceGame = expected.artifact?.provenance?.game;
+    const provenanceGame = expected.artifact?.origin?.game;
     if (expected.artifact !== undefined && (!provenanceGame || !provenanceGame.id || !provenanceGame.version)) {
         return {
             status: "blocked",
             reason:
-                'This round\'s artifact has no recorded game id/version provenance ("provenance.game"), so there is no way to confirm it was reproduced against the same game build that originally produced it — likely an incomplete or hand-trimmed record.',
+                'This round record has no game id/version origin ("origin.game"), so there is no way to confirm it was reproduced against the same game build that originally produced it — likely an incomplete or hand-trimmed record.',
             remediation:
-                'Add a "provenance.game" object with the original "id" and "version" to the pasted artifact JSON before reproducing, or use it for inspection only (skip Reproduce and go straight to Inspect via Recent Replays).',
+                'Add an "origin.game" object with the original "id" and "version" to the pasted artifact JSON before reproducing, or use it for inspection only (skip Reproduce and go straight to Inspect via Recent Replays).',
         };
     }
 
@@ -995,7 +995,7 @@ function describeLoadedArtifact(
     comparison: ReplayComparisonView | undefined,
     canExport: boolean,
 ): LoadedReplayCardView {
-    const provenanceGame = expected.artifact?.provenance?.game;
+    const provenanceGame = expected.artifact?.origin?.game;
     const versionHashParts: string[] = [];
     if (provenanceGame?.id && provenanceGame.version) {
         versionHashParts.push(`${provenanceGame.id} v${provenanceGame.version}`);

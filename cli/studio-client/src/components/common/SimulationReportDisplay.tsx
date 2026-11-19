@@ -72,7 +72,7 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
 
                 <Table aria-label="Sampling and precision" role="table" withRowBorders={false}>
                     <Table.Tbody>
-                        <Table.Tr><Table.Th>Requested budget (accepted plays)</Table.Th><Table.Td>{view.requestedRounds}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Requested plays</Table.Th><Table.Td>{view.requestedRounds}</Table.Td></Table.Tr>
                         <Table.Tr><Table.Th>Usable samples</Table.Th><Table.Td>{view.rounds} ({view.sampling?.unit ?? "accepted-subround"})</Table.Td></Table.Tr>
                         {view.sampling && <>
                             <Table.Tr><Table.Th>Accepted subrounds</Table.Th><Table.Td>{view.sampling.acceptedSubrounds}</Table.Td></Table.Tr>
