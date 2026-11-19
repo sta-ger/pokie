@@ -1,9 +1,9 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import {buildRoundArtifact} from "../artifact/buildRoundArtifact.js";
-import {RoundArtifactBuildError} from "../artifact/RoundArtifactBuildError.js";
-import type {RoundArtifact} from "../artifact/RoundArtifact.js";
+import {buildRoundRecord} from "../artifact/buildRoundRecord.js";
+import {RoundRecordBuildError} from "../artifact/RoundRecordBuildError.js";
+import type {RoundRecord} from "../artifact/RoundRecord.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import {buildWeightedOutcomeLibrary} from "../weightedoutcome/buildWeightedOutcomeLibrary.js";
 import {WeightedOutcomeLibraryBuildError} from "../weightedoutcome/WeightedOutcomeLibraryBuildError.js";
@@ -59,7 +59,7 @@ type RawSourceBytes = {
 // stake/game/configHash/pokieVersion/libraryId are recovered from pokie-manifest.json (the only place they ever
 // survive — Stake's own index.json/CSV/books never store them), never invented.
 //
-// This is inherently lossy at the POKIE-object level (see docs/stake-engine-import.md): the original RoundArtifact
+// This is inherently lossy at the POKIE-object level (see docs/stake-engine-import.md): the original RoundRecord
 // roundId, the real per-round win breakdown, and provenance.pokieVersion (the version that *built* the artifact,
 // as opposed to the manifest's own pokieVersion, the version that *ran the export*) are never stored in Stake's
 // format and can't be recovered — disclosed substitutes are used instead (a deterministic synthesized roundId,
@@ -204,7 +204,7 @@ export class StakeEngineImporter<T extends string | number = string> implements 
             }
         }
 
-        const outcomes: {id: string; weight: number; artifact: RoundArtifact<T>}[] = [];
+        const outcomes: {id: string; weight: number; artifact: RoundRecord<T>}[] = [];
         for (const lineResult of bookLineResults) {
             // Safe: validation passing with no errors guarantees every line parsed to "ok" and matched the
             // expected shape.
@@ -254,7 +254,7 @@ export class StakeEngineImporter<T extends string | number = string> implements 
         line: {id: number; events: unknown[]; payoutMultiplier: number},
         weight: number,
         issues: ValidationIssue[],
-    ): {id: string; weight: number; artifact: RoundArtifact<T>} | undefined {
+    ): {id: string; weight: number; artifact: RoundRecord<T>} | undefined {
         let imported;
         try {
             imported = this.eventsImporter.importEvents(line.events as unknown as readonly StakeEngineEvent[], {
@@ -286,13 +286,13 @@ export class StakeEngineImporter<T extends string | number = string> implements 
         }
 
         try {
-            const artifact = buildRoundArtifact<T>({
+            const artifact = buildRoundRecord<T>({
                 roundId: `stakeengine-import:${context.modeName}:${line.id}`,
                 provenance: {
                     game: context.manifest.game,
                     pokieVersion: context.manifest.pokieVersion,
                     // Only set when actually present: an explicit "configHash: undefined" property (as opposed
-                    // to the key being absent entirely) fails buildRoundArtifact's own JSON-safety check.
+                    // to the key being absent entirely) fails buildRoundRecord's own JSON-safety check.
                     ...(context.manifest.configHash !== undefined ? {configHash: context.manifest.configHash} : {}),
                 },
                 betMode: context.manifestMode.betMode,
@@ -323,7 +323,7 @@ export class StakeEngineImporter<T extends string | number = string> implements 
             issues.push({
                 code: "stakeengine-import-outcome-artifact-invalid",
                 severity: "error",
-                message: `mode "${context.modeName}": outcome ${line.id}: ${error instanceof RoundArtifactBuildError ? error.message : String(error)}`,
+                message: `mode "${context.modeName}": outcome ${line.id}: ${error instanceof RoundRecordBuildError ? error.message : String(error)}`,
                 details: {modeName: context.modeName, id: line.id},
             });
             return undefined;

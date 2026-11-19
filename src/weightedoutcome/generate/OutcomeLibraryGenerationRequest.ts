@@ -1,4 +1,4 @@
-import type {RoundArtifact} from "../../artifact/RoundArtifact.js";
+import type {RoundRecord} from "../../artifact/RoundRecord.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import type {ValidationRule} from "../../validation/ValidationRule.js";
 import fs from "fs";
@@ -58,7 +58,7 @@ export type OutcomeLibraryRuntimeModeIdentity = {
 };
 
 /**
- * Resolves the one mode identity shared by runtime selection, round artifacts,
+ * Resolves the one mode identity shared by runtime selection, round records,
  * library identity and bundle mode naming.  An explicit runtime package has a
  * declared default, so omission means that default -- never a caller-local
  * invented "base" label.  Legacy declarative mode arrays remain storage-label
@@ -303,7 +303,7 @@ export type OutcomeLibraryGenerationRequest = {
     // hooks to distinguish its completion from evaluating/deduplicating the resulting visible grids.
     readonly onPostEnumeration?: () => void;
     readonly onPostEnumerationProgress?: (emittedOutcomes: bigint) => void;
-    readonly artifactValidator?: ValidationRule<RoundArtifact>;
+    readonly artifactValidator?: ValidationRule<RoundRecord>;
     readonly now?: () => Date;
     readonly heapUsedLimitBytes?: number;
     readonly getHeapUsedBytes?: () => number;

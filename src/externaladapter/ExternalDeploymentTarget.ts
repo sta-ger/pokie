@@ -21,7 +21,7 @@ import type {ExternalRoundProjector} from "./ExternalRoundProjector.js";
 // surfaced for diagnostics/logging; POKIE places no constraint on its shape.
 // "artifactGenerator" is deliberately not generic over T (unlike "roundProjector") — see
 // ExternalArtifactGenerator's own doc comment: generation only ever runs after ExternalDeploymentService has
-// already projected every RoundArtifact<T> into plain JSON, so nothing generic-over-T ever reaches it.
+// already projected every RoundRecord<T> into plain JSON, so nothing generic-over-T ever reaches it.
 export interface ExternalDeploymentTarget<T extends string | number = string> {
     readonly id: string;
     readonly version: string;

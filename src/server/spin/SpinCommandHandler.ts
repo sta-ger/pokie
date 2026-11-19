@@ -6,7 +6,7 @@ import {AuditReplayError} from "../../replay/AuditReplayError.js";
 import type {AuditDisposition} from "../../replay/AuditRoundRecording.js";
 import {emptyLogicalRoundStatistics, mergeLogicalRoundStatistics} from "../../simulation/LogicalRoundStatistics.js";
 import {commandEnvelope} from "../../runtime/commandEnvelope.js";
-import {buildLogicalRoundArtifact} from "../../artifact/buildLogicalRoundArtifact.js";
+import {buildLogicalRoundRecord} from "../../artifact/buildLogicalRoundRecord.js";
 import {isExternalRoundStore, type ExternalRoundStore, type ExternalRoundPreparation, type ExternalRoundCandidate} from "../storage/ExternalRoundStore.js";
 import {InMemoryWallet} from "../wallet/InMemoryWallet.js";
 import type {TransactionalRoundStore} from "../storage/TransactionalRoundStore.js";
@@ -26,7 +26,7 @@ import type {GameSessionSerializing} from "../../net/GameSessionSerializing.js";
 import type {GameSessionHandling} from "../../session/GameSessionHandling.js";
 import {InMemoryIdempotencyRepository} from "../idempotency/InMemoryIdempotencyRepository.js";
 import type {IdempotencyRepository} from "../idempotency/IdempotencyRepository.js";
-import {captureRoundPokieSessionState, type RoundArtifactCaptureRequest} from "../session/captureRoundPokieSessionState.js";
+import {captureRoundPokieSessionState, type RoundRecordCaptureRequest} from "../session/captureRoundPokieSessionState.js";
 import {determineStakeAmount} from "../session/determineStakeAmount.js";
 import {isVersionedSessionRepository} from "../session/isVersionedSessionRepository.js";
 import type {PokieSessionState} from "../session/PokieSessionState.js";
@@ -191,7 +191,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
     // preserves every prior release's own persisted-state shape exactly. `sessionCapturePolicyMode` (see
     // PokieDevServerOptions.sessionCapturePolicyMode's own doc comment) defaults to "partial", the same
     // legacy persisted-state shape every prior release always produced; `pokieVersion` is only ever read
-    // when it's "full" (to stamp a built RoundArtifact's own provenance.pokieVersion), and defaults to
+    // when it's "full" (to stamp a built RoundRecord's own provenance.pokieVersion), and defaults to
     // "unknown" — the same fallback StudioReplayExecutionService already uses for the same reason.
     constructor(
         game: PokieGame,
@@ -919,7 +919,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             if (!Number.isFinite(newBalance) || newBalance < 0) throw new Error("Settled wallet balance must be finite and non-negative.");
 
             failureCode = "execution-error";
-            const roundArtifactRequest: RoundArtifactCaptureRequest | undefined =
+            const roundRecordRequest: RoundRecordCaptureRequest | undefined =
                 this.capturePolicy.mode === "full"
                     ? {
                         roundId,
@@ -937,7 +937,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                         credits: newBalance,
                     }
                     : undefined;
-            const newState = captureRoundPokieSessionState(state.context, session, state, this.sessionSerializer, this.capturePolicy, roundArtifactRequest);
+            const newState = captureRoundPokieSessionState(state.context, session, state, this.sessionSerializer, this.capturePolicy, roundRecordRequest);
             newState.credits = newBalance;
             newState.chargedEntry = stakeAmount > 0 ? {bet: session.getBet(), ...(betMode !== undefined ? {mode: betMode} : {})} : state.chargedEntry;
             if (!this.idempotencyRepository.loadRound && state.logicalRoundIds) newState.logicalRoundIds = state.logicalRoundIds;
@@ -948,7 +948,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                     newState.logicalRoundStatistics = mergeLogicalRoundStatistics(state.logicalRoundStatistics ?? emptyLogicalRoundStatistics(), {rounds: 1, steps: executed.logicalRound.cursor, totalStake: executed.logicalRound.totalStake, totalWin: executed.logicalRound.totalWin});
                 }
                 newState.logicalRound = executed.logicalRound;
-                if (newState.roundArtifact) newState.roundArtifact = buildLogicalRoundArtifact(executed.logicalRound, newState.roundArtifact);
+                if (newState.roundRecord) newState.roundRecord = buildLogicalRoundRecord(executed.logicalRound, newState.roundRecord);
             }
             const auditEvidence = await this.captureOperationAudit(session, state, executed, intent ?? {kind: "spin", sessionId, requestId}, {
                 status: "committed", sessionId, ...(requestId ? {requestId} : {}), attemptId, debitTransactionId, creditTransactionId, startedAt, recordedAt: new Date().toISOString(),

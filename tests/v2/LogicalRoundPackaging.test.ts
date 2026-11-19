@@ -208,7 +208,7 @@ describe("logical-round delivery and mathematical boundaries", () => {
             expect(data.winningPositions).toEqual([]);
             expect(data.holdAndWin?.payout).toBe(0);
             expect(data.jackpot?.award).toBeUndefined();
-            const artifact = api.buildRoundArtifactFromSession(session, {roundId: "failed", provenance: {game: b.manifest, pokieVersion: "1.3.0"}});
+            const artifact = api.buildRoundRecordFromSession(session, {roundId: "failed", provenance: {game: b.manifest, pokieVersion: "1.3.0"}});
             expect(artifact.totalWin).toBe(0);
             expect(artifact.wins).toEqual([]);
             expect(artifact.featureEvents).toContainEqual({type: "holdAndWin", data: expect.objectContaining({payout: 0})});
@@ -562,8 +562,8 @@ describe("logical-round delivery and mathematical boundaries", () => {
             expect(first.state.screen).toEqual(subround.finalScreen);
             expect(api.projectLogicalRound(first.state.logicalRound!).subrounds[0].finalScreen).toEqual(subround.finalScreen);
             if (mode === "full") {
-                expect(first.state.roundArtifact!.steps).toHaveLength(2);
-                expect(first.state.roundArtifact!.screen).toEqual(subround.screen);
+                expect(first.state.roundRecord!.steps).toHaveLength(2);
+                expect(first.state.roundRecord!.screen).toEqual(subround.screen);
             }
             expect(first.state.logicalRoundStatistics).toBeUndefined();
             expect(await handler().execute(command)).toEqual(first);
@@ -1015,9 +1015,9 @@ describe("logical-round delivery and mathematical boundaries", () => {
 it("validates ordinary rectangular win coordinates through artifact construction, diagnostics and retained logical progress", () => {
     const screen = [["A"], ["A"], ["A"]];
     const result = new api.WinEvaluationResult({lineWins: [new api.LineWinComponent(new api.WinningLine(0.1, [0, 0, 0], [1, 1, 1], "0", [0, 1, 2], [], "A"), [[0, 0], [1, 0], [2, 0]])]});
-    const artifact = api.buildRoundArtifact({roundId: "coordinates", stake: 0.05, provenance: {game: {id: "coordinate-owner", name: "Coordinates", version: "1"}, pokieVersion: "1.3.0"}, steps: [{screen, winEvaluationResult: result}]});
-    const validator = new api.RoundArtifactValidator();
-    const projector = new api.PublicRoundArtifactProjector();
+    const artifact = api.buildRoundRecord({roundId: "coordinates", stake: 0.05, provenance: {game: {id: "coordinate-owner", name: "Coordinates", version: "1"}, pokieVersion: "1.3.0"}, steps: [{screen, winEvaluationResult: result}]});
+    const validator = new api.RoundRecordValidator();
+    const projector = new api.PublicRoundRecordProjector();
     expect(projector.project(artifact).wins).toEqual(artifact.wins);
     expect(validator.validate(artifact)).toEqual([]);
     const command = {kind: "spin" as const, bet: 0.05, roundId: "coordinates", delivery: "stepwise" as const};
@@ -1029,7 +1029,7 @@ it("validates ordinary rectangular win coordinates through artifact construction
         (corrupt.steps[0].wins[0] as {winningPositions: unknown}).winningPositions = [position];
         (corrupt.wins[0] as {winningPositions: unknown}).winningPositions = [position];
         const diagnostics = validator.validate(corrupt);
-        expect(diagnostics).toContainEqual(expect.objectContaining({code: "round-artifact-coordinates-invalid"}));
+        expect(diagnostics).toContainEqual(expect.objectContaining({code: "round-record-coordinates-invalid"}));
         expect(() => projector.project(corrupt)).toThrow(/position|index|domain/i);
         expect(() => api.projectPublicRoundStep(corrupt.steps[0])).toThrow(/position|index|domain/i);
         expect(diagnostics.every(issue => issue.severity === "error")).toBe(true);

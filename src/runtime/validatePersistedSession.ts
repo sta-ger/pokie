@@ -9,7 +9,7 @@ import {validateLogicalRound} from "./LogicalRound.js";
 import {captureCoordinatePublicPayload} from "../server/session/internal/captureCoordinatePublicPayload.js";
 import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
 import type {LiveSessionAuthority, LiveSnapshotPolicy} from "./internal/LiveSessionAuthority.js";
-import {RoundArtifactValidator} from "../artifact/RoundArtifactValidator.js";
+import {RoundRecordValidator} from "../artifact/RoundRecordValidator.js";
 import {isSessionStateRestorable, resolveSessionStateSchema, sessionStateSchemasMatch, type SessionStateSchema} from "../session/SessionStateRestoring.js";
 import {validateExecutableState} from "./validateExecutableState.js";
 import type {PokieGame} from "../gamepackage/PokieGame.js";
@@ -44,8 +44,8 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
             const expectedScreen = new ScreenProjection(state.coordinates.geometry).project(state.coordinates.generatedScreen, "visible");
             if (JSON.stringify(expectedScreen) !== JSON.stringify(state.screen)) throw new Error("Persisted viewport does not match generated coordinate evidence.");
             if (state.roundPayload) captureCoordinatePublicPayload(state, state.roundPayload);
-            if (state.roundArtifact && (JSON.stringify(state.roundArtifact.geometry) !== JSON.stringify(state.coordinates.geometry) ||
-                JSON.stringify(state.roundArtifact.generatedScreen) !== JSON.stringify(state.coordinates.generatedScreen))) throw new Error("Persisted artifact coordinate evidence differs from session capture.");
+            if (state.roundRecord && (JSON.stringify(state.roundRecord.geometry) !== JSON.stringify(state.coordinates.geometry) ||
+                JSON.stringify(state.roundRecord.generatedScreen) !== JSON.stringify(state.coordinates.generatedScreen))) throw new Error("Persisted artifact coordinate evidence differs from session capture.");
         }
         let schema = state.stateSchema;
         const visitedSchemas = new Set<unknown>();
@@ -66,8 +66,8 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
         state.capturePolicy.version !== 1 || !["partial", "full"].includes(state.capturePolicy.mode) || typeof state.capturePolicy.captureDebugPayloads !== "boolean")) {
         return {status: "corrupt-state", reason: "Invalid session capture policy."};
     }
-    if (state.roundArtifactUnavailableReason !== undefined && typeof state.roundArtifactUnavailableReason !== "string") return {status: "corrupt-state", reason: "Invalid round artifact diagnostic."};
-    if (state.roundArtifact !== undefined && new RoundArtifactValidator().validate(state.roundArtifact).length > 0) return {status: "corrupt-state", reason: "Invalid captured round artifact."};
+    if (state.roundRecordUnavailableReason !== undefined && typeof state.roundRecordUnavailableReason !== "string") return {status: "corrupt-state", reason: "Invalid round record diagnostic."};
+    if (state.roundRecord !== undefined && new RoundRecordValidator().validate(state.roundRecord).length > 0) return {status: "corrupt-state", reason: "Invalid captured round record."};
     if (state.logicalRound !== undefined) {
         const invalid = validateLogicalRound(state.logicalRound);
         if (invalid) return {status: "corrupt-state", reason: invalid};
@@ -120,14 +120,14 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
             const payload = state.roundPayload?.boundedMechanics as {weightedBonus?: unknown} | undefined;
             // A full logical artifact folds every subround's events at the top level.
             // Its final canonical step, rather than the first entry event, owns current progress.
-            const steps = state.roundArtifact?.steps;
+            const steps = state.roundRecord?.steps;
             const artifact = steps?.[steps.length - 1]?.featureEvents?.find(event => event.type === "boundedMechanics")?.data?.weightedBonus;
             try {
                 // Partial capture retains serializer observations; full capture also has an artifact.
                 // A logical envelope was checked above. Every retained copy must agree.
                 if (state.roundPayload) validateWeightedBonusObservation(entryFeature!, payload?.weightedBonus);
                 else if (!state.logicalRound) validateWeightedBonusObservation(entryFeature!, artifact);
-                if (state.roundArtifact) validateWeightedBonusObservation(entryFeature!, artifact);
+                if (state.roundRecord) validateWeightedBonusObservation(entryFeature!, artifact);
             } catch (error) {
                 return {status: "corrupt-state", reason: (error as Error).message};
             }

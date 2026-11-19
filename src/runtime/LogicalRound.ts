@@ -1,4 +1,4 @@
-import {RoundArtifactValidator} from "../artifact/RoundArtifactValidator.js";
+import {RoundRecordValidator} from "../artifact/RoundRecordValidator.js";
 import {validateRepositoryCommand} from "./RepositoryCommand.js";
 import {validateSessionCommand, type SessionCommand} from "./SessionCommand.js";
 import type {RoundStepArtifact} from "../artifact/RoundStepArtifact.js";
@@ -86,7 +86,7 @@ function validateLogicalRoundStructure(value: unknown): string | undefined {
             const artifact = {schemaVersion: 1, roundId: round.id, provenance: {game: {id: "retained", name: "Retained", version: "1"}, pokieVersion: "unknown"}, betMode: round.mode ?? "base", stake: step.stake,
                 totalWin, payoutMultiplier: step.stake > 0 ? totalWin / step.stake : 0, screen: last.screen, ...(last.sequenceSelections ? {sequenceSelections: last.sequenceSelections} : {}),
                 ...(last.geometry ? {geometry: last.geometry, generatedScreen: last.generatedScreen} : {}), steps: step.artifacts, wins: step.artifacts.flatMap((item: RoundStepArtifact) => item.wins)};
-            if (new RoundArtifactValidator().validate(artifact).length || Math.abs(totalWin - step.win) > 1e-9 || JSON.stringify(last.screen) !== JSON.stringify(step.screen)) return "Invalid retained mathematical artifact/accounting.";
+            if (new RoundRecordValidator().validate(artifact).length || Math.abs(totalWin - step.win) > 1e-9 || JSON.stringify(last.screen) !== JSON.stringify(step.screen)) return "Invalid retained mathematical artifact/accounting.";
         }
         priorCursor += Math.max(1, step.artifacts?.length ?? 0);
     }
@@ -112,7 +112,7 @@ function validPositions(value: unknown): boolean {
 }
 
 function validWin(value: unknown): boolean {
-    const win = value as import("../artifact/RoundArtifactWin.js").RoundArtifactWin | undefined;
+    const win = value as import("../artifact/RoundRecordWin.js").RoundRecordWin | undefined;
     return !!win && typeof win.type === "string" && !!win.type && typeof win.id === "string" && !!win.id &&
         ((win.type === "jackpot" && win.symbolId === null) || typeof win.symbolId === "string" || (typeof win.symbolId === "number" && Number.isFinite(win.symbolId))) &&
         validPositions(win.winningPositions) && Array.isArray(win.multiplierBreakdown) && win.multiplierBreakdown.every(item =>

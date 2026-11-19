@@ -27,7 +27,7 @@ const COMMITMENT_FIELDS = ["algorithmVersion", "serverSeedHash", "clientSeed", "
 
 // Never throws — every fallible step (reading the live mode index, redrawing against it) is individually
 // guarded, and a top-level try/catch is the final safety net, same "never throw, return diagnostics" contract
-// CertificationEvidenceBundleVerifier itself follows.
+// CertificationPackVerifier itself follows.
 //
 // FairnessRoundProofValidator and FairnessCommitmentValidator ALWAYS run — hardcoded, not swappable via
 // constructor injection, so a caller can never accidentally (or maliciously) accept a proof/commitment that
@@ -77,7 +77,7 @@ export class FairnessRoundProofVerifier implements FairnessRoundProofVerifying {
         const structuralIssues = [...this.mandatoryProofValidator.validate(candidate), ...(this.additionalProofValidator?.validate(candidate) ?? [])];
         // A proof this malformed (bad shape, unsupported schema/algorithm, or a seed that doesn't match its own
         // commitment) can't be meaningfully cross-checked against anything — short-circuits rather than
-        // attempting a partial cross-check, mirroring CertificationEvidenceBundleVerifier's own
+        // attempting a partial cross-check, mirroring CertificationPackVerifier's own
         // MANIFEST_UNREADABLE_CODES short-circuit.
         if (structuralIssues.some((issue) => issue.severity === "error")) {
             return structuralIssues;

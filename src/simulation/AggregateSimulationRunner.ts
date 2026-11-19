@@ -1,4 +1,4 @@
-import {deriveStandardFeatureEvents} from "../artifact/buildRoundArtifactFromSession.js";
+import {deriveStandardFeatureEvents} from "../artifact/buildRoundRecordFromSession.js";
 import type {SimulationObservationRequest} from "./SimulationObservationCounters.js";
 import {SessionFeatureAnalyticsObserver} from "./SessionFeatureAnalyticsObserver.js";
 import type {WeightedBonusProviding} from "../session/videoslot/authored/WeightedBonus.js";

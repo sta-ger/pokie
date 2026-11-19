@@ -1,4 +1,4 @@
-import {RoundArtifactValidator} from "../artifact/RoundArtifactValidator.js";
+import {RoundRecordValidator} from "../artifact/RoundRecordValidator.js";
 import {InvalidJsonValueError} from "../json/InvalidJsonValueError.js";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
@@ -7,7 +7,7 @@ import {isPositiveSafeInteger} from "./internal/isPositiveSafeInteger.js";
 import {PRE_GENERATED_ROUND_RESULT_SCHEMA_VERSION, type PreGeneratedRoundResult} from "./PreGeneratedRoundResult.js";
 
 // A PreGeneratedRoundResult's own static type guarantees nothing about a value that actually arrives at
-// runtime (e.g. one round-tripped through JSON.parse) — see RoundArtifactValidator's own doc comment
+// runtime (e.g. one round-tripped through JSON.parse) — see RoundRecordValidator's own doc comment
 // for why every field here is read through this loosened view instead.
 type Loose<X> = {[K in keyof X]?: unknown};
 
@@ -23,14 +23,14 @@ function isFiniteNumber(value: unknown): value is number {
 
 // Structural invariants a PreGeneratedRoundResult must satisfy regardless of how it was built or where
 // it came from — reuses the existing generic ValidationRule<T> contract, same as
-// RoundArtifactValidator/WeightedOutcomeLibraryValidator. Delegates full validation of `artifact` to a
-// real RoundArtifactValidator, so "artifact validity" here is exactly RoundArtifactValidator's own
+// RoundRecordValidator/WeightedOutcomeLibraryValidator. Delegates full validation of `artifact` to a
+// real RoundRecordValidator, so "artifact validity" here is exactly RoundRecordValidator's own
 // definition, not a second one. Never throws: every check is defensive about the actual runtime shape
 // of its input, and the top-level validate() wraps everything in a catch-all so a genuinely malformed
 // result still comes back as a ValidationIssue, not an exception.
 export class PreGeneratedRoundResultValidator<T extends string | number = string>
 implements ValidationRule<PreGeneratedRoundResult<T>> {
-    private readonly roundArtifactValidator = new RoundArtifactValidator<T>();
+    private readonly roundRecordValidator = new RoundRecordValidator<T>();
 
     public validate(result: PreGeneratedRoundResult<T>): ValidationIssue[] {
         try {
@@ -55,9 +55,9 @@ implements ValidationRule<PreGeneratedRoundResult<T>> {
         this.validateRuntime(r.runtime as Loose<PreGeneratedRoundResult<T>["runtime"]> | undefined, issues);
 
         if (typeof r.artifact !== "object" || r.artifact === null) {
-            issues.push({code: "pre-generated-round-artifact-invalid", severity: "error", message: "artifact must be an object."});
+            issues.push({code: "pre-generated-round-record-invalid", severity: "error", message: "artifact must be an object."});
         } else {
-            this.roundArtifactValidator.validate(r.artifact as PreGeneratedRoundResult<T>["artifact"]).forEach((issue) => issues.push(issue));
+            this.roundRecordValidator.validate(r.artifact as PreGeneratedRoundResult<T>["artifact"]).forEach((issue) => issues.push(issue));
         }
 
         this.validateTransactionConsistency(

@@ -4,7 +4,7 @@ import os from "os";
 import path from "path";
 import zlib from "zlib";
 import {
-    RoundArtifactValidator,
+    RoundRecordValidator,
     StakeEngineExportModeInput,
     StakeEngineExporter,
     StakeEngineImporter,
@@ -91,8 +91,8 @@ describe("StakeEngineImporter", () => {
                 expect(importedOutcome.id).not.toBe(originalOutcome.artifact.roundId);
                 expect(importedOutcome.artifact.roundId).not.toBe(originalOutcome.artifact.roundId);
 
-                // But the reconstructed artifact is still a fully valid RoundArtifact.
-                expect(new RoundArtifactValidator().validate(importedOutcome.artifact)).toEqual([]);
+                // But the reconstructed artifact is still a fully valid RoundRecord.
+                expect(new RoundRecordValidator().validate(importedOutcome.artifact)).toEqual([]);
             });
         }
 

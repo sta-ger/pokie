@@ -8,7 +8,7 @@
 // WinHighlight contract (see videoSlotRoundView.ts):
 //   - VideoSlotRoundResponse (deriveWinHighlights) -- this repo's own net/videoslot wire format, the
 //     shape cli/client/main.ts and pokie-examples' own ui.ts already speak natively.
-//   - An arbitrary game's own RoundArtifact wins (deriveWinHighlightsFromRoundArtifactWins) -- the
+//   - An arbitrary game's own RoundRecord wins (deriveWinHighlightsFromRoundRecordWins) -- the
 //     game-generic shape Studio's round-inspection surfaces (Play, Replay, sampled rounds, Outcome
 //     Library) work with. Studio's own
 //     cli/studio-client/src/components/common/CanonicalPlayerView.tsx (the single "screen, with wins"

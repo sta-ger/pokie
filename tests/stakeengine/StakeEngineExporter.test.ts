@@ -15,7 +15,7 @@ import {
     StakeEngineRoundEventsProjector,
     WeightedOutcomeLibrary,
     WinEvaluationResult,
-    buildRoundArtifact,
+    buildRoundRecord,
     buildWeightedOutcomeLibrary,
     computeWeightedOutcomeLibraryHash,
 } from "@fromstan/pokie";
@@ -284,7 +284,7 @@ describe("StakeEngineExporter", () => {
                 {
                     id: "0",
                     weight: 1,
-                    artifact: buildRoundArtifact({
+                    artifact: buildRoundRecord({
                         roundId: "reserved-type-round",
                         provenance: stakeEngineTestProvenance,
                         betMode: "base",

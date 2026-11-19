@@ -1,15 +1,15 @@
 import {
-    RoundArtifact,
-    RoundArtifactProvenance,
+    RoundRecord,
+    RoundRecordProvenance,
     ValueWinComponent,
     WeightedOutcomeLibrary,
     WinEvaluationResult,
     WinningValue,
-    buildRoundArtifact,
+    buildRoundRecord,
     buildWeightedOutcomeLibrary,
 } from "@fromstan/pokie";
 
-export const externalAdapterTestProvenance: RoundArtifactProvenance = {
+export const externalAdapterTestProvenance: RoundRecordProvenance = {
     game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     pokieVersion: "1.3.0",
 };
@@ -28,8 +28,8 @@ function numericWinEvaluationResultFor(totalWin: number): WinEvaluationResult<nu
 
 // A plain, string-symbol, single-step artifact with no feature events/debug — the baseline every capability
 // test starts from before toggling one specific thing on.
-export function externalAdapterArtifact(options: {roundId: string; totalWin: number; stake: number; betMode?: string; pokieVersion?: string}): RoundArtifact<string> {
-    return buildRoundArtifact({
+export function externalAdapterArtifact(options: {roundId: string; totalWin: number; stake: number; betMode?: string; pokieVersion?: string}): RoundRecord<string> {
+    return buildRoundRecord({
         roundId: options.roundId,
         provenance: options.pokieVersion !== undefined ? {...externalAdapterTestProvenance, pokieVersion: options.pokieVersion} : externalAdapterTestProvenance,
         betMode: options.betMode ?? "base",
@@ -39,9 +39,9 @@ export function externalAdapterArtifact(options: {roundId: string; totalWin: num
 }
 
 // Same as externalAdapterArtifact, but carries a round-level feature event — used to exercise
-// ROUND_ARTIFACT_FEATURE_EVENTS_CAPABILITY gating.
-export function externalAdapterArtifactWithFeatureEvent(options: {roundId: string; totalWin: number; stake: number}): RoundArtifact<string> {
-    return buildRoundArtifact({
+// ROUND_RECORD_FEATURE_EVENTS_CAPABILITY gating.
+export function externalAdapterArtifactWithFeatureEvent(options: {roundId: string; totalWin: number; stake: number}): RoundRecord<string> {
+    return buildRoundRecord({
         roundId: options.roundId,
         provenance: externalAdapterTestProvenance,
         betMode: "base",
@@ -52,9 +52,9 @@ export function externalAdapterArtifactWithFeatureEvent(options: {roundId: strin
 }
 
 // Same as externalAdapterArtifact, but carries round-level debug metadata — used to exercise
-// ROUND_ARTIFACT_DEBUG_METADATA_CAPABILITY gating.
-export function externalAdapterArtifactWithDebug(options: {roundId: string; totalWin: number; stake: number}): RoundArtifact<string> {
-    return buildRoundArtifact({
+// ROUND_RECORD_DEBUG_METADATA_CAPABILITY gating.
+export function externalAdapterArtifactWithDebug(options: {roundId: string; totalWin: number; stake: number}): RoundRecord<string> {
+    return buildRoundRecord({
         roundId: options.roundId,
         provenance: externalAdapterTestProvenance,
         betMode: "base",
@@ -65,8 +65,8 @@ export function externalAdapterArtifactWithDebug(options: {roundId: string; tota
 }
 
 // A numeric-symbol artifact — used to exercise a target's requirements.symbolAlphabet: "numeric".
-export function numericExternalAdapterArtifact(options: {roundId: string; totalWin: number; stake: number}): RoundArtifact<number> {
-    return buildRoundArtifact<number>({
+export function numericExternalAdapterArtifact(options: {roundId: string; totalWin: number; stake: number}): RoundRecord<number> {
+    return buildRoundRecord<number>({
         roundId: options.roundId,
         provenance: externalAdapterTestProvenance,
         betMode: "base",

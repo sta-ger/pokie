@@ -18,8 +18,8 @@ import {describeRuntimeScreen} from "../../domain/interpret/Runtime";
 // materialize/load the project as needed and create a real session directly in Studio's own backend
 // (StudioPlayService, see its own doc comment) -- TS loads the normal runtime and the game's own live RNG
 // plays for real, with no separate session-storage/API setup for this tab to expose. Every spin's result
-// renders through the exact same RoundSummary/RoundArtifactInspector/GameScreenView chain the Replay
-// tab's other sources already use, complete with a real, hashable RoundArtifact -- never a Play-local
+// renders through the exact same RoundSummary/RoundRecordInspector/GameScreenView chain the Replay
+// tab's other sources already use, complete with a real, hashable RoundRecord -- never a Play-local
 // re-presentation of the same screen/win/feature data, and never an embedded copy of the canonical
 // player pointed at a live game server.
 export function PlayTab({
@@ -186,7 +186,7 @@ export function PlayTab({
     // very first, pre-spin session view too -- see VideoSlotSessionSerializer.getInitialData(), which
     // merges its own getRoundData() in). `debug.artifact`/`debug.artifactUnavailableReason` are the one
     // pair StudioPlayService only ever attaches from a real spin's capture (never from session creation --
-    // see StudioPlayService.projectRoundArtifact()'s own doc comment), and Play always requests "full"
+    // see StudioPlayService.projectRoundRecord()'s own doc comment), and Play always requests "full"
     // capture, so exactly one of the two is present on every spun round regardless of the underlying
     // game's serializer shape.
     const playedRound =

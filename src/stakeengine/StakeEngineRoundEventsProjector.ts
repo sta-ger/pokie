@@ -1,6 +1,6 @@
 import {validateArtifactCoordinates} from "../artifact/validateArtifactCoordinates.js";
-import type {RoundArtifact} from "../artifact/RoundArtifact.js";
-import type {RoundArtifactFeatureEvent} from "../artifact/RoundArtifactFeatureEvent.js";
+import type {RoundRecord} from "../artifact/RoundRecord.js";
+import type {RoundRecordFeatureEvent} from "../artifact/RoundRecordFeatureEvent.js";
 import type {RoundStepArtifact} from "../artifact/RoundStepArtifact.js";
 import type {JsonObject} from "../json/JsonValue.js";
 import {convertRatioToStakeUnits} from "./internal/convertRatioToStakeUnits.js";
@@ -17,7 +17,7 @@ type PendingStakeEngineEvent = JsonObject & {readonly type: string};
 // closes) — so it's rejected outright here, at the one place such a collision could ever be introduced.
 const RESERVED_STAKE_EVENT_TYPES: ReadonlySet<string> = new Set(["reveal", "win", "finalWin"]);
 
-function featureEventToStakeEvent(featureEvent: RoundArtifactFeatureEvent): PendingStakeEngineEvent {
+function featureEventToStakeEvent(featureEvent: RoundRecordFeatureEvent): PendingStakeEngineEvent {
     if (RESERVED_STAKE_EVENT_TYPES.has(featureEvent.type)) {
         throw new Error(
             `featureEvent type "${featureEvent.type}" is reserved by the Stake events encoding ("reveal"/"win"/"finalWin" are structural markers, ` +
@@ -42,14 +42,14 @@ function stakeAmount(rawAmount: number, stake: number, cost: number, description
     return converted;
 }
 
-// The standard RoundArtifact -> Stake Engine "events" projection (see StakeEngineRoundEventsProjecting for the
+// The standard RoundRecord -> Stake Engine "events" projection (see StakeEngineRoundEventsProjecting for the
 // interface this implements and why it takes an explicit context). Stake's own math-sdk doesn't standardize an
 // event schema — every game defines its own mechanic-specific vocabulary (anticipation, tumble-specific fields,
-// ...) — so this deliberately only maps what RoundArtifact itself already models generically, in order:
+// ...) — so this deliberately only maps what RoundRecord itself already models generically, in order:
 //   1. per step (in order): a "reveal" event carrying that step's screen, then that step's own featureEvents
 //      (passed through as-is, spread into the event alongside their own "type"), then a "win" event — its
 //      amount converted to Stake units — if the step paid out anything.
-//   2. any round-level-only featureEvents (i.e. passed directly to buildRoundArtifact's own "featureEvents"
+//   2. any round-level-only featureEvents (i.e. passed directly to buildRoundRecord's own "featureEvents"
 //      option, rather than attached to a step).
 //   3. exactly one "finalWin" event carrying the round's total win and payout multiplier, both converted to
 //      Stake units.
@@ -57,11 +57,11 @@ function stakeAmount(rawAmount: number, stake: number, cost: number, description
 // the true position even if a passed-through featureEvent's data happened to carry its own "index" field.
 //
 // artifact.featureEvents is itself every step's own featureEvents flattened, followed by the round-level-only
-// ones (see buildRoundArtifact: `featureEvents = [...stepFeatureEvents, ...optionFeatureEvents]`) — so once
+// ones (see buildRoundRecord: `featureEvents = [...stepFeatureEvents, ...optionFeatureEvents]`) — so once
 // each step's own featureEvents have already been emitted in the loop below, only the tail past that same
 // count is genuinely round-level-only; re-emitting the whole array here would double-count every step's events.
 export class StakeEngineRoundEventsProjector<T extends string | number = string> implements StakeEngineRoundEventsProjecting<T> {
-    public project(artifact: RoundArtifact<T>, context: StakeEngineRoundProjectionContext): readonly StakeEngineEvent[] {
+    public project(artifact: RoundRecord<T>, context: StakeEngineRoundProjectionContext): readonly StakeEngineEvent[] {
         const events: PendingStakeEngineEvent[] = [];
         let stepFeatureEventCount = 0;
 

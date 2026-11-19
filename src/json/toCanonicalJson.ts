@@ -1,14 +1,14 @@
 import {InvalidJsonValueError} from "./InvalidJsonValueError.js";
 import type {JsonValue} from "./JsonValue.js";
 
-// The one canonical serializer behind both computeRoundArtifactHash and PokieJsonRoundArtifactProjector (and
+// The one canonical serializer behind both computeRoundRecordHash and PokieJsonRoundRecordProjector (and
 // anything else in POKIE that needs a stable, hashable JSON form) — so a hash and its own JSON projection can
 // never silently disagree on what counts as "valid" or how it's ordered.
 //
 // Deeply validates + canonicalizes an arbitrary value: plain object keys are sorted (two values with the same
 // content but different construction/insertion order canonicalize identically — the whole point for stable
 // hashing), while array order is always left exactly as-is (semantically meaningful everywhere it appears in a
-// RoundArtifact — steps, wins, screen rows, winning positions, ...). Fails fast — throws InvalidJsonValueError —
+// RoundRecord — steps, wins, screen rows, winning positions, ...). Fails fast — throws InvalidJsonValueError —
 // on anything JSON can't represent losslessly: NaN/Infinity, bigint, symbol, function, undefined, and circular
 // references, rather than silently coercing them the way `JSON.stringify` does (dropping undefined/functions,
 // turning NaN/Infinity into `null`, throwing a generic TypeError on cycles with no indication of where). Only

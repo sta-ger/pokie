@@ -12,7 +12,7 @@ import type {
 import type {StakeEngineStandaloneMode} from "./StakeEngineStandaloneMode.js";
 
 // Computes exact -- not sampled -- weighted statistics directly over a standalone-read Stake Engine outcome
-// directory's own normalized records, with no RoundArtifact/WeightedOutcomeLibrary ever built to get there (see
+// directory's own normalized records, with no RoundRecord/WeightedOutcomeLibrary ever built to get there (see
 // StakeEngineOutcomeRecord's own doc comment for why that's a deliberate non-goal here). Assumes its input is
 // StakeEngineOutcomeSourceReader's own output with no error-level issues (that reader guarantees a non-empty,
 // structurally consistent set of outcomes per mode whenever it returns any modes at all) -- this class does not

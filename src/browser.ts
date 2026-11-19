@@ -77,13 +77,13 @@ export * from "./session/videoslot/coordinates/ScreenGeometry.js";
 export * from "./session/videoslot/coordinates/ScreenProjection.js";
 export * from "./session/videoslot/coordinates/projectSymbolsCombination.js";
 export * from "./session/videoslot/coordinates/projectVisibleWinData.js";
-export * from "./artifact/PublicRoundArtifactProjector.js";
+export * from "./artifact/PublicRoundRecordProjector.js";
 export * from "./session/videoslot/coordinates/ScreenProjectionDescribing.js";
 export * from "./net/videoslot/serializeWinEvaluationResult.js";
 export * from "./net/videoslot/projectVideoSlotNetworkData.js";
 
 export * from "./runtime/LogicalRound.js";
-export * from "./artifact/buildLogicalRoundArtifact.js";
+export * from "./artifact/buildLogicalRoundRecord.js";
 export * from "./runtime/projectLogicalRound.js";
 
 export type {AuditRoundRecording, AuditBoundary, AuditDelivery, AuditDisposition} from "./replay/AuditRoundRecording.js";

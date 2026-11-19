@@ -1,7 +1,7 @@
-import type {RoundArtifact} from "../artifact/RoundArtifact.js";
+import type {RoundRecord} from "../artifact/RoundRecord.js";
 import {analyticsEnvelope, type FeatureAnalyticsObservation} from "./FeatureAnalytics.js";
 /** Artifacts flatten their steps. Read that one level; events alone cannot prove lifecycle. */
-export function artifactAnalyticsObservation(artifact: RoundArtifact, modelId: string): FeatureAnalyticsObservation {
+export function artifactAnalyticsObservation(artifact: RoundRecord, modelId: string): FeatureAnalyticsObservation {
     return {
         envelope: analyticsEnvelope(modelId, false, true),
         source: "outcome-library",

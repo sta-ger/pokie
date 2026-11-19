@@ -31,7 +31,7 @@ export type PokieWasmFeatureSessionState = Omit<PokieWasmOrdinarySessionState, "
         /** Accepted mathematics preceding the final subround in this composite request. */
         readonly deliveryPrefix?: {readonly stake: number; readonly win: number; readonly payout: number};
         /** Plain commands use the same mathematical artifact contract without logical cursors. */
-        readonly plainMath?: {readonly command: import("../runtime/SessionCommand.js").SessionCommand; readonly finalScreen?: readonly (readonly string[])[]; readonly artifact: import("../artifact/RoundArtifact.js").RoundArtifact; readonly payout: number; readonly credits: number};
+        readonly plainMath?: {readonly command: import("../runtime/SessionCommand.js").SessionCommand; readonly finalScreen?: readonly (readonly string[])[]; readonly artifact: import("../artifact/RoundRecord.js").RoundRecord; readonly payout: number; readonly credits: number};
         readonly pendingCommand?: {readonly command: import("../runtime/SessionCommand.js").SessionCommand; readonly advanced: number};
         /** Accepted underlying legacy display amounts; zero multipliers cannot be inverted. */
         readonly componentAmounts?: {readonly ways: readonly number[]; readonly clusters: readonly number[]};

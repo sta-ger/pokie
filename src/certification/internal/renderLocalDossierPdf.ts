@@ -1,6 +1,6 @@
-import {CERTIFICATION_PREPARATION_NOTICE, type CertificationDossierTemplate} from "../CertificationDossier.js";
-import type {DossierTable} from "../CertificationDossierRenderer.js";
-import {CertificationEvidenceBundleBuildCancelledError} from "../CertificationEvidenceBundleBuildOptions.js";
+import {CERTIFICATION_PREPARATION_NOTICE, type CertificationPackTemplate} from "../CertificationPack.js";
+import type {CertificationPackTable} from "../CertificationPackRenderer.js";
+import {CertificationPackBuildCancelledError} from "../CertificationPackBuildOptions.js";
 
 // Small local PDF 1.4 text writer. Uses standard Courier (embedded font assets or a browser are not
 // required). Non-ASCII scalars use lossless U+ notation rather than silently missing font glyphs.
@@ -28,7 +28,7 @@ function wrap(text: string, width: number): string[] {
 function literal(text: string): string {
     return text.replace(/([\\()])/g, "\\$1");
 }
-export async function renderLocalDossierPdf(template: CertificationDossierTemplate, tables: readonly DossierTable[], signal?: AbortSignal): Promise<Buffer> {
+export async function renderLocalDossierPdf(template: CertificationPackTemplate, tables: readonly CertificationPackTable[], signal?: AbortSignal): Promise<Buffer> {
     const pages: string[][] = [];
     let page: string[] = [];
     let section = "Preparation";
@@ -44,7 +44,7 @@ export async function renderLocalDossierPdf(template: CertificationDossierTempla
     nextPage();
     for (const text of [template.introduction, CERTIFICATION_PREPARATION_NOTICE, "PDF font boundary: non-ASCII scalars appear in lossless [U+XXXX] notation. JSON/HTML retain Unicode glyphs."]) for (const part of wrap(text, 102)) line(part);
     for (const table of tables) {
-        if (signal?.aborted) throw new CertificationEvidenceBundleBuildCancelledError();
+        if (signal?.aborted) throw new CertificationPackBuildCancelledError();
         section = table.title;
         line("");
         for (const part of wrap(table.title, 102)) line(part);
@@ -58,7 +58,7 @@ export async function renderLocalDossierPdf(template: CertificationDossierTempla
             setImmediate(resolve);
         });
     }
-    if (signal?.aborted) throw new CertificationEvidenceBundleBuildCancelledError();
+    if (signal?.aborted) throw new CertificationPackBuildCancelledError();
     const objects: string[] = ["<< /Type /Catalog /Pages 2 0 R >>", "", "<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>"];
     const ids: number[] = [];
     for (const lines of pages) {

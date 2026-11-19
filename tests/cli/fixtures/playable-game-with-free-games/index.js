@@ -24,7 +24,7 @@ module.exports = {
     },
     // Studio must consume the same VideoSlot wire projection as the installed examples fixture.
     // Without this hook it falls back to the generic serializer, which loses player choices and
-    // makes a settled RoundArtifact screen semantically different from its pre-spin session.
+    // makes a settled RoundRecord screen semantically different from its pre-spin session.
     getSessionSerializer() {
         return new VideoSlotWithFreeGamesSessionSerializer();
     },

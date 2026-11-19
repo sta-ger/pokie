@@ -1,14 +1,14 @@
 import {List, Text} from "@mantine/core";
-import type {RoundArtifactFeatureEvent} from "../../api/types";
+import type {RoundRecordFeatureEvent} from "../../api/types";
 import {AdvancedDisclosure} from "./AdvancedDisclosure";
 import {CodeBlock} from "./CodeBlock";
 
 // The shared "what feature state changed this step" presentation -- straight from a step's own
-// RoundArtifactFeatureEvent list, never re-derived. Each event's own free-form `data` payload (per-game,
+// RoundRecordFeatureEvent list, never re-derived. Each event's own free-form `data` payload (per-game,
 // e.g. a multiplier/scatter/ways/cluster feature's own detail) is real, game-provided content, but its
 // shape isn't part of any contract this client understands -- shown collapsed behind Advanced details,
 // same "closed by default" convention as artifact.debug, rather than either dropped or dumped inline.
-export function FeatureStateView({events}: {events: readonly RoundArtifactFeatureEvent[]}) {
+export function FeatureStateView({events}: {events: readonly RoundRecordFeatureEvent[]}) {
     if (events.length === 0) {
         return null;
     }

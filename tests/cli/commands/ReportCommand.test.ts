@@ -1,8 +1,8 @@
-import {buildSourceOutcomeLibraryBundle} from "../../certification/CertificationEvidenceBundleTestFixtures.js";
+import {buildSourceOutcomeLibraryBundle} from "../../certification/CertificationPackTestFixtures.js";
 import {aggregate, featureAnalyticsReport} from "../../v2/fixtures/FeatureAnalyticsFixture.js";
 import {withRareStakeDirectory, expectRareMetrics} from "../../stakeengine/standalone/StakeProbabilityTestFixtures.js";
 import {
-    CertificationEvidenceBundleBuilder,
+    CertificationPackBuilder,
     OutcomeLibraryBundleWriter,
     OutcomeSourceProjectAnalyzing,
     OutcomeSourceProjectReport,
@@ -141,7 +141,7 @@ describe("ReportCommand", () => {
                 out = path.join(root, "dossier"),
                 output = path.join(root, "assessment.pdf");
             await buildSourceOutcomeLibraryBundle(source);
-            const built = await new CertificationEvidenceBundleBuilder("1.3.0").buildFromBundle(source, [{modeName: "base", seed: "s", sampleCount: 2}], out);
+            const built = await new CertificationPackBuilder("1.3.0").buildFromBundle(source, [{modeName: "base", seed: "s", sampleCount: 2}], out);
             expect(built.manifest).toBeDefined();
             const command = new ReportCommand();
             await command.run([path.join(out, "manifest.json"), "--format", "pdf", "--out", output]);

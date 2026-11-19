@@ -8,7 +8,7 @@ import type {WeightedOutcomeSelecting} from "./WeightedOutcomeSelecting.js";
 // Draws exactly one outcome from a WeightedOutcomeLibrary, proportional to each outcome's own weight —
 // the runtime counterpart to WeightedOutcomeLibraryAnalyzer's exact statistics: instead of describing
 // the whole distribution, this samples a single point from it. Never runs a game's own calculation
-// path — the returned WeightedOutcome (and its RoundArtifact) is exactly the one already stored in the
+// path — the returned WeightedOutcome (and its RoundRecord) is exactly the one already stored in the
 // library, untouched.
 //
 // Selection requires every outcome's weight — and their sum — to be a positive safe integer (see

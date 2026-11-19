@@ -3,12 +3,12 @@ import {useForm} from "@mantine/form";
 import {useMediaQuery} from "@mantine/hooks";
 import {useEffect, useRef, useState} from "react";
 import {buildReplayDownloadUrl} from "../../api/apiClient";
-import type {OutcomeSourceReplayDescriptorView, RoundArtifact, StudioRuntimeSessionView, StudioSimulationReportListEntry} from "../../api/types";
+import type {OutcomeSourceReplayDescriptorView, RoundRecord, StudioRuntimeSessionView, StudioSimulationReportListEntry} from "../../api/types";
 import {
     describeLoadedReplay,
     describeReplayEntryLabel,
     describeReplayReproducibility,
-    describeRoundArtifact,
+    describeRoundRecord,
     describeStudioRoundOperation,
     describeStudioRoundSource,
     isReplayListEntryReproducible,
@@ -33,7 +33,7 @@ import {GameScreenView} from "../common/GameScreenView";
 import {LoadingState} from "../common/LoadingState";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
-import {RoundArtifactInspector} from "../common/RoundArtifactInspector";
+import {RoundRecordInspector} from "../common/RoundRecordInspector";
 
 export type ExpectedReplayState =
     | {status: "empty"}
@@ -46,7 +46,7 @@ export type ExpectedReplayState =
           seed?: string;
           modeName?: string;
           outcomeSource?: OutcomeSourceReplayDescriptorView;
-          artifact?: RoundArtifact & {readonly hash?: string};
+          artifact?: RoundRecord & {readonly hash?: string};
           artifactWarnings: string[];
           // A stored/pasted Studio replay descriptor can carry the player-facing post-round balance.
           // It stays optional for portable artifacts produced by older/other replay tools.
@@ -89,7 +89,7 @@ const SOURCE_EMPTY_PROMPT: Record<FindMethod, string> = {
 };
 
 // Short labels for the run result's own "Reproducibility" row -- distinct wording (never the exact
-// COMPARISON_BANNER title RoundArtifactInspector renders for the same comparison, which stays the
+// COMPARISON_BANNER title RoundRecordInspector renders for the same comparison, which stays the
 // authoritative detail view just below) so the two never collide as duplicate text in the same page.
 // Only "Replay Artifact" ever has a known prior result to compare against at all (see reproduceTarget's
 // own doc comment) -- every other source's run is honestly "not verified" rather than silently omitting
@@ -829,15 +829,15 @@ export function ReplayTab({
                             {/* The Loaded replay card's Reproducible row above already says there's nothing to reproduce;
                                 its Identities/Timestamp rows already name the session/round/request/recorded-at/source/mode. */}
                             {selectedSpin.debug?.artifact ? (
-                                // A complete RoundArtifact was captured for this exact spin (see
+                                // A complete RoundRecord was captured for this exact spin (see
                                 // StudioPlayService.buildSessionView) -- the same
                                 // inspector Replay Artifact/Recreate from seed/Recent Simulation results already use,
                                 // so a recorded spin is inspected the identical way rather than through a bespoke
                                 // raw-JSON view. `credits` is passed through separately since it's a wallet/session
-                                // concept RoundArtifact itself never carries.
+                                // concept RoundRecord itself never carries.
                                 <div>
                                     {(selectedSpin.studioSource || selectedSpin.studioOperation) && (
-                                        // RoundArtifactInspector below shows the artifact's own provenance, but
+                                        // RoundRecordInspector below shows the artifact's own provenance, but
                                         // never which Studio tab/action recorded it -- an artifact-backed round
                                         // found via Play tab's Find any win/Find symbol win/Find free games would
                                         // otherwise show no visible trace of that at all.
@@ -858,8 +858,8 @@ export function ReplayTab({
                                             </Table.Tbody>
                                         </Table>
                                     )}
-                                    <RoundArtifactInspector
-                                        artifact={describeRoundArtifact(selectedSpin.debug.artifact)}
+                                    <RoundRecordInspector
+                                        artifact={describeRoundRecord(selectedSpin.debug.artifact)}
                                         stateBefore={selectedSpin.debug.stateBefore}
                                         stateAfter={selectedSpin.debug.stateAfter}
                                         credits={selectedSpin.credits}
@@ -1018,7 +1018,7 @@ export function ReplayTab({
                                             </Text>
                                         </Alert>
                                     )}
-                                    {/* The recorded round itself, inspected through the same RoundArtifactInspector
+                                    {/* The recorded round itself, inspected through the same RoundRecordInspector
                                         every other source uses -- available the moment this record is loaded, never
                                         gated behind clicking Reproduce below. `comparison` is intentionally omitted
                                         here: there is nothing to compare against yet, only once Reproduce actually
@@ -1026,8 +1026,8 @@ export function ReplayTab({
                                         down, which does carry `comparison`). A malformed artifact (artifactWarnings
                                         non-empty) is never rendered here -- the warnings above already explain why. */}
                                     {expected.artifact && expected.artifactWarnings.length === 0 && (
-                                        <RoundArtifactInspector
-                                            artifact={describeRoundArtifact(expected.artifact)}
+                                        <RoundRecordInspector
+                                            artifact={describeRoundRecord(expected.artifact)}
                                             credits={expected.credits}
                                             stateBefore={expected.stateBefore}
                                             stateAfter={expected.stateAfter}
@@ -1159,7 +1159,7 @@ export function ReplayTab({
                                 the job/request id -- see result.sessionId's own doc comment), the round the caller
                                 asked for vs. the round the session actually reached, the seed used, when it ran, and
                                 whether it was ever checked against a known-good prior result. Shown once for
-                                every source here rather than duplicated per-branch below (RoundArtifactInspector
+                                every source here rather than duplicated per-branch below (RoundRecordInspector
                                 itself is shared with Play/Deployment and has no notion of a "replay session"
                                 to show this for). */}
                             {jobLoaded && !active && result && (
@@ -1207,7 +1207,7 @@ export function ReplayTab({
 
                             {jobLoaded && !active && result?.artifact && (
                                 <div data-pokie-lifecycle-artifact="replay-descriptor">
-                                    <RoundArtifactInspector
+                                    <RoundRecordInspector
                                         artifact={result.artifact}
                                         sequenceStatistics={result.sequenceStatistics}
                                         comparison={findMethod === "artifact" ? comparison : undefined}

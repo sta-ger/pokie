@@ -3,7 +3,7 @@ import type {OutcomeLibraryGeneratorDiagnostics} from "../weightedoutcome/genera
 import type {StakeEngineImportSourceProvenance} from "./StakeEngineImportSourceProvenance.js";
 
 // Tracks this type's own shape (not the pokie package version) — same convention as
-// WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION/ROUND_ARTIFACT_SCHEMA_VERSION/GAME_BLUEPRINT_SCHEMA_VERSION.
+// WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION/ROUND_RECORD_SCHEMA_VERSION/GAME_BLUEPRINT_SCHEMA_VERSION.
 export const STAKE_ENGINE_MANIFEST_SCHEMA_VERSION = 1;
 
 export type StakeEngineManifestModeEntry = {

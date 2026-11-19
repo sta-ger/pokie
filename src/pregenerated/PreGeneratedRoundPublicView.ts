@@ -1,4 +1,4 @@
-import type {RoundArtifactWin} from "../artifact/RoundArtifactWin.js";
+import type {RoundRecordWin} from "../artifact/RoundRecordWin.js";
 
 // The client-safe projection of a PreGeneratedRoundResult — exactly what a player-facing client needs
 // to render a round, never the library/outcome/weight provenance that produced it (see
@@ -13,5 +13,5 @@ export type PreGeneratedRoundPublicView<T extends string | number = string> = {
     readonly payoutMultiplier: number;
     readonly screen: readonly (readonly T[])[];
     readonly visibleRowCoverage?: readonly number[];
-    readonly wins: readonly RoundArtifactWin<T>[];
+    readonly wins: readonly RoundRecordWin<T>[];
 };

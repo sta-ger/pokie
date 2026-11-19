@@ -1,5 +1,5 @@
 import type {
-    CertificationEvidenceBundleManifest,
+    CertificationPackManifest,
     StudioCertificationBuildView,
     StudioCertificationSourceValidateView,
     ValidationIssue,
@@ -7,7 +7,7 @@ import type {
 
 // Pure view-model transforms for the Certification tab -- same role as OutcomeLibraries.ts's own
 // describe*/isStale* functions. Every hash/metric shown by this tab is exactly what
-// CertificationEvidenceBundleBuilder/CertificationEvidenceBundleValidator already computed server-side
+// CertificationPackBuilder/CertificationPackValidator already computed server-side
 // -- nothing here recomputes a hash, samples a round, or re-derives an outcome's own analysis; these
 // functions only add idle/loading/network-error states around the server's own DTOs and turn
 // already-computed data into plain-language labels.
@@ -53,7 +53,7 @@ export function describeCertificationOutcome(view: {errors: readonly ValidationI
 
 // A one-line, plain-language summary of a built certification/evidence bundle's own recorded identity
 // -- purely a human-readable restatement of fields the manifest already carries.
-export function describeCertificationProvenanceSummary(manifest: CertificationEvidenceBundleManifest): string {
+export function describeCertificationProvenanceSummary(manifest: CertificationPackManifest): string {
     const modeCount = manifest.modes.length;
     return (
         `Certification evidence for ${manifest.game.name} v${manifest.game.version}, ` +

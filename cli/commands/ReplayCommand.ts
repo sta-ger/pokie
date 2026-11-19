@@ -1,4 +1,4 @@
-import {projectPokieWasmRoundArtifact} from "../../src/wasm/node/PokieWasmFileRuntimeAdapter.js";
+import {projectPokieWasmRoundRecord} from "../../src/wasm/node/PokieWasmFileRuntimeAdapter.js";
 import {advancePokieWasmReplay} from "../../src/wasm/PokieWasmCommands.js";
 import {Command} from "commander";
 import {
@@ -197,7 +197,7 @@ export class ReplayCommand implements CliCommandHandling {
                 totalWin, totalPayout,
                 credits: finalRound?.credits ?? 1000,
                 screen: finalRound === undefined ? null : finalRound.screen.map((reel) => [...reel]),
-                ...(finalRound && runtime.manifest.capabilities.includes("artifact.inspect") ? {artifact: projectPokieWasmRoundArtifact(finalRound, {game: {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version}, pokieVersion: POKIE_VERSION, ...(runtime.manifest.artifact?.configurationHash ? {configHash: runtime.manifest.artifact.configurationHash} : {})}, `wasm:replay:${seed}:${options.round}`)} : {}),
+                ...(finalRound && runtime.manifest.capabilities.includes("artifact.inspect") ? {artifact: projectPokieWasmRoundRecord(finalRound, {game: {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version}, pokieVersion: POKIE_VERSION, ...(runtime.manifest.artifact?.configurationHash ? {configHash: runtime.manifest.artifact.configurationHash} : {})}, `wasm:replay:${seed}:${options.round}`)} : {}),
                 ...(finalRound?.logicalRound ? {logicalRound: finalRound.logicalRound} : {}),
                 ...(finalRound?.sequenceSelections ? {sequenceSelections: finalRound.sequenceSelections} : {}),
                 timestamp: startedAt,

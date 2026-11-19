@@ -1,5 +1,5 @@
 import {
-    RoundArtifact,
+    RoundRecord,
     WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION,
     WeightedOutcomeLibraryBuildError,
     buildWeightedOutcomeLibrary,
@@ -130,8 +130,8 @@ describe("buildWeightedOutcomeLibrary", () => {
         it("throws when a hand-crafted artifact is not JSON-safe (cyclic debug), caught by the per-outcome artifact validation", () => {
             const cyclic: Record<string, unknown> = {};
             cyclic.self = cyclic;
-            const artifact = {...artifactWithTotalWin("r1", 0), debug: cyclic} as unknown as RoundArtifact<string>;
-            // RoundArtifactValidator itself checks JSON safety, so this is caught by the per-outcome delegation
+            const artifact = {...artifactWithTotalWin("r1", 0), debug: cyclic} as unknown as RoundRecord<string>;
+            // RoundRecordValidator itself checks JSON safety, so this is caught by the per-outcome delegation
             // (item 5) before the library's own final toCanonicalJson pass would ever see it.
             expect(
                 getCode(() =>

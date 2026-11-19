@@ -1,7 +1,7 @@
 import {
     MULTI_MODE_DEPLOYMENT_CAPABILITY,
-    ROUND_ARTIFACT_DEBUG_METADATA_CAPABILITY,
-    ROUND_ARTIFACT_FEATURE_EVENTS_CAPABILITY,
+    ROUND_RECORD_DEBUG_METADATA_CAPABILITY,
+    ROUND_RECORD_FEATURE_EVENTS_CAPABILITY,
 } from "../ExternalDeploymentCapability.js";
 import type {ExternalDeploymentTarget} from "../ExternalDeploymentTarget.js";
 import {LocalExternalDeploymentDiagnostic} from "./LocalExternalDeploymentDiagnostic.js";
@@ -38,7 +38,7 @@ export function createLocalJsonExternalDeploymentTarget<T extends string | numbe
         id: options.id ?? "local-json-example",
         version: options.version ?? "1.0.0",
         requirements: {requiresHomogeneousProvenance: true},
-        capabilities: [ROUND_ARTIFACT_FEATURE_EVENTS_CAPABILITY, ROUND_ARTIFACT_DEBUG_METADATA_CAPABILITY, MULTI_MODE_DEPLOYMENT_CAPABILITY],
+        capabilities: [ROUND_RECORD_FEATURE_EVENTS_CAPABILITY, ROUND_RECORD_DEBUG_METADATA_CAPABILITY, MULTI_MODE_DEPLOYMENT_CAPABILITY],
         roundProjector,
         artifactGenerator: new LocalJsonExternalArtifactGenerator(),
         runtimeAdapter: new LocalFileExternalDeploymentRuntimeAdapter(options.outDir),

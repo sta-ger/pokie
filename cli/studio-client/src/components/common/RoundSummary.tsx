@@ -3,13 +3,13 @@ import {IconCircleCheck} from "@tabler/icons-react";
 import {useState} from "react";
 import {deriveBetModeId} from "../../../../client/player";
 import type {StudioRuntimeSessionView} from "../../api/types";
-import {describeRoundArtifact} from "../../domain/interpret/Replay";
+import {describeRoundRecord} from "../../domain/interpret/Replay";
 import {describeRuntimeScreen, extractAdditionalRoundFields} from "../../domain/interpret/Runtime";
 import {AdvancedDisclosure} from "./AdvancedDisclosure";
 import {CodeBlock} from "./CodeBlock";
 import {GameScreenView} from "./GameScreenView";
 import {PageSection} from "./PageSection";
-import {RoundArtifactInspector} from "./RoundArtifactInspector";
+import {RoundRecordInspector} from "./RoundRecordInspector";
 import {describeRoundPresentation} from "./roundPresentation";
 
 function formatFieldValue(value: unknown): string {
@@ -28,9 +28,9 @@ function formatFieldValue(value: unknown): string {
 // The shared "readable round" view for any surface that has a live StudioRuntimeSessionView to show --
 // currently the Play tab, but common (not page-local) so any other surface that gains one renders the
 // same balance/bet/win/screen breakdown. Whenever this exact round's session captured a full
-// RoundArtifact (`debug.artifact` -- only present once debug mode is on and the session supports
+// RoundRecord (`debug.artifact` -- only present once debug mode is on and the session supports
 // building one, see StudioRuntimeSessionView's own doc comment), this delegates entirely to
-// RoundArtifactInspector -- the same screen/wins/positions/feature-event/state-snapshot presentation
+// RoundRecordInspector -- the same screen/wins/positions/feature-event/state-snapshot presentation
 // Replay's own recorded/recreated/simulation-sampled rounds already render through, rather than a
 // bespoke, less detailed view of the same round. Falls back to a flat balance/bet/win/screen table (with
 // a generic "Additional round data" table for whatever extra public fields the game's own serializer
@@ -70,7 +70,7 @@ export function RoundSummary({
         </Text>
     );
     if (session.debug?.artifact) {
-        const artifact = describeRoundArtifact(session.debug.artifact);
+        const artifact = describeRoundRecord(session.debug.artifact);
         const presentation = describeRoundPresentation(session.debug.stateBefore, session.debug.stateAfter, artifact.betMode, artifact.steps[artifact.steps.length - 1]?.featureEvents, session);
         return (
             <div>
@@ -78,7 +78,7 @@ export function RoundSummary({
 
                 {/* The player-facing result is first: static configuration comes from the captured
                     session/Game Model, balance from the session, and this round's screen/wins/mode from
-                    the immutable RoundArtifact.  The full inspector remains available below without
+                    the immutable RoundRecord.  The full inspector remains available below without
                     displacing normal play behind provenance or JSON. */}
                 <GameScreenView logicalRound={session.logicalRound}
                     sequenceSelections={session.sequenceSelections} sequenceStatistics={session.sequenceStatistics}
@@ -104,9 +104,9 @@ export function RoundSummary({
                     canonical player above already owns the player-facing win/highlight, payline and
                     feature-counter presentation. */}
                 <details onToggle={(event) => setArtifactInspectorOpen(event.currentTarget.open)}>
-                    <summary>Inspect round artifact</summary>
+                    <summary>Inspect round record</summary>
                     {artifactInspectorOpen && (
-                        <RoundArtifactInspector
+                        <RoundRecordInspector
                             artifact={artifact}
                             sequenceStatistics={session.sequenceStatistics}
                             credits={session.credits}

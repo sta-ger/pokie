@@ -1,4 +1,4 @@
-import type {LogicalRoundDelivery, PreGeneratedRoundReplayDescriptor, RoundArtifactJson} from "@fromstan/pokie";
+import type {LogicalRoundDelivery, PreGeneratedRoundReplayDescriptor, RoundRecordJson} from "@fromstan/pokie";
 
 // Studio's own session response DTO for a played/drawn round — built by StudioPlayService directly off
 // a real, in-process PokieSessionState (see its own buildSessionView() doc comment): every public field
@@ -71,12 +71,12 @@ export type StudioRuntimeSessionView = {
         stateBefore?: unknown;
         debugData?: Record<string, unknown>;
         requestId?: string;
-        // The same complete, JSON-projected, hashed RoundArtifact StudioReplayExecutionService already
+        // The same complete, JSON-projected, hashed RoundRecord StudioReplayExecutionService already
         // builds for a reproduced round -- present whenever this exact round's session supported building
-        // one (see PokieSessionState.roundArtifact / PreGeneratedRoundInternalView.artifact), so a Session
-        // Spin can be inspected through the identical RoundArtifactInspector component the Replay tab's
+        // one (see PokieSessionState.roundRecord / PreGeneratedRoundInternalView.artifact), so a Session
+        // Spin can be inspected through the identical RoundRecordInspector component the Replay tab's
         // other sources already use, rather than a bespoke raw-JSON dump of this field's raw inputs.
-        artifact?: RoundArtifactJson;
+        artifact?: RoundRecordJson;
         // Present instead of `artifact` whenever "full" capture was requested but this exact session
         // couldn't produce one (e.g. a non-video-slot game), or the raw artifact failed to project -- an
         // honest diagnostic, never silently omitted in favor of a bare absence that could read as "nothing

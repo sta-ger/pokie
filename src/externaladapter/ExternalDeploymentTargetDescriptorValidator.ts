@@ -6,7 +6,7 @@ import {isValidSemverLite} from "./internal/compareSemverLite.js";
 // An ExternalDeploymentTarget's own static type guarantees nothing about a value that actually arrives at
 // runtime — e.g. a target assembled by hand, deserialized, or mutated after construction. Every field is read
 // through this loosened view so the checks below are real runtime guards, the same idiom
-// RoundArtifactValidator/WeightedOutcomeLibraryValidator use for the same reason.
+// RoundRecordValidator/WeightedOutcomeLibraryValidator use for the same reason.
 type Loose<X> = {[K in keyof X]?: unknown};
 
 function isNonEmptyString(value: unknown): value is string {

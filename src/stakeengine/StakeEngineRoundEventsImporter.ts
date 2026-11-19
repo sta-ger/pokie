@@ -1,4 +1,4 @@
-import type {RoundArtifactFeatureEventInput} from "../artifact/RoundArtifactFeatureEvent.js";
+import type {RoundRecordFeatureEventInput} from "../artifact/RoundRecordFeatureEvent.js";
 import {convertStakeUnitsToRatio} from "./internal/convertStakeUnitsToRatio.js";
 import {convertStakeUnitsToRawAmount} from "./internal/convertStakeUnitsToRawAmount.js";
 import {StakeEngineImportEventsError} from "./StakeEngineImportEventsError.js";
@@ -14,7 +14,7 @@ const FLOAT_EPSILON = 1e-9;
 
 type OpenStep<T extends string | number> = {
     screen: readonly (readonly T[])[];
-    featureEvents: RoundArtifactFeatureEventInput[];
+    featureEvents: RoundRecordFeatureEventInput[];
     totalWin: number;
     sawWin: boolean;
 };
@@ -28,11 +28,11 @@ function hasExactKeys(event: StakeEngineEvent, keys: readonly string[]): boolean
 // The reverse of StakeEngineRoundEventsProjector: a single forward scan, no lookahead, exploiting the exact,
 // deterministic order the forward projector always produces — [reveal, stepFeature*, win?] repeated per step,
 // then roundOnlyFeature*, then exactly one finalWin, always last. See StakeEngineRoundEventsImporting.ts for the
-// interface/context this implements and why it never builds a RoundArtifact itself.
+// interface/context this implements and why it never builds a RoundRecord itself.
 //
 // One disclosed, pre-existing limitation of the export encoding itself (not something this importer could
 // detect or work around) — "reveal"/"win"/"finalWin" are this projector's own reserved structural vocabulary
-// (StakeEngineRoundEventsProjector now rejects a RoundArtifactFeatureEvent whose own type collides with one of
+// (StakeEngineRoundEventsProjector now rejects a RoundRecordFeatureEvent whose own type collides with one of
 // them at export time, so the ambiguity described below can no longer actually occur for anything this package
 // itself exports — only a hand-crafted or otherwise-produced Stake package could still exhibit it):
 //   - A step's own feature-collecting window closes on its own "win" event, or — for every step but the last —
@@ -47,7 +47,7 @@ export class StakeEngineRoundEventsImporter<T extends string | number = string> 
         this.validateStructure(events);
 
         const steps: StakeEngineImportedStep<T>[] = [];
-        const roundFeatureEvents: RoundArtifactFeatureEventInput[] = [];
+        const roundFeatureEvents: RoundRecordFeatureEventInput[] = [];
         let currentStep: OpenStep<T> | undefined;
 
         const closeCurrentStep = (): void => {
@@ -98,7 +98,7 @@ export class StakeEngineRoundEventsImporter<T extends string | number = string> 
 
     private finish(
         steps: StakeEngineImportedStep<T>[],
-        roundFeatureEvents: RoundArtifactFeatureEventInput[],
+        roundFeatureEvents: RoundRecordFeatureEventInput[],
         finalWinEvent: StakeEngineEvent,
         context: StakeEngineRoundImportContext,
     ): StakeEngineImportedRound<T> {
@@ -226,7 +226,7 @@ export class StakeEngineRoundEventsImporter<T extends string | number = string> 
         return {amount, payoutMultiplier};
     }
 
-    private parseFeatureEvent(event: StakeEngineEvent): RoundArtifactFeatureEventInput {
+    private parseFeatureEvent(event: StakeEngineEvent): RoundRecordFeatureEventInput {
         const entries = Object.entries(event).filter(([key]) => key !== "index" && key !== "type");
         if (entries.length === 0) {
             return {type: event.type};

@@ -4,12 +4,12 @@ import {
     ExternalDeploymentService,
     ExternalDeploymentTarget,
     ExternalRoundProjector,
-    RoundArtifact,
+    RoundRecord,
 } from "@fromstan/pokie";
 import {externalAdapterTestLibrary} from "./ExternalAdapterTestFixtures.js";
 
 class MarkerRoundProjector implements ExternalRoundProjector {
-    public project(_artifact: RoundArtifact): Record<string, boolean> {
+    public project(_artifact: RoundRecord): Record<string, boolean> {
         return {marker: true};
     }
 }
@@ -82,7 +82,7 @@ describe("ExternalDeploymentService", () => {
             expect(projectedModes[0].modeName).toBe("base");
             expect(projectedModes[0].libraryId).toBe("lib");
             expect(typeof projectedModes[0].libraryHash).toBe("string");
-            // Exactly {id, weight, projected} per outcome — nothing else (no RoundArtifact, no projector
+            // Exactly {id, weight, projected} per outcome — nothing else (no RoundRecord, no projector
             // reference, no library) ever reaches the generator.
             expect(projectedModes[0].outcomes).toEqual([
                 {id: "loss", weight: 9, projected: {marker: true}},
@@ -92,7 +92,7 @@ describe("ExternalDeploymentService", () => {
 
         it("reflects the specific target's own projector output — a different target's projector produces different generator input", async () => {
             class DoublingProjector implements ExternalRoundProjector {
-                public project(artifact: RoundArtifact): Record<string, number> {
+                public project(artifact: RoundRecord): Record<string, number> {
                     return {totalWinDoubled: artifact.totalWin * 2};
                 }
             }

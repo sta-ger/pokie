@@ -7,7 +7,7 @@ import type {OutcomeLibraryBundleIndexEntry} from "../OutcomeLibraryBundleModeIn
 // randomSource.nextInt(totalWeight), in canonical id order" (see that class's own doc comment for the full
 // rationale: exact integer weights, unbiased rejection-sampling draw, no floating-point rounding anywhere in
 // the decision) — deliberately duplicated here rather than calling WeightedOutcomeSelector.select directly:
-// that method's own type requires every outcome's full RoundArtifact, which is exactly what a streaming,
+// that method's own type requires every outcome's full RoundRecord, which is exactly what a streaming,
 // index-only weighted draw exists to avoid loading. OutcomeLibraryBundleReader.test.ts cross-checks this
 // against WeightedOutcomeSelector's own pick for the same inputs, so the two can never silently diverge.
 export function selectIndexEntryByCumulativeWeight(

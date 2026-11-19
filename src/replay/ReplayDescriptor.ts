@@ -1,7 +1,7 @@
 import type {AuditRoundRecording} from "./AuditRoundRecording.js";
 import type {SessionCommand} from "../runtime/SessionCommand.js";
 import type {LogicalRound} from "../runtime/LogicalRound.js";
-import type {RoundArtifactJson} from "../artifact/RoundArtifactJson.js";
+import type {RoundRecordJson} from "../artifact/RoundRecordJson.js";
 import type {PreGeneratedRoundReplayDescriptor} from "../pregenerated/PreGeneratedRoundReplayDescriptor.js";
 
 export type ReplayDescriptor = {
@@ -38,7 +38,7 @@ export type ReplayDescriptor = {
     // provenance, content hash) for the target round -- optional so every existing caller/producer of a
     // ReplayDescriptor that predates this field (e.g. ReplayRecorder/`pokie replay`, which never builds
     // one) stays valid. Only Studio's own StudioReplayExecutionService populates it.
-    artifact?: RoundArtifactJson;
+    artifact?: RoundRecordJson;
     // Serialized session state immediately before / after the target round's play() -- via the same
     // session-serialization mechanism PokieDevServer's own internal/debug response already uses
     // (captureInitialPokieSessionState/captureRoundPokieSessionState), reused as-is, never recomputed.

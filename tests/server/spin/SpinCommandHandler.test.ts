@@ -1584,12 +1584,12 @@ describe("SpinCommandHandler", () => {
             const buyFeature = await handler.handle("session-1", undefined, undefined, undefined, "buyFeature");
             const postBuyNormal = await handler.handle("session-1");
 
-            expect(base).toMatchObject({status: "played", state: {roundArtifact: {betMode: "base", stake: 5}}});
-            expect(ante).toMatchObject({status: "played", state: {roundArtifact: {betMode: "ante", stake: 6.25}}});
-            expect(buyFeature).toMatchObject({status: "played", state: {roundArtifact: {betMode: "buyFeature", stake: 250}}});
+            expect(base).toMatchObject({status: "played", state: {roundRecord: {betMode: "base", stake: 5}}});
+            expect(ante).toMatchObject({status: "played", state: {roundRecord: {betMode: "ante", stake: 6.25}}});
+            expect(buyFeature).toMatchObject({status: "played", state: {roundRecord: {betMode: "buyFeature", stake: 250}}});
             // buyFeature reset the live selector during play(), so its artifact must still retain
             // buyFeature while the next normal round is charged and recorded as base.
-            expect(postBuyNormal).toMatchObject({status: "played", state: {roundArtifact: {betMode: "base", stake: 5}}});
+            expect(postBuyNormal).toMatchObject({status: "played", state: {roundRecord: {betMode: "base", stake: 5}}});
             await expect(wallet.getBalance("session-1")).resolves.toBe(733.75);
         });
 

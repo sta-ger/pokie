@@ -1,7 +1,7 @@
 import type {StakeEngineEvent} from "../StakeEngineEvent.js";
 
 // One outcome read from an arbitrary Stake Engine outcome directory (a mode's own lookup CSV/books pair),
-// normalized into POKIE's own canonical shape -- deliberately NOT a RoundArtifact/WeightedOutcome. Reconstructing
+// normalized into POKIE's own canonical shape -- deliberately NOT a RoundRecord/WeightedOutcome. Reconstructing
 // either of those (see StakeEngineImporting) requires POKIE-specific knowledge a genuinely foreign export never
 // carries and this standalone pipeline never assumes: a fixed reveal/win/finalWin event vocabulary, a per-round
 // win breakdown, betMode/stake, a pokie-manifest.json. This DTO only ever holds what index.json/CSV/books

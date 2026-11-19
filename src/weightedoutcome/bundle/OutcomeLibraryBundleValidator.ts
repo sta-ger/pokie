@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import {RoundArtifactValidator} from "../../artifact/RoundArtifactValidator.js";
+import {RoundRecordValidator} from "../../artifact/RoundRecordValidator.js";
 import {toCanonicalJson} from "../../json/toCanonicalJson.js";
 import {isPositiveSafeInteger} from "../../pregenerated/internal/isPositiveSafeInteger.js";
 import {resolveSafeStakeEngineFilePath} from "../../stakeengine/internal/resolveSafeStakeEngineFilePath.js";
@@ -54,7 +54,7 @@ function isValidSha256Hash(value: unknown): value is string {
 // exception: it propagates cancellation so an owning durable job can settle
 // cleanup before reporting its terminal state.
 export class OutcomeLibraryBundleValidator<T extends string | number = string> implements OutcomeLibraryBundleValidating {
-    private readonly roundArtifactValidator = new RoundArtifactValidator<T>();
+    private readonly roundRecordValidator = new RoundRecordValidator<T>();
 
     public async validate(bundleDir: string, options?: OutcomeLibraryBundleValidateOptions): Promise<ValidationIssue[]> {
         try {
@@ -748,7 +748,7 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
     // Streams every outcomes line (never materializing the whole file, and never accumulating an array of
     // outcomes — the same end-to-end streaming discipline OutcomeLibraryBundleWriter itself follows), cross-
     // checking each record against the index by id (never by row position — a hand-edited/reordered file must
-    // still validate correctly), running RoundArtifactValidator against each one's own artifact and checking
+    // still validate correctly), running RoundRecordValidator against each one's own artifact and checking
     // cross-outcome homogeneity (game/config/pokieVersion/betMode/stake consistency) the same way
     // buildWeightedOutcomeLibrary itself would — and recomputes the mode's own hash incrementally, in this same
     // pass (see streamModeOutcomesToTempFile's own doc comment for why a hash never needs a second pass, unlike
@@ -863,7 +863,7 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
                     continue;
                 }
 
-                const artifactIssues = this.roundArtifactValidator.validate(outcome.artifact as never);
+                const artifactIssues = this.roundRecordValidator.validate(outcome.artifact as never);
                 if (artifactIssues.length > 0) {
                     issues.push({
                         code: "outcome-library-bundle-outcomes-artifact-invalid",

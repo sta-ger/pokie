@@ -105,7 +105,7 @@ function describeUnverifiedDeploymentSelector(modeName: string): string {
 }
 
 // The Project Dashboard's Deployment tab, built directly on top of the pokie package's own External
-// Adapter SDK (see docs/external-adapter-sdk.md) — this class never projects a RoundArtifact, never
+// Adapter SDK (see docs/external-adapter-sdk.md) — this class never projects a RoundRecord, never
 // generates artifacts, and never validates a compatibility/artifact-shape concern itself; every one of
 // those already-solved problems is delegated straight to ExternalDeploymentService.deploy(), the SDK's
 // own single orchestrator. What this class actually owns is Studio-specific plumbing only: which

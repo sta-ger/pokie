@@ -6,7 +6,7 @@ import type {FairnessServerSeedCommitment} from "../FairnessServerSeedCommitment
 // Shared, deliberately strict runtime shape guards for a candidate (possibly hand-crafted, possibly tampered)
 // FairnessCommitment/FairnessRoundProof — used by FairnessCommitmentValidator and FairnessRoundProofValidator
 // respectively, so the two can never silently disagree on what counts as "a well-formed commitment/proof". Same
-// "one shared guards file per bundle format" discipline certificationEvidenceBundleShapeGuards already follows.
+// "one shared guards file per bundle format" discipline certificationPackBundleShapeGuards already follows.
 //
 // Every guard below is *closed*: it rejects an object carrying any key beyond the ones its own schema actually
 // defines, not just one missing a required key or holding a wrong-typed value — an object with an extra,
@@ -17,7 +17,7 @@ import type {FairnessServerSeedCommitment} from "../FairnessServerSeedCommitment
 
 const SHA256_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/;
 
-// The exact same canonical bundle rule OutcomeLibraryBundleValidator/CertificationEvidenceBundleValidator/
+// The exact same canonical bundle rule OutcomeLibraryBundleValidator/CertificationPackValidator/
 // StakeEngineImportValidator each enforce for a modeName (duplicated here rather than imported — each bundle
 // format's own "internal" is scoped to that format alone, same discipline sha256OfBytes already follows). A
 // modeName is read straight off an untrusted FairnessCommitment/FairnessRoundProof and later used to build a

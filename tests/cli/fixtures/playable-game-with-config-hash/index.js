@@ -38,7 +38,7 @@ function buildFixedSymbolsSequences(config) {
 // A near-identical twin of the "playable-game" fixture, kept as a *separate* fixture (rather than
 // adding getConfigHash() to that one in place) specifically because it implements the optional
 // getConfigHash() hook — see PokieGame.getConfigHash. Dozens of existing tests assert
-// "playable-game"'s exact RoundArtifactProvenance shape (no configHash); this fixture exists so
+// "playable-game"'s exact RoundRecordProvenance shape (no configHash); this fixture exists so
 // hash-provenance tests don't risk changing that fixture's observed behavior.
 module.exports = {
     getManifest() {

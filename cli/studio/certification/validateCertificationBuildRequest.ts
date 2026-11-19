@@ -1,9 +1,9 @@
-import {validateCertificationDossierInputs, validateCertificationDossierOutput, type CertificationDossierInputs, type CertificationDossierOutput} from "@fromstan/pokie";
+import {validateCertificationPackInputs, validateCertificationPackOutput, type CertificationPackInputs, type CertificationPackOutput} from "@fromstan/pokie";
 export type CertificationBuildRequestInput = {bundleDir?: unknown; outDir?: unknown; modes?: unknown; dossier?: unknown; output?: unknown};
 export type ValidatedCertificationBuildModeInput = {readonly modeName: string; readonly seed: string; readonly sampleCount: number};
 export type ValidatedCertificationBuildRequest = {
-    readonly dossier?: CertificationDossierInputs;
-    readonly output?: CertificationDossierOutput;
+    readonly dossier?: CertificationPackInputs;
+    readonly output?: CertificationPackOutput;
     readonly bundleDir: string;
     readonly outDir: string;
     readonly modes: readonly ValidatedCertificationBuildModeInput[];
@@ -14,7 +14,7 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 // Shape/type checks only -- never the domain-level mode-name/seed/sampleCount validation
-// CertificationEvidenceBundleBuilder itself already performs (and reports as ValidationIssues); this
+// CertificationPackBuilder itself already performs (and reports as ValidationIssues); this
 // only guards against a request too malformed to even attempt.
 export function validateCertificationBuildRequest(input: CertificationBuildRequestInput): ValidatedCertificationBuildRequest {
     if (!isNonEmptyString(input.bundleDir)) {
@@ -41,7 +41,7 @@ export function validateCertificationBuildRequest(input: CertificationBuildReque
         return {modeName: e.modeName, seed: e.seed, sampleCount: e.sampleCount};
     });
 
-    if (input.dossier !== undefined) validateCertificationDossierInputs(input.dossier);
-    if (input.output !== undefined) validateCertificationDossierOutput(input.output);
-    return {bundleDir: input.bundleDir, outDir: input.outDir, modes, ...(input.dossier ? {dossier: input.dossier as CertificationDossierInputs} : {}), ...(input.output ? {output: input.output as CertificationDossierOutput} : {})};
+    if (input.dossier !== undefined) validateCertificationPackInputs(input.dossier);
+    if (input.output !== undefined) validateCertificationPackOutput(input.output);
+    return {bundleDir: input.bundleDir, outDir: input.outDir, modes, ...(input.dossier ? {dossier: input.dossier as CertificationPackInputs} : {}), ...(input.output ? {output: input.output as CertificationPackOutput} : {})};
 }

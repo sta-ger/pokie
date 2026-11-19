@@ -20,7 +20,7 @@ type ModeIndexEntry = {
 
 // The example local target's own ExternalArtifactGenerator: for every mode, writes each outcome's *already
 // projected* content (see ExternalDeploymentProjectedOutcome — ExternalDeploymentService projected it through
-// this target's own roundProjector before generate() was ever called; this class never sees a RoundArtifact,
+// this target's own roundProjector before generate() was ever called; this class never sees a RoundRecord,
 // an ExternalRoundProjector, or the source WeightedOutcomeLibrary, and has no way to reach for either) as its
 // own pretty-printed JSON file, plus one top-level "index.json" listing every mode's own libraryId/libraryHash/
 // outcome count.

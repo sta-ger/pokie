@@ -12,10 +12,10 @@ import type {SessionCommand} from "../runtime/SessionCommand.js";
 import {SessionRuntime, executeSessionCommand} from "../runtime/SessionRuntime.js";
 import {executeLogicalReplayCommand} from "./internal/executeLogicalReplayCommand.js";
 import type {CascadeResultProviding} from "../session/videoslot/cascade/CascadeResultProviding.js";
-import {buildLogicalRoundArtifact} from "../artifact/buildLogicalRoundArtifact.js";
+import {buildLogicalRoundRecord} from "../artifact/buildLogicalRoundRecord.js";
 import type {LogicalRound} from "../runtime/LogicalRound.js";
-import {buildRoundArtifactFromSession} from "../artifact/buildRoundArtifactFromSession.js";
-import {PokieJsonRoundArtifactProjector} from "../artifact/PokieJsonRoundArtifactProjector.js";
+import {buildRoundRecordFromSession} from "../artifact/buildRoundRecordFromSession.js";
+import {PokieJsonRoundRecordProjector} from "../artifact/PokieJsonRoundRecordProjector.js";
 import type {VideoSlotSessionHandling} from "../session/videoslot/VideoSlotSessionHandling.js";
 import {captureScreen} from "../server/session/captureScreen.js";
 
@@ -156,7 +156,7 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
             const final = steps[steps.length - 1];
             const {hash: _hash, ...template} = artifact;
             const totalWin = steps.reduce((sum, step) => sum + step.totalWin, 0);
-            artifact = new PokieJsonRoundArtifactProjector().project({...template,
+            artifact = new PokieJsonRoundRecordProjector().project({...template,
                 stake: executed.stake, betMode: executed.mode ?? template.betMode, totalWin,
                 payoutMultiplier: executed.stake > 0 ? totalWin / executed.stake : 0,
                 steps, screen: final.screen, wins: steps.flatMap(step => step.wins),
@@ -248,12 +248,12 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
         const slot = session as Partial<VideoSlotSessionHandling>;
         // The live session now describes the next play; only the accepted result owns this step's charge.
         let artifact = finalResult && slot.getSymbolsCombination && slot.getWinEvaluationResult
-            ? new PokieJsonRoundArtifactProjector().project(buildRoundArtifactFromSession(slot as VideoSlotSessionHandling, {
+            ? new PokieJsonRoundRecordProjector().project(buildRoundRecordFromSession(slot as VideoSlotSessionHandling, {
                 roundId: logicalRound?.id ?? `replay:${seed ?? "no-seed"}:${round}`, stake: finalResult.stake, betMode: finalResult.mode, provenance: {game: manifest, pokieVersion: POKIE_VERSION, ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})},
             })) : undefined;
 
-        if (logicalRound && slot.getWinEvaluationResult) artifact = new PokieJsonRoundArtifactProjector().project(buildLogicalRoundArtifact(logicalRound,
-            buildRoundArtifactFromSession(slot as VideoSlotSessionHandling, {roundId: logicalRound.id, stake: logicalRound.totalStake, provenance: {game: manifest, pokieVersion: POKIE_VERSION, ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})}})));
+        if (logicalRound && slot.getWinEvaluationResult) artifact = new PokieJsonRoundRecordProjector().project(buildLogicalRoundRecord(logicalRound,
+            buildRoundRecordFromSession(slot as VideoSlotSessionHandling, {roundId: logicalRound.id, stake: logicalRound.totalStake, provenance: {game: manifest, pokieVersion: POKIE_VERSION, ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})}})));
         const unit = selector ? "step" : options.unit;
         const commands = selector ? executedCommands : options.entryCommands;
         return {

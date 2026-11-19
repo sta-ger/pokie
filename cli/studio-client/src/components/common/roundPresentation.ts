@@ -11,7 +11,7 @@ import {
     type PaytableView,
 } from "../../../../client/player";
 
-// RoundArtifact deliberately contains only the result of one evaluated round.  A captured Studio
+// RoundRecord deliberately contains only the result of one evaluated round.  A captured Studio
 // session state additionally retains the serializer's initial payload, which is the authoritative
 // static player data (paytable, selectable bets/modes) used to produce that result.  Keep this small
 // adapter at the shared inspection boundary so Play, Replay, and a recorded Session Spin never each
@@ -58,7 +58,7 @@ export function describeRoundPresentation(stateBefore: unknown, stateAfter: unkn
         availableBets: deriveAvailableBets(initial.availableBets),
         currentBet: currentBet(round, initial),
         availableModeIds: deriveAvailableBetModeIds(initial.availableBetModeIds),
-        // A RoundArtifact records the mode that evaluated this specific round.  This must win over
+        // A RoundRecord records the mode that evaluated this specific round.  This must win over
         // stateAfter: a buyFeature mode intentionally reverts the live session to its default as soon
         // as its one-shot purchase succeeds, while the completed round truthfully remains a buy.
         currentModeId:

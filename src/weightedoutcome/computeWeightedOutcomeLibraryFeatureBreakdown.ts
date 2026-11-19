@@ -3,7 +3,7 @@ import type {WeightedOutcomeLibraryFeatureBreakdown, WeightedOutcomeLibraryFeatu
 
 // A weighted-frequency view of *what* a draw from this library actually contains -- which bet modes
 // appear, and which feature events (e.g. "freeGamesTriggered") show up at least once in a round -- built
-// entirely from fields RoundArtifact already carries (betMode, featureEvents[].type). No second win/RTP
+// entirely from fields RoundRecord already carries (betMode, featureEvents[].type). No second win/RTP
 // calculation happens here; that stays exclusively in WeightedOutcomeLibraryAnalyzer. A feature event
 // firing on more than one step of the same round still counts once for that outcome (a round either
 // contains it or it doesn't), never once per occurrence.

@@ -3,7 +3,7 @@ import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import type {WeightedOutcomeLibrary} from "./WeightedOutcomeLibrary.js";
 
 // A sha256 hash of a WeightedOutcomeLibrary's content, stable regardless of the source object's own key order —
-// via toCanonicalJson, the same canonical serializer computeRoundArtifactHash and PokieJsonRoundArtifactProjector
+// via toCanonicalJson, the same canonical serializer computeRoundRecordHash and PokieJsonRoundRecordProjector
 // already share, now also shared by PokieJsonWeightedOutcomeLibraryProjector, so a hash and its own JSON
 // projection can never silently disagree on what counts as "valid" or how it's ordered. Fails fast (propagates
 // InvalidJsonValueError) on anything that isn't valid canonical JSON — a library built via

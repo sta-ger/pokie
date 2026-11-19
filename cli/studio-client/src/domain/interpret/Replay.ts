@@ -1,10 +1,10 @@
-import type {RoundArtifact as CanonicalRoundArtifact} from "../../../../../src/artifact/RoundArtifact.js";
+import type {RoundRecord as CanonicalRoundRecord} from "../../../../../src/artifact/RoundRecord.js";
 import {toCanonicalJson} from "../../../../../src/json/toCanonicalJson.js";
-import {PublicRoundArtifactProjector} from "../../../../../src/artifact/PublicRoundArtifactProjector.js";
+import {PublicRoundRecordProjector} from "../../../../../src/artifact/PublicRoundRecordProjector.js";
 import type {
     OutcomeSourceReplayDescriptorView,
     ReplayDescriptor,
-    RoundArtifact,
+    RoundRecord,
     StudioReplayJobView,
     StudioReplayListEntry,
     StudioReplayStatus,
@@ -61,19 +61,19 @@ export function isReplayTerminal(job: StudioReplayJobView): boolean {
 // presentation hash identifies that canonical source -- this is the one
 // shared shape every "round we can inspect" is normalized into (Replay's own recorded/recreated
 // artifacts, Session Spin's `debug.artifact`, and an Outcome Source draw's `selection.outcome.artifact`
-// -- see RoundArtifactInspector's own callers), and only the first of those three ever actually carries
+// -- see RoundRecordInspector's own callers), and only the first of those three ever actually carries
 // a content hash.
-export type RoundArtifactDisplayView = Omit<RoundArtifact, "screen" | "steps" | "geometry" | "generatedScreen"> & {
+export type RoundRecordDisplayView = Omit<RoundRecord, "screen" | "steps" | "geometry" | "generatedScreen"> & {
     hash?: string;
-    canonicalArtifact?: RoundArtifact & {hash?: string};
+    canonicalArtifact?: RoundRecord & {hash?: string};
     screen: string[][];
-    steps: (Omit<RoundArtifact["steps"][number], "screen"> & {screen: string[][]; visibleRowCoverage?: readonly number[]})[];
+    steps: (Omit<RoundRecord["steps"][number], "screen"> & {screen: string[][]; visibleRowCoverage?: readonly number[]})[];
 };
 
-export function describeRoundArtifact(artifact: RoundArtifact & {hash?: string}): RoundArtifactDisplayView {
+export function describeRoundRecord(artifact: RoundRecord & {hash?: string}): RoundRecordDisplayView {
     // Legacy aggregate inspection may omit symbolId; only coordinate-bearing evidence requires canonical normalization here.
     const source = artifact.geometry || artifact.steps.some(step => step.geometry) ? toCanonicalJson(artifact) : artifact;
-    const visible = new PublicRoundArtifactProjector<string | number>().project(source as unknown as CanonicalRoundArtifact<string | number>);
+    const visible = new PublicRoundRecordProjector<string | number>().project(source as unknown as CanonicalRoundRecord<string | number>);
     const {geometry: _geometry, generatedScreen: _generatedScreen, ...details} = artifact;
     return {
         ...details,
@@ -109,7 +109,7 @@ export type ReplayResultView = {
     totalWin: number;
     credits?: number;
     // Cell-level display strings, reel-major (screen[reelIndex][rowIndex], same orientation as
-    // RoundArtifact.screen -- see ScreenTable's own doc comment), or undefined for a session without
+    // RoundRecord.screen -- see ScreenTable's own doc comment), or undefined for a session without
     // getSymbolsCombination() (ReplayDescriptor.screen === null — see ReplayRecorder's own doc
     // comment) — dom.ts renders this as "no screen available" rather than an empty grid.
     screen?: string[][];
@@ -117,10 +117,10 @@ export type ReplayResultView = {
     durationMs: number;
     // Only present for a replay of a video-slot game (see StudioReplayExecutionService.buildArtifact())
     // — the rich per-step/wins/feature-events/provenance record the Inspect step's
-    // RoundArtifactInspector renders. Absent for anything else, same "no screen available" fallback.
-    artifact?: RoundArtifactDisplayView;
+    // RoundRecordInspector renders. Absent for anything else, same "no screen available" fallback.
+    artifact?: RoundRecordDisplayView;
     // Serialized session state immediately before/after the target round's play() — opaque, rendered
-    // as-is by RoundArtifactInspector (never parsed/reconstructed on the frontend). Absent whenever the
+    // as-is by RoundRecordInspector (never parsed/reconstructed on the frontend). Absent whenever the
     // game/session doesn't support state serialization or capture failed server-side (see
     // ReplayDescriptor's own doc comment) — the Inspector shows an explicit "unavailable" message for
     // that case rather than silently omitting the section.
@@ -156,7 +156,7 @@ export function describeReplayResult(job: StudioReplayJobView): ReplayResultView
         screen: descriptor.screen ? descriptor.screen.map((row) => row.map(formatScreenCell)) : undefined,
         timestamp: descriptor.timestamp,
         durationMs: descriptor.durationMs,
-        artifact: descriptor.artifact ? describeRoundArtifact(descriptor.artifact) : undefined,
+        artifact: descriptor.artifact ? describeRoundRecord(descriptor.artifact) : undefined,
         stateBefore: descriptor.stateBefore,
         stateAfter: descriptor.stateAfter,
         modeName: descriptor.outcomeSource?.modeName,
@@ -233,8 +233,8 @@ export type ComparableReplayResult = {
     seed?: string;
     round?: number;
     modeName?: string;
-    artifact?: RoundArtifact & {readonly hash?: string};
-    // Non-empty when the server's RoundArtifactValidator flagged the "expected" side's nested artifact
+    artifact?: RoundRecord & {readonly hash?: string};
+    // Non-empty when the server's RoundRecordValidator flagged the "expected" side's nested artifact
     // as structurally malformed (see StudioServer.handleInspectReplayArtifact) — round/seed alone can
     // still be valid enough to attempt a replay even when this is non-empty (the two-tier split
     // requirement 1 asks for), but the artifact itself is never trustworthy enough to compare against.
@@ -281,11 +281,11 @@ function describeComparisonSide(role: "recorded" | "recreated", side: Comparable
     if (side.artifactWarnings && side.artifactWarnings.length > 0) {
         completeness = `Incomplete -- artifact is malformed: ${side.artifactWarnings.join(" ")}`;
     } else if (side.artifact === undefined) {
-        completeness = "Minimal -- no round artifact recorded for this side.";
+        completeness = "Minimal -- no round record recorded for this side.";
     } else if (side.outcomeSource !== undefined) {
         completeness = describeLibraryRecordIssue(side) ?? "Full -- library source, selection inputs and recorded result; no live session snapshots.";
     } else if (side.stateBefore === undefined || side.stateAfter === undefined) {
-        completeness = "Partial -- round artifact recorded, but no session state captured.";
+        completeness = "Partial -- round record recorded, but no session state captured.";
     } else if (extractDeterministicReelStops(side.artifact.debug) === undefined) {
         completeness = "Partial -- artifact and state recorded, but no RNG/reel-stop trace.";
     } else {
@@ -328,7 +328,7 @@ export function describeReplayComparison(expected: ComparableReplayResult, repro
         return {status: "unavailable", unavailableReason, dimensions: unavailableDimensions(unavailableReason), recorded, recreated};
     }
     if (!isDebugObject(expected.artifact) || !isDebugObject(reproduced.artifact)) {
-        const unavailableReason = "No round artifact is available on one or both sides to compare.";
+        const unavailableReason = "No round record is available on one or both sides to compare.";
         return {status: "unavailable", unavailableReason, dimensions: unavailableDimensions(unavailableReason), recorded, recreated};
     }
 
@@ -478,7 +478,7 @@ function isFiniteNumber(value: unknown): value is number {
 
 // A defensive structural equality check over already-computed JSON-safe data (screen/wins/steps/
 // feature-events/debug/state) — never a second game-calculation path, purely a presentation-layer diff
-// of values the backend already produced. Mirrors RoundArtifactValidator's own private deepEqual (not
+// of values the backend already produced. Mirrors RoundRecordValidator's own private deepEqual (not
 // exported from "@fromstan/pokie"), including the same depth cap standing in for cycle detection.
 function deepEqualJson(a: unknown, b: unknown, depth = 0): boolean {
     if (depth > 100) {
@@ -515,7 +515,7 @@ function screensEqual(a: readonly (readonly unknown[])[], b: readonly (readonly 
 // as opposed to a fresh Recreate from seed/Recent Simulation attempt, which never claims to reproduce a
 // *specific* prior result and so is never gated by this) — reproducing forward from round 1 is only
 // ever a faithful, *verifiable* match of the original result when the seed and exact game build that
-// produced it are known, AND — whenever the record carries a round artifact at all — its own game
+// produced it are known, AND — whenever the record carries a round record at all — its own game
 // id/version provenance, state, and RNG trace are complete enough to actually verify a fresh
 // reproduction against. A record that carries an artifact but not those (an "incomplete" record — e.g.
 // an import that only kept the round-level result, or hand-trimmed the provenance block) is
@@ -803,7 +803,7 @@ function describeComparableCapability(
         return {status: "unavailable", reason: "A fresh forward replay with no prior recorded result to compare against."};
     }
     if (!hasComparisonTarget) {
-        return {status: "unavailable", reason: "No round artifact recorded on this entry to compare against."};
+        return {status: "unavailable", reason: "No round record recorded on this entry to compare against."};
     }
     if (comparison === undefined) {
         return {status: "available", reason: "Will be verified against the loaded artifact once reproduced."};
@@ -888,9 +888,9 @@ function describeLoadedSpin(spin: StudioRuntimeSessionView, canExport: boolean):
     if (spin.debug?.recording?.audit) completeness = "Full audit export -- executable inputs, commands, canonical artifacts and disposition are retained separately from this visible display.";
     else if (spin.debug?.auditUnavailableReason) completeness = `Audit unavailable -- ${spin.debug.auditUnavailableReason}`;
     else if (spin.debug?.artifact !== undefined) {
-        completeness = "Full -- a complete round artifact (screen, wins, steps, debug) plus state was captured for this spin.";
+        completeness = "Full -- a complete round record (screen, wins, steps, debug) plus state was captured for this spin.";
     } else if (spin.debug?.artifactUnavailableReason !== undefined) {
-        completeness = `Partial -- debug data was captured, but no round artifact could be built for this game: ${spin.debug.artifactUnavailableReason}`;
+        completeness = `Partial -- debug data was captured, but no round record could be built for this game: ${spin.debug.artifactUnavailableReason}`;
     } else if (hasDebugBundle) {
         completeness = "Full -- recorded with its debug bundle (state and RNG/debug data).";
     } else if (spin.screen) {
@@ -1065,7 +1065,7 @@ function describeLoadedFreshReplay(
     if (!result) {
         completeness = "Not yet run -- reproduce this round to generate a result.";
     } else if (result.artifact) {
-        completeness = "Full -- round artifact captured (screen, wins, steps, debug).";
+        completeness = "Full -- round record captured (screen, wins, steps, debug).";
     } else {
         completeness = "Partial -- round-level result only, no per-step artifact for this game.";
     }

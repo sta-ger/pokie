@@ -2,7 +2,7 @@ import {Alert, Anchor, Button, CopyButton, Group, NumberInput, Stepper, Table, T
 import {useDisclosure} from "@mantine/hooks";
 import {IconAlertTriangle, IconCircleCheck} from "@tabler/icons-react";
 import {useEffect, useRef, useState, type ReactNode} from "react";
-import {browseFilesystem, downloadCertificationDossier, buildCertificationEvidenceBundle, validateCertificationSourceBundle, type CertificationBuildModeInput} from "../../api/apiClient";
+import {browseFilesystem, downloadCertificationPack, buildCertificationPack, validateCertificationSourceBundle, type CertificationBuildModeInput} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
 import {
@@ -155,7 +155,7 @@ function modeFieldWarnings(mode: ModeFields): {modeName?: string; seed?: string;
 }
 
 // Guided Select/configure -> Validate -> Build bundle -> Inspect -> Export workflow, built entirely on
-// pokie's own CertificationEvidenceBundleBuilder/CertificationEvidenceBundleValidator (see
+// pokie's own CertificationPackBuilder/CertificationPackValidator (see
 // StudioCertificationService) -- every hash/metric shown here is computed server-side, never re-derived
 // in this UI. Same lifecycle discipline as every other Studio Stepper here: a monotonic requestId ref
 // per async action, a double-submit guard, and an invalidate*() helper that resets state and cascades to
@@ -195,7 +195,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
         const requestId = buildRequestIdRef.current;
         setDownloadError("");
         try {
-            const blob = await downloadCertificationDossier(fetchImpl, outDir.trim(), buildView.manifest.evidenceContentHash, file);
+            const blob = await downloadCertificationPack(fetchImpl, outDir.trim(), buildView.manifest.evidenceContentHash, file);
             if (!mountedRef.current || requestId !== buildRequestIdRef.current) return;
             const url = URL.createObjectURL(blob),
                 anchor = document.createElement("a");
@@ -382,7 +382,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
         const requestId = ++buildRequestIdRef.current;
         setBuildOutdated(false);
         setBuildView({status: "loading"});
-        buildCertificationEvidenceBundle(fetchImpl, bundleDir.trim(), modeInputs, outDir.trim(), Object.values(dossierFields).some(value => value.trim()) ? dossierConfiguration() : undefined)
+        buildCertificationPack(fetchImpl, bundleDir.trim(), modeInputs, outDir.trim(), Object.values(dossierFields).some(value => value.trim()) ? dossierConfiguration() : undefined)
             .then((result) => {
                 if (requestId !== buildRequestIdRef.current) {
                     return;
@@ -578,7 +578,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
             <Text size="sm" c="dimmed" mb="sm">
                 Build a canonical certification/evidence bundle on top of an outcome-library bundle, inspect its
                 manifest and sampled artifacts, and export it for a certifier -- everything shown here is computed
-                by pokie&apos;s own CertificationEvidenceBundleBuilder/Validator, never re-derived in this UI.
+                by pokie&apos;s own CertificationPackBuilder/Validator, never re-derived in this UI.
             </Text>
 
             <Alert color="blue" mb="sm">Certification-ready preparation only. Integrity verification is not regulatory approval, independent RNG certification, compliance sign-off or a guarantee of executable correctness.</Alert>

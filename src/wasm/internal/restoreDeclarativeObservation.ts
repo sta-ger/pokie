@@ -17,12 +17,12 @@ import {ValueWinComponent} from "../../session/videoslot/winevaluation/ValueWinC
 import {WinningValue} from "../../session/videoslot/WinningValue.js";
 import {validateArtifactCoordinates} from "../../artifact/validateArtifactCoordinates.js";
 import {buildRoundStepArtifact} from "../../artifact/buildRoundStepArtifact.js";
-import {deriveStandardFeatureEvents} from "../../artifact/buildRoundArtifactFromSession.js";
+import {deriveStandardFeatureEvents} from "../../artifact/buildRoundRecordFromSession.js";
 import {SymbolsCombinationsAnalyzer} from "../../session/videoslot/combinations/SymbolsCombinationsAnalyzer.js";
 import type {WonFreeGamesNumberDetermining} from "../../session/WonFreeGamesNumberDetermining.js";
 import {ScreenModifierEngine} from "../../session/videoslot/modifiers/ScreenModifierEngine.js";
 import {observeVideoSlotFeatures} from "../../net/videoslot/observeVideoSlotFeatures.js";
-import {projectPublicFeatureEvent} from "../../artifact/PublicRoundArtifactProjector.js";
+import {projectPublicFeatureEvent} from "../../artifact/PublicRoundRecordProjector.js";
 import {shouldSelectWeightedBonus, weightedBonusPayout, validateWeightedBonusObservation} from "../../session/videoslot/authored/WeightedBonus.js";
 import type {BoundedSessionState} from "../../session/videoslot/authored/BoundedVideoSlotSession.js";
 import {WinningWay} from "../../session/videoslot/WinningWay.js";

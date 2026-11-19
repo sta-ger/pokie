@@ -7,7 +7,7 @@ import type {PokieWasmBrowserArtifact} from "../../../src/wasm/loadPokieWasmBrow
 import type {PokieWasmWorkerProgress} from "../../../src/wasm/PokieWasmWorkerClient.js";
 import {POKIE_WASM_RUNTIME_VERSION, type PokieWasmRound} from "../../../src/wasm/PokieWasmRuntimeApi.js";
 import type {PokieWasmReplayObservation} from "../../../src/wasm/PokieWasmReplay.js";
-import {projectPokieWasmRoundArtifact} from "../../../src/wasm/projectPokieWasmRoundArtifact.js";
+import {projectPokieWasmRoundRecord} from "../../../src/wasm/projectPokieWasmRoundRecord.js";
 import {projectLogicalRound} from "../../../src/runtime/projectLogicalRound.js";
 import {SimulationReportBuilder} from "../../../src/reporting/SimulationReportBuilder.js";
 import type {SimulationReport} from "../../../src/reporting/SimulationReport.js";
@@ -295,7 +295,7 @@ export class StudioWasmBrowserService {
             const descriptor = {...round.network, sessionId: job.id, game, seed: job.request.seed, round: job.request.round, totalBet: observed.totalBet, totalWin: observed.totalWin, totalPayout: observed.totalPayout,
                 credits: round.credits, screen: round.screen, ...(job.request.unit ? {unit: job.request.unit} : {}), ...(job.request.entryCommands ? {commands: job.request.entryCommands} : {}),
                 ...(job.request.modeName ? {modePolicy: {betModeId: job.request.modeName, selection: "repeat-when-available"}} : {}),
-                ...(manifest.capabilities.includes("artifact.inspect") ? {artifact: projectPokieWasmRoundArtifact(round, {game, pokieVersion: POKIE_WASM_RUNTIME_VERSION, configHash: provenance.configHash}, `wasm:replay:${job.id}`)} : {}),
+                ...(manifest.capabilities.includes("artifact.inspect") ? {artifact: projectPokieWasmRoundRecord(round, {game, pokieVersion: POKIE_WASM_RUNTIME_VERSION, configHash: provenance.configHash}, `wasm:replay:${job.id}`)} : {}),
                 ...(round.logicalRound ? {logicalRound: round.logicalRound} : {}), timestamp: job.createdAt, durationMs: Date.now() - job.createdAt,
                 ...(serialize ? {stateBefore: observed.stateBefore, stateAfter: observed.stateAfter} : {}), wasm: provenance};
             if (job.request.simulationId) this.recorder.record({sessionId: job.id, game, credits: round.credits, bet: round.stake, win: round.win ?? round.payout, screen: round.screen.map(reel => [...reel]), debug: {artifact: descriptor.artifact, stateBefore: descriptor.stateBefore, stateAfter: descriptor.stateAfter}}, {source: "simulation-sample", operation: "simulation-sample", projectRoot: artifact.projectRoot, seed: job.request.seed as string, modeName: job.request.modeName as string | undefined});
@@ -306,7 +306,7 @@ export class StudioWasmBrowserService {
         const sessionId = job.request.sessionId as string ?? job.id;
         let roundDetail: StudioRuntimeSessionView["debug"] = {};
         if (round) roundDetail = manifest.capabilities.includes("artifact.inspect")
-            ? {artifact: projectPokieWasmRoundArtifact(round, {game, pokieVersion: POKIE_WASM_RUNTIME_VERSION, configHash: provenance.configHash}, `wasm:${job.id}`)}
+            ? {artifact: projectPokieWasmRoundRecord(round, {game, pokieVersion: POKIE_WASM_RUNTIME_VERSION, configHash: provenance.configHash}, `wasm:${job.id}`)}
             : {artifactUnavailableReason: "This artifact does not declare artifact.inspect."};
         const session: StudioRuntimeSessionView = {...(record(output.initialData) ? output.initialData : {}), ...round?.network,
             sessionId, game, credits: round?.credits ?? (output.state as {credits?: number})?.credits ?? 1000, ...(round ? {bet: round.network?.bet ?? round.stake, stake: round.stake, win: round.win ?? round.payout, payout: round.payout, screen: round.screen.map(reel => [...reel]),

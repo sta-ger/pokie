@@ -319,12 +319,12 @@ function addHoverRow(listEl: HTMLElement, label: string, onEnter: () => void, on
 // The hover-to-highlight win list: a winning line highlights its own winning cells green and every
 // other cell on its own configured payline grey (the "trace the whole line" behavior only a line with a
 // known full path has -- see WinHighlight.paylinePositions); every other win kind (or a line whose full
-// path isn't known -- see videoSlotRoundView.ts's own resolveRoundArtifactLineDefinition) highlights all
+// path isn't known -- see videoSlotRoundView.ts's own resolveRoundRecordLineDefinition) highlights all
 // of its own winning cells in one uniform color. Both restore every touched cell back to its persistent
 // tint (`baseColor`, set by applyPersistentHighlights) on mouseleave. Mirrors pokie-examples' own
 // drawWinningLinesList/addHighlightButton. Reads only positions/paylinePositions -- the same generic
 // WinHighlight contract videoSlotRoundView.ts's own deriveWinHighlights (VideoSlot response) and
-// deriveWinHighlightsFromRoundArtifactWins (any other game's RoundArtifact, via Studio's own WinOverlay)
+// deriveWinHighlightsFromRoundRecordWins (any other game's RoundRecord, via Studio's own WinOverlay)
 // both produce, so this one function renders either without knowing which DTO a highlight came from.
 export function renderWinHighlightsList(listEl: HTMLElement, gridEl: HTMLElement, highlights: WinHighlight[]): void {
     clearChildren(listEl);
@@ -523,7 +523,7 @@ export function renderBetInfo(el: HTMLElement, availableBets: number[], currentB
 // invented single "base" choice). Clicking a mode other than the round's own current one calls
 // onSelectMode(modeId), wired the same way onSelectBet is -- see renderBetInfo above.
 export function renderModeInfo(el: HTMLElement, availableModeIds: string[], currentModeId: string | undefined, onSelectMode: (modeId: string) => void): void {
-    // A generic RoundArtifact can name its implicit engine mode (for example "base") even when
+    // A generic RoundRecord can name its implicit engine mode (for example "base") even when
     // its session never exposed a bet-mode selector. That diagnostic/default must not create a
     // player-facing affordance on Studio that a VideoSlot wire consumer cannot render.
     if (availableModeIds.length === 0) {

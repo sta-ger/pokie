@@ -1,5 +1,5 @@
 import type {LogicalRoundDelivery} from "../../../../../src/runtime/projectLogicalRound.js";
-import type {RoundArtifactWin} from "../../api/types";
+import type {RoundRecordWin} from "../../api/types";
 import type {FeatureCounter, LineDefinitionView, PaytableView} from "../../../../client/player";
 import {CanonicalPlayerView} from "./CanonicalPlayerView";
 
@@ -13,7 +13,7 @@ import {CanonicalPlayerView} from "./CanonicalPlayerView";
 // cli/client/player/index.ts's own doc comment), not a second, independently-rendered player. Kept
 // singular within Studio itself: every one of the surfaces above renders through this exact component,
 // never a page-local re-presentation of the same screen/win data -- proven by
-// RoundArtifactInspector.test.tsx's own "Cross-surface round presentation parity" suite (component-level)
+// RoundRecordInspector.test.tsx's own "Cross-surface round presentation parity" suite (component-level)
 // and ProjectDashboardPage.playWorkflow.test.tsx's own "canonical player parity" suite (through Play's
 // real session/spin workflow, proving it reaches the exact same cli/client/player DOM functions
 // tests/cli/client/player/renderPlayer.test.ts's own fixture-round test calls directly).
@@ -42,7 +42,7 @@ export function GameScreenView({
     sequenceSelections?: readonly import("../../../../../src/session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceSelection[];
     sequenceStatistics?: readonly import("../../../../../src/session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceStatistics[];
     visibleRowCoverage?: readonly number[];
-    wins?: readonly RoundArtifactWin[];
+    wins?: readonly RoundRecordWin[];
     credits?: number;
     totalWin?: number;
     payoutMultiplier?: number;

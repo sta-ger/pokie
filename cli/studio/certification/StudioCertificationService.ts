@@ -1,15 +1,15 @@
 import path from "path";
-import {certificationSourceHash, dossierHash} from "../../../src/certification/internal/acquireCertificationDossier.js";
-import {resolveSafeCertificationEvidenceFilePath} from "../../../src/certification/internal/resolveSafeCertificationEvidenceFilePath.js";
+import {certificationSourceHash, dossierHash} from "../../../src/certification/internal/acquireCertificationPack.js";
+import {resolveSafeCertificationPackFilePath} from "../../../src/certification/internal/resolveSafeCertificationPackFilePath.js";
 import {
     CERTIFICATION_PREPARATION_NOTICE,
-    CertificationEvidenceBundleVerifier,
-    CertificationDossierInputs,
-    CertificationDossierOutput,
-    CertificationEvidenceBundleBuilder,
-    CertificationEvidenceBundleBuildCancelledError,
-    CertificationEvidenceBundleBuilding,
-    CertificationEvidenceBundleModeSampleInput,
+    CertificationPackVerifier,
+    CertificationPackInputs,
+    CertificationPackOutput,
+    CertificationPackBuilder,
+    CertificationPackBuildCancelledError,
+    CertificationPackBuilding,
+    CertificationPackModeSampleInput,
     OutcomeLibraryBundleValidating,
     OutcomeLibraryBundleValidator,
 } from "@fromstan/pokie";
@@ -28,8 +28,8 @@ export type StudioCertificationProgressReporting = (
 ) => void;
 
 export type StudioCertificationExecutionOptions = {
-    readonly dossier?: CertificationDossierInputs;
-    readonly output?: CertificationDossierOutput;
+    readonly dossier?: CertificationPackInputs;
+    readonly output?: CertificationPackOutput;
     readonly signal?: AbortSignal;
     readonly onProgress?: StudioCertificationProgressReporting;
 };
@@ -38,20 +38,20 @@ function executionOptions(options: AbortSignal | StudioCertificationExecutionOpt
     return options instanceof AbortSignal ? {signal: options} : options ?? {};
 }
 
-// The Certification tab, built directly on top of pokie's own CertificationEvidenceBundleBuilder /
-// OutcomeLibraryBundleValidator (see docs/certification-evidence-bundle.md) -- this class never samples
+// The Certification tab, built directly on top of pokie's own CertificationPackBuilder /
+// OutcomeLibraryBundleValidator (see docs/certification-pack-bundle.md) -- this class never samples
 // a round, computes a hash, or re-implements the builder's own "no partial bundle"/self-validation
 // contracts; it only resolves a request's paths against the active project's root (the same
 // resolveProjectDirectory containment check every other project-scoped Studio service already uses) and
 // shapes the result into a view.
 export class StudioCertificationService {
     private readonly bundleValidator: OutcomeLibraryBundleValidating;
-    private readonly builder: CertificationEvidenceBundleBuilding;
+    private readonly builder: CertificationPackBuilding;
     private readonly realpath: (resolvedPath: string) => string;
 
     constructor(
         pokieVersion: string,
-        builder: CertificationEvidenceBundleBuilding = new CertificationEvidenceBundleBuilder(pokieVersion),
+        builder: CertificationPackBuilding = new CertificationPackBuilder(pokieVersion),
         bundleValidator: OutcomeLibraryBundleValidating = new OutcomeLibraryBundleValidator(),
         realpath: (resolvedPath: string) => string = (resolvedPath) => fs.realpathSync(resolvedPath),
     ) {
@@ -74,20 +74,20 @@ export class StudioCertificationService {
         const source = resolveProjectDirectory(projectRoot, request.bundleDir, this.realpath);
         if (out.status === "error" || source.status === "error") throw new Error("Dossier paths are outside this project.");
         const inputs = this.resolveDossierPaths(projectRoot, request.dossier, request.output);
-        const issues = await new CertificationEvidenceBundleVerifier().verify(out.resolvedPath, {sourceBundleDir: source.resolvedPath, dossier: inputs.dossier, templateFile: inputs.output?.templateFile, signal});
-        const cleanupFailure = issues.find(issue => issue.code === "certification-evidence-verify-cleanup-failed");
+        const issues = await new CertificationPackVerifier().verify(out.resolvedPath, {sourceBundleDir: source.resolvedPath, dossier: inputs.dossier, templateFile: inputs.output?.templateFile, signal});
+        const cleanupFailure = issues.find(issue => issue.code === "certification-pack-verify-cleanup-failed");
         if (cleanupFailure) throw new Error(cleanupFailure.message);
-        if (signal?.aborted) throw new CertificationEvidenceBundleBuildCancelledError();
+        if (signal?.aborted) throw new CertificationPackBuildCancelledError();
         if (issues.some(issue => issue.severity === "error")) throw new Error(`Dossier inputs are stale or invalid: ${issues.map(issue => issue.message).join("; ")}`);
         const manifest = JSON.parse(fs.readFileSync(path.join(out.resolvedPath, "manifest.json"), "utf8")) as {evidenceContentHash: string; files: string[]};
         if (manifest.evidenceContentHash !== identity || !manifest.files.includes(file)) throw new Error("Dossier identity/file is stale or unknown.");
-        const safe = resolveSafeCertificationEvidenceFilePath(out.resolvedPath, file);
+        const safe = resolveSafeCertificationPackFilePath(out.resolvedPath, file);
         if (!safe) throw new Error("Unsafe dossier download path.");
         const mime = ({".jsonl": "application/x-ndjson; charset=utf-8", ".pdf": "application/pdf", ".html": "text/html; charset=utf-8", ".md": "text/markdown; charset=utf-8", ".txt": "text/plain; charset=utf-8"} as Record<string, string>)[path.extname(file)] ?? "application/json; charset=utf-8";
         return {bytes: fs.readFileSync(safe), mime};
     }
 
-    // The exact preflight CertificationEvidenceBundleBuilder itself runs (and aborts the whole build on)
+    // The exact preflight CertificationPackBuilder itself runs (and aborts the whole build on)
     // before ever sampling a round -- exposed as its own step so the user can check a candidate source
     // bundle before committing to Build, without triggering a build attempt.
     public async validateSourceBundle(projectRoot: string, bundleDir: string, options?: AbortSignal | StudioCertificationExecutionOptions): Promise<StudioCertificationSourceValidateView> {
@@ -137,7 +137,7 @@ export class StudioCertificationService {
             return {status: "load-error", error: resolvedOutDir.message};
         }
 
-        const modeInputs: CertificationEvidenceBundleModeSampleInput[] = modes.map((mode) => ({
+        const modeInputs: CertificationPackModeSampleInput[] = modes.map((mode) => ({
             modeName: mode.modeName,
             seed: mode.seed,
             sampleCount: mode.sampleCount,
@@ -160,7 +160,7 @@ export class StudioCertificationService {
             }
             return {status: "ok", manifest: result.manifest, files: result.files, warnings, artifactHashes: result.artifactHashes, preparationNotice: CERTIFICATION_PREPARATION_NOTICE};
         } catch (error) {
-            if (error instanceof CertificationEvidenceBundleBuildCancelledError) {
+            if (error instanceof CertificationPackBuildCancelledError) {
                 return {
                     status: "load-error",
                     error: "Certification/evidence build was cancelled. No incomplete evidence was published; retry the build when ready.",
@@ -193,7 +193,7 @@ export class StudioCertificationService {
         }
     }
 
-    private resolveDossierPaths(projectRoot: string, dossier?: CertificationDossierInputs, output?: CertificationDossierOutput): {dossier?: CertificationDossierInputs; output?: CertificationDossierOutput} {
+    private resolveDossierPaths(projectRoot: string, dossier?: CertificationPackInputs, output?: CertificationPackOutput): {dossier?: CertificationPackInputs; output?: CertificationPackOutput} {
         const resolve = (input: string): string => {
             const result = resolveProjectDirectory(projectRoot, input, this.realpath);
             if (result.status === "error") throw new Error(result.message);

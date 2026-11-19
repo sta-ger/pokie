@@ -1,0 +1,18 @@
+import type {ValidationIssue} from "../validation/ValidationIssue.js";
+import type {CertificationPackManifest} from "./CertificationPackManifest.js";
+import type {PublishedDirectoryOwnership} from "../stakeengine/internal/publishDirectoryAtomically.js";
+
+// The result of CertificationPackBuilding.buildFromBundle. "manifest" is undefined if and only if
+// "issues" contains an error — the same "no partial bundle" guarantee OutcomeLibraryBundleWriteResult/
+// StakeEngineExportResult already carry: either every file (each mode's samples, manifest.json) was written, or
+// none was.
+export type CertificationPackBuildResult = {
+    readonly outDir: string;
+    /** SHA-256 of exact published bytes; content identity is separate and deterministic. */
+    readonly artifactHashes?: Readonly<Record<string, string>>;
+    readonly files: readonly string[];
+    readonly manifest: CertificationPackManifest | undefined;
+    readonly issues: readonly ValidationIssue[];
+    /** Present only when this invocation atomically installed outDir. */
+    readonly publication?: PublishedDirectoryOwnership;
+};

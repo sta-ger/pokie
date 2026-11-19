@@ -6,10 +6,10 @@ import {buildReplayDownloadUrl, sampleOutcomeSource} from "../../api/apiClient";
 import type {OutcomeSourceSampleView} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
-import {describeRoundArtifact} from "../../domain/interpret/Replay";
+import {describeRoundRecord} from "../../domain/interpret/Replay";
 import {OUTCOME_SOURCE_SAMPLE_CAPABILITY, type ProjectHeaderView} from "../../domain/interpret/ProjectDashboard";
 import {ErrorState} from "../common/ErrorState";
-import {RoundArtifactInspector} from "../common/RoundArtifactInspector";
+import {RoundRecordInspector} from "../common/RoundRecordInspector";
 
 type OutcomeSourceHeader = Extract<ProjectHeaderView, {status: "outcome-source"}>;
 
@@ -127,12 +127,12 @@ export function OutcomeSourceOverview({header, onRoundRecorded}: {header: Outcom
                     <Text size="sm" mb="sm">
                         {`library "${result.selection.libraryId}" · weight ${result.selection.outcome.weight} of ${result.selection.totalWeight}`}
                     </Text>
-                    {/* The drawn outcome's own round -- rendered through the same RoundArtifactInspector every
+                    {/* The drawn outcome's own round -- rendered through the same RoundRecordInspector every
                         other "round we can inspect" surface (Replay, Session Spin) already uses, instead of a
                         page-local flat multiplier/total-win summary. A drawn outcome carries no content hash of
-                        its own (see RoundArtifactDisplayView's own doc comment) and no session state to show
+                        its own (see RoundRecordDisplayView's own doc comment) and no session state to show
                         before/after it. */}
-                    <RoundArtifactInspector artifact={describeRoundArtifact(result.selection.outcome.artifact)} />
+                    <RoundRecordInspector artifact={describeRoundRecord(result.selection.outcome.artifact)} />
                     {result.replayId !== undefined && (
                         <div>
                             <Anchor href={buildReplayDownloadUrl(result.replayId)} download>Download draw replay JSON</Anchor>

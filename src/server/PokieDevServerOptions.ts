@@ -56,19 +56,19 @@ export type PokieDevServerOptions = {
     // Additive, opt-in-only, defaults to "partial" (preserving every prior release's own persisted-state
     // shape exactly): the versioned SessionCapturePolicy (see SessionCapturePolicy.ts) every played
     // round is captured under, via captureRoundPokieSessionState. "full" additionally builds and
-    // persists a complete RoundArtifact off the runtime-produced session/win-evaluation state (see
-    // buildRoundArtifactFromSession) as `roundArtifact` on the persisted PokieSessionState — screen,
+    // persists a complete RoundRecord off the runtime-produced session/win-evaluation state (see
+    // buildRoundRecordFromSession) as `roundRecord` on the persisted PokieSessionState — screen,
     // wins/positions, steps/feature events, provenance, and a debug summary (command, credits,
     // before/after state, plus the serializer's own debug payload when captureDebugSessionData is also
     // true). `pokie dev`'s own local server always requests "full" (see DevCommand's own construction) —
     // a dev tool should default to a fully inspectable recorded round, not the conservative "partial"
     // posture this option otherwise preserves for production. A session whose
-    // played type doesn't have the shape buildRoundArtifactFromSession requires still captures
-    // everything else normally; it just gets `roundArtifactUnavailableReason` instead of a fabricated
-    // `roundArtifact` — see PokieSessionState's own doc comment.
+    // played type doesn't have the shape buildRoundRecordFromSession requires still captures
+    // everything else normally; it just gets `roundRecordUnavailableReason` instead of a fabricated
+    // `roundRecord` — see PokieSessionState's own doc comment.
     sessionCapturePolicyMode?: SessionCaptureMode;
-    // Only ever read when sessionCapturePolicyMode is "full", to stamp a built RoundArtifact's own
-    // provenance.pokieVersion (see RoundArtifactProvenance). Defaults to "unknown" — the same fallback
+    // Only ever read when sessionCapturePolicyMode is "full", to stamp a built RoundRecord's own
+    // provenance.pokieVersion (see RoundRecordProvenance). Defaults to "unknown" — the same fallback
     // StudioReplayExecutionService already uses when it isn't given a real one either.
     pokieVersion?: string;
     // Additive, opt-in-only pre-generated round support (see PokieDevServer's own doc comment,
@@ -82,6 +82,6 @@ export type PokieDevServerOptions = {
     preGeneratedIdempotencyRepository?: IdempotencyRepository<PreGeneratedSpinCommandResult>;
     // The recorder used by OutcomeSourceDevServer for native outcome-library /sessions traffic. Its
     // records hold the canonical pre-generated replay provenance and, under "full" capture, the exact
-    // selected RoundArtifact/runtime audit view. Supply a durable implementation in production.
+    // selected RoundRecord/runtime audit view. Supply a durable implementation in production.
     preGeneratedRoundRecorder?: PreGeneratedRoundRecording;
 };

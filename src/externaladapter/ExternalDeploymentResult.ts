@@ -11,7 +11,7 @@ import type {ExternalDeploymentDiagnosticReport} from "./ExternalDeploymentDiagn
 // nested array happens to be empty (an empty "artifacts"/"issues" array is itself a perfectly valid, meaningful
 // result of a stage that *did* run).
 //
-// "projectionIssues" covers the stage where ExternalDeploymentService runs every RoundArtifact through
+// "projectionIssues" covers the stage where ExternalDeploymentService runs every RoundRecord through
 // `target.roundProjector` on the target's own behalf (see that class's own doc comment) — a per-outcome
 // projector failure, non-JSON-safe projected output, or a library-hash failure all surface here, before
 // "generation" is ever attempted.

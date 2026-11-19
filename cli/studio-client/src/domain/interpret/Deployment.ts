@@ -69,8 +69,8 @@ export function hasTargetDescriptorChanged(previous: StudioDeploymentTargetSumma
 export const MULTI_MODE_CAPABILITY_ID = "multiMode";
 
 const KNOWN_CAPABILITY_DESCRIPTIONS: Record<string, string> = {
-    "roundArtifact.featureEvents": "Rounds with feature events (e.g. free spins, bonus triggers)",
-    "roundArtifact.debugMetadata": "Rounds carrying debug metadata",
+    "roundRecord.featureEvents": "Rounds with feature events (e.g. free spins, bonus triggers)",
+    "roundRecord.debugMetadata": "Rounds carrying debug metadata",
     [MULTI_MODE_CAPABILITY_ID]: "More than one bet mode in a single deployment",
 };
 

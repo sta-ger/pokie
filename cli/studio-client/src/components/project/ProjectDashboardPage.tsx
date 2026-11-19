@@ -19,7 +19,7 @@ import {
     validateProject,
     ProjectTransitionConflict,
 } from "../../api/apiClient";
-import type {GamePackageInspectionReport, RoundArtifactJson, StudioJobView, StudioProjectCapability, StudioSimulationReportListEntry} from "../../api/types";
+import type {GamePackageInspectionReport, RoundRecordJson, StudioJobView, StudioProjectCapability, StudioSimulationReportListEntry} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
 import {
@@ -995,7 +995,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     const parsedDescriptor =
                         typeof parsed === "object" && parsed !== null
                             ? (parsed as {
-                                  artifact?: RoundArtifactJson;
+                                  artifact?: RoundRecordJson;
                                   credits?: number;
                                   stateBefore?: unknown;
                                   stateAfter?: unknown;

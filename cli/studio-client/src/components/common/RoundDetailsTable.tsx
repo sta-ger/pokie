@@ -1,15 +1,15 @@
 import {Table} from "@mantine/core";
-import type {RoundArtifactDisplayView} from "../../domain/interpret/Replay";
+import type {RoundRecordDisplayView} from "../../domain/interpret/Replay";
 
 // The shared round-level "what game, what was staked, what it paid out" summary -- game/pokie
 // version/config hash provenance, bet mode, and stake, straight from the round's own
-// RoundArtifactDisplayView. The canonical Player directly below owns the player-facing balance and
+// RoundRecordDisplayView. The canonical Player directly below owns the player-facing balance and
 // total-win/multiple output, so every round-inspection surface keeps those values on the same path as
 // its screen and individual wins.
 export function RoundDetailsTable({
     artifact,
 }: {
-    artifact: RoundArtifactDisplayView;
+    artifact: RoundRecordDisplayView;
 }) {
     return (
         <Table withRowBorders={false} mb="sm">

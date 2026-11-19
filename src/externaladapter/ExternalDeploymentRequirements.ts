@@ -4,14 +4,14 @@
 // cross-mode homogeneity requirement) when omitted, the same "opt-in, permissive by default" convention as
 // ExternalDeploymentTarget's own optional collaborators.
 export type ExternalDeploymentRequirements = {
-    // Lowest RoundArtifactProvenance.pokieVersion this target's own format/generator is known to understand,
+    // Lowest RoundRecordProvenance.pokieVersion this target's own format/generator is known to understand,
     // compared against every deployed mode's own provenance.pokieVersion (major.minor.patch only — see
     // internal/compareSemverLite). Omit when the target has no known minimum.
     readonly minPokieVersion?: string;
 
-    // "numeric" requires every screen/step symbol (the generic T in RoundArtifact<T>) across every deployed
+    // "numeric" requires every screen/step symbol (the generic T in RoundRecord<T>) across every deployed
     // outcome to be a `number`, never a string — for a target whose own external format only has a concept of
-    // numeric reel/symbol ids (mirrors the same T-as-number convention RoundArtifact<T> itself supports).
+    // numeric reel/symbol ids (mirrors the same T-as-number convention RoundRecord<T> itself supports).
     // "any" (the default when omitted) places no constraint on T.
     readonly symbolAlphabet?: "numeric" | "any";
 

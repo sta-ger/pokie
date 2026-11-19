@@ -1,4 +1,4 @@
-import type {CertificationDossier, CertificationDossierFormat, CertificationDossierTemplate} from "../../../../src/certification/CertificationDossier.js";
+import type {CertificationPack, CertificationPackFormat, CertificationPackTemplate} from "../../../../src/certification/CertificationPack.js";
 import type {ParSheetConversionReport} from "../../../../src/parsheet/ParSheetConversionReport.js";
 import type {AdvancedModelValidationReport} from "../../../../src/validation/AdvancedModelValidation.js";
 export type {MathDefinitionDiff} from "../../../../src/diff/MathDefinitionDiff.js";
@@ -95,7 +95,7 @@ export type OutcomeSourceProjectReportView = {
 export type OutcomeSourceSampleView =
     | {
           supported: true;
-          selection: {libraryId: string; libraryHash: string; totalWeight: number; outcome: {id: string; weight: number; artifact: RoundArtifact}};
+          selection: {libraryId: string; libraryHash: string; totalWeight: number; outcome: {id: string; weight: number; artifact: RoundRecord}};
           // Present for a seeded sample: this is the same portable identity the public replay command
           // consumes, rather than a UI-only approximation of the selected outcome.
           replay?: OutcomeSourceReplayDescriptorView;
@@ -807,33 +807,33 @@ export type StudioSimulationReportListEntry = {
     modes?: Record<string, {rounds: number; betMode?: string}>;
 };
 
-// The server's copies of this whole RoundArtifact family live in "pokie" itself (src/artifact/*.ts) —
+// The server's copies of this whole RoundRecord family live in "pokie" itself (src/artifact/*.ts) —
 // kept as their own client-side copies here, same convention as every other type in this file. Deeply
-// readonly to match the server's own guarantee (a RoundArtifact is deep-frozen at build time).
-export type RoundArtifactProvenance = {
+// readonly to match the server's own guarantee (a RoundRecord is deep-frozen at build time).
+export type RoundRecordProvenance = {
     readonly game: PokieGameManifest;
     readonly pokieVersion: string;
     readonly configHash?: string;
 };
 
-export type RoundArtifactMultiplierBreakdown = {
+export type RoundRecordMultiplierBreakdown = {
     readonly source: string;
     readonly positions: readonly (readonly number[])[];
     readonly values: readonly number[];
     readonly combinedMultiplier: number;
 };
 
-export type RoundArtifactWin = {
+export type RoundRecordWin = {
     readonly type: string;
     readonly id: string;
     readonly symbolId: string | number | null;
     readonly winAmount: number;
     readonly winningPositions: readonly (readonly number[])[];
-    readonly multiplierBreakdown: readonly RoundArtifactMultiplierBreakdown[];
+    readonly multiplierBreakdown: readonly RoundRecordMultiplierBreakdown[];
     readonly metadata: Record<string, unknown>;
 };
 
-export type RoundArtifactFeatureEvent = {
+export type RoundRecordFeatureEvent = {
     readonly type: string;
     readonly data?: Record<string, unknown>;
 };
@@ -845,17 +845,17 @@ export type RoundStepArtifact = {
     readonly sequenceSelections?: readonly ReelSequenceSelection[];
     readonly screen: readonly (readonly (string | number)[])[];
     readonly totalWin: number;
-    readonly wins: readonly RoundArtifactWin[];
-    readonly featureEvents?: readonly RoundArtifactFeatureEvent[];
+    readonly wins: readonly RoundRecordWin[];
+    readonly featureEvents?: readonly RoundRecordFeatureEvent[];
     readonly debug?: Record<string, unknown>;
 };
 
-export type RoundArtifact = {
+export type RoundRecord = {
     readonly geometry?: ScreenGeometry;
     readonly generatedScreen?: readonly (readonly (string | number)[])[];
     readonly schemaVersion: number;
     readonly roundId: string;
-    readonly provenance: RoundArtifactProvenance;
+    readonly provenance: RoundRecordProvenance;
     readonly betMode: string;
     readonly stake: number;
     readonly totalWin: number;
@@ -863,14 +863,14 @@ export type RoundArtifact = {
     readonly sequenceSelections?: readonly ReelSequenceSelection[];
     readonly screen: readonly (readonly (string | number)[])[];
     readonly steps: readonly RoundStepArtifact[];
-    readonly wins: readonly RoundArtifactWin[];
-    readonly featureEvents?: readonly RoundArtifactFeatureEvent[];
+    readonly wins: readonly RoundRecordWin[];
+    readonly featureEvents?: readonly RoundRecordFeatureEvent[];
     readonly debug?: Record<string, unknown>;
 };
 
-// PokieJsonRoundArtifactProjector's own output shape -- a RoundArtifact stamped with its own content
+// PokieJsonRoundRecordProjector's own output shape -- a RoundRecord stamped with its own content
 // hash, what a completed replay's descriptor.artifact and a pasted "Replay Artifact" JSON both are.
-export type RoundArtifactJson = RoundArtifact & {readonly hash: string};
+export type RoundRecordJson = RoundRecord & {readonly hash: string};
 
 // Mirrors PreGeneratedRoundReplayDescriptor. It travels with ordinary outcome-library Play and
 // Sample results so consumers can hand the exact recorded seed/round/mode/provenance to `pokie replay`.
@@ -888,7 +888,7 @@ export type OutcomeSourceReplayDescriptorView = {
     payoutMultiplier: number;
     stake?: number;
     screen?: unknown[][];
-    artifact?: RoundArtifact;
+    artifact?: RoundRecord;
     timestamp: number;
     durationMs: number;
 };
@@ -925,7 +925,7 @@ export type ReplayDescriptor = {
     // Only present for a replay run by Studio's own StudioReplayExecutionService against a video-slot
     // game -- absent for anything predating this field or for a non-video-slot session (see
     // StudioReplayExecutionService.buildArtifact()'s own doc comment).
-    artifact?: RoundArtifactJson;
+    artifact?: RoundRecordJson;
     // Serialized session state immediately before / after the target round's play() -- public fields
     // only (no RNG/debug data, which lives in artifact.debug instead). Absent when the game/session
     // doesn't support state serialization or capture failed -- never a replay failure by itself (see
@@ -948,7 +948,7 @@ export type ReplayDescriptor = {
         payoutMultiplier: number;
         stake?: number;
         screen?: unknown[][];
-        artifact?: RoundArtifact;
+        artifact?: RoundRecord;
         timestamp: number;
         durationMs: number;
     };
@@ -1066,10 +1066,10 @@ export type StudioRuntimeSessionView = {
         stateBefore?: unknown;
         debugData?: Record<string, unknown>;
         requestId?: string;
-        // The same complete, JSON-projected, hashed RoundArtifact the Replay tab's other sources already
-        // render through RoundArtifactInspector -- present whenever this exact round's session supported
+        // The same complete, JSON-projected, hashed RoundRecord the Replay tab's other sources already
+        // render through RoundRecordInspector -- present whenever this exact round's session supported
         // building one, so Session Spin can use the identical inspector instead of a bespoke raw-JSON view.
-        artifact?: RoundArtifactJson;
+        artifact?: RoundRecordJson;
         // Present instead of `artifact` whenever this session couldn't produce one (e.g. a non-video-slot
         // game) -- an honest diagnostic, never a silent absence.
         artifactUnavailableReason?: string;
@@ -1148,7 +1148,7 @@ export type OutcomeLibrarySelector =
 
 export type WeightedOutcomePayoutBucket = {payoutMultiplier: number; probability: number};
 
-// WeightedOutcomeLibraryAnalyzer's own output, embedded verbatim in CertificationEvidenceBundleModeEntry
+// WeightedOutcomeLibraryAnalyzer's own output, embedded verbatim in CertificationPackModeEntry
 // -- never recomputed here.
 export type WeightedOutcomeLibraryAnalysis = {
     totalWeight: number;
@@ -1311,11 +1311,11 @@ export type StudioOutcomeLibraryRegistryView =
 // cli/studio/certification/StudioCertificationSourceValidateView.ts's own doc comment.
 export type StudioCertificationSourceValidateView = {status: "ok"; errors: ValidationIssue[]; warnings: ValidationIssue[]} | {status: "load-error"; error: string};
 
-// Mirrors pokie's own CertificationEvidenceBundleModeEntry/CertificationEvidenceDeepValidation/
-// CertificationEvidenceBundleManifest (src/certification/CertificationEvidenceBundleManifest.ts) --
+// Mirrors pokie's own CertificationPackModeEntry/CertificationPackDeepValidation/
+// CertificationPackManifest (src/certification/CertificationPackManifest.ts) --
 // every hash/metric here is read verbatim off the source outcome-library bundle's own manifest, never
 // recomputed by Studio.
-export type CertificationEvidenceBundleModeEntry = {
+export type CertificationPackModeEntry = {
     modeName: string;
     betMode: string;
     stake: number;
@@ -1330,11 +1330,11 @@ export type CertificationEvidenceBundleModeEntry = {
     samplesHash: string;
 };
 
-export type CertificationEvidenceDeepValidation = {ranAt: string; issues: ValidationIssue[]};
+export type CertificationPackDeepValidation = {ranAt: string; issues: ValidationIssue[]};
 
-export type CertificationEvidenceBundleManifest = {
-    dossier?: CertificationDossier;
-    presentation?: {template: CertificationDossierTemplate; templateHash: string; templateArtifactHash: string | null; formats: readonly CertificationDossierFormat[]};
+export type CertificationPackManifest = {
+    dossier?: CertificationPack;
+    presentation?: {template: CertificationPackTemplate; templateHash: string; templateArtifactHash: string | null; formats: readonly CertificationPackFormat[]};
     schemaVersion: number;
     generatedBy: string;
     pokieVersion: string;
@@ -1344,18 +1344,18 @@ export type CertificationEvidenceBundleManifest = {
     artifactPokieVersion: string;
     sourceBundleDir: string;
     sourceBundleManifestHash: string;
-    modes: CertificationEvidenceBundleModeEntry[];
-    deepValidation: CertificationEvidenceDeepValidation;
+    modes: CertificationPackModeEntry[];
+    deepValidation: CertificationPackDeepValidation;
     files: string[];
     evidenceContentHash: string;
 };
 
 // POST /api/project/certification/build's own DTO — see
 // cli/studio/certification/StudioCertificationBuildView.ts's own doc comment. Mirrors
-// CertificationEvidenceBundleBuilder's own "no partial bundle" contract: `manifest` is present iff
+// CertificationPackBuilder's own "no partial bundle" contract: `manifest` is present iff
 // `status` is "ok".
 export type StudioCertificationBuildView =
-    | {status: "ok"; manifest: CertificationEvidenceBundleManifest; files: string[]; artifactHashes?: Record<string, string>; warnings: ValidationIssue[]}
+    | {status: "ok"; manifest: CertificationPackManifest; files: string[]; artifactHashes?: Record<string, string>; warnings: ValidationIssue[]}
     | {status: "error"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
     | {status: "load-error"; error: string};
 

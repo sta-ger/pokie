@@ -1,4 +1,4 @@
-import type {CertificationDossierInputs, CertificationDossierOutput} from "../../../../src/certification/CertificationDossier.js";
+import type {CertificationPackInputs, CertificationPackOutput} from "../../../../src/certification/CertificationPack.js";
 import type {SessionCommand} from "../../../../src/runtime/SessionCommand.js";
 import type {
     FairnessCommitment,
@@ -856,7 +856,7 @@ export type InspectReplayArtifactResult = {
     modeName?: string;
     outcomeSource?: import("./types.js").OutcomeSourceReplayDescriptorView;
     // Server-normalized artifact, including canonical native descriptors with only a nested artifact.
-    artifact?: import("./types.js").RoundArtifactJson;
+    artifact?: import("./types.js").RoundRecordJson;
     artifactWarnings: string[];
 };
 
@@ -1276,12 +1276,12 @@ export async function validateCertificationSourceBundle(fetchImpl: FetchLike, bu
 
 export type CertificationBuildModeInput = {modeName: string; seed: string; sampleCount: number};
 
-export async function buildCertificationEvidenceBundle(
+export async function buildCertificationPack(
     fetchImpl: FetchLike,
     bundleDir: string,
     modes: CertificationBuildModeInput[],
     outDir: string,
-    configuration?: {dossier?: CertificationDossierInputs; output?: CertificationDossierOutput},
+    configuration?: {dossier?: CertificationPackInputs; output?: CertificationPackOutput},
 ): Promise<StudioCertificationBuildView> {
     const response = await fetchImpl("/api/project/certification/build", {
         method: "POST",
@@ -1479,7 +1479,7 @@ export async function optimizationAction<T>(fetchImpl: FetchLike, action: "suppo
     return value;
 }
 
-export async function downloadCertificationDossier(fetchImpl: FetchLike, outDir: string, identity: string, file: string): Promise<Blob> {
+export async function downloadCertificationPack(fetchImpl: FetchLike, outDir: string, identity: string, file: string): Promise<Blob> {
     const query = new URLSearchParams({outDir, identity, file});
     const response = await fetchImpl(`/api/project/certification/download?${query}`);
     if (!response.ok) throw new Error(await extractErrorMessage(response, "Dossier download failed; inputs may have changed"));

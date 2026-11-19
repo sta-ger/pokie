@@ -4,7 +4,7 @@ import type {PokieGameContext} from "../gamepackage/PokieGameContext.js";
 import type {SessionCommand} from "../runtime/SessionCommand.js";
 import type {SessionCommandResult} from "../runtime/SessionRuntimeHandling.js";
 import type {LogicalRound} from "../runtime/LogicalRound.js";
-import type {RoundArtifactJson} from "../artifact/RoundArtifactJson.js";
+import type {RoundRecordJson} from "../artifact/RoundRecordJson.js";
 
 /** Executable inputs, distinct from presentation serialization and from portable WASM state. */
 export type AuditBoundary = {
@@ -35,7 +35,7 @@ export type AuditDelivery = {
     readonly before: AuditBoundary;
     readonly after: AuditBoundary;
     readonly result: Extract<SessionCommandResult, {status: "played"}>;
-    readonly artifact?: RoundArtifactJson;
+    readonly artifact?: RoundRecordJson;
     readonly disposition: AuditDisposition;
 };
 /** Hash integrity and deterministic reproduction, not a signature or proof of authenticity. */

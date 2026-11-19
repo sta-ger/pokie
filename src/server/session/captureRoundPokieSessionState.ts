@@ -1,8 +1,8 @@
 import {captureCoordinatePublicPayload} from "./internal/captureCoordinatePublicPayload.js";
 import {cloneSessionData} from "../../runtime/internal/cloneSessionData.js";
-import {buildRoundArtifactFromSession} from "../../artifact/buildRoundArtifactFromSession.js";
-import {RoundArtifactBuildError} from "../../artifact/RoundArtifactBuildError.js";
-import type {RoundArtifactProvenance} from "../../artifact/RoundArtifactProvenance.js";
+import {buildRoundRecordFromSession} from "../../artifact/buildRoundRecordFromSession.js";
+import {RoundRecordBuildError} from "../../artifact/RoundRecordBuildError.js";
+import type {RoundRecordProvenance} from "../../artifact/RoundRecordProvenance.js";
 import type {PokieGameContext} from "../../gamepackage/PokieGameContext.js";
 import type {GameSessionSerializing} from "../../net/GameSessionSerializing.js";
 import type {GameSessionHandling} from "../../session/GameSessionHandling.js";
@@ -13,20 +13,20 @@ import {buildSessionCapturePolicy, type SessionCapturePolicy} from "./SessionCap
 
 // What a caller (SpinCommandHandler, or any other captureRoundPokieSessionState caller that wants full
 // capture) supplies about *this specific round* so a "full" SessionCapturePolicy can build a real
-// RoundArtifact from it — never inferred from session/wallet state, same "caller supplies it, this
-// library never guesses" discipline buildRoundArtifactFromSession's own doc comment already documents
+// RoundRecord from it — never inferred from session/wallet state, same "caller supplies it, this
+// library never guesses" discipline buildRoundRecordFromSession's own doc comment already documents
 // for betMode/stake.
-export type RoundArtifactCaptureRequest = {
+export type RoundRecordCaptureRequest = {
     roundId: string;
-    provenance: RoundArtifactProvenance;
+    provenance: RoundRecordProvenance;
     betMode?: string;
     stake?: number;
     // The operation that produced this round (e.g. "spin") — carried into the built artifact's own
-    // `debug` bag (see buildFullRoundArtifact below), since RoundArtifact itself has no dedicated field
+    // `debug` bag (see buildFullRoundRecord below), since RoundRecord itself has no dedicated field
     // for "what command ran this".
     command?: string;
     // The wallet's own authoritative balance right after this round settled — same reasoning as
-    // `command` above, carried into `debug` rather than invented as a new top-level RoundArtifact field.
+    // `command` above, carried into `debug` rather than invented as a new top-level RoundRecord field.
     credits?: number;
 };
 
@@ -48,19 +48,19 @@ export type RoundArtifactCaptureRequest = {
 // carried forward nor a fresh `roundDebugPayload` captured, so a session started under a "don't persist
 // debug data" policy never accumulates any regardless of how many rounds it plays.
 //
-// `capturePolicy.mode === "full"` additionally builds and persists a complete RoundArtifact (see
-// buildRoundArtifactFromSession) as `roundArtifact` — but only when `roundArtifactRequest` was actually
+// `capturePolicy.mode === "full"` additionally builds and persists a complete RoundRecord (see
+// buildRoundRecordFromSession) as `roundRecord` — but only when `roundRecordRequest` was actually
 // supplied (a caller must have a roundId/provenance to give it) AND `session` has the
-// VideoSlotSessionHandling shape buildRoundArtifactFromSession requires. Either gap is recorded as
-// `roundArtifactUnavailableReason` — an honest diagnostic, never a fabricated artifact — so a reader can
-// tell "this round genuinely has no RoundArtifact" apart from "something went wrong capturing one".
+// VideoSlotSessionHandling shape buildRoundRecordFromSession requires. Either gap is recorded as
+// `roundRecordUnavailableReason` — an honest diagnostic, never a fabricated artifact — so a reader can
+// tell "this round genuinely has no RoundRecord" apart from "something went wrong capturing one".
 export function captureRoundPokieSessionState(
     context: PokieGameContext | undefined,
     session: GameSessionHandling,
     previousState: PokieSessionState,
     serializer?: GameSessionSerializing,
     capturePolicy: SessionCapturePolicy = buildSessionCapturePolicy("partial", true),
-    roundArtifactRequest: RoundArtifactCaptureRequest | undefined = undefined,
+    roundRecordRequest: RoundRecordCaptureRequest | undefined = undefined,
 ): PokieSessionState {
     const state = captureBaseSessionState(context, session);
     state.capturePolicy = capturePolicy;
@@ -87,61 +87,61 @@ export function captureRoundPokieSessionState(
     }
 
     if (capturePolicy.mode === "full") {
-        captureFullRoundArtifact(context, state, previousState, session, capturePolicy, roundArtifactRequest);
+        captureFullRoundRecord(context, state, previousState, session, capturePolicy, roundRecordRequest);
     }
 
     return cloneSessionData(state);
 }
 
-function captureFullRoundArtifact(
+function captureFullRoundRecord(
     context: PokieGameContext | undefined,
     state: PokieSessionState,
     previousState: PokieSessionState,
     session: GameSessionHandling,
     capturePolicy: SessionCapturePolicy,
-    roundArtifactRequest: RoundArtifactCaptureRequest | undefined,
+    roundRecordRequest: RoundRecordCaptureRequest | undefined,
 ): void {
-    if (roundArtifactRequest === undefined) {
-        state.roundArtifactUnavailableReason =
-            "SessionCapturePolicy.mode is \"full\", but no RoundArtifactCaptureRequest (roundId/provenance) was supplied for this round.";
+    if (roundRecordRequest === undefined) {
+        state.roundRecordUnavailableReason =
+            "SessionCapturePolicy.mode is \"full\", but no RoundRecordCaptureRequest (roundId/provenance) was supplied for this round.";
         return;
     }
     if (!hasVideoSlotShape(session)) {
-        state.roundArtifactUnavailableReason =
+        state.roundRecordUnavailableReason =
             "SessionCapturePolicy.mode is \"full\", but this session does not implement the VideoSlotSessionHandling " +
-            "shape (getSymbolsCombination/getWinEvaluationResult) buildRoundArtifactFromSession requires.";
+            "shape (getSymbolsCombination/getWinEvaluationResult) buildRoundRecordFromSession requires.";
         return;
     }
 
     try {
-        state.roundArtifact = buildRoundArtifactFromSession(session, {
-            roundId: roundArtifactRequest.roundId,
-            provenance: roundArtifactRequest.provenance,
-            betMode: roundArtifactRequest.betMode,
-            stake: roundArtifactRequest.stake,
-            debug: buildRoundArtifactDebugSummary(context, state, previousState, roundArtifactRequest, capturePolicy),
+        state.roundRecord = buildRoundRecordFromSession(session, {
+            roundId: roundRecordRequest.roundId,
+            provenance: roundRecordRequest.provenance,
+            betMode: roundRecordRequest.betMode,
+            stake: roundRecordRequest.stake,
+            debug: buildRoundRecordDebugSummary(context, state, previousState, roundRecordRequest, capturePolicy),
         });
     } catch (error) {
         if (state.coordinates) throw error;
-        state.roundArtifactUnavailableReason =
-            error instanceof RoundArtifactBuildError
-                ? `buildRoundArtifactFromSession failed (${error.getCode()}): ${error.message}`
-                : `buildRoundArtifactFromSession failed: ${error instanceof Error ? error.message : String(error)}`;
+        state.roundRecordUnavailableReason =
+            error instanceof RoundRecordBuildError
+                ? `buildRoundRecordFromSession failed (${error.getCode()}): ${error.message}`
+                : `buildRoundRecordFromSession failed: ${error instanceof Error ? error.message : String(error)}`;
     }
 }
 
-// Everything a "full" capture owes the round beyond what RoundArtifact already has dedicated top-level
+// Everything a "full" capture owes the round beyond what RoundRecord already has dedicated top-level
 // fields for (screen/wins/steps/betMode/stake/provenance) — command, credits, the session context's own
 // seed (when the session was actually given one — see PokieGameContext.seed — never fabricated when it
-// wasn't), and a before/after state summary — has no field of its own on RoundArtifact, so it's carried
-// in `debug` instead (a plain, caller-defined JsonObject — see RoundArtifact's own doc comment). The
+// wasn't), and a before/after state summary — has no field of its own on RoundRecord, so it's carried
+// in `debug` instead (a plain, caller-defined JsonObject — see RoundRecord's own doc comment). The
 // serializer's own debug-only payload (initialDebugPayload/roundDebugPayload) is merged in under
 // `debugPayloads`, but only when this policy still wants debug payloads captured at all.
-function buildRoundArtifactDebugSummary(
+function buildRoundRecordDebugSummary(
     context: PokieGameContext | undefined,
     state: PokieSessionState,
     previousState: PokieSessionState,
-    roundArtifactRequest: RoundArtifactCaptureRequest,
+    roundRecordRequest: RoundRecordCaptureRequest,
     capturePolicy: SessionCapturePolicy,
 ): Record<string, unknown> {
     const debugPayloads =
@@ -150,8 +150,8 @@ function buildRoundArtifactDebugSummary(
             : undefined;
 
     return {
-        command: roundArtifactRequest.command ?? "spin",
-        ...(roundArtifactRequest.credits !== undefined ? {credits: roundArtifactRequest.credits} : {}),
+        command: roundRecordRequest.command ?? "spin",
+        ...(roundRecordRequest.credits !== undefined ? {credits: roundRecordRequest.credits} : {}),
         ...(context?.seed !== undefined ? {seed: context.seed} : {}),
         stateBefore: summarizeStateForDebug(previousState),
         stateAfter: summarizeStateForDebug(state),
@@ -161,7 +161,7 @@ function buildRoundArtifactDebugSummary(
 
 // `screen` is optional on PokieSessionState (see captureBaseSessionState — omitted for a game with no
 // getSymbolsCombination()), so it's only included here when actually present; an explicit `undefined`
-// value would otherwise fail buildRoundArtifact's own JSON-safety check (see toCanonicalJson).
+// value would otherwise fail buildRoundRecord's own JSON-safety check (see toCanonicalJson).
 function summarizeStateForDebug(state: PokieSessionState): Record<string, unknown> {
     return {bet: state.bet, win: state.win, ...(state.screen !== undefined ? {screen: state.screen} : {})};
 }

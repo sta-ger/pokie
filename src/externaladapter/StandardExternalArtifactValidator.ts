@@ -7,7 +7,7 @@ import type {ExternalGeneratedArtifact} from "./ExternalGeneratedArtifact.js";
 // An ExternalArtifactGenerationResult's own static type guarantees nothing about a value that actually arrives
 // at runtime — e.g. a hand-crafted or malformed result from a badly-written custom ExternalArtifactGenerator.
 // Every field is read through this loosened view so the checks below are real runtime guards, the same idiom
-// RoundArtifactValidator/WeightedOutcomeLibraryValidator/ExternalDeploymentTargetDescriptorValidator use for
+// RoundRecordValidator/WeightedOutcomeLibraryValidator/ExternalDeploymentTargetDescriptorValidator use for
 // the same reason.
 type Loose<X> = {[K in keyof X]?: unknown};
 

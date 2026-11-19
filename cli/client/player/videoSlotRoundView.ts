@@ -37,7 +37,7 @@ export function isVideoSlotRoundResponse(response: Record<string, unknown>): res
 }
 
 // A win "kind" is any game's own win-evaluation type string (see "pokie"'s own WinComponent.getType() /
-// RoundArtifactWin.type) -- never a closed enum, since a RoundArtifact is explicitly game-generic and a
+// RoundRecordWin.type) -- never a closed enum, since a RoundRecord is explicitly game-generic and a
 // future game is free to introduce a win type this module has no prior knowledge of (see
 // highlightPersistentColor/highlightHoverColor's own fallback below for exactly that case). VideoSlot's
 // own response-level kinds ("line"/"scatter"/"cluster"/"value"/"way") are simply the kind strings its own
@@ -56,8 +56,8 @@ export type WinHighlight = {
     // configured path (see `paylinePositions` below for that).
     positions: number[][];
     // Only ever present for a "line" win whose full configured payline path is actually known (VideoSlot's
-    // own `linesDefinitions[lineId]`, or a RoundArtifact line win's own `metadata.definition` -- see
-    // deriveWinHighlightsFromRoundArtifactWins below) -- every reel's own row on that path, not just the
+    // own `linesDefinitions[lineId]`, or a RoundRecord line win's own `metadata.definition` -- see
+    // deriveWinHighlightsFromRoundRecordWins below) -- every reel's own row on that path, not just the
     // (possibly narrower) subset that actually won. Lets a renderer trace the whole line on hover, distinct
     // from the winning subset `positions` already covers -- see renderWinHighlightsList's own "line" branch.
     paylinePositions?: number[][];
@@ -72,7 +72,7 @@ const HIGHLIGHT_PERSISTENT_COLOR: Record<string, string> = {
     ways: "#c94dff",
 };
 
-// A win kind this module has no curated color for (any RoundArtifact win type outside VideoSlot's own
+// A win kind this module has no curated color for (any RoundRecord win type outside VideoSlot's own
 // five above -- e.g. "jackpot"/"legacy", or a future game's own type) still gets a real, visible
 // highlight, just not a specially-chosen one.
 const DEFAULT_PERSISTENT_COLOR = "#cccccc";
@@ -104,7 +104,7 @@ export function highlightHoverColor(kind: WinHighlightKind): string {
 }
 
 // VideoSlot's wire response calls this win kind "way", while the corresponding
-// WinComponent/RoundArtifact uses "ways".  Player presentation has one public
+// WinComponent/RoundRecord uses "ways".  Player presentation has one public
 // vocabulary, so normalize that transport-only spelling before it reaches the
 // renderer (and, consequently, its DOM/data attributes and highlight colours).
 export function canonicalWinKind(kind: WinHighlightKind): WinHighlightKind {
@@ -112,7 +112,7 @@ export function canonicalWinKind(kind: WinHighlightKind): WinHighlightKind {
 }
 
 // Both public shapes below describe wins already calculated by the same game.
-// Keeping their standard labels here prevents the Studio RoundArtifact adapter
+// Keeping their standard labels here prevents the Studio RoundRecord adapter
 // and the VideoSlot wire adapter from independently choosing visible semantics.
 // Unknown game-defined types intentionally retain the generic representation.
 export function canonicalWinLabel(
@@ -202,12 +202,12 @@ export function deriveTotalWin(response: VideoSlotRoundResponse): number | undef
 }
 
 // The one other shape this module's own WinHighlight contract is adapted from -- an arbitrary game's own
-// RoundArtifact win (see "pokie"'s src/artifact/RoundArtifactWin.ts, mirrored client-side by Studio's own
-// RoundArtifactWin in cli/studio-client/src/api/types.ts), structurally rather than by importing that
+// RoundRecord win (see "pokie"'s src/artifact/RoundRecordWin.ts, mirrored client-side by Studio's own
+// RoundRecordWin in cli/studio-client/src/api/types.ts), structurally rather than by importing that
 // type directly (this module stays a standalone static asset with no runtime dependency on either "pokie"
 // or Studio -- same convention VideoSlotRoundResponse's own doc comment already follows). Every field read
 // below is already computed by the game's own win evaluation pipeline; this adapter only ever reshapes it.
-export type GenericRoundArtifactWin = {
+export type GenericRoundRecordWin = {
     type: string;
     id: string;
     symbolId: string | number | null;
@@ -216,13 +216,13 @@ export type GenericRoundArtifactWin = {
     metadata?: Record<string, unknown>;
 };
 
-// RoundArtifactWin.metadata carries no discriminated type client-side, so this only ever trusts a
+// RoundRecordWin.metadata carries no discriminated type client-side, so this only ever trusts a
 // "definition" that's actually shaped like one: an array with exactly one row index per reel on this
 // screen. Anything else -- absent (every win type that never carries a full configured payline: ways,
 // cluster, scatter, value, jackpot, legacy, a Stake Engine import's synthetic aggregate), malformed, or
 // sized for a different reel count -- falls back to "no path for this win", never a fabricated line. Mirrors
 // Studio's own former PaylineOverlay.resolveLineDefinition, now unified into this one shared adapter.
-function resolveRoundArtifactLineDefinition(win: GenericRoundArtifactWin, reelCount: number): number[] | undefined {
+function resolveRoundRecordLineDefinition(win: GenericRoundRecordWin, reelCount: number): number[] | undefined {
     const raw = win.metadata?.["definition"];
     if (!Array.isArray(raw) || raw.length !== reelCount || !raw.every((row) => typeof row === "number")) {
         return undefined;
@@ -232,16 +232,16 @@ function resolveRoundArtifactLineDefinition(win: GenericRoundArtifactWin, reelCo
 
 // The single game-generic counterpart to deriveWinHighlights above -- both produce the exact same
 // WinHighlight contract renderPlayer.ts's own applyPersistentHighlights/renderWinHighlightsList already
-// render, so a game-specific VideoSlot(WithFreeGames) response and an arbitrary game's own RoundArtifact
+// render, so a game-specific VideoSlot(WithFreeGames) response and an arbitrary game's own RoundRecord
 // converge on one shared presentation rather than each having its own renderer. This is what
 // cli/studio-client/src/components/common/CanonicalPlayerView.tsx (Studio's own single canonical "screen,
 // with wins" entrypoint, mounted via GameScreenView -- Play, Replay, sampled rounds, and Outcome Library
 // inspection all render through it) calls to resolve a step's own highlighted/payline positions, before
 // mounting renderPlayer.ts's own DOM functions directly against the result -- see CanonicalPlayerView's
 // own doc comment.
-export function deriveWinHighlightsFromRoundArtifactWins(wins: readonly GenericRoundArtifactWin[], reelCount: number): WinHighlight[] {
+export function deriveWinHighlightsFromRoundRecordWins(wins: readonly GenericRoundRecordWin[], reelCount: number): WinHighlight[] {
     return wins.map((win) => {
-        const definition = resolveRoundArtifactLineDefinition(win, reelCount);
+        const definition = resolveRoundRecordLineDefinition(win, reelCount);
         const kind = canonicalWinKind(win.type);
         const positions = win.winningPositions.map((position) => [...position]);
         return {

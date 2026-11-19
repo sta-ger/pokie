@@ -25,12 +25,12 @@ export type PreGeneratedRoundBuildOptions<T extends string | number = string> = 
 // produced by a PreGeneratedOutcomeSourcing implementation (InMemoryPreGeneratedOutcomeSource,
 // OutcomeLibraryBundleOutcomeSource, or reproduced by PreGeneratedRoundReplayer), never a second calculation
 // path. `selection.outcome.artifact` is referenced directly (already deeply frozen/immutable by
-// buildRoundArtifact/buildWeightedOutcomeLibrary), never copied or mutated.
+// buildRoundRecord/buildWeightedOutcomeLibrary), never copied or mutated.
 //
 // Fails fast with PreGeneratedRoundBuildError — before any result is ever returned — on: a `selection` whose
 // own libraryId/libraryHash doesn't match the caller's expected identity, a `selection` that fails
 // PreGeneratedOutcomeSelectionValidator (non-empty libraryId/outcome.id, valid-format libraryHash, positive-safe-
-// integer weight/totalWeight, weight <= totalWeight, or an artifact that fails RoundArtifactValidator — the same
+// integer weight/totalWeight, weight <= totalWeight, or an artifact that fails RoundRecordValidator — the same
 // check PreGeneratedSpinCommandHandler itself already runs immediately after drawing, redundant here on purpose
 // as a defensive backstop for any other caller of this function), an invalid runtime.roundId/sessionId, a
 // non-finite runtime.balanceBefore/balanceAfter, a malformed runtime.transactions entry, or content that isn't

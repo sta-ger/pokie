@@ -1,13 +1,13 @@
 import {
-    RoundArtifact,
-    RoundArtifactProvenance,
+    RoundRecord,
+    RoundRecordProvenance,
     ValueWinComponent,
     WinEvaluationResult,
     WinningValue,
-    buildRoundArtifact,
+    buildRoundRecord,
 } from "@fromstan/pokie";
 
-export const testProvenance: RoundArtifactProvenance = {
+export const testProvenance: RoundRecordProvenance = {
     game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     pokieVersion: "1.3.0",
 };
@@ -20,7 +20,7 @@ function winEvaluationResultFor(totalWin: number): WinEvaluationResult<string> {
         });
 }
 
-// A single-step RoundArtifact, with everything overridable — stake fixed at 1 by default, so payoutMultiplier
+// A single-step RoundRecord, with everything overridable — stake fixed at 1 by default, so payoutMultiplier
 // equals totalWin exactly unless a different stake is given. Used across the weightedoutcome test suite to
 // build small, hand-computable artifacts without depending on real reel/paytable randomness.
 export function artifactWith(options: {
@@ -28,9 +28,9 @@ export function artifactWith(options: {
     totalWin: number;
     stake?: number;
     betMode?: string;
-    provenance?: RoundArtifactProvenance;
-}): RoundArtifact<string> {
-    return buildRoundArtifact({
+    provenance?: RoundRecordProvenance;
+}): RoundRecord<string> {
+    return buildRoundRecord({
         roundId: options.roundId,
         provenance: options.provenance ?? testProvenance,
         betMode: options.betMode,
@@ -39,6 +39,6 @@ export function artifactWith(options: {
     });
 }
 
-export function artifactWithTotalWin(roundId: string, totalWin: number): RoundArtifact<string> {
+export function artifactWithTotalWin(roundId: string, totalWin: number): RoundRecord<string> {
     return artifactWith({roundId, totalWin});
 }

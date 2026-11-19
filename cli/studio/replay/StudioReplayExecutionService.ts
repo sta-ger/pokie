@@ -1,11 +1,11 @@
-import {projectPokieWasmRoundArtifact} from "../../../src/wasm/node/PokieWasmFileRuntimeAdapter.js";
+import {projectPokieWasmRoundRecord} from "../../../src/wasm/node/PokieWasmFileRuntimeAdapter.js";
 import {collectPokieWasmReplay} from "../../../src/wasm/PokieWasmReplay.js";
 import type {SessionCommandResult} from "../../../src/runtime/SessionRuntimeHandling.js";
 import {deepFreeze} from "../../../src/internal/deepFreeze.js";
 import {
     ReplayRecorder, computeAuditRoundHash, validateAuditReplayDescriptor, toCanonicalJson,
-    buildLogicalRoundArtifact, type LogicalRound, type CascadeResultProviding,
-    buildRoundArtifactFromSession,
+    buildLogicalRoundRecord, type LogicalRound, type CascadeResultProviding,
+    buildRoundRecordFromSession,
     captureInitialPokieSessionState,
     captureRoundPokieSessionState,
     captureScreen,
@@ -23,14 +23,14 @@ import {
     PokieGame,
     PokieGameContext,
     PokieGameManifest,
-    PokieJsonRoundArtifactProjector,
+    PokieJsonRoundRecordProjector,
     PokieProject,
     PokieSessionState,
     PreGeneratedRoundReplayDescriptor,
     ReplayDescriptor,
     resolveGameSessionSerializer,
     resolveOutcomeLibraryModeName,
-    RoundArtifact,
+    RoundRecord,
     SeededWeightedOutcomeRandomSource,
     SeededPokieWasmHost,
     VideoSlotSessionHandling,
@@ -148,7 +148,7 @@ export class StudioReplayExecutionService {
     // Retain the already-settled draw, never draw again to obtain an export. The usual replay
     // repository and durable lifecycle supply Recent, inspection and download after restart.
     // An unseeded draw remains inspectable/exportable without claiming exact reproduction.
-    public recordOutcomeSourceSample(projectRoot: string, artifact: RoundArtifact, modeName: string, replay?: PreGeneratedRoundReplayDescriptor): StudioReplayJobView {
+    public recordOutcomeSourceSample(projectRoot: string, artifact: RoundRecord, modeName: string, replay?: PreGeneratedRoundReplayDescriptor): StudioReplayJobView {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const sessionId = this.createId();
         const startedAt = this.now();
@@ -168,7 +168,7 @@ export class StudioReplayExecutionService {
                 sessionId, game: artifact.provenance.game, seed: replay?.seed ?? null, round: 1,
                 totalBet: artifact.stake, totalWin: artifact.totalWin, screen: artifact.screen.map((row) => [...row]),
                 timestamp: replay?.timestamp ?? startedAt, durationMs: 0,
-                artifact: new PokieJsonRoundArtifactProjector().project(artifact),
+                artifact: new PokieJsonRoundRecordProjector().project(artifact),
                 ...(replay === undefined ? {} : {outcomeSource: replay}),
             },
         };
@@ -558,7 +558,7 @@ export class StudioReplayExecutionService {
                 durationMs: record.durationMs,
                 ...(record.unit ? {unit: record.unit} : {}), ...(record.entryCommands ? {commands: record.entryCommands} : {}), ...(logicalRound ? {logicalRound} : {}),
                 artifact: logicalRound && this.hasVideoSlotShape(session)
-                    ? new PokieJsonRoundArtifactProjector().project(buildLogicalRoundArtifact(logicalRound, buildRoundArtifactFromSession(session, {roundId: logicalRound.id, stake: logicalRound.totalStake, provenance: {game: manifest, pokieVersion: this.pokieVersion, ...(record.configHash ? {configHash: record.configHash} : {})}})))
+                    ? new PokieJsonRoundRecordProjector().project(buildLogicalRoundRecord(logicalRound, buildRoundRecordFromSession(session, {roundId: logicalRound.id, stake: logicalRound.totalStake, provenance: {game: manifest, pokieVersion: this.pokieVersion, ...(record.configHash ? {configHash: record.configHash} : {})}})))
                     : this.buildArtifact(session, manifest, record, finalResult, this.mergeDebugPayloads(stateAfterFinal)),
                 ...(stateBeforeFinal !== undefined ? {stateBefore: this.toPublicSessionState(stateBeforeFinal)} : {}),
                 ...(stateAfterFinal !== undefined ? {stateAfter: this.toPublicSessionState(stateAfterFinal)} : {}),
@@ -614,7 +614,7 @@ export class StudioReplayExecutionService {
                 // PokieWasmRound.screen is reel-major, the same DTO shape ReplayDescriptor
                 // receives from ordinary sessions. Preserve each reel instead of transposing it.
                 screen: finalRound === undefined ? null : finalRound.screen.map((reel) => [...reel]),
-                ...(finalRound && runtime.manifest.capabilities.includes("artifact.inspect") ? {artifact: projectPokieWasmRoundArtifact(finalRound, {game: record.game, pokieVersion: this.pokieVersion, ...(record.configHash ? {configHash: record.configHash} : {})}, `wasm:replay:${record.seed}:${record.round}`)} : {}),
+                ...(finalRound && runtime.manifest.capabilities.includes("artifact.inspect") ? {artifact: projectPokieWasmRoundRecord(finalRound, {game: record.game, pokieVersion: this.pokieVersion, ...(record.configHash ? {configHash: record.configHash} : {})}, `wasm:replay:${record.seed}:${record.round}`)} : {}),
                 ...(finalRound?.logicalRound ? {logicalRound: finalRound.logicalRound} : {}),
                 ...(finalRound?.sequenceSelections ? {sequenceSelections: finalRound.sequenceSelections, sequenceStatistics: finalRound.sequenceStatistics} : {}),
                 timestamp: record.startedAt,
@@ -700,7 +700,7 @@ export class StudioReplayExecutionService {
         const sessionId = this.createId();
         const outcomeSource = new OutcomeLibraryBundleOutcomeSource(project.rootPath, modeName);
         let roundsRemaining = record.round;
-        let lastArtifact: RoundArtifact | undefined;
+        let lastArtifact: RoundRecord | undefined;
         let lastSelection: {libraryId: string; libraryHash: string; outcomeId: string; weight: number} | undefined;
         try {
             while (roundsRemaining > 0) {
@@ -753,7 +753,7 @@ export class StudioReplayExecutionService {
             screen: lastArtifact.screen.map((row) => [...row]),
             timestamp: record.startedAt,
             durationMs: record.durationMs,
-            artifact: new PokieJsonRoundArtifactProjector().project(lastArtifact),
+            artifact: new PokieJsonRoundRecordProjector().project(lastArtifact),
             ...(record.seed === undefined
                 ? {}
                 : {
@@ -835,7 +835,7 @@ export class StudioReplayExecutionService {
     }
 
     // Feature-detected exactly like captureScreen() above: only a video-slot session (getSymbolsCombination
-    // + getWinEvaluationResult) has anything buildRoundArtifactFromSession can read, so any other game
+    // + getWinEvaluationResult) has anything buildRoundRecordFromSession can read, so any other game
     // simply gets no artifact (undefined), same "no screen to capture" fallback captureScreen already
     // uses. `roundId` is deterministic (seed+round, not a random id) so two replays of the exact same
     // seed+round produce the exact same artifact hash when the outcome genuinely reproduces — that
@@ -850,14 +850,14 @@ export class StudioReplayExecutionService {
         if (!this.hasVideoSlotShape(session)) {
             return undefined;
         }
-        const artifact = buildRoundArtifactFromSession(session, {
+        const artifact = buildRoundRecordFromSession(session, {
             roundId: `replay:${record.seed ?? "no-seed"}:${record.round}`,
             stake: result.stake,
             betMode: result.mode,
             provenance: {game: manifest, pokieVersion: this.pokieVersion, ...(record.configHash !== undefined ? {configHash: record.configHash} : {})},
             ...(debug !== undefined ? {debug} : {}),
         });
-        return new PokieJsonRoundArtifactProjector().project(artifact);
+        return new PokieJsonRoundRecordProjector().project(artifact);
     }
 
     private hasVideoSlotShape(session: unknown): session is VideoSlotSessionHandling {

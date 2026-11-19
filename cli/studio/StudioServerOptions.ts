@@ -130,7 +130,7 @@ export type StudioServerOptions = {
     // certificationService/stakeEngineExportService.
     outcomeLibraryGenerateService?: StudioOutcomeLibraryGenerateService;
     // Drives the Project Dashboard's Certification tab (POST /api/project/certification/validate-source,
-    // /build) — built directly on top of pokie's own CertificationEvidenceBundleBuilder/
+    // /build) — built directly on top of pokie's own CertificationPackBuilder/
     // OutcomeLibraryBundleValidator; no `loadGame` needed (same reasoning as deploymentService), but
     // does need `pokieVersion` (embedded in the built manifest's own `generatedBy`/`pokieVersion`
     // fields), same reasoning as homeService/blueprintService.

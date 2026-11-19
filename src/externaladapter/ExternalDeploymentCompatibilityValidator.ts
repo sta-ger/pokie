@@ -1,11 +1,11 @@
-import type {RoundArtifact} from "../artifact/RoundArtifact.js";
+import type {RoundRecord} from "../artifact/RoundRecord.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import {WeightedOutcomeLibraryValidator} from "../weightedoutcome/WeightedOutcomeLibraryValidator.js";
 import type {WeightedOutcome} from "../weightedoutcome/WeightedOutcome.js";
 import {
     MULTI_MODE_DEPLOYMENT_CAPABILITY,
-    ROUND_ARTIFACT_DEBUG_METADATA_CAPABILITY,
-    ROUND_ARTIFACT_FEATURE_EVENTS_CAPABILITY,
+    ROUND_RECORD_DEBUG_METADATA_CAPABILITY,
+    ROUND_RECORD_FEATURE_EVENTS_CAPABILITY,
 } from "./ExternalDeploymentCapability.js";
 import type {ExternalDeploymentCompatibilityContext} from "./ExternalDeploymentCompatibilityContext.js";
 import type {ExternalDeploymentCompatibilityValidating} from "./ExternalDeploymentCompatibilityValidating.js";
@@ -35,11 +35,11 @@ function provenanceKeyOf<T extends string | number>(mode: ExternalDeploymentMode
     };
 }
 
-function everyArtifactOf<T extends string | number>(modes: readonly ExternalDeploymentModeInput<T>[]): readonly RoundArtifact<T>[] {
+function everyArtifactOf<T extends string | number>(modes: readonly ExternalDeploymentModeInput<T>[]): readonly RoundRecord<T>[] {
     return modes.flatMap((mode) => mode.library.outcomes.map((outcome: WeightedOutcome<T>) => outcome.artifact));
 }
 
-function hasNonNumericSymbol<T extends string | number>(artifact: RoundArtifact<T>): boolean {
+function hasNonNumericSymbol<T extends string | number>(artifact: RoundRecord<T>): boolean {
     const screens = [artifact.screen, ...artifact.steps.map((step) => step.screen)];
     return screens.some((screen) => screen.some((row) => row.some((symbol) => typeof symbol !== "number")));
 }
@@ -175,7 +175,7 @@ export class ExternalDeploymentCompatibilityValidator<T extends string | number 
         });
     }
 
-    private validateMinPokieVersion(target: ExternalDeploymentTarget<T>, artifacts: readonly RoundArtifact<T>[], issues: ValidationIssue[]): void {
+    private validateMinPokieVersion(target: ExternalDeploymentTarget<T>, artifacts: readonly RoundRecord<T>[], issues: ValidationIssue[]): void {
         const minVersion = target.requirements.minPokieVersion;
         if (minVersion === undefined) {
             return;
@@ -202,7 +202,7 @@ export class ExternalDeploymentCompatibilityValidator<T extends string | number 
         });
     }
 
-    private validateSymbolAlphabet(target: ExternalDeploymentTarget<T>, artifacts: readonly RoundArtifact<T>[], issues: ValidationIssue[]): void {
+    private validateSymbolAlphabet(target: ExternalDeploymentTarget<T>, artifacts: readonly RoundRecord<T>[], issues: ValidationIssue[]): void {
         if (target.requirements.symbolAlphabet !== "numeric") {
             return;
         }
@@ -211,31 +211,31 @@ export class ExternalDeploymentCompatibilityValidator<T extends string | number 
             issues.push({
                 code: "external-deployment-symbol-alphabet-invalid",
                 severity: "error",
-                message: `Target "${target.id}" requires a numeric symbol alphabet, but at least one deployed RoundArtifact's screen contains a non-numeric symbol.`,
+                message: `Target "${target.id}" requires a numeric symbol alphabet, but at least one deployed RoundRecord's screen contains a non-numeric symbol.`,
                 details: {targetId: target.id},
             });
         }
     }
 
-    private validateFeatureCapabilities(target: ExternalDeploymentTarget<T>, artifacts: readonly RoundArtifact<T>[], issues: ValidationIssue[]): void {
+    private validateFeatureCapabilities(target: ExternalDeploymentTarget<T>, artifacts: readonly RoundRecord<T>[], issues: ValidationIssue[]): void {
         const usesFeatureEvents = artifacts.some(
             (artifact) => (artifact.featureEvents?.length ?? 0) > 0 || artifact.steps.some((step) => (step.featureEvents?.length ?? 0) > 0),
         );
-        if (usesFeatureEvents && !target.capabilities.includes(ROUND_ARTIFACT_FEATURE_EVENTS_CAPABILITY)) {
+        if (usesFeatureEvents && !target.capabilities.includes(ROUND_RECORD_FEATURE_EVENTS_CAPABILITY)) {
             issues.push({
                 code: "external-deployment-feature-events-unsupported",
                 severity: "error",
-                message: `Target "${target.id}" does not declare the "${ROUND_ARTIFACT_FEATURE_EVENTS_CAPABILITY}" capability, but the deployed content includes feature events.`,
+                message: `Target "${target.id}" does not declare the "${ROUND_RECORD_FEATURE_EVENTS_CAPABILITY}" capability, but the deployed content includes feature events.`,
                 details: {targetId: target.id},
             });
         }
 
         const usesDebugMetadata = artifacts.some((artifact) => artifact.debug !== undefined || artifact.steps.some((step) => step.debug !== undefined));
-        if (usesDebugMetadata && !target.capabilities.includes(ROUND_ARTIFACT_DEBUG_METADATA_CAPABILITY)) {
+        if (usesDebugMetadata && !target.capabilities.includes(ROUND_RECORD_DEBUG_METADATA_CAPABILITY)) {
             issues.push({
                 code: "external-deployment-debug-metadata-unsupported",
                 severity: "error",
-                message: `Target "${target.id}" does not declare the "${ROUND_ARTIFACT_DEBUG_METADATA_CAPABILITY}" capability, but the deployed content includes debug metadata.`,
+                message: `Target "${target.id}" does not declare the "${ROUND_RECORD_DEBUG_METADATA_CAPABILITY}" capability, but the deployed content includes debug metadata.`,
                 details: {targetId: target.id},
             });
         }

@@ -9,7 +9,7 @@ export type PaytableData = Record<string, Record<string, number>>;
 
 // The shared "symbol -> match count -> payout" presentation for any round-inspection surface that has
 // runtime-provided paytable data to show. Nothing in this client derives or recomputes a payout table
-// from wins: RoundArtifact records only an evaluated result.  RoundArtifactInspector normally receives
+// from wins: RoundRecord records only an evaluated result.  RoundRecordInspector normally receives
 // the real static table from the captured session initialPayload; this component's unavailable state is
 // reserved for an artifact-only import with neither that snapshot nor an explicit table -- never a
 // partial table silently reconstructed from the symbols that happened to win.

@@ -4,7 +4,7 @@ import {POKIE_WASM_ADAPTER, type PokieWasmComponentManifest} from "./PokieWasmCo
 
 // An PokieWasmComponentManifest's own static type guarantees nothing about a value that actually arrives at
 // runtime -- always deserialized from a sidecar JSON file (see WasmProjectTargetAdapter) -- so every field is
-// read through this loosened view, the same runtime-guard idiom RoundArtifactValidator/
+// read through this loosened view, the same runtime-guard idiom RoundRecordValidator/
 // ExternalDeploymentTargetDescriptorValidator use for the identical reason.
 type Loose<X> = {[K in keyof X]?: unknown};
 

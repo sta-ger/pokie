@@ -1,5 +1,5 @@
-import type {RoundArtifact} from "../artifact/RoundArtifact.js";
-import {RoundArtifactValidator} from "../artifact/RoundArtifactValidator.js";
+import type {RoundRecord} from "../artifact/RoundRecord.js";
+import {RoundRecordValidator} from "../artifact/RoundRecordValidator.js";
 import {deepFreeze} from "../internal/deepFreeze.js";
 import {InvalidJsonValueError} from "../json/InvalidJsonValueError.js";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
@@ -12,18 +12,18 @@ import type {WeightedOutcome} from "./WeightedOutcome.js";
 export type WeightedOutcomeInput<T extends string | number = string> = {
     id: string;
     weight: number;
-    artifact: RoundArtifact<T>;
+    artifact: RoundRecord<T>;
 };
 
 export type WeightedOutcomeLibraryBuildOptions<T extends string | number = string> = {
     libraryId: string;
     outcomes: readonly WeightedOutcomeInput<T>[];
     schemaVersion?: number;
-    // A real RoundArtifactValidator always runs against every outcome's artifact, regardless of this option —
+    // A real RoundRecordValidator always runs against every outcome's artifact, regardless of this option —
     // this is only ever an *additional* check, never a replacement for it (so a permissive custom validator can
-    // never let a malformed RoundArtifact through). Use it to layer on extra, library- or game-specific
-    // invariants beyond what RoundArtifactValidator already covers.
-    artifactValidator?: ValidationRule<RoundArtifact<T>>;
+    // never let a malformed RoundRecord through). Use it to layer on extra, library- or game-specific
+    // invariants beyond what RoundRecordValidator already covers.
+    artifactValidator?: ValidationRule<RoundRecord<T>>;
 };
 
 // A single outcome's provenance/betMode/stake, compared against the library's first outcome to enforce that
@@ -38,7 +38,7 @@ type OutcomeHomogeneityKey = {
     stake: number;
 };
 
-function homogeneityKeyOf<T extends string | number>(artifact: RoundArtifact<T>): OutcomeHomogeneityKey {
+function homogeneityKeyOf<T extends string | number>(artifact: RoundRecord<T>): OutcomeHomogeneityKey {
     return {
         gameId: artifact.provenance.game.id,
         gameVersion: artifact.provenance.game.version,
@@ -49,11 +49,11 @@ function homogeneityKeyOf<T extends string | number>(artifact: RoundArtifact<T>)
     };
 }
 
-// The one place a WeightedOutcomeLibrary is assembled — always from already-built RoundArtifacts, never a
+// The one place a WeightedOutcomeLibrary is assembled — always from already-built RoundRecords, never a
 // second calculation path. Fails fast with WeightedOutcomeLibraryBuildError — before any library is ever
 // returned — on: an invalid libraryId/schemaVersion, an empty outcomes list, an invalid or duplicate outcome
 // id, an invalid (non-finite or <= 0) weight or artifact.payoutMultiplier, an invalid (non-finite or <= 0)
-// artifact.stake, an artifact that fails RoundArtifactValidator (always run — see "artifact validation" below),
+// artifact.stake, an artifact that fails RoundRecordValidator (always run — see "artifact validation" below),
 // a total weight that isn't a finite number > 0 (covers both "sums to zero" and "the sum of otherwise-finite
 // weights overflows to Infinity"), content that isn't JSON-safe, or a library whose outcomes don't all share
 // the same game id/version/configHash/pokieVersion/betMode/stake.
@@ -62,19 +62,19 @@ function homogeneityKeyOf<T extends string | number>(artifact: RoundArtifact<T>)
 // (by definition) and contributes nothing to any statistic, so admitting it would only let a caller believe a
 // jackpot (or any other outcome) is "in" the library's analysis when it can never actually be drawn.
 //
-// Artifact validation — RoundArtifactValidator always runs against every outcome's artifact, whether or not an
+// Artifact validation — RoundRecordValidator always runs against every outcome's artifact, whether or not an
 // `artifactValidator` option is given; that option can only ever add further checks on top; a permissive custom
-// validator (e.g. one that always returns no issues) can never let a malformed RoundArtifact through.
+// validator (e.g. one that always returns no issues) can never let a malformed RoundRecord through.
 //
 // That last check — "library homogeneity" — exists because a WeightedOutcomeLibrary models the distribution of
 // results for one specific paid bet (see docs/weighted-outcome-library.md): every outcome's artifact.stake must
 // therefore be the same positive amount, not a mix of a real stake and a `0` for a free-games round captured as
-// its own outcome. A free-games (or any other multi-step) round belongs inside the *same* RoundArtifact as the
-// base-game spin that paid for it — as additional steps (RoundArtifact already supports this, see
-// buildRoundArtifact's own multi-step support) — not as a second, separate, zero-stake outcome mixed into this
+// its own outcome. A free-games (or any other multi-step) round belongs inside the *same* RoundRecord as the
+// base-game spin that paid for it — as additional steps (RoundRecord already supports this, see
+// buildRoundRecord's own multi-step support) — not as a second, separate, zero-stake outcome mixed into this
 // library.
 //
-// The returned library is deeply frozen (see deepFreeze): each outcome's own RoundArtifact is already immutable
+// The returned library is deeply frozen (see deepFreeze): each outcome's own RoundRecord is already immutable
 // by construction (see WeightedOutcome's own doc comment), so nothing here needs to deep-copy it. Outcomes are
 // canonically sorted by id before freezing, so the exact same set of outcomes always produces the exact same
 // library — and therefore the exact same hash and WeightedOutcomeLibraryAnalyzer output — no matter what order
@@ -101,8 +101,8 @@ export function buildWeightedOutcomeLibrary<T extends string | number = string>(
             `schemaVersion must be the current supported version (${WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION}), got ${String(schemaVersion)}.`,
         );
     }
-    const roundArtifactValidator = new RoundArtifactValidator<T>();
-    const extraArtifactValidator: ValidationRule<RoundArtifact<T>> | undefined = options.artifactValidator;
+    const roundRecordValidator = new RoundRecordValidator<T>();
+    const extraArtifactValidator: ValidationRule<RoundRecord<T>> | undefined = options.artifactValidator;
 
     const seenIds = new Set<string>();
     let reference: OutcomeHomogeneityKey | undefined;
@@ -143,7 +143,7 @@ export function buildWeightedOutcomeLibrary<T extends string | number = string>(
         }
 
         const artifactIssues = [
-            ...roundArtifactValidator.validate(input.artifact),
+            ...roundRecordValidator.validate(input.artifact),
             ...(extraArtifactValidator?.validate(input.artifact) ?? []),
         ];
         if (artifactIssues.length > 0) {

@@ -54,7 +54,7 @@ export interface PokieGame {
     // computeGameBlueprintHash/computeBlueprintHash) — every "pokie build" output (renderBuiltGameModule)
     // implements this itself, deriving it from its own embedded blueprint rather than carrying a
     // precomputed header; a handwritten package simply has no such hash to expose. When present,
-    // SpinCommandHandler stamps this into a "full" capture's RoundArtifactProvenance.configHash for every
+    // SpinCommandHandler stamps this into a "full" capture's RoundRecordProvenance.configHash for every
     // live round it settles, so a recorded artifact can be traced back to the exact config that produced
     // it. A game that doesn't implement this simply has no configHash captured — never a fabricated one.
     /** Exact audit requires this authority for hand-authored games too: include all effective math/model collaborators.

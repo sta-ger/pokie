@@ -1049,14 +1049,14 @@ describe("PokieDevServer (integration, real loadPokieGame + fixture game package
 
 // sessionCapturePolicyMode (see PokieDevServerOptions/SessionCapturePolicy's own doc comments): the
 // versioned contract distinguishing Studio/dev's "full" round capture (a complete, inspectable
-// RoundArtifact persisted every round) from production's own "partial" default (the legacy
+// RoundRecord persisted every round) from production's own "partial" default (the legacy
 // bet/win/screen/featureState-only capture this package has always persisted). All three describe
 // blocks below drive a *real* VideoSlotSession (the playable-game fixture) through a real HTTP spin —
 // proving the whole pipeline end-to-end, not just captureRoundPokieSessionState in isolation.
 describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial round-capture contract)", () => {
     const fixtureRoot = path.join(__dirname, "..", "cli", "fixtures", "playable-game");
 
-    describe('default ("partial") — production\'s own posture, never builds a RoundArtifact', () => {
+    describe('default ("partial") — production\'s own posture, never builds a RoundRecord', () => {
         let server: PokieDevServer;
         let baseUrl: string;
 
@@ -1071,7 +1071,7 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
             await server.stop();
         });
 
-        it("stamps stateAfter.capturePolicy as partial and never persists a roundArtifact", async () => {
+        it("stamps stateAfter.capturePolicy as partial and never persists a roundRecord", async () => {
             const created = await postJson(`${baseUrl}/sessions`);
             const sessionId = created.body.sessionId as string;
 
@@ -1079,12 +1079,12 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
 
             const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
             expect(stateAfter.capturePolicy).toEqual({version: 1, mode: "partial", captureDebugPayloads: true});
-            expect("roundArtifact" in stateAfter).toBe(false);
-            expect("roundArtifactUnavailableReason" in stateAfter).toBe(false);
+            expect("roundRecord" in stateAfter).toBe(false);
+            expect("roundRecordUnavailableReason" in stateAfter).toBe(false);
         });
     });
 
-    describe('"full" — Studio/dev posture, persists a complete RoundArtifact off the real runtime-produced spin', () => {
+    describe('"full" — Studio/dev posture, persists a complete RoundRecord off the real runtime-produced spin', () => {
         let server: PokieDevServer;
         let baseUrl: string;
 
@@ -1104,7 +1104,7 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
             await server.stop();
         });
 
-        it("persists a RoundArtifact with the round's real screen/wins/steps/provenance/betMode/stake", async () => {
+        it("persists a RoundRecord with the round's real screen/wins/steps/provenance/betMode/stake", async () => {
             const created = await postJson(`${baseUrl}/sessions`);
             const sessionId = created.body.sessionId as string;
 
@@ -1112,9 +1112,9 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
 
             const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
             expect(stateAfter.capturePolicy).toEqual({version: 1, mode: "full", captureDebugPayloads: true});
-            expect(stateAfter.roundArtifactUnavailableReason).toBeUndefined();
+            expect(stateAfter.roundRecordUnavailableReason).toBeUndefined();
 
-            const artifact = stateAfter.roundArtifact as Record<string, unknown>;
+            const artifact = stateAfter.roundRecord as Record<string, unknown>;
             expect(artifact).toBeDefined();
             expect(typeof artifact.roundId).toBe("string");
             expect((artifact.roundId as string).length).toBeGreaterThan(0);
@@ -1134,7 +1134,7 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
             const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
 
             const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
-            const artifact = stateAfter.roundArtifact as Record<string, unknown>;
+            const artifact = stateAfter.roundRecord as Record<string, unknown>;
             const debug = artifact.debug as Record<string, unknown>;
             expect(debug.command).toBe("spin");
             expect(debug.credits).toBe(spun.body.credits);
@@ -1149,7 +1149,7 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
             const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
 
             const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
-            const artifact = stateAfter.roundArtifact as Record<string, unknown>;
+            const artifact = stateAfter.roundRecord as Record<string, unknown>;
             const debug = artifact.debug as Record<string, unknown>;
             expect(debug.seed).toBe("full-artifact-seed");
         });
@@ -1161,23 +1161,23 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
             const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
 
             const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
-            const artifact = stateAfter.roundArtifact as Record<string, unknown>;
+            const artifact = stateAfter.roundRecord as Record<string, unknown>;
             const debug = artifact.debug as Record<string, unknown>;
             expect("seed" in debug).toBe(false);
         });
 
-        it("gives every round its own distinct roundArtifact, matching that round's own outcome", async () => {
+        it("gives every round its own distinct roundRecord, matching that round's own outcome", async () => {
             const created = await postJson(`${baseUrl}/sessions`);
             const sessionId = created.body.sessionId as string;
 
             const firstSpin = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
             const secondSpin = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
 
-            const firstArtifact = ((firstSpin.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>).roundArtifact as Record<
+            const firstArtifact = ((firstSpin.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>).roundRecord as Record<
                 string,
                 unknown
             >;
-            const secondArtifact = ((secondSpin.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>).roundArtifact as Record<
+            const secondArtifact = ((secondSpin.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>).roundRecord as Record<
                 string,
                 unknown
             >;
@@ -1208,14 +1208,14 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
             await server.stop();
         });
 
-        it("carries the game's own authoritative configHash into the persisted RoundArtifact's provenance", async () => {
+        it("carries the game's own authoritative configHash into the persisted RoundRecord's provenance", async () => {
             const created = await postJson(`${baseUrl}/sessions`);
             const sessionId = created.body.sessionId as string;
 
             const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
 
             const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
-            const artifact = stateAfter.roundArtifact as Record<string, unknown>;
+            const artifact = stateAfter.roundRecord as Record<string, unknown>;
             expect(artifact.provenance).toEqual({
                 game: {id: "playable-game-with-config-hash", name: "Playable Game With Config Hash", version: "1.0.0"},
                 pokieVersion: "9.9.9",
@@ -1264,14 +1264,14 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
             await server.stop();
         });
 
-        it("carries the built package's resolved-model hash into the persisted RoundArtifact's provenance", async () => {
+        it("carries the built package's resolved-model hash into the persisted RoundRecord's provenance", async () => {
             const created = await postJson(`${baseUrl}/sessions`);
             const sessionId = created.body.sessionId as string;
 
             const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
 
             const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
-            const artifact = stateAfter.roundArtifact as Record<string, unknown>;
+            const artifact = stateAfter.roundRecord as Record<string, unknown>;
             expect(artifact.provenance).toEqual({
                 game: {id: "built-blueprint-game", name: "Built Blueprint Game", version: "1.0.0"},
                 pokieVersion: "9.9.9",
@@ -1296,26 +1296,26 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
             await server.stop();
         });
 
-        it("sets roundArtifactUnavailableReason instead of roundArtifact", async () => {
+        it("sets roundRecordUnavailableReason instead of roundRecord", async () => {
             const created = await postJson(`${baseUrl}/sessions`);
             const sessionId = created.body.sessionId as string;
 
             const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
 
             const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
-            expect(stateAfter.roundArtifact).toBeUndefined();
-            expect(stateAfter.roundArtifactUnavailableReason).toEqual(expect.stringContaining("VideoSlotSessionHandling"));
+            expect(stateAfter.roundRecord).toBeUndefined();
+            expect(stateAfter.roundRecordUnavailableReason).toEqual(expect.stringContaining("VideoSlotSessionHandling"));
         });
     });
 
-    describe("reading a legacy partial session record — never fabricates capturePolicy/roundArtifact on the way back out", () => {
+    describe("reading a legacy partial session record — never fabricates capturePolicy/roundRecord on the way back out", () => {
         const manifest: PokieGameManifest = {id: "legacy-game", name: "Legacy Game", version: "1.0.0"};
         let server: PokieDevServer;
         let baseUrl: string;
         let sessionRepository: InMemorySessionRepository;
         const legacySessionId = "legacy-session";
-        // Exactly the shape a session captured before SessionCapturePolicy/roundArtifact ever existed
-        // would have had — no `capturePolicy`, no `roundArtifact`, nothing this feature ever backfills.
+        // Exactly the shape a session captured before SessionCapturePolicy/roundRecord ever existed
+        // would have had — no `capturePolicy`, no `roundRecord`, nothing this feature ever backfills.
         const legacyState: PokieSessionState = {bet: 5, win: 10, screen: [["legacy"]]};
 
         beforeEach(async () => {
@@ -1341,7 +1341,7 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
             expect(before?.state).toEqual(legacyState);
         });
 
-        it("returns a compatible partial record verbatim without backfilling capturePolicy/roundArtifact", async () => {
+        it("returns a compatible partial record verbatim without backfilling capturePolicy/roundRecord", async () => {
             const game = createFakeGame(manifest);
             const state = captureInitialPokieSessionState(undefined, game.createSession(), undefined, true, game);
             await sessionRepository.save(legacySessionId, state);
@@ -1352,8 +1352,8 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
             const stateAfter = (body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
             expect(stateAfter).toEqual(state);
             expect("capturePolicy" in stateAfter).toBe(false);
-            expect("roundArtifact" in stateAfter).toBe(false);
-            expect("roundArtifactUnavailableReason" in stateAfter).toBe(false);
+            expect("roundRecord" in stateAfter).toBe(false);
+            expect("roundRecordUnavailableReason" in stateAfter).toBe(false);
             expect(await sessionRepository.loadVersioned(legacySessionId)).toEqual(before);
         });
     });

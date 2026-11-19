@@ -25,7 +25,7 @@ export type OutcomeLibraryBundleValidateOptions = {
 // Not generic over T: unlike OutcomeLibraryBundleReading/Writing, nothing in this method's own signature is
 // ever typed by a particular T (it validates a directory path and returns diagnostics, never a typed in-memory
 // value) — OutcomeLibraryBundleValidator itself still uses T internally (to rebuild each mode's library with
-// the right RoundArtifact<T> type during a deep check), but that's an implementation detail, not part of this
+// the right RoundRecord<T> type during a deep check), but that's an implementation detail, not part of this
 // contract.
 export interface OutcomeLibraryBundleValidating {
     validate(bundleDir: string, options?: OutcomeLibraryBundleValidateOptions): Promise<ValidationIssue[]>;

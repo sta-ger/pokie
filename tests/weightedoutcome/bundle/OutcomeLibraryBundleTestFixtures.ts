@@ -1,17 +1,17 @@
 import {
     OutcomeLibraryBundleModeInput,
-    RoundArtifact,
-    RoundArtifactProvenance,
+    RoundRecord,
+    RoundRecordProvenance,
     ValueWinComponent,
     WeightedOutcomeInput,
     WeightedOutcomeLibrary,
     WinEvaluationResult,
     WinningValue,
-    buildRoundArtifact,
+    buildRoundRecord,
     buildWeightedOutcomeLibrary,
 } from "@fromstan/pokie";
 
-export const outcomeLibraryBundleTestProvenance: RoundArtifactProvenance = {
+export const outcomeLibraryBundleTestProvenance: RoundRecordProvenance = {
     game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     pokieVersion: "1.3.0",
 };
@@ -22,8 +22,8 @@ function winEvaluationResultFor(totalWin: number): WinEvaluationResult<string> {
         : new WinEvaluationResult<string>({valueWins: [new ValueWinComponent<string>(new WinningValue<string>("A", [[0, 0]], totalWin))]});
 }
 
-function outcomeArtifact(roundId: string, totalWin: number): RoundArtifact<string> {
-    return buildRoundArtifact({
+function outcomeArtifact(roundId: string, totalWin: number): RoundRecord<string> {
+    return buildRoundRecord({
         roundId,
         provenance: outcomeLibraryBundleTestProvenance,
         betMode: "base",

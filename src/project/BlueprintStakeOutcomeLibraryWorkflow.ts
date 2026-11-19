@@ -54,7 +54,7 @@ import {
     type ArtifactBuildPreflight,
 } from "./ArtifactBuildOptions.js";
 
-// A generated round artifact is materially larger than the raw reel-stop tuple which produced it. The
+// A generated round record is materially larger than the raw reel-stop tuple which produced it. The
 // generic exact-generator cap protects a sweep with tens of millions of tuples, but it cannot make a
 // hundreds-of-thousands-entry artifact library fit in a normal CLI heap. Managed Blueprint/package exports
 // therefore use a deterministic, explicitly recorded coverage sample above this planning limit unless the
@@ -522,7 +522,7 @@ function outcomeGenerationPreflight(preflight: OutcomeLibraryGenerationPreflight
     const estimatedItemCount = preflight.expectedRawWork;
     return {
         estimatedItemCount,
-        // A generated outcome record contains a round artifact, so this intentionally conservative estimate is
+        // A generated outcome record contains a round record, so this intentionally conservative estimate is
         // a planning signal only; the precise output size is unknown until grids have been deduplicated.
         estimatedBytes: estimatedItemCount * BigInt(1024),
         ...(estimatedItemCount > BigInt(10_000) || preflight.strategy === "bounded-coverage"

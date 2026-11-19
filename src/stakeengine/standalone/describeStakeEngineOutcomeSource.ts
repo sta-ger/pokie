@@ -14,7 +14,7 @@ export function describeStakeEngineOutcomeSource(): CanonicalOutcomeSourceDescri
         streaming: false,
         limitations: [
             "Reads an entire mode's own lookup CSV and books into memory at once, never a single-outcome random-access read.",
-            "Normalizes verbatim Stake Engine events into StakeEngineOutcomeRecord -- never reconstructs a RoundArtifact-shaped step model or a pokie-manifest.json provenance record (see StakeEngineOutcomeRecord's own doc comment).",
+            "Normalizes verbatim Stake Engine events into StakeEngineOutcomeRecord -- never reconstructs a RoundRecord-shaped step model or a pokie-manifest.json provenance record (see StakeEngineOutcomeRecord's own doc comment).",
             "Never re-derives or recovers the game model/blueprint that produced these outcomes.",
         ],
     };

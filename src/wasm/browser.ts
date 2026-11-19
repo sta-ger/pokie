@@ -5,7 +5,7 @@ export * from "./math/SharedSlotMath.js";
 export * from "./PokieWasmCommands.js";
 export type {CanonicalWasmGameModel, DeclarativeWasmModel} from "./DeclarativeWasmModel.js";
 export * from "./PokieWasmWorkerClient.js";
-export * from "./projectPokieWasmRoundArtifact.js";
+export * from "./projectPokieWasmRoundRecord.js";
 export * from "./loadPokieWasmBrowserArtifact.js";
 export * from "./PokieWasmReplay.js";
 export * from "./createBlueprintWasmArtifact.js";

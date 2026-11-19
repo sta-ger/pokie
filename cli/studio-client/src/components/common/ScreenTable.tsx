@@ -2,7 +2,7 @@ import type {ReactNode} from "react";
 import {Table} from "@mantine/core";
 
 // A plain, unhighlighted reel-major screen preview -- `screen` is reel-major (screen[reelIndex][rowIndex]),
-// the same orientation as everywhere else in Pokie (SymbolsCombination/RoundArtifact.screen/reelsSymbols,
+// the same orientation as everywhere else in Pokie (SymbolsCombination/RoundRecord.screen/reelsSymbols,
 // all indexed [reel][row]), so it's transposed here into rows before rendering. Reel count (columns) is
 // unbounded, so this always scrolls within its own container instead of expanding the page -- see the
 // stabilization pass's responsive-tables pass.

@@ -15,4 +15,4 @@ export async function loadPokieWasmFileRuntime(filePath: string, host: PokieWasm
     return instantiatePokieWasm(new Uint8Array(await fs.promises.readFile(project.rootPath)), manifestRead.manifest, host);
 }
 
-export {projectPokieWasmRoundArtifact} from "../projectPokieWasmRoundArtifact.js";
+export {projectPokieWasmRoundRecord} from "../projectPokieWasmRoundRecord.js";

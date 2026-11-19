@@ -1,8 +1,8 @@
 import type {ReelSequenceSelection} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {ScreenGeometry} from "../session/videoslot/coordinates/ScreenGeometry.js";
 import type {JsonObject} from "../json/JsonValue.js";
-import type {RoundArtifactFeatureEvent} from "./RoundArtifactFeatureEvent.js";
-import type {RoundArtifactWin} from "./RoundArtifactWin.js";
+import type {RoundRecordFeatureEvent} from "./RoundRecordFeatureEvent.js";
+import type {RoundRecordWin} from "./RoundRecordWin.js";
 
 // One logical step of a round. A plain single-step round (an ordinary spin) has exactly one; a multi-step
 // mechanic (cascades, multi-pick bonuses, ...) has one per stage — mirrors the same "one round is a sequence
@@ -17,7 +17,7 @@ export type RoundStepArtifact<T extends string | number = string> = {
     readonly sequenceSelections?: readonly ReelSequenceSelection[];
     readonly screen: readonly (readonly T[])[];
     readonly totalWin: number;
-    readonly wins: readonly RoundArtifactWin<T>[];
-    readonly featureEvents?: readonly RoundArtifactFeatureEvent[];
+    readonly wins: readonly RoundRecordWin<T>[];
+    readonly featureEvents?: readonly RoundRecordFeatureEvent[];
     readonly debug?: JsonObject;
 };

@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import fs from "fs";
-import {RoundArtifactValidator} from "../../../artifact/RoundArtifactValidator.js";
+import {RoundRecordValidator} from "../../../artifact/RoundRecordValidator.js";
 import {toCanonicalJson} from "../../../json/toCanonicalJson.js";
 import {isPositiveSafeInteger} from "../../../pregenerated/internal/isPositiveSafeInteger.js";
 import type {ValidationIssue} from "../../../validation/ValidationIssue.js";
@@ -56,7 +56,7 @@ export type StreamModeOutcomesResult<T extends string | number> = {
 
 // Consumes "outcomes" exactly once, in arrival order, in a single pass: validates each one (mirroring
 // buildWeightedOutcomeLibrary's own checks — id/weight validity, duplicate/sorted-order id, per-artifact
-// RoundArtifactValidator, payoutMultiplier/stake validity, cross-outcome homogeneity — necessarily duplicated
+// RoundRecordValidator, payoutMultiplier/stake validity, cross-outcome homogeneity — necessarily duplicated
 // here rather than reused, since buildWeightedOutcomeLibrary's own array-based implementation requires every
 // outcome up front, which is exactly what streaming exists to avoid), writes its canonical-JSON line directly to
 // "filePath" (never holding more than one outcome in memory at a time), and feeds that same line's exact bytes
@@ -84,7 +84,7 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
     announceWriting = true,
 ): Promise<StreamModeOutcomesResult<T>> {
     const issues: ValidationIssue[] = [];
-    const roundArtifactValidator = new RoundArtifactValidator<T>();
+    const roundRecordValidator = new RoundRecordValidator<T>();
     const hash = crypto.createHash("sha256");
     hash.update(`{"libraryId":${JSON.stringify(libraryId)},"outcomes":[`);
 
@@ -178,7 +178,7 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
                 continue;
             }
 
-            const artifactIssues = roundArtifactValidator.validate(outcome.artifact);
+            const artifactIssues = roundRecordValidator.validate(outcome.artifact);
             if (artifactIssues.length > 0) {
                 issues.push({
                     code: "outcome-library-bundle-write-artifact-invalid",

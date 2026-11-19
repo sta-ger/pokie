@@ -6,7 +6,7 @@ import {sequenceSelectionsEqual} from "../artifact/validateSequenceSelections.js
 import type {CascadeResultProviding} from "../session/videoslot/cascade/CascadeResultProviding.js";
 import {cloneSessionData} from "./internal/cloneSessionData.js";
 import {deepFreeze} from "../internal/deepFreeze.js";
-import {buildRoundArtifactFromSession} from "../artifact/buildRoundArtifactFromSession.js";
+import {buildRoundRecordFromSession} from "../artifact/buildRoundRecordFromSession.js";
 import type {VideoSlotSessionHandling} from "../session/videoslot/VideoSlotSessionHandling.js";
 import {validateLogicalRound, type LogicalRound, type LogicalSubround, type LogicalRoundProgressProviding} from "./LogicalRound.js";
 
@@ -328,7 +328,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
         const index = previous?.cursor ?? 0;
         const slot = session as Partial<VideoSlotSessionHandling>;
         const artifacts = typeof slot.getWinEvaluationResult === "function" && typeof slot.getSymbolsCombination === "function"
-            ? buildRoundArtifactFromSession(slot as VideoSlotSessionHandling, {roundId: id, stake, betMode: mode, provenance: {game: {id: "runtime", name: "Runtime", version: "1"}, pokieVersion: "unknown"}}).steps : undefined;
+            ? buildRoundRecordFromSession(slot as VideoSlotSessionHandling, {roundId: id, stake, betMode: mode, provenance: {game: {id: "runtime", name: "Runtime", version: "1"}, pokieVersion: "unknown"}}).steps : undefined;
         const screen = artifacts?.[artifacts.length - 1]?.screen;
         const stageCursor = artifacts?.length ? 1 : 0;
         const exhausted = (session as Partial<CascadeResultProviding>).getCascadeResult?.().getMetadata().maxCascadeStepsExceeded === true;

@@ -1,5 +1,5 @@
 // Recursively Object.freezes a value and everything reachable from it. Not cycle-safe by itself — safe to use
-// here only because every structure this library deep-freezes (RoundArtifact/RoundStepArtifact,
+// here only because every structure this library deep-freezes (RoundRecord/RoundStepArtifact,
 // WeightedOutcomeLibrary/WeightedOutcome) is tree-shaped by construction: arbitrary caller-supplied blobs
 // (metadata/debug/feature event data) are always routed through canonicalizeJsonField (backed by
 // toCanonicalJson, which does its own cycle detection and rejects cycles before this ever runs) rather than

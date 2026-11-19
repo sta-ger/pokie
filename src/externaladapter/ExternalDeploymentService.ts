@@ -39,7 +39,7 @@ function hasError(issues: readonly ValidationIssue[]): boolean {
 //   - **Projection happens exactly once, here, and nowhere else.** `deploy()` itself calls
 //     `target.roundProjector.project(...)` for every outcome in every mode — never the generator (see
 //     ExternalArtifactGenerator's own doc comment) — and hands the generator only the resulting
-//     ExternalDeploymentProjectedModeInput[]. A generator has no RoundArtifact, no ExternalRoundProjector
+//     ExternalDeploymentProjectedModeInput[]. A generator has no RoundRecord, no ExternalRoundProjector
 //     reference, and nothing generic-over-T to project through, so it has no way to select, ignore, or diverge
 //     from the target's own declared projector.
 //   - **A thrown exception from descriptor validation, compatibility validation, projection, generation, or

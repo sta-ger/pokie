@@ -1,5 +1,5 @@
-import type {RoundArtifact} from "../artifact/RoundArtifact.js";
-import {RoundArtifactValidator} from "../artifact/RoundArtifactValidator.js";
+import type {RoundRecord} from "../artifact/RoundRecord.js";
+import {RoundRecordValidator} from "../artifact/RoundRecordValidator.js";
 import {InvalidJsonValueError} from "../json/InvalidJsonValueError.js";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
@@ -9,7 +9,7 @@ import {WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION, type WeightedOutcomeLibrary} fr
 import type {WeightedOutcome} from "./WeightedOutcome.js";
 
 // A WeightedOutcomeLibrary's own static type guarantees nothing about a value that actually arrives at
-// runtime — see RoundArtifactValidator's own doc comment for why every field here is read through this
+// runtime — see RoundRecordValidator's own doc comment for why every field here is read through this
 // loosened view instead.
 type Loose<X> = {[K in keyof X]?: unknown};
 
@@ -34,21 +34,21 @@ type OutcomeHomogeneityKey = {
 };
 
 // Structural invariants a WeightedOutcomeLibrary must satisfy regardless of how it was built or where it came
-// from — reuses the existing generic ValidationRule<T> contract (same as RoundArtifactValidator itself) to
-// validate each outcome's own RoundArtifact, so "artifact consistency" is exactly RoundArtifactValidator's own
-// definition of validity, not a second one. RoundArtifactValidator always runs, whether or not a constructor
+// from — reuses the existing generic ValidationRule<T> contract (same as RoundRecordValidator itself) to
+// validate each outcome's own RoundRecord, so "artifact consistency" is exactly RoundRecordValidator's own
+// definition of validity, not a second one. RoundRecordValidator always runs, whether or not a constructor
 // `extraArtifactValidator` is given — that parameter can only ever add further issues on top, the same way
-// buildWeightedOutcomeLibrary's own `artifactValidator` option can't replace its RoundArtifactValidator run
+// buildWeightedOutcomeLibrary's own `artifactValidator` option can't replace its RoundRecordValidator run
 // either, so a permissive custom validator (e.g. one that always returns no issues) can never let a malformed
-// RoundArtifact through here. Never throws: every check is defensive about the actual runtime shape of its
+// RoundRecord through here. Never throws: every check is defensive about the actual runtime shape of its
 // input, and the top-level validate() wraps everything in a catch-all so a genuinely malformed library still
 // comes back as a ValidationIssue, not an exception.
 export class WeightedOutcomeLibraryValidator<T extends string | number = string>
 implements ValidationRule<WeightedOutcomeLibrary<T>> {
-    private readonly roundArtifactValidator = new RoundArtifactValidator<T>();
-    private readonly extraArtifactValidator: ValidationRule<RoundArtifact<T>> | undefined;
+    private readonly roundRecordValidator = new RoundRecordValidator<T>();
+    private readonly extraArtifactValidator: ValidationRule<RoundRecord<T>> | undefined;
 
-    constructor(extraArtifactValidator?: ValidationRule<RoundArtifact<T>>) {
+    constructor(extraArtifactValidator?: ValidationRule<RoundRecord<T>>) {
         this.extraArtifactValidator = extraArtifactValidator;
     }
 
@@ -210,7 +210,7 @@ implements ValidationRule<WeightedOutcomeLibrary<T>> {
             });
             return reference;
         }
-        const a = artifact as Loose<RoundArtifact<T>>;
+        const a = artifact as Loose<RoundRecord<T>>;
 
         const payoutMultiplier = a.payoutMultiplier;
         if (!isFiniteNumber(payoutMultiplier) || payoutMultiplier < 0) {
@@ -232,7 +232,7 @@ implements ValidationRule<WeightedOutcomeLibrary<T>> {
             });
         }
 
-        [...this.roundArtifactValidator.validate(artifact as RoundArtifact<T>), ...(this.extraArtifactValidator?.validate(artifact as RoundArtifact<T>) ?? [])].forEach(
+        [...this.roundRecordValidator.validate(artifact as RoundRecord<T>), ...(this.extraArtifactValidator?.validate(artifact as RoundRecord<T>) ?? [])].forEach(
             (issue) => {
                 issues.push({
                     ...issue,
@@ -242,7 +242,7 @@ implements ValidationRule<WeightedOutcomeLibrary<T>> {
             },
         );
 
-        const provenance = a.provenance as Loose<RoundArtifact<T>["provenance"]> | undefined;
+        const provenance = a.provenance as Loose<RoundRecord<T>["provenance"]> | undefined;
         const game = provenance?.game as Loose<{id: unknown; version: unknown}> | undefined;
         const current: OutcomeHomogeneityKey = {
             gameId: game?.id,

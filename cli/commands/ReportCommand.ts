@@ -3,7 +3,7 @@ import {projectOutcomeSourceSimulationReport} from "../../src/reporting/projectO
 import type {OutcomeSourceSimulationReport} from "../../src/project/simulateOutcomeSourceProject.js";
 import {Command} from "commander";
 import {
-    CERTIFICATION_PREPARATION_NOTICE, CertificationDossierRenderer, CertificationEvidenceBundleValidator, loadCertificationDossierTemplate, type CertificationEvidenceBundleManifest, type CertificationDossierTemplate,
+    CERTIFICATION_PREPARATION_NOTICE, CertificationPackRenderer, CertificationPackValidator, loadCertificationPackTemplate, type CertificationPackManifest, type CertificationPackTemplate,
     HtmlSimulationReportRenderer,
     isSimulationReportSet,
     MarkdownSimulationReportRenderer,
@@ -115,7 +115,7 @@ export class ReportCommand implements CliCommandHandling {
             throw new Error(describeWasmUnsupportedOperation("create a simulation report"));
         }
 
-        let parsed: SimulationReport | SimulationReportSet | CertificationEvidenceBundleManifest;
+        let parsed: SimulationReport | SimulationReportSet | CertificationPackManifest;
         try {
             parsed = this.readReportJson(reportPath);
         } catch (error) {
@@ -124,11 +124,11 @@ export class ReportCommand implements CliCommandHandling {
         }
 
         if ("dossier" in parsed) {
-            const issues = await new CertificationEvidenceBundleValidator().validate(path.dirname(path.resolve(reportPath)));
+            const issues = await new CertificationPackValidator().validate(path.dirname(path.resolve(reportPath)));
             if (issues.some(issue => issue.severity === "error")) throw new Error(`Invalid dossier: ${issues.map(issue => issue.message).join("; ")}`);
-            let selectedTemplate: CertificationDossierTemplate | undefined;
-            if (template) selectedTemplate = loadCertificationDossierTemplate(template);
-            const result = await new CertificationDossierRenderer().render(parsed, format, selectedTemplate ?? parsed.presentation.template);
+            let selectedTemplate: CertificationPackTemplate | undefined;
+            if (template) selectedTemplate = loadCertificationPackTemplate(template);
+            const result = await new CertificationPackRenderer().render(parsed, format, selectedTemplate ?? parsed.presentation.template);
             if (out) writeOutputFileAtomically(out, result, true);
             if (Buffer.isBuffer(result)) {
                 if (!out) throw new Error("PDF dossier output requires --out <new-file>.");
@@ -247,7 +247,7 @@ export class ReportCommand implements CliCommandHandling {
         return {reportPath: resultRef.reportPath!, format: resultRef.format!, out: resultRef.out, template: resultRef.template};
     }
 
-    private readReportJson(reportPath: string): SimulationReport | SimulationReportSet | CertificationEvidenceBundleManifest {
+    private readReportJson(reportPath: string): SimulationReport | SimulationReportSet | CertificationPackManifest {
         let contents: string;
         try {
             contents = this.readFile(reportPath);
@@ -262,7 +262,7 @@ export class ReportCommand implements CliCommandHandling {
             throw new Error(`"${reportPath}" is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
         }
 
-        if (parsed && typeof parsed === "object" && "dossier" in parsed) return parsed as CertificationEvidenceBundleManifest;
+        if (parsed && typeof parsed === "object" && "dossier" in parsed) return parsed as CertificationPackManifest;
 
         // Historical sampled outcome reports are not static outcome-source analyses.
         if (typeof parsed === "object" && parsed !== null && "libraryId" in parsed && !("rounds" in parsed)) {

@@ -11,9 +11,9 @@ import type {ExternalDeploymentProjectedModeInput} from "./ExternalDeploymentPro
 // transport (local disk today, an HTTP push tomorrow).
 //
 // Deliberately not generic over T, and takes ExternalDeploymentProjectedModeInput[] — already-projected plain
-// JSON — rather than the original ExternalDeploymentModeInput<T>[]/WeightedOutcomeLibrary<T>/RoundArtifact<T>.
+// JSON — rather than the original ExternalDeploymentModeInput<T>[]/WeightedOutcomeLibrary<T>/RoundRecord<T>.
 // ExternalDeploymentService is the only thing that ever calls target.roundProjector — a generator implementation
-// has no RoundArtifact, no ExternalRoundProjector reference, and nothing generic-over-T to project through, so
+// has no RoundRecord, no ExternalRoundProjector reference, and nothing generic-over-T to project through, so
 // it has no way to select, ignore, or diverge from the target's own declared projector: by the time generate()
 // runs, projection has already happened, once, upstream. See ExternalRoundProjector's own doc comment for why
 // generation must never gain a second, independent calculation path in the first place; this signature is what

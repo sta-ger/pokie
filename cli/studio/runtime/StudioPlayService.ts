@@ -1,5 +1,5 @@
 import {stableSlotMathJson} from "../../../src/wasm/math/SharedSlotMath.js";
-import {projectPokieWasmRoundArtifact} from "../../../src/wasm/node/PokieWasmFileRuntimeAdapter.js";
+import {projectPokieWasmRoundRecord} from "../../../src/wasm/node/PokieWasmFileRuntimeAdapter.js";
 import {nextPokieWasmPlayCommand} from "../../../src/wasm/PokieWasmCommands.js";
 import type {ValidatedPlaySpinRequest} from "./validatePlaySpinRequest.js";
 import {
@@ -25,7 +25,7 @@ import {
     PlayUntilSymbolWinStrategy,
     PokieGame,
     PokieGameContext,
-    PokieJsonRoundArtifactProjector,
+    PokieJsonRoundRecordProjector,
     PokieProject,
     PokieSessionState,
     PreGeneratedRoundReplayDescriptor,
@@ -35,7 +35,7 @@ import {
     ProjectTargetResolver,
     resolveGameSessionSerializer,
     resolveOutcomeLibraryModeName,
-    RoundArtifact,
+    RoundRecord,
     SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
     SeededPokieWasmHost,
@@ -43,7 +43,7 @@ import {
     TransactionalWalletAdapter,
     releasePokieGame,
     WeightedOutcomeRandomSource,
-    type RoundArtifactJson,
+    type RoundRecordJson,
     type VideoSlotSessionHandling,
     type VideoSlotWithFreeGamesSessionHandling,
     type PokieWasmRuntime,
@@ -146,7 +146,7 @@ export type StudioPlaySpinResult =
 // resolveRuntimePackageRoot's own doc comment): a Blueprint project is materialized into a real,
 // loadable runtime *before* loadGame ever touches it. What comes back out — a live GameSessionHandling,
 // settled through the same wallet/idempotency machinery SpinCommandHandler always uses, capturing a
-// real, hashable RoundArtifact (sessionCapturePolicyMode "full") — is never reimplemented here; only
+// real, hashable RoundRecord (sessionCapturePolicyMode "full") — is never reimplemented here; only
 // the "no HTTP server in between" wiring is new.
 //
 // Holds at most one session at a time -- a process-local, single active instance scoped to Studio's own
@@ -502,7 +502,7 @@ export class StudioPlayService {
     // pointed at Play's own live session instead of a bulk simulation run. An "outcomeSource" session has
     // no live GameSessionHandling to hand that strategy (see findAnyWin()'s own doc comment), so the
     // equivalent check reads whether the round's own already-computed artifact carries a win for that
-    // exact symbolId, straight off RoundArtifactWin.symbolId -- never a second win-evaluation pass.
+    // exact symbolId, straight off RoundRecordWin.symbolId -- never a second win-evaluation pass.
     public findSymbolWin(sessionId: string, symbolId: string, options: StudioPlaySessionOptions = {}): Promise<StudioPlaySpinResult> {
         const active = this.activeSessionFor(sessionId);
         if (active === undefined) return Promise.resolve({status: "not-found"});
@@ -536,7 +536,7 @@ export class StudioPlayService {
     // findAnyWin() does for PlayUntilAnyWinStrategy; for an "outcomeSource" session (no live
     // GameSessionHandling -- see findAnyWin()'s own doc comment), the equivalent real, already-computed
     // signal is read off that round's own artifact instead -- its `featureEvents`, specifically the
-    // "freeGamesTriggered" event buildRoundArtifactFromSession derives from the exact same
+    // "freeGamesTriggered" event buildRoundRecordFromSession derives from the exact same
     // getWonFreeGamesNumber() this strategy itself reads, never a second free-games determination.
     public findFreeGames(sessionId: string, options: StudioPlaySessionOptions = {}): Promise<StudioPlaySpinResult> {
         const active = this.activeSessionFor(sessionId);
@@ -722,7 +722,7 @@ export class StudioPlayService {
         sessionId: string,
         operation: StudioRoundOperation,
         matchesLiveSession: (session: GameSessionHandling) => boolean,
-        matchesArtifact: (artifact: RoundArtifactJson) => boolean,
+        matchesArtifact: (artifact: RoundRecordJson) => boolean,
         signal?: AbortSignal,
         onProgress?: (attemptedSpins: number, maximumSpins: number) => void,
     ): Promise<StudioPlaySpinResult> {
@@ -834,7 +834,7 @@ export class StudioPlayService {
     // running ledger over this draw's real stake/totalWin, the only place this bundle-backed session's
     // "credits" figure lives at all (see the class doc comment).
     private async spinOutcomeSource(sessionId: string, active: ActiveOutcomeSourceSession): Promise<StudioPlaySpinResult> {
-        let artifact: RoundArtifact;
+        let artifact: RoundRecord;
         let replay: PreGeneratedRoundReplayDescriptor | undefined;
         try {
             const nextRound = active.roundsPlayed + 1;
@@ -903,7 +903,7 @@ export class StudioPlayService {
                 // A serializer owns its presentation fields, but SpinCommandHandler's settled `win`
                 // is the authoritative amount for this particular round.  Some serializers expose
                 // a stale or intentionally partial `win` field; letting it overwrite `handled.win`
-                // made Replay's Session Spin list disagree with the recorded RoundArtifact.
+                // made Replay's Session Spin list disagree with the recorded RoundRecord.
                 ? {...serializedPayload, sessionId, game: manifest, credits, ...(win !== undefined ? {win} : {})}
                 : {
                     sessionId,
@@ -938,7 +938,7 @@ export class StudioPlayService {
         view.debug = {
             stateAfter: state,
             ...(debugData !== undefined ? {debugData} : {}),
-            ...this.projectRoundArtifact(state),
+            ...this.projectRoundRecord(state),
         };
 
         return view;
@@ -955,16 +955,16 @@ export class StudioPlayService {
         return (session as VideoSlotSessionHandling<string>).getAvailableSymbols();
     }
 
-    // Shared by every buildSessionView() call -- state.roundArtifact/roundArtifactUnavailableReason are
+    // Shared by every buildSessionView() call -- state.roundRecord/roundRecordUnavailableReason are
     // mutually exclusive (see PokieSessionState's own doc comment), so exactly one of `artifact`/
     // `artifactUnavailableReason` ever ends up on the built view, never both and never neither once a
     // "full" capture (always on for Play) has run at all.
-    private projectRoundArtifact(state: PokieSessionState): {artifact?: RoundArtifactJson} | {artifactUnavailableReason?: string} {
-        if (state.roundArtifact !== undefined) {
-            return {artifact: new PokieJsonRoundArtifactProjector().project(state.roundArtifact)};
+    private projectRoundRecord(state: PokieSessionState): {artifact?: RoundRecordJson} | {artifactUnavailableReason?: string} {
+        if (state.roundRecord !== undefined) {
+            return {artifact: new PokieJsonRoundRecordProjector().project(state.roundRecord)};
         }
-        if (state.roundArtifactUnavailableReason !== undefined) {
-            return {artifactUnavailableReason: state.roundArtifactUnavailableReason};
+        if (state.roundRecordUnavailableReason !== undefined) {
+            return {artifactUnavailableReason: state.roundRecordUnavailableReason};
         }
         return {};
     }
@@ -981,10 +981,10 @@ export class StudioPlayService {
     // settles. It deliberately does not invent individual line/scatter wins,
     // feature events, or authored bet modes: those details are not part of
     // the current portable round contract. The ordinary inspector still gets
-    // a real RoundArtifact-shaped outcome, state snapshots where declared,
+    // a real RoundRecord-shaped outcome, state snapshots where declared,
     // and an explicit boundary in debug data.
     private buildWasmSessionView(active: ActiveWasmSession, sessionId: string, round: PokieWasmRound, stateBefore?: unknown, stateAfter?: unknown): StudioRuntimeSessionView {
-        const artifact = this.canInspectWasmRound(active) ? this.projectWasmRoundArtifact(active, sessionId, round) : undefined;
+        const artifact = this.canInspectWasmRound(active) ? this.projectWasmRoundRecord(active, sessionId, round) : undefined;
         return {...active.session.getInitialData?.(), ...round.network, logicalRoundDeliverySupported: active.session.getInitialData !== undefined,
             sessionId, game: active.manifest, credits: round.credits, bet: round.network?.bet ?? round.stake, win: round.win ?? round.payout,
             stake: round.stake, payout: round.payout, sequenceSelections: round.sequenceSelections, sequenceStatistics: round.sequenceStatistics,
@@ -992,11 +992,11 @@ export class StudioPlayService {
             ...(round.logicalRound ? {logicalRound: projectLogicalRound(round.logicalRound), logicalRoundDurability: "process-only" as const} : {}),
             screen: round.screen.map(reel => [...reel]), scenarioCapabilities: WASM_SCENARIO_CAPABILITIES,
             debug: {...(stateBefore === undefined ? {} : {stateBefore}), ...(stateAfter === undefined ? {} : {stateAfter}),
-                ...(artifact ? {artifact} : {artifactUnavailableReason: "This canonical WASM runtime does not declare artifact.inspect, so Studio cannot expose a Round Artifact projection."})},};
+                ...(artifact ? {artifact} : {artifactUnavailableReason: "This canonical WASM runtime does not declare artifact.inspect, so Studio cannot expose a Round Record projection."})},};
     }
 
-    private projectWasmRoundArtifact(active: ActiveWasmSession, sessionId: string, round: PokieWasmRound): RoundArtifactJson {
-        return projectPokieWasmRoundArtifact(round, {game: active.manifest, pokieVersion: this.pokieVersion,
+    private projectWasmRoundRecord(active: ActiveWasmSession, sessionId: string, round: PokieWasmRound): RoundRecordJson {
+        return projectPokieWasmRoundRecord(round, {game: active.manifest, pokieVersion: this.pokieVersion,
             ...(active.runtime.manifest.artifact?.configurationHash ? {configHash: active.runtime.manifest.artifact.configurationHash} : {})},
         `wasm:${active.integrity}:${sessionId}:${round.sequence}`, active.runtime.manifest.capabilities);
     }
@@ -1005,13 +1005,13 @@ export class StudioPlayService {
     // once, for the view newOutcomeSourceSession() returns before any draw has happened yet (mirrors
     // buildSessionView()'s own initial call, whose `win`/`screen` are equally absent before a first spin).
     // Unlike buildSessionView(), there is never an `artifactUnavailableReason` case here: a drawn
-    // WeightedOutcome always carries a real RoundArtifact (see that type's own doc comment) -- so this
+    // WeightedOutcome always carries a real RoundRecord (see that type's own doc comment) -- so this
     // never fabricates an artifact, and never has to explain a missing one either. `bet`/`win`/`screen` are
     // read straight off that same real, already-hashed artifact -- never a second calculation path.
     private buildOutcomeSourceSessionView(
         sessionId: string,
         active: ActiveOutcomeSourceSession,
-        artifact: RoundArtifact | undefined,
+        artifact: RoundRecord | undefined,
         replay?: PreGeneratedRoundReplayDescriptor,
     ): StudioRuntimeSessionView {
         const view = {
@@ -1025,7 +1025,7 @@ export class StudioPlayService {
         } as StudioRuntimeSessionView;
 
         if (artifact !== undefined) {
-            view.debug = {artifact: new PokieJsonRoundArtifactProjector().project(artifact)};
+            view.debug = {artifact: new PokieJsonRoundRecordProjector().project(artifact)};
         }
 
         return view;

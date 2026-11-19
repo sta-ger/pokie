@@ -2,7 +2,7 @@
 // PreGeneratedRoundResult — an outcome not actually present in the given library, an invalid
 // roundId/sessionId, a non-finite balance, a malformed transaction entry, or content that isn't
 // JSON-safe. "code" mirrors the matching ValidationIssue code where one exists, same convention as
-// RoundArtifactBuildError/WeightedOutcomeLibraryBuildError.
+// RoundRecordBuildError/WeightedOutcomeLibraryBuildError.
 export class PreGeneratedRoundBuildError extends Error {
     private readonly code: string;
 

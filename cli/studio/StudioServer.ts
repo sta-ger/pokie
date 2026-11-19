@@ -19,7 +19,7 @@ import {
     PokieGamePackageValidationReport,
     PokieGamePackageValidator,
     ParSheetImporter,
-    PokieJsonRoundArtifactProjector,
+    PokieJsonRoundRecordProjector,
     PokieProject,
     PreGeneratedRoundReplayDescriptor,
     ProjectTargetResolver,
@@ -27,8 +27,8 @@ import {
     describeUnsupportedProjectOperation,
     describeUnavailableWasmComponent,
     isWasmComponentFile,
-    RoundArtifact,
-    RoundArtifactValidator,
+    RoundRecord,
+    RoundRecordValidator,
     sampleOutcomeSourceProject,
     replayOutcomeSourceProject,
     SecureWeightedOutcomeRandomSource,
@@ -1506,7 +1506,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         if (method === "POST" && url.pathname === "/api/project/certification/build") {
-            await this.handleBuildCertificationEvidenceBundle(req, res);
+            await this.handleBuildCertificationPack(req, res);
             return;
         }
 
@@ -3247,10 +3247,10 @@ export class StudioServer implements StudioServerHandling {
     // purely as this recorded entry's own identity (so it still fits the shared StudioRuntimeSessionView
     // shape every other source uses), never a reusable session, and `credits` is genuinely omitted rather
     // than fabricated as 0 (see StudioRuntimeSessionView.credits's own doc comment). Every other field --
-    // game/bet/win/screen/artifact -- is read straight off the real, already-drawn RoundArtifact, never
+    // game/bet/win/screen/artifact -- is read straight off the real, already-drawn RoundRecord, never
     // recomputed.
     private recordOutcomeSourceSample(
-        artifact: RoundArtifact,
+        artifact: RoundRecord,
         projectRoot: string,
         seed: string | undefined,
         modeName: string,
@@ -3264,7 +3264,7 @@ export class StudioServer implements StudioServerHandling {
             win: artifact.totalWin,
             screen: artifact.screen.map((row) => [...row]),
             ...(replay === undefined ? {} : {replay}),
-            debug: {artifact: new PokieJsonRoundArtifactProjector().project(artifact)},
+            debug: {artifact: new PokieJsonRoundRecordProjector().project(artifact)},
         };
         this.roundRecorder.record(view, {source: "outcome-source-sample", operation: "outcome-source-sample", projectRoot, seed, modeName});
     }
@@ -3316,7 +3316,7 @@ export class StudioServer implements StudioServerHandling {
             win: replay.totalWin,
             ...(replay.screen === undefined ? {} : {screen: replay.screen}),
             replay,
-            ...(artifact === undefined ? {} : {debug: {artifact: new PokieJsonRoundArtifactProjector().project(artifact as RoundArtifact)}}),
+            ...(artifact === undefined ? {} : {debug: {artifact: new PokieJsonRoundRecordProjector().project(artifact as RoundRecord)}}),
         };
         this.roundRecorder.record(view, {
             source: "simulation-sample",
@@ -3373,7 +3373,7 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, execution.value);
     }
 
-    private async handleBuildCertificationEvidenceBundle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    private async handleBuildCertificationPack(req: IncomingMessage, res: ServerResponse): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
             return;
@@ -3915,7 +3915,7 @@ export class StudioServer implements StudioServerHandling {
     // method) before the client attempts an actual reproduction via the existing POST
     // /api/project/replays -- reuses validateReplayRequest as-is for the outer round/seed (the same
     // check a real replay start already applies, so the two can never silently disagree on what counts
-    // as valid) and RoundArtifactValidator as-is for the optional nested `.artifact`, rather than any
+    // as valid) and RoundRecordValidator as-is for the optional nested `.artifact`, rather than any
     // new validation logic. The nested artifact's own issues are reported as non-fatal
     // `artifactWarnings` (not a 400) since round/seed alone are already enough to attempt a
     // reproduction -- a slightly malformed artifact *detail* shouldn't block that.
@@ -3960,7 +3960,7 @@ export class StudioServer implements StudioServerHandling {
 
         const artifactWarnings =
             record.artifact !== undefined
-                ? new RoundArtifactValidator().validate(record.artifact as unknown as Parameters<RoundArtifactValidator["validate"]>[0]).map((issue) => issue.message)
+                ? new RoundRecordValidator().validate(record.artifact as unknown as Parameters<RoundRecordValidator["validate"]>[0]).map((issue) => issue.message)
                 : [];
 
         const outcomeSource = record.outcomeSource;
@@ -3990,7 +3990,7 @@ export class StudioServer implements StudioServerHandling {
             compareOuter("total win", record.totalWin, recorded.totalWin);
             compareOuter("screen", record.screen, recorded.screen);
             if (record.artifact !== undefined && recorded.artifact !== undefined) {
-                compareOuter("artifact", record.artifact, new PokieJsonRoundArtifactProjector<string | number>().project(recorded.artifact));
+                compareOuter("artifact", record.artifact, new PokieJsonRoundRecordProjector<string | number>().project(recorded.artifact));
             }
             if (outerMismatches.length > 0) {
                 this.sendJson(res, 400, {
@@ -4007,7 +4007,7 @@ export class StudioServer implements StudioServerHandling {
             // Normalize the real nested artifact only after verification against the opened library.
             this.sendJson(res, 200, {
                 round: validated.round, seed: validated.seed, modeName: recorded.modeName, outcomeSource: recorded,
-                artifact: new PokieJsonRoundArtifactProjector<string | number>().project(recorded.artifact!), artifactWarnings,
+                artifact: new PokieJsonRoundRecordProjector<string | number>().project(recorded.artifact!), artifactWarnings,
             });
             return;
         }

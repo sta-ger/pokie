@@ -1,8 +1,8 @@
 import {resolveSessionPayout} from "../../runtime/internal/resolveSessionPayout.js";
 import {validateCheckpointFeasibility} from "./validateCheckpointFeasibility.js";
 import {captureDeclarativeTransitionBalances, restoreDeclarativeObservation} from "./restoreDeclarativeObservation.js";
-import {buildRoundArtifactFromSession} from "../../artifact/buildRoundArtifactFromSession.js";
-import {RoundArtifactValidator} from "../../artifact/RoundArtifactValidator.js";
+import {buildRoundRecordFromSession} from "../../artifact/buildRoundRecordFromSession.js";
+import {RoundRecordValidator} from "../../artifact/RoundRecordValidator.js";
 import {ACTIVE_POKIE_WASM_TRACES as ACTIVE_TRACES} from "./PokieWasmTraceOwnership.js";
 import {PortableRandomNumberGenerator} from "../../session/videoslot/combinations/internal/PortableRandomNumberGenerator.js";
 import {ScreenProjection} from "../../session/videoslot/coordinates/ScreenProjection.js";
@@ -206,7 +206,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
             } else {
                 if (start || prefix || last.deliveryOnly || command.delivery || command.continuation) throw new Error("Retained result requires accepted logical delivery.");
                 const math = state.feature.plainMath;
-                if (!math || stableSlotMathJson(math.command) !== stableSlotMathJson(command) || new RoundArtifactValidator().validate(math.artifact).length || !amount(math.payout) || math.credits !== state.credits ||
+                if (!math || stableSlotMathJson(math.command) !== stableSlotMathJson(command) || new RoundRecordValidator().validate(math.artifact).length || !amount(math.payout) || math.credits !== state.credits ||
                     math.artifact.roundId !== plainRoundId(command, state.sequence, last.sequenceSelections) || last.stake !== math.artifact.stake || last.win !== math.artifact.totalWin || last.payout !== math.payout ||
                     last.network?.totalWin !== math.artifact.totalWin) throw new Error("Retained plain money contradicts its accepted mathematical artifact.");
             }
@@ -401,7 +401,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                 if (!result.logicalRound) plainMath = {command,
                     ...((native as Partial<import("../../session/videoslot/cascade/CascadeResultProviding.js").CascadeResultProviding>).getCascadeResult?.().getMetadata().maxCascadeStepsExceeded
                         ? {finalScreen: (native as NativeSession & import("../../session/videoslot/cascade/CascadeResultProviding.js").CascadeResultProviding).getCascadeResult().getFinalScreen()} : {}),
-                    artifact: buildRoundArtifactFromSession(native!, {
+                    artifact: buildRoundRecordFromSession(native!, {
                         roundId: plainRoundId(command, round.sequence, round.sequenceSelections), stake: result.stake, betMode: result.mode,
                         provenance: {game: {id: "runtime", name: "Runtime", version: "1"}, pokieVersion: "unknown"},
                     }), payout, credits: round.credits};

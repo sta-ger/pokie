@@ -1,4 +1,4 @@
-import {PublicRoundArtifactProjector} from "../artifact/PublicRoundArtifactProjector.js";
+import {PublicRoundRecordProjector} from "../artifact/PublicRoundRecordProjector.js";
 import type {PreGeneratedRoundInternalView} from "./PreGeneratedRoundInternalView.js";
 import type {PreGeneratedRoundPublicView} from "./PreGeneratedRoundPublicView.js";
 import type {PreGeneratedRoundResult} from "./PreGeneratedRoundResult.js";
@@ -6,12 +6,12 @@ import type {PreGeneratedRoundResult} from "./PreGeneratedRoundResult.js";
 // Splits a PreGeneratedRoundResult into the same public/internal shape PokieDevServer's own spin
 // response already uses (see PokieDevSessionResponse/PokieInternalSessionData): projectPublic() is
 // exactly what a client needs to render a round, projectInternal() is the full audit trail (which
-// library/outcome/weight selected it, every runtime/transaction detail, and the raw RoundArtifact) —
+// library/outcome/weight selected it, every runtime/transaction detail, and the raw RoundRecord) —
 // never sent unless a caller explicitly asks for it.
 export class PreGeneratedRoundResultProjector<T extends string | number = string> {
     public projectPublic(result: PreGeneratedRoundResult<T>): PreGeneratedRoundPublicView<T> {
         const {runtime} = result;
-        const artifact = new PublicRoundArtifactProjector<T>().project(result.artifact);
+        const artifact = new PublicRoundRecordProjector<T>().project(result.artifact);
         const coverage = artifact.steps[artifact.steps.length - 1]?.visibleRowCoverage;
         return {
             roundId: runtime.roundId,

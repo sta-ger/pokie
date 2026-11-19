@@ -1,13 +1,13 @@
-import {RoundArtifactBuildError} from "../RoundArtifactBuildError.js";
-import type {RoundArtifactFeatureEventInput} from "../RoundArtifactFeatureEvent.js";
+import {RoundRecordBuildError} from "../RoundRecordBuildError.js";
+import type {RoundRecordFeatureEventInput} from "../RoundRecordFeatureEvent.js";
 
-// Shared between buildRoundStepArtifact (step-level events) and buildRoundArtifact (round-level events): a
+// Shared between buildRoundStepArtifact (step-level events) and buildRoundRecord (round-level events): a
 // feature event with a missing/empty "type" is meaningless (there'd be nothing to distinguish it from any
-// other event by), so it's rejected at build time rather than only by RoundArtifactValidator after the fact.
-export function assertValidFeatureEventInput(event: RoundArtifactFeatureEventInput, context: string): void {
+// other event by), so it's rejected at build time rather than only by RoundRecordValidator after the fact.
+export function assertValidFeatureEventInput(event: RoundRecordFeatureEventInput, context: string): void {
     if (typeof event.type !== "string" || event.type.trim().length === 0) {
-        throw new RoundArtifactBuildError(
-            "round-artifact-feature-event-type-invalid",
+        throw new RoundRecordBuildError(
+            "round-record-feature-event-type-invalid",
             `${context} featureEvents must have a non-empty "type", got ${JSON.stringify(event.type)}.`,
         );
     }

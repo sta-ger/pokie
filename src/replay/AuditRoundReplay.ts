@@ -11,11 +11,11 @@ import {validateLogicalRound} from "../runtime/LogicalRound.js";
 import {validateExecutableState} from "../runtime/validateExecutableState.js";
 import {isSessionStateRestorable, resolveSessionStateSchema, sessionStateSchemasMatch} from "../session/SessionStateRestoring.js";
 import {restoreFeatureState} from "../server/session/restoreFeatureState.js";
-import {buildRoundArtifactFromSession} from "../artifact/buildRoundArtifactFromSession.js";
-import {buildLogicalRoundArtifact} from "../artifact/buildLogicalRoundArtifact.js";
-import {PokieJsonRoundArtifactProjector} from "../artifact/PokieJsonRoundArtifactProjector.js";
-import {RoundArtifactValidator} from "../artifact/RoundArtifactValidator.js";
-import {computeRoundArtifactHash} from "../artifact/computeRoundArtifactHash.js";
+import {buildRoundRecordFromSession} from "../artifact/buildRoundRecordFromSession.js";
+import {buildLogicalRoundRecord} from "../artifact/buildLogicalRoundRecord.js";
+import {PokieJsonRoundRecordProjector} from "../artifact/PokieJsonRoundRecordProjector.js";
+import {RoundRecordValidator} from "../artifact/RoundRecordValidator.js";
+import {computeRoundRecordHash} from "../artifact/computeRoundRecordHash.js";
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
 import type {VideoSlotSessionHandling} from "../session/videoslot/VideoSlotSessionHandling.js";
 import type {PokieGame} from "../gamepackage/PokieGame.js";
@@ -71,9 +71,9 @@ export function captureAuditDelivery(game: PokieGame, session: GameSessionHandli
     const slot = session as Partial<VideoSlotSessionHandling>;
     let artifact: AuditDelivery["artifact"];
     if (!result.deliveryOnly && typeof slot.getWinEvaluationResult === "function" && typeof slot.getSymbolsCombination === "function") {
-        const built = buildRoundArtifactFromSession(slot as VideoSlotSessionHandling, {roundId: result.logicalRound?.id ?? command.roundId ?? disposition.requestId ?? disposition.sessionId,
+        const built = buildRoundRecordFromSession(slot as VideoSlotSessionHandling, {roundId: result.logicalRound?.id ?? command.roundId ?? disposition.requestId ?? disposition.sessionId,
             stake: result.stake, betMode: result.mode, provenance: {game: game.getManifest(), pokieVersion: POKIE_VERSION, ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})}});
-        artifact = new PokieJsonRoundArtifactProjector().project(result.logicalRound ? buildLogicalRoundArtifact(result.logicalRound, built) : built);
+        artifact = new PokieJsonRoundRecordProjector().project(result.logicalRound ? buildLogicalRoundRecord(result.logicalRound, built) : built);
     }
     return dto({execution, command, before, after: captureAuditBoundary(session), result, ...(artifact ? {artifact} : {}), disposition});
 }
@@ -190,8 +190,8 @@ function validateAuditStructure(value: unknown, game?: PokieGame): void {
         if (command.continuation && (delivery.before.logicalRound?.id !== command.continuation.roundId || delivery.before.logicalRound.deliveryCursor !== command.continuation.cursor)) throw new AuditReplayError("audit-order", `${path}.command.continuation`, "Continuation does not name recorded progress.");
         if (delivery.artifact) {
             const {hash: artifactHash, ...artifact} = delivery.artifact;
-            if (artifactHash !== computeRoundArtifactHash(artifact)) throw new AuditReplayError("audit-artifact", `${path}.artifact.hash`, "Invalid artifact digest.");
-            const issue = new RoundArtifactValidator().validate(artifact)[0];
+            if (artifactHash !== computeRoundRecordHash(artifact)) throw new AuditReplayError("audit-artifact", `${path}.artifact.hash`, "Invalid artifact digest.");
+            const issue = new RoundRecordValidator().validate(artifact)[0];
             if (issue) throw new AuditReplayError("audit-artifact", `${path}.artifact${issue.path ? `.${issue.path}` : ""}`, issue.message);
             if (artifact.provenance.game.id !== r.game.id || artifact.provenance.configHash !== r.identity.modelHash) throw new AuditReplayError("audit-identity", `${path}.artifact.provenance`, "Artifact model differs from audit model.");
         }

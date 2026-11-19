@@ -2,10 +2,10 @@ import type {LogicalRoundDelivery} from "../../../../../src/runtime/projectLogic
 import {useLayoutEffect, useRef} from "react";
 import {
     createPlayerRoundElements,
-    deriveWinHighlightsFromRoundArtifactWins,
+    deriveWinHighlightsFromRoundRecordWins,
     renderPlayerRound,
     type FeatureCounter,
-    type GenericRoundArtifactWin,
+    type GenericRoundRecordWin,
     type LineDefinitionView,
     type PaytableView as PaytableViewData,
 } from "../../../../client/player";
@@ -18,10 +18,10 @@ import {useActiveSymbolArtwork} from "./SymbolPresentation";
 // cli/client/main.ts and pokie-examples' src/ui/ui.ts for the two other consumers of that exact module).
 // React only mounts Player's container elements and re-invokes that idempotent entrypoint when props
 // change; it never composes individual player sections. Only a win's own already-computed
-// winningPositions/metadata.definition are read (via deriveWinHighlightsFromRoundArtifactWins) -- no win,
+// winningPositions/metadata.definition are read (via deriveWinHighlightsFromRoundRecordWins) -- no win,
 // line, or feature outcome is calculated here.
 //
-// A section only mounts at all when its caller actually has that data -- RoundArtifact carries no
+// A section only mounts at all when its caller actually has that data -- RoundRecord carries no
 // paytable/bets/modes/feature-counter fields today (see PaytableView.tsx's own doc comment for the same
 // story about paytable specifically), so those sections are simply absent for every current Studio
 // caller, the same honest "not available" default cli/client/player's own renderBetInfo/renderModeInfo
@@ -51,7 +51,7 @@ export function CanonicalPlayerView({
     sequenceSelections?: readonly import("../../../../../src/session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceSelection[];
     sequenceStatistics?: readonly import("../../../../../src/session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceStatistics[];
     visibleRowCoverage?: readonly number[];
-    wins?: readonly GenericRoundArtifactWin[];
+    wins?: readonly GenericRoundRecordWin[];
     paytable?: PaytableViewData;
     featureCounters?: FeatureCounter[];
     lines?: LineDefinitionView[];
@@ -81,7 +81,7 @@ export function CanonicalPlayerView({
         if (!playerRootRef.current) {
             return;
         }
-        const highlights = deriveWinHighlightsFromRoundArtifactWins(displayedWins ?? [], displayedScreen.length);
+        const highlights = deriveWinHighlightsFromRoundRecordWins(displayedWins ?? [], displayedScreen.length);
         const elements = createPlayerRoundElements(playerRootRef.current);
         if (logicalRound?.currentStep) {
             const winLabel = elements.totalWinRow?.querySelector("dt");

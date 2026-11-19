@@ -6,9 +6,9 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import v8 from "v8";
-import {buildRoundArtifactFromSession} from "../../artifact/buildRoundArtifactFromSession.js";
-import type {RoundArtifact} from "../../artifact/RoundArtifact.js";
-import type {RoundArtifactProvenance} from "../../artifact/RoundArtifactProvenance.js";
+import {buildRoundRecordFromSession} from "../../artifact/buildRoundRecordFromSession.js";
+import type {RoundRecord} from "../../artifact/RoundRecord.js";
+import type {RoundRecordProvenance} from "../../artifact/RoundRecordProvenance.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import {determineStakeAmount} from "../../server/session/determineStakeAmount.js";
 import {SeededWeightedOutcomeRandomSource} from "../../pregenerated/SeededWeightedOutcomeRandomSource.js";
@@ -140,7 +140,7 @@ export type GenerateExactWeightedOutcomeLibraryOptions = {
     readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
     readonly onPostEnumeration?: () => void;
     readonly onPostEnumerationProgress?: (emittedOutcomes: bigint) => void;
-    readonly artifactValidator?: ValidationRule<RoundArtifact>;
+    readonly artifactValidator?: ValidationRule<RoundRecord>;
     readonly now?: () => Date;
     // Runtime memory safety net for the accumulation phase (see accumulateUniqueGridWeights and
     // HEAP_SAFETY_FRACTION above) -- both default to real values (an 85%-of-heap-limit ceiling, real
@@ -423,7 +423,7 @@ async function *streamExactWeightedOutcomesInternal(
     const manifest = game.getManifest();
     const prepared = prepare(options);
 
-    const provenance: RoundArtifactProvenance = {
+    const provenance: RoundRecordProvenance = {
         game: manifest,
         pokieVersion: options.pokieVersion,
         ...(prepared.configHash !== undefined ? {configHash: prepared.configHash} : {}),
@@ -455,7 +455,7 @@ async function *streamExactWeightedOutcomesInternal(
         const stake = options.stake ?? determineStakeAmount(session, session.getBet());
         executeSessionCommand(session);
 
-        const artifact = buildRoundArtifactFromSession(session, {
+        const artifact = buildRoundRecordFromSession(session, {
             roundId: id,
             provenance,
             ...(options.betMode !== undefined ? {betMode: options.betMode} : {}),

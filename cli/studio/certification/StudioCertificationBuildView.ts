@@ -1,14 +1,14 @@
-import type {CertificationEvidenceBundleManifest, ValidationIssue} from "@fromstan/pokie";
+import type {CertificationPackManifest, ValidationIssue} from "@fromstan/pokie";
 
-// Mirrors CertificationEvidenceBundleBuilder.buildFromBundle's own "no partial bundle" contract exactly:
+// Mirrors CertificationPackBuilder.buildFromBundle's own "no partial bundle" contract exactly:
 // `manifest` is present iff `errors` is empty. Never re-derived here -- every field comes straight off
-// the real CertificationEvidenceBundleManifest the builder produced.
+// the real CertificationPackManifest the builder produced.
 export type StudioCertificationBuildView =
     | {
           readonly status: "ok";
           readonly artifactHashes?: Readonly<Record<string, string>>;
           readonly preparationNotice?: string;
-          readonly manifest: CertificationEvidenceBundleManifest;
+          readonly manifest: CertificationPackManifest;
           readonly files: readonly string[];
           readonly warnings: readonly ValidationIssue[];
       }

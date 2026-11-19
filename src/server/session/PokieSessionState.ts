@@ -4,7 +4,7 @@ import type {ScreenGeometry} from "../../session/videoslot/coordinates/ScreenGeo
 import type {SessionStateSchema} from "../../session/SessionStateRestoring.js";
 import type {GameSessionIdentity} from "../../runtime/GameSessionIdentity.js";
 import type {PokieGameContext} from "../../gamepackage/PokieGameContext.js";
-import type {RoundArtifact} from "../../artifact/RoundArtifact.js";
+import type {RoundRecord} from "../../artifact/RoundRecord.js";
 import type {SessionCapturePolicy} from "./SessionCapturePolicy.js";
 
 export type PokieSessionState = {
@@ -62,12 +62,12 @@ export type PokieSessionState = {
     // capture policies" apart from "this state was captured under an explicit partial policy".
     capturePolicy?: SessionCapturePolicy;
     // Present only when capturePolicy.mode === "full" AND the played session's shape supported building
-    // one (see captureRoundPokieSessionState.ts) — a complete, hashable RoundArtifact for this exact
+    // one (see captureRoundPokieSessionState.ts) — a complete, hashable RoundRecord for this exact
     // round, built straight off the same already-computed win-evaluation result the round itself used
-    // (see buildRoundArtifactFromSession), never a second calculation path.
-    roundArtifact?: RoundArtifact;
-    // Present only when capturePolicy.mode === "full" but roundArtifact above could not be built —
-    // e.g. the session doesn't implement the VideoSlotSessionHandling shape buildRoundArtifactFromSession
+    // (see buildRoundRecordFromSession), never a second calculation path.
+    roundRecord?: RoundRecord;
+    // Present only when capturePolicy.mode === "full" but roundRecord above could not be built —
+    // e.g. the session doesn't implement the VideoSlotSessionHandling shape buildRoundRecordFromSession
     // requires. An honest diagnostic of *why* no artifact exists, never a fabricated/placeholder one.
-    roundArtifactUnavailableReason?: string;
+    roundRecordUnavailableReason?: string;
 };

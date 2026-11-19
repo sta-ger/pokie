@@ -3,7 +3,7 @@ import {StakeEngineEventClassification, StakeEngineEventClassifying, StakeEngine
 
 // A small, hand-computable mode: a loss (weight 970), a plain win (weight 25, ratio 2), and a win with a
 // non-structural "feature" event (weight 5, ratio 5) -- mirrors StakeEngineTestFixtures.buildStakeEngineTestLibrary
-// but built directly as normalized StakeEngineOutcomeRecord data, with no RoundArtifact/WeightedOutcomeLibrary
+// but built directly as normalized StakeEngineOutcomeRecord data, with no RoundRecord/WeightedOutcomeLibrary
 // involved, so every statistic below can be checked by hand.
 function handComputableReadResult(): StakeEngineOutcomeSourceReadResult {
     return {
@@ -54,7 +54,7 @@ function handComputableReadResult(): StakeEngineOutcomeSourceReadResult {
 }
 
 describe("StakeEngineStandaloneAnalyzer", () => {
-    it("computes exact weighted rtp/hitFrequency/variance/standardDeviation/maxWin over normalized outcomes, no RoundArtifact/WeightedOutcomeLibrary involved", () => {
+    it("computes exact weighted rtp/hitFrequency/variance/standardDeviation/maxWin over normalized outcomes, no RoundRecord/WeightedOutcomeLibrary involved", () => {
         const analysis = new StakeEngineStandaloneAnalyzer().analyze(handComputableReadResult());
 
         expect(analysis.stakeDir).toBe("/fake/stake-dir");

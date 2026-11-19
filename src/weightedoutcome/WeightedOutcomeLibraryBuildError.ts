@@ -4,7 +4,7 @@
 // toCanonicalJson) — so a caller finds out immediately, with a specific reason, instead of getting back a
 // library that only fails later at hash/projection/analysis time or silently fails
 // WeightedOutcomeLibraryValidator. "code" mirrors the matching ValidationIssue code where one exists (e.g.
-// "weighted-outcome-library-outcomes-empty"), same convention as RoundArtifactBuildError.
+// "weighted-outcome-library-outcomes-empty"), same convention as RoundRecordBuildError.
 export class WeightedOutcomeLibraryBuildError extends Error {
     private readonly code: string;
 

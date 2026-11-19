@@ -28,7 +28,7 @@ export type GameModelReelGenerationMode = "reelSequences" | "reelStrips" | "reel
 export type GameModelReelWindowCell = {symbolId: string; isWild: boolean; isScatter: boolean};
 
 // The Game window: this project's own reel grid, in the same [reelIndex][rowIndex] orientation every
-// other screen in Pokie already uses (SymbolsCombination.toMatrix, RoundArtifact.screen, ScreenTable, ...).
+// other screen in Pokie already uses (SymbolsCombination.toMatrix, RoundRecord.screen, ScreenTable, ...).
 // `grid` is always read off whichever strip each reel actually resolves to at stop position 0 -- its real
 // fixed strip for "reelStrips"/"reelStripGeneration" (see GameModelReels.reels), or its reproducible sample
 // strip for "symbolWeights"/"default" (see GameModelReels.sharedWeightsSample) -- never an invented grid.

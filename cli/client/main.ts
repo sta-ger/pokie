@@ -6,7 +6,7 @@ import {extractKnownRoundView, extractStages} from "./interpretResponse.js";
 import {
     clearConnectionError,
     createPlayerRoundElements,
-    deriveWinHighlightsFromRoundArtifactWins,
+    deriveWinHighlightsFromRoundRecordWins,
     renderConnectionError,
     renderPlayerRound,
     type PlayerRoundElements,
@@ -195,7 +195,7 @@ function renderVideoSlotRound(
 ): void {
     const logical = (response as unknown as SessionResponse).logicalRound?.currentStep;
     if (logical) response = {...response, reelsSymbols: logical.screen.map(reel => [...reel]) as string[][], totalWin: logical.totalWin};
-    const highlights = logical ? deriveWinHighlightsFromRoundArtifactWins(logical.wins, logical.screen.length) : deriveWinHighlights(response);
+    const highlights = logical ? deriveWinHighlightsFromRoundRecordWins(logical.wins, logical.screen.length) : deriveWinHighlights(response);
     const totalWin = typeof response.totalWin === "number" ? response.totalWin : undefined;
     const bet = typeof response.bet === "number" ? response.bet : selectedBet;
     renderPlayerRound(

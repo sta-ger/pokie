@@ -19,7 +19,7 @@ export type PinnedFairnessDraw<T extends string | number = string> = {
 };
 
 // The one shared pinned-snapshot draw FairnessRoundProofBuilder and FairnessRoundProofVerifier both use — same
-// "no second calculation path" discipline CertificationEvidenceBundleBuilder's own "Pinned-snapshot sampling"
+// "no second calculation path" discipline CertificationPackBuilder's own "Pinned-snapshot sampling"
 // already follows (see that class's own doc comment):
 //
 // 0. modeName is checked against this bundle format's own canonical rule ([A-Za-z0-9_-]+) BEFORE any file is
@@ -48,7 +48,7 @@ export type PinnedFairnessDraw<T extends string | number = string> = {
 // like libraryHash, which a hand-tampered index could leave stale while its entries were rewritten underneath it.
 // Any difference from the first hash throws FairnessBundleDriftError: the snapshot this selection/read was
 // computed against no longer reflects the live bundle, so nothing built or verified from it can be trusted either
-// (the same "no partial artifact" discipline CertificationEvidenceBundleBuilder's own snapshot-consistency check
+// (the same "no partial artifact" discipline CertificationPackBuilder's own snapshot-consistency check
 // follows, just synchronous and single-outcome rather than deferred to just-before-publish). The second read
 // isn't independently re-validated by validatePinnedFairnessModeIndex: its content is only ever used to compute
 // a hash for comparison, and a hash match with the already-validated first read implies matching (and therefore
