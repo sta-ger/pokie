@@ -38,7 +38,7 @@ export type RegisterCliCommandsOptions = {
 // these register lives entirely inside the CliCommandHandling instances themselves (see
 // CliCommandHandling.ts's own getCommanderCommand() doc comment), so this function's own return value
 // is simultaneously what cli/pokie.ts's run() dispatches real argv against AND the one registration
-// source tests/cli/cliCommandInventory.contract.test.ts's help-coverage block walks recursively --
+// source focused CLI help-coverage tests walk recursively --
 // never a second, hand-maintained mirror of this list, and never a command-specific exception for one
 // entry that a hand-maintained mirror happened to drop (e.g. "outcomesource"). Side-effect-free itself
 // (no import.meta.url use here -- see cli/pokie.ts's own ownPackageDir()/readOwnVersion()/etc. doc

@@ -1,15 +1,15 @@
 const {
-    PC_12_FEATURED_ROUND_SEED,
-    PC_12_FREE_GAMES_FIXTURE_ID,
-    createPc12FreeGamesFixtureSession,
+    STUDIO_FIXTURE_SEED,
+    STUDIO_FIXTURE_GAME_ID,
+    createStudioFixtureGameSession,
     VideoSlotWithFreeGamesSessionSerializer,
 } = require("@fromstan/pokie");
 
-// The Studio half of PC-12's browser runner. The examples fixture imports the same public factory,
+// The Studio half of the Studio/browser runner. The examples fixture imports the same public factory,
 // so a featured round is one game contract and one seed rather than two coincidentally similar games.
 module.exports = {
     getManifest() {
-        return {id: PC_12_FREE_GAMES_FIXTURE_ID, name: "PC-12 Deterministic Free Games Fixture", version: "1.0.0"};
+        return {id: STUDIO_FIXTURE_GAME_ID, name: "Studio Fixture Game", version: "1.0.0"};
     },
     getSessionCommandCapabilities() {
         return {bets: [5, 10]};
@@ -18,9 +18,9 @@ module.exports = {
         return {kind: "free-games", base: {kind: "seeded-video-slot"}};
     },
     createSession() {
-        // PC-12 compares a named deterministic fixture round. Studio's optional UI seed is not
+        // The fixture compares a named deterministic fixture round. Studio's optional UI seed is not
         // part of this fixture's identity, so every prepared session starts at that same contract.
-        return createPc12FreeGamesFixtureSession(PC_12_FEATURED_ROUND_SEED);
+        return createStudioFixtureGameSession(STUDIO_FIXTURE_SEED);
     },
     // Studio must consume the same VideoSlot wire projection as the installed examples fixture.
     // Without this hook it falls back to the generic serializer, which loses player choices and

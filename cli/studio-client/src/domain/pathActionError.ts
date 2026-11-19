@@ -46,7 +46,7 @@ const PATH_ACTION_ISSUE_COPY: Record<PathActionErrorReason, (subject: string) =>
 // copy -- e.g. describePathActionError("The blueprint file", 'ENOENT: no such file or directory, ...') ->
 // "The blueprint file could not be found. Check the path and try again." Never echoes the raw message back:
 // an absent/permission/wrong-type/schema failure is an expected, everyday outcome of a user-typed path, not
-// a bug worth surfacing verbatim (see docs/studio-phase2-inventory.md's Raw-error surfaces finding).
+// a bug worth surfacing verbatim.
 export function describePathActionError(subject: string, message: string): string {
     const {status, remediation} = PATH_ACTION_ISSUE_COPY[classifyPathActionErrorReason(message)](subject);
     return `${status} ${remediation}`;

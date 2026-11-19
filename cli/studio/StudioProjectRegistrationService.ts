@@ -64,7 +64,7 @@ function registryView(
 // Both funnel through the same `resolveProject` (a real ProjectTargetResolver by default) so an entry's
 // `type`/`capabilities` are always what's actually on disk right now, not whatever a caller happened to
 // assert — the same "resolve, don't trust the caller" discipline every migrated CLI command already
-// applies via this exact resolver (see docs/pokie-phase3-inventory.md §1's P3-POLISH-09 update).
+// applies via this exact resolver.
 export class StudioProjectRegistrationService {
     private readonly registry: StudioProjectRegistry;
     private readonly resolveProject: ProjectResolving;

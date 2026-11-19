@@ -21,10 +21,10 @@ import {VideoSlotWinCalculator} from "../session/videoslot/wincalculator/VideoSl
 import type {VideoSlotWinCalculating} from "../session/videoslot/wincalculator/VideoSlotWinCalculating.js";
 
 // This is intentionally a public, small fixture contract: Studio's package fixture and the isolated
-// examples consumer both construct this exact game.  Keeping it here prevents PC-12's browser
-// comparison from accidentally pairing two look-alike free-games implementations.
-export const PC_12_FREE_GAMES_FIXTURE_ID = "pc-12-free-games-fixture";
-export const PC_12_FEATURED_ROUND_SEED = "fixture-round";
+// examples consumer both construct this exact game. Keeping it here prevents the Studio and
+// examples consumers from accidentally pairing two look-alike free-games implementations.
+export const STUDIO_FIXTURE_GAME_ID = "studio-fixture-game";
+export const STUDIO_FIXTURE_SEED = "fixture-round";
 
 function hashSeed(seed: string | number): number {
     let hash = 0x811c9dc5;
@@ -35,7 +35,7 @@ function hashSeed(seed: string | number): number {
     return hash >>> 0;
 }
 
-class Pc12FreeGamesConfig extends VideoSlotWithFreeGamesConfig {
+class StudioFixtureConfig extends VideoSlotWithFreeGamesConfig {
     private readonly normalSequences: SymbolsSequence[];
     private readonly freeGamesSequences: SymbolsSequence[];
     private readonly normalPatterns: LeftToRightLinesPatterns;
@@ -80,7 +80,7 @@ class Pc12FreeGamesConfig extends VideoSlotWithFreeGamesConfig {
         // This factory accepts no model collaborators. Its only changing model view is
         // freeGamesMode, rebuilt by the session codec from captured feature progress.
         // Certify the exact fixed strategies rather than opting config subclasses in.
-        return this.constructor === Pc12FreeGamesConfig &&
+        return this.constructor === StudioFixtureConfig &&
             this.getPaytable().constructor === Paytable &&
             this.getLinesDefinitions().constructor === LinesDefinitionsFor5x3 &&
             this.normalPatterns.constructor === LeftToRightLinesPatterns &&
@@ -101,8 +101,8 @@ class Pc12FreeGamesConfig extends VideoSlotWithFreeGamesConfig {
     }
 }
 
-class Pc12FreeGamesSession extends VideoSlotWithFreeGamesSession {
-    public constructor(private readonly fixtureConfig: Pc12FreeGamesConfig, combinationsGenerator: SymbolsCombinationsGenerating, winCalculator: VideoSlotWinCalculating) {
+class StudioFixtureSession extends VideoSlotWithFreeGamesSession {
+    public constructor(private readonly fixtureConfig: StudioFixtureConfig, combinationsGenerator: SymbolsCombinationsGenerating, winCalculator: VideoSlotWinCalculating) {
         super(fixtureConfig, combinationsGenerator, winCalculator);
     }
 
@@ -114,7 +114,7 @@ class Pc12FreeGamesSession extends VideoSlotWithFreeGamesSession {
     public override isSessionStateRestorable(): boolean {
         // This exact extension adds only the configuration view rebuilt by fromSessionState.
         // Retain the nested codec check and do not opt unknown subclasses into restoration.
-        return this.constructor === Pc12FreeGamesSession && this.fixtureConfig.isResolvedForSessionRestoration() && isSessionStateRestorable(this.baseSession);
+        return this.constructor === StudioFixtureSession && this.fixtureConfig.isResolvedForSessionRestoration() && isSessionStateRestorable(this.baseSession);
     }
 
     public override fromSessionState(value: VideoSlotWithFreeGamesSessionState): this {
@@ -127,18 +127,18 @@ class Pc12FreeGamesSession extends VideoSlotWithFreeGamesSession {
     }
 }
 
-class Pc12FreeGamesWinCalculator extends VideoSlotWinCalculator {
+class StudioFixtureWinCalculator extends VideoSlotWinCalculator {
     private multipliedLines: Record<string, WinningLineDescribing> | undefined;
     private multipliedScatters: Record<string, WinningScatterDescribing> | undefined;
 
-    public constructor(private readonly fixtureConfig: Pc12FreeGamesConfig) {
+    public constructor(private readonly fixtureConfig: StudioFixtureConfig) {
         super(fixtureConfig);
     }
 
     public override isStatelessForSessionRestoration(): boolean {
         // The constructor installs only the standard evaluators. Multiplied wins are output
         // caches replaced on each calculation; the mode is derived from restored feature progress.
-        return this.constructor === Pc12FreeGamesWinCalculator && this.fixtureConfig.isResolvedForSessionRestoration();
+        return this.constructor === StudioFixtureWinCalculator && this.fixtureConfig.isResolvedForSessionRestoration();
     }
 
     public calculateWin(bet: number, symbolsCombination: SymbolsCombinationDescribing): void {
@@ -161,7 +161,7 @@ class Pc12FreeGamesWinCalculator extends VideoSlotWinCalculator {
     }
 }
 
-export function createPc12FreeGamesFixtureSession(seed: string | number = PC_12_FEATURED_ROUND_SEED): VideoSlotWithFreeGamesSession {
-    const config = new Pc12FreeGamesConfig();
-    return new Pc12FreeGamesSession(config, new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(hashSeed(seed))), new Pc12FreeGamesWinCalculator(config));
+export function createStudioFixtureGameSession(seed: string | number = STUDIO_FIXTURE_SEED): VideoSlotWithFreeGamesSession {
+    const config = new StudioFixtureConfig();
+    return new StudioFixtureSession(config, new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(hashSeed(seed))), new StudioFixtureWinCalculator(config));
 }

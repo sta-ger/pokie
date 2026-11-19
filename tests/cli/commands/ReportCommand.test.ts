@@ -914,7 +914,7 @@ describe("ReportCommand (integration, base vs. freeGames breakdown from a real f
 
     it("renders a Breakdown section with both base and freeGames rows for a game with a free-games feature", async () => {
         const simReportFile = path.join(outDir, "sim.json");
-        // The PC-12 fixture has deterministic featured rounds. A rendering test
+        // The studio fixture has deterministic featured rounds. A rendering test
         // needs both categories, not 5,000 costly rounds of distribution sampling.
         await simulateReport(fixtureRoot(), 100, simReportFile);
 

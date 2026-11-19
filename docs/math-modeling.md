@@ -17,7 +17,7 @@ editor, build, runtime/restore, simulation/report, extraction, PAR and replay wo
 targets remain explicit; arbitrary callbacks and dynamic targets remain custom-only, and lossy extraction
 is blocked. PAR does not represent nonidentity geometry.
 
-[Canonical definition comparison](#canonical-definition-comparison-v2c-18) reads authoritative Blueprint,
+[Canonical definition comparison](#canonical-definition-comparison) reads authoritative Blueprint,
 package descriptor, PAR and canonical WASM data, preserving partial/unsupported status when authority is
 incomplete. It is separate from statistical report and Outcome Library/Stake comparisons.
 [Advanced declared-model validation](#advanced-declared-model-validation) adds bounded reachability,

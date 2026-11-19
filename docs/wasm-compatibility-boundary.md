@@ -245,7 +245,7 @@ Restore replaces the session and ends its collector. Cancel/dispose also
 invalidate pending initialization before it can publish a replacement.
 
 CLI and direct server simulation use collector-free sessions and aggregate results with `workers=1`. The Studio browser executes fixed-budget simulation in a production module Worker, reusing `collectPokieWasmSimulation`, shared command sequencing and `SimulationAccumulator`. Replay reuses `collectPokieWasmReplay` and the existing replay runtime, keeping only the final requested observation. CLI retains its requested command/result batch. Neither path keeps cumulative continuation history.
-See P9-02 measurements for bounds,
+See [feature analytics](simulation.md#feature-analytics-aggregates) for bounds,
 accounting and focused regression commands.
 
 ## Generated, visible and evaluated coordinates

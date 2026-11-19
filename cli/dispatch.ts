@@ -49,7 +49,7 @@ function printUnknownCommand(input: string, commands: CliCommandHandling[]): voi
 // this function — it only builds the real `commands` array (readOwnVersion()/ownClientRoot()/
 // ownStudioRoot() all need import.meta.url, so that construction has to stay there) and calls
 // dispatch(commands, process.argv). Kept here, rather than inline in pokie.ts, so
-// tests/cli/cliCommandInventory.contract.test.ts can exercise the real dispatcher mechanics —
+// focused CLI tests can exercise the real dispatcher mechanics —
 // --help/-h, an unknown command, stdout/stderr separation, exit codes — without pokie.ts's own
 // module-body `run().then(...)` call, which fires unconditionally on import (see pokie.ts's own
 // comments on why it can't be imported directly in a test).

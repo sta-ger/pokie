@@ -11,7 +11,7 @@ uses supported population adapters, a separately seeded fixed held-out assessmen
 confidence intervals. Simulation precision convergence is not optimization target attainment; neither a
 short zero-variance sample nor an empirical maximum supplies a mathematical support bound.
 
-[Feature analytics](#feature-analytics-aggregates-v2c-16) record canonical entries, retriggers,
+[Feature analytics](#feature-analytics-aggregates) record canonical entries, retriggers,
 completions, duration/bonus-win distributions, component hits, weighted selections and payout attribution
 for supported authored mechanics. Reports label actual paid/logical/subround populations and denominators;
 overlapping lifecycle summaries are separate from the additive base/feature/jackpot/unavailable monetary
@@ -27,7 +27,7 @@ or outcome-analysis reports. See [dossier preparation](certification-evidence-bu
 does not establish regulatory certification. PAR workbook exchange is a separate model format.
 YAML authoring and dossier YAML output remain unimplemented.
 
-[Canonical definition comparison](math-modeling.md#canonical-definition-comparison-v2c-18) reads authoritative
+[Canonical definition comparison](math-modeling.md#canonical-definition-comparison) reads authoritative
 Blueprint, package descriptor, PAR and canonical WASM models through the shared CLI/Studio differ. Statistical
 report and Outcome Library/Stake aggregate comparisons remain separate workflows. Partial models retain
 limits; matching observed totals cannot prove definition equality or arbitrary custom-code behavior.
