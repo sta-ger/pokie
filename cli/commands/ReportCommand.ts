@@ -73,7 +73,7 @@ export class ReportCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Render simulation/outcome analysis as JSON, Markdown or HTML, or a canonical evidence pack as JSON, console, Markdown, HTML or local PDF.";
+        return "Render a simulation report or outcome analysis as JSON, Markdown or HTML, or a certification pack as JSON, console, Markdown, HTML or local PDF.";
     }
 
     public getCommanderCommand(): Command {

@@ -4,7 +4,7 @@
 
 - Math-first JavaScript/TypeScript runtime with a local Studio for authoring, validating, simulating and building games.
 - `GameBlueprint` JSON as a first-class source format, with `create`, `edit` and `init` workflows.
-- Canonical `pokie build SOURCE --target TARGET` conversions for Blueprints, TypeScript packages, Outcome Libraries, Stake Engine adapters, PAR workbooks and WASM modules.
+- `pokie build SOURCE --target TARGET` conversions for Blueprints, TypeScript packages, Outcome Libraries, Stake Engine adapters, PAR workbooks and WASM modules.
 - Authored free games, bet modes, Hold & Win, jackpots, cascades, resizable grids, weighted bonuses and screen modifiers.
 - Seeded simulation, parallel workers, adaptive early stop, exact weighted-outcome analysis and finite math optimization.
 - Round artifacts, deterministic replay, audit records, commit-reveal fairness proofs and certification evidence bundles.

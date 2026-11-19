@@ -109,11 +109,11 @@ describe("ReplayCommand", () => {
         expect(command.getDescription().length).toBeGreaterThan(0);
     });
 
-    it("advertises deterministic WASM replay and Blueprint inputs with the WASM seed default", () => {
+    it("advertises WASM replay and game-design inputs with the WASM seed default", () => {
         const command = new ReplayCommand();
         const help = command.getCommanderCommand().helpInformation();
-        expect(command.getDescription()).toContain("deterministic canonical WASM replay");
-        expect(help).toContain("Blueprint");
+        expect(command.getDescription()).toContain("WASM build");
+        expect(help).toContain("game design");
         expect(help).toContain("WASM");
         expect(help).toContain("pokie-wasm-replay");
         expect(help).toContain("available entries");

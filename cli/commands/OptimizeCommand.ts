@@ -27,7 +27,7 @@ export class OptimizeCommand implements CliCommandHandling {
         return "optimize";
     }
     public getDescription(): string {
-        return "Search a declared math domain, review and explicitly apply authored changes or save a same-type candidate.";
+        return "Search a declared math range, review the result and explicitly apply the changes or save a candidate.";
     }
     public getCommanderCommand(): Command {
         return this.command();

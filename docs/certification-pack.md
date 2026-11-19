@@ -23,18 +23,18 @@ configuration file:
 
 ```json
 {
-  "modes": [{"modeName": "base", "seed": "assessment-base", "sampleCount": 100}],
-  "pack": {
-    "modelSource": "sources/game-package",
-    "reportFiles": ["sources/simulation.json"],
-    "replayFiles": ["sources/audit-round.json"],
-    "sourceRevision": "reviewed-source-revision",
-    "candidateRevision": "reviewed-candidate-revision"
-  },
-  "output": {
-    "formats": ["json", "console", "markdown", "html", "pdf"],
-    "templateFile": "sources/presentation.json"
-  }
+ "modes": [{"modeName": "base", "seed": "assessment-base", "sampleCount": 100}],
+ "pack": {
+ "modelSource": "sources/game-package",
+ "reportFiles": ["sources/simulation.json"],
+ "replayFiles": ["sources/audit-round.json"],
+ "sourceRevision": "reviewed-source-revision",
+ "candidateRevision": "reviewed-candidate-revision"
+ },
+ "output": {
+ "formats": ["json", "console", "markdown", "html", "pdf"],
+ "templateFile": "sources/presentation.json"
+ }
 }
 ```
 
@@ -63,11 +63,11 @@ Library use exposes the same interfaces:
 
 ```ts
 const result = await new CertificationPackBuilder("2.0.0").buildFromBundle(
-    sourceBundleDir, modes, newOrEmptyDirectory,
-    {pack: {modelSource, reportFiles, replayFiles}, output: {formats: ["html", "pdf"]}, signal},
+ sourceBundleDir, modes, newOrEmptyDirectory,
+ {pack: {modelSource, reportFiles, replayFiles}, output: {formats: ["html", "pdf"]}, signal},
 );
 const issues = await new CertificationPackVerifier().verify(result.outDir, {
-    sourceBundleDir: relocatedSource, pack: relocatedSources, templateFile, signal,
+ sourceBundleDir: relocatedSource, pack: relocatedSources, templateFile, signal,
 });
 const bytes = await new CertificationPackRenderer().render(result.manifest!, "pdf", undefined, signal);
 ```
@@ -135,10 +135,10 @@ permutation of **all six** mandatory `sections`:
 
 ```json
 {
-    "schemaVersion": 1,
-    "title": "POKIE certification pack",
-    "introduction": "Independent assessment preparation",
-    "sections": ["identity", "rules", "statistics", "validation", "reproduction", "support"]
+ "schemaVersion": 1,
+ "title": "POKIE certification pack",
+ "introduction": "Independent assessment preparation",
+ "sections": ["identity", "rules", "statistics", "validation", "reproduction", "support"]
 }
 ```
 

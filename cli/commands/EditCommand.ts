@@ -79,13 +79,10 @@ export class EditCommand implements CliCommandHandling {
 
     public getDescription(): string {
         return (
-            "Interactively edit an existing Blueprint Project through the same canonical GameBlueprint wizard " +
-            '"pokie create" uses ("pokie edit <blueprint> [--out <file>]") -- every question pre-fills the ' +
-            "current value and Enter preserves it, then a diff against the loaded file is shown and nothing is " +
-            'written until it\'s explicitly confirmed. --out saves the result to a different file instead of ' +
-            'overwriting <blueprint> ("Save As"). Pointed at a non-Blueprint artifact project, reports why it ' +
-            "can't be edited here instead of running the " +
-            'wizard. A "generated" reelStripGeneration is left untouched -- see "pokie reel generate" for that.'
+            'Edit an existing game design through the same interactive wizard "pokie create" uses ' +
+            '("pokie edit <design.json> [--out <file>]"). Every question pre-fills the current value and Enter ' +
+            "keeps it; a diff is shown and nothing is written until confirmed. --out saves to a different file " +
+            'instead of overwriting. Generated reel strips are left untouched; see "pokie reel generate".'
         );
     }
 

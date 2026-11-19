@@ -28,7 +28,7 @@ Blueprint runtime handlers are reused; custom executable fidelity is never infer
 completeness. Exhausted analysis budgets remain unknown, distinct from runtime respin caps and cascade
 limit rejection. CLI/Studio/definition diff retain the same report and witnesses.
 
-The ordinary lines/ways/clusters math kernel is shared between generated Node and canonical WASM.
+The ordinary lines/ways/clusters math kernel is shared between generated Node and WASM.
 ABI 3.0 uses one i32 stop per reel, supports models above the former 30-bit total and binds exact
 executable bytes to the effective model and component descriptor. Fractional components multiply
 before addition; ways/clusters retain selected-group aggregation. Portable consumers still expose
@@ -59,10 +59,10 @@ re-export keeps the server's byte-bound import history across restart; unprepare
 ineligible import cannot restore a lossless claim. Import and re-export do not implicitly save the
 draft.
 
-## Canonical dossier preparation
+## Dossier preparation
 
-Canonical dossier preparation adds versioned dossier sections through the existing builder/verifier,
-authoritative model rules and field coverage, canonical statistics and executable audit replay when
+dossier preparation adds versioned dossier sections through the existing builder/verifier,
+authoritative model rules and field coverage, statistics and executable audit replay when
 explicitly supplied. Formats are JSON, console text, Markdown, HTML and local selectable-text PDF.
 Partial/custom/unknown model authority remains visible. Outcome-only dossiers cannot establish
 originating rules; SDK/fairness evidence is explicitly unavailable. YAML is optional and

@@ -11,7 +11,7 @@ which redraws a random height every round instead of persisting an explicit one.
 
 ```ts
 interface GridResizeHandling<T = string> {
-    getNextReelsHeights(session: VideoSlotSessionHandling<T>, currentHeights: number[]): number[];
+ getNextReelsHeights(session: VideoSlotSessionHandling<T>, currentHeights: number[]): number[];
 }
 ```
 
@@ -27,13 +27,13 @@ Wraps a session built around a `ResizableSymbolsCombinationsGenerator` and, afte
 
 ```ts
 constructor(
-    baseSession: VideoSlotSessionHandling<T>,
-    generator: ResizableSymbolsCombinationsGenerator<T>,
-    gridResizeHandling: GridResizeHandling<T>,
+ baseSession: VideoSlotSessionHandling<T>,
+ generator: ResizableSymbolsCombinationsGenerator<T>,
+ gridResizeHandling: GridResizeHandling<T>,
 )
 
-play(): void                        // plays baseSession, then applies gridResizeHandling's result to generator
-getReelsHeights(): number[]         // current per-reel heights
+play(): void // plays baseSession, then applies gridResizeHandling's result to generator
+getReelsHeights(): number[] // current per-reel heights
 ```
 
 The **same** `ResizableSymbolsCombinationsGenerator` instance must be passed to both the base session's construction
@@ -46,12 +46,12 @@ session's round first, then computes and stores the next heights.
 
 ```ts
 import {
-    GridResizeHandling,
-    ResizableSymbolsCombinationsGenerator,
-    VideoSlotConfig,
-    VideoSlotSession,
-    VideoSlotWinCalculator,
-    VideoSlotWithResizableGridSession,
+ GridResizeHandling,
+ ResizableSymbolsCombinationsGenerator,
+ VideoSlotConfig,
+ VideoSlotSession,
+ VideoSlotWinCalculator,
+ VideoSlotWithResizableGridSession,
 } from "@fromstan/pokie";
 
 const config = new VideoSlotConfig();
@@ -61,8 +61,8 @@ const generator = new ResizableSymbolsCombinationsGenerator(config, [3, 3, 3, 3,
 const baseSession = new VideoSlotSession(config, generator, new VideoSlotWinCalculator(config));
 
 const growOnWin: GridResizeHandling = {
-    getNextReelsHeights: (session, currentHeights) =>
-        session.getWinAmount() > 0 ? currentHeights.map((h) => Math.min(h + 1, 7)) : currentHeights,
+ getNextReelsHeights: (session, currentHeights) =>
+ session.getWinAmount() > 0 ? currentHeights.map((h) => Math.min(h + 1, 7)): currentHeights,
 };
 
 const session = new VideoSlotWithResizableGridSession(baseSession, generator, growOnWin);

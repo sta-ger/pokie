@@ -73,7 +73,7 @@ export class CertificationCommand implements CliCommandHandling {
 
     public getDescription(): string {
         return (
-            "Build a canonical POKIE certification/evidence bundle on top of an outcome-library bundle, or verify one " +
+            "Build a certification pack from an outcome library, or verify one " +
             '("pokie certification build <bundleDir> <config.json>" / "pokie certification verify <certDir>").'
         );
     }

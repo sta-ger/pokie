@@ -97,10 +97,10 @@ feature event before exporting). This closes what used to be a real ambiguity: i
 this package itself exports. One disclosed, pre-existing limitation remains, and isn't fixable by the importer:
 
 - A step's own feature-collecting window closes on its own `"win"` event, or — for every step but the last — on
-  the *next* step's `"reveal"` regardless of win. The **last** step has neither signal if it never wins: any
-  feature events between its `"reveal"` and the round's `"finalWin"` are then genuinely ambiguous between "the
-  last step's own features" and "round-level-only features" (the event stream carries no explicit count of how
-  many features belong to a step). This never affects a round whose last step has a nonzero win.
+ the *next* step's `"reveal"` regardless of win. The **last** step has neither signal if it never wins: any
+ feature events between its `"reveal"` and the round's `"finalWin"` are then genuinely ambiguous between "the
+ last step's own features" and "round-level-only features" (the event stream carries no explicit count of how
+ many features belong to a step). This never affects a round whose last step has a nonzero win.
 
 ## Reconstructing `wins`: one synthetic component per step
 
@@ -150,9 +150,9 @@ importer actually read, computed over the exact bytes on disk, before any parsin
 
 ```ts
 type StakeEngineImportSourceProvenance = {
-    indexHash: string;      // sha256:<hex>, of the raw index.json bytes
-    manifestHash: string;   // sha256:<hex>, of the raw pokie-manifest.json bytes
-    modes: {modeName: string; csvHash: string; booksHash: string}[]; // per mode, of the raw CSV/books.jsonl.zst bytes
+ indexHash: string; // sha256:<hex>, of the raw index.json bytes
+ manifestHash: string; // sha256:<hex>, of the raw pokie-manifest.json bytes
+ modes: {modeName: string; csvHash: string; booksHash: string}[]; // per mode, of the raw CSV/books.jsonl.zst bytes
 };
 ```
 
@@ -184,7 +184,7 @@ Two layers, mirroring the exporter's own "validate everything before building" d
 | `stakeengine-import-manifest-missing` / `stakeengine-import-manifest-unreadable` / `stakeengine-import-manifest-invalid-json` | `pokie-manifest.json` doesn't exist / couldn't be read / doesn't parse as JSON |
 | `stakeengine-import-manifest-unrecognized` | it parses but was not written by POKIE's adapter export, or its `modes` isn't an array |
 | `stakeengine-import-manifest-schema-version-unsupported` | its `schemaVersion` isn't the currently supported one |
-| `stakeengine-import-manifest-field-invalid` | a required top-level manifest field (`game`, `pokieVersion`, `generatedAt`, `files`, ...) is missing or the wrong type |
+| `stakeengine-import-manifest-field-invalid` | a required top-level manifest field (`game`, `pokieVersion`, `generatedAt`, `files`,...) is missing or the wrong type |
 | `stakeengine-import-manifest-mode-field-invalid` / `stakeengine-import-manifest-library-id-invalid` / `stakeengine-import-manifest-library-hash-invalid` / `stakeengine-import-manifest-outcome-count-invalid` | a manifest mode entry, or one of its `libraryId`/`libraryHash`/`outcomeCount` fields specifically, is missing or malformed (`libraryHash` must match `^sha256:[0-9a-f]{64}$`; `outcomeCount` must be a *positive* safe integer — zero outcomes is rejected, not silently accepted) |
 | `stakeengine-import-manifest-files-duplicate` / `stakeengine-import-manifest-files-entry-unsafe` | `pokie-manifest.json`'s own `files` list has an exact or case-only duplicate entry, or an entry that isn't itself a safe filename |
 | `stakeengine-import-manifest-files-missing-entry` / `stakeengine-import-manifest-files-unexpected-entry` | `files` doesn't match the exact expected set — `index.json`, `pokie-manifest.json`, and every *current* mode's own CSV/books filename, nothing missing, nothing extra |
@@ -207,7 +207,7 @@ Two layers, mirroring the exporter's own "validate everything before building" d
 
 | Code | Meaning |
 |---|---|
-| `stakeengine-import-events-empty` / `stakeengine-import-events-missing-reveal` / `stakeengine-import-events-missing-final-win` / `stakeengine-import-events-final-win-not-last` | the events array doesn't have the required `[reveal, ..., finalWin]` shape |
+| `stakeengine-import-events-empty` / `stakeengine-import-events-missing-reveal` / `stakeengine-import-events-missing-final-win` / `stakeengine-import-events-final-win-not-last` | the events array doesn't have the required `[reveal,..., finalWin]` shape |
 | `stakeengine-import-events-index-out-of-sequence` | an event's `index` doesn't match its position |
 | `stakeengine-import-events-reveal-shape-invalid` / `stakeengine-import-events-win-shape-invalid` / `stakeengine-import-events-final-win-shape-invalid` | a structural event has the wrong keys, or a non-integer amount/board |
 | `stakeengine-import-events-unexpected-win` | a `"win"` event with no open step, or a step that already had one |
@@ -235,10 +235,10 @@ mode, `<outDir>/config.json` naming them, and (whenever `sourceProvenance` is pr
 
 ```json
 {
-    "modes": [
-        {"modeName": "base", "cost": 1, "libraryPath": "./libraries/base.json"},
-        {"modeName": "bonus", "cost": 100, "libraryPath": "./libraries/bonus.json"}
-    ]
+ "modes": [
+ {"modeName": "base", "cost": 1, "libraryPath": "./libraries/base.json"},
+ {"modeName": "bonus", "cost": 100, "libraryPath": "./libraries/bonus.json"}
+ ]
 }
 ```
 
@@ -263,10 +263,10 @@ import {StakeEngineExporter, StakeEngineImporter} from "@fromstan/pokie";
 const importResult = await new StakeEngineImporter().importFromDirectory("./stakeengine");
 
 if (importResult.issues.some((issue) => issue.severity === "error")) {
-    // nothing was reconstructed — inspect importResult.issues
+ // nothing was reconstructed — inspect importResult.issues
 } else {
-    // importResult.modes is StakeEngineExportModeInput<T>[] — feed it straight back into the exporter.
-    await new StakeEngineExporter(pokieVersion).exportToDirectory(importResult.modes, "./stakeengine-reexported");
+ // importResult.modes is StakeEngineExportModeInput<T>[] — feed it straight back into the exporter.
+ await new StakeEngineExporter(pokieVersion).exportToDirectory(importResult.modes, "./stakeengine-reexported");
 }
 ```
 
@@ -293,7 +293,7 @@ For an otherwise compatible POKIE export exceeding that native domain,
 explicit `stakeengine-import-exact-payload` diagnostic; `modes` is empty. It never
 rescales weights or constructs a misleading numeric library. The import writer
 publishes a **Stake adapter project**, preserving CSV/books/index/manifest bytes.
-Canonical `pokie import`, its Stake alias and their JSON output identify that
+`pokie import`, its Stake alias and their JSON output identify that
 payload. Reopen it with the importer, analyze/report/diff it as an Outcome Source,
 and re-export with `pokie build SOURCE --target stakeAdapter --out NEW` or
 `StakeEngineExporter.exportExactSourceToDirectory(result.exactSource, NEW)`.

@@ -10,7 +10,7 @@ thing: a scatter-symbol → symbol-count → free-games-awarded map.
 ```ts
 constructor(baseConfig = new VideoSlotConfig())
 
-getFreeGamesForScatters(symbolId: string, numberOfSymbols: number): number   // 0 if unregistered
+getFreeGamesForScatters(symbolId: string, numberOfSymbols: number): number // 0 if unregistered
 setFreeGamesForScatters(symbolId: string, numberOfSymbols: number, freeGamesNum: number): void
 // plus everything from VideoSlotConfigRepresenting, delegated to the wrapped VideoSlotConfig
 ```
@@ -35,17 +35,17 @@ Wraps a `baseSession: VideoSlotSessionHandling` and adds free-games bookkeeping:
 
 ```ts
 constructor(
-    config: VideoSlotWithFreeGamesConfigRepresenting = new VideoSlotWithFreeGamesConfig(),
-    combinationsGenerator: SymbolsCombinationsGenerating = new SymbolsCombinationsGenerator(config),
-    winCalculator: VideoSlotWinCalculating = new VideoSlotWinCalculator(config),
-    baseSession: VideoSlotSessionHandling = new VideoSlotSession(config, combinationsGenerator, winCalculator),
-    freeGamesRoundHandler: FreeGamesRoundHandling = new FreeGamesRoundHandler(),
+ config: VideoSlotWithFreeGamesConfigRepresenting = new VideoSlotWithFreeGamesConfig(),
+ combinationsGenerator: SymbolsCombinationsGenerating = new SymbolsCombinationsGenerator(config),
+ winCalculator: VideoSlotWinCalculating = new VideoSlotWinCalculator(config),
+ baseSession: VideoSlotSessionHandling = new VideoSlotSession(config, combinationsGenerator, winCalculator),
+ freeGamesRoundHandler: FreeGamesRoundHandling = new FreeGamesRoundHandler(),
 )
 
-getFreeGamesNum(): number / setFreeGamesNum(v: number): void     // free games played so far in the current round
-getFreeGamesSum(): number / setFreeGamesSum(v: number): void     // free games awarded/available in the current round
-getFreeGamesBank(): number / setFreeGamesBank(v: number): void   // winnings accumulated during the free-games round
-getWonFreeGamesNumber(): number                                   // free games awarded by the MOST RECENT spin's scatters
+getFreeGamesNum(): number / setFreeGamesNum(v: number): void // free games played so far in the current round
+getFreeGamesSum(): number / setFreeGamesSum(v: number): void // free games awarded/available in the current round
+getFreeGamesBank(): number / setFreeGamesBank(v: number): void // winnings accumulated during the free-games round
+getWonFreeGamesNumber(): number // free games awarded by the MOST RECENT spin's scatters
 getFreeGamesForScatters(symbolId: string, numberOfSymbols: number): number
 play(): void
 // plus everything from VideoSlotSessionHandling, delegated to baseSession
@@ -58,10 +58,10 @@ whole bonus round — it can grow further via retriggers).
 
 ```ts
 public play(): void {
-    this.freeGamesRoundHandler.beforeRoundPlayed(this);
-    const creditsBeforePlay = this.getCreditsAmount();
-    this.baseSession.play();
-    this.freeGamesRoundHandler.afterRoundPlayed(this, creditsBeforePlay);
+ this.freeGamesRoundHandler.beforeRoundPlayed(this);
+ const creditsBeforePlay = this.getCreditsAmount();
+ this.baseSession.play();
+ this.freeGamesRoundHandler.afterRoundPlayed(this, creditsBeforePlay);
 }
 ```
 
@@ -69,16 +69,16 @@ public play(): void {
 mechanic:
 
 1. **`beforeRoundPlayed`** — if the previous round's free games are all used up (`freeGamesNum === freeGamesSum`),
-   the bank/num/sum counters reset to `0`.
+ the bank/num/sum counters reset to `0`.
 2. The session records credits before playing, then plays the underlying `VideoSlotSession` round as normal (bet is
-   deducted, win is added to credits by the base session).
+ deducted, win is added to credits by the base session).
 3. **`afterRoundPlayed`**, while inside a free-games round (`freeGamesSum > 0 && freeGamesNum < freeGamesSum`):
-   increments `freeGamesNum`, adds this round's win to `freeGamesBank`, and **restores credits to what they were
-   before this round** (free spins don't cost/pay credits directly — winnings accrue in the bank instead). Then
-   checks `getWonFreeGamesNumber()` from this round's scatter wins: if free games were won, adds them to
-   `freeGamesSum` (a trigger or retrigger); otherwise, if this was the last free game in the round
-   (`freeGamesSum > 0 && freeGamesNum === freeGamesSum`), the accumulated `freeGamesBank` is finally added to real
-   credits.
+ increments `freeGamesNum`, adds this round's win to `freeGamesBank`, and **restores credits to what they were
+ before this round** (free spins don't cost/pay credits directly — winnings accrue in the bank instead). Then
+ checks `getWonFreeGamesNumber()` from this round's scatter wins: if free games were won, adds them to
+ `freeGamesSum` (a trigger or retrigger); otherwise, if this was the last free game in the round
+ (`freeGamesSum > 0 && freeGamesNum === freeGamesSum`), the accumulated `freeGamesBank` is finally added to real
+ credits.
 
 ```ts
 import {VideoSlotWithFreeGamesSession} from "@fromstan/pokie";
@@ -88,10 +88,10 @@ session.setBet(10);
 session.play(); // base-game spin — may trigger free games via scatters
 
 if (session.getWonFreeGamesNumber() > 0) {
-    while (session.getFreeGamesNum() < session.getFreeGamesSum()) {
-        session.play(); // plays through the awarded free games; wins accumulate in the bank
-    }
-    // bank has now been paid out to credits automatically
+ while (session.getFreeGamesNum() < session.getFreeGamesSum()) {
+ session.play(); // plays through the awarded free games; wins accumulate in the bank
+ }
+ // bank has now been paid out to credits automatically
 }
 ```
 
@@ -108,22 +108,22 @@ argument, not a fork of the whole session:
 import {FreeGamesRoundHandling, VideoSlotWithFreeGamesConfig, VideoSlotWithFreeGamesSession} from "@fromstan/pokie";
 
 class ImmediatePayoutFreeGamesHandler implements FreeGamesRoundHandling {
-    public beforeRoundPlayed(session) {
-        /* ... */
-    }
+ public beforeRoundPlayed(session) {
+ /*... */
+ }
 
-    public afterRoundPlayed(session, creditsBeforePlay) {
-        // e.g. pay out every free-spin win immediately instead of banking it
-    }
+ public afterRoundPlayed(session, creditsBeforePlay) {
+ // e.g. pay out every free-spin win immediately instead of banking it
+ }
 }
 
 const config = new VideoSlotWithFreeGamesConfig();
 const session = new VideoSlotWithFreeGamesSession(
-    config,
-    undefined,
-    undefined,
-    undefined,
-    new ImmediatePayoutFreeGamesHandler(),
+ config,
+ undefined,
+ undefined,
+ undefined,
+ new ImmediatePayoutFreeGamesHandler(),
 );
 ```
 

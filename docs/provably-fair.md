@@ -24,11 +24,11 @@ and `clientSeed` at once cannot, by construction, prove the server didn't wait t
 choosing `serverSeed`. That guarantee needs two separate, sequential artifacts:
 
 1. **`FairnessServerSeedCommitment`** — published immediately, before `clientSeed`/`nonce` are even solicited.
-   Carries *only* `serverSeedHash`; structurally cannot mention `clientSeed`/`nonce`/library/mode at all.
+ Carries *only* `serverSeedHash`; structurally cannot mention `clientSeed`/`nonce`/library/mode at all.
 2. **`FairnessCommitment`** (the "round commitment") — published once `clientSeed`/`nonce` are known and *before*
-   the outcome is selected. `computeFairnessCommitment` always takes a `FairnessServerSeedCommitment` as an
-   input, copying its `serverSeedHash`/`algorithmVersion` forward unchanged — never a raw `serverSeed` — so a
-   round commitment can only ever carry forward a hash that was already, separately published.
+ the outcome is selected. `computeFairnessCommitment` always takes a `FairnessServerSeedCommitment` as an
+ input, copying its `serverSeedHash`/`algorithmVersion` forward unchanged — never a raw `serverSeed` — so a
+ round commitment can only ever carry forward a hash that was already, separately published.
 3. **`FairnessRoundProof`** — the reveal, published after the round settles.
 
 This library cannot itself prove *when* step 1 was published relative to step 2 — that needs an external
@@ -39,60 +39,60 @@ unenforced convention a single, more permissive function signature could quietly
 ## Commit-reveal flow
 
 1. **Server-seed commit** — the server generates a secret `serverSeed` and calls
-   `computeFairnessServerSeedCommitment({serverSeed})`. The returned `FairnessServerSeedCommitment` (just
-   `serverSeedHash` + algorithm/schema stamps) is published to the player immediately.
+ `computeFairnessServerSeedCommitment({serverSeed})`. The returned `FairnessServerSeedCommitment` (just
+ `serverSeedHash` + algorithm/schema stamps) is published to the player immediately.
 2. **Round commit** — once the player's `clientSeed`/`nonce` are known, the server calls
-   `computeFairnessCommitment({serverSeedCommitment, clientSeed, nonce, libraryId, libraryHash, modeName})`. The
-   returned `FairnessCommitment` is published to the player before the round is played.
+ `computeFairnessCommitment({serverSeedCommitment, clientSeed, nonce, libraryId, libraryHash, modeName})`. The
+ returned `FairnessCommitment` is published to the player before the round is played.
 3. **Reveal** — once the round is settled, `FairnessRoundProofBuilder.build(commitment, serverSeed, sourceBundleDir)`
-   draws the one outcome this commitment's own `clientSeed`/`nonce`/(now-revealed) `serverSeed` deterministically
-   select, and returns a `FairnessRoundProof` carrying the revealed `serverSeed`, the drawn
-   `outcomeId`/`weight`/`recordHash`, the mode index's own `indexHash`, and a `commitmentHash` binding this exact
-   proof to the exact commitment it was built from. Published to the player after the round.
+ draws the one outcome this commitment's own `clientSeed`/`nonce`/(now-revealed) `serverSeed` deterministically
+ select, and returns a `FairnessRoundProof` carrying the revealed `serverSeed`, the drawn
+ `outcomeId`/`weight`/`recordHash`, the mode index's own `indexHash`, and a `commitmentHash` binding this exact
+ proof to the exact commitment it was built from. Published to the player after the round.
 4. **Verify** — anyone holding the source bundle and the original `FairnessCommitment` can independently confirm
-   the proof: is it genuinely bound to that commitment (`commitmentHash` plus an exact field-by-field match), does
-   the revealed `serverSeed` actually hash to what was committed, does the pinned `libraryHash`/`indexHash` still
-   match the live bundle, and does redrawing the same `serverSeed`/`clientSeed`/`nonce` against the live bundle
-   select the exact same outcome.
+ the proof: is it genuinely bound to that commitment (`commitmentHash` plus an exact field-by-field match), does
+ the revealed `serverSeed` actually hash to what was committed, does the pinned `libraryHash`/`indexHash` still
+ match the live bundle, and does redrawing the same `serverSeed`/`clientSeed`/`nonce` against the live bundle
+ select the exact same outcome.
 
 ## Types
 
 ```ts
 type FairnessServerSeedCommitment = {
-    schemaVersion: number;
-    algorithmVersion: string;
-    serverSeedHash: string; // sha256:<hex> of the still-secret serverSeed
-    issuedAt: string;
+ schemaVersion: number;
+ algorithmVersion: string;
+ serverSeedHash: string; // sha256:<hex> of the still-secret serverSeed
+ issuedAt: string;
 };
 
 type FairnessCommitment = {
-    schemaVersion: number;
-    algorithmVersion: string;
-    serverSeedHash: string; // carried forward unchanged from a FairnessServerSeedCommitment
-    clientSeed: string;
-    nonce: number;
-    libraryId: string;
-    libraryHash: string;
-    modeName: string;
-    issuedAt: string;
+ schemaVersion: number;
+ algorithmVersion: string;
+ serverSeedHash: string; // carried forward unchanged from a FairnessServerSeedCommitment
+ clientSeed: string;
+ nonce: number;
+ libraryId: string;
+ libraryHash: string;
+ modeName: string;
+ issuedAt: string;
 };
 
 type FairnessRoundProof = {
-    schemaVersion: number;
-    algorithmVersion: string;
-    serverSeed: string;      // revealed
-    serverSeedHash: string;  // must match what was committed pre-selection
-    clientSeed: string;
-    nonce: number;
-    libraryId: string;
-    libraryHash: string;
-    modeName: string;
-    indexHash: string;       // computeFairnessIndexHash of the mode index this outcome was drawn from
-    outcomeId: string;
-    weight: number;
-    recordHash: string;      // the drawn outcome's own OutcomeLibraryBundleIndexEntry.recordHash
-    commitmentHash: string;  // computeFairnessCommitmentHash of the exact FairnessCommitment this round was built from
-    revealedAt: string;
+ schemaVersion: number;
+ algorithmVersion: string;
+ serverSeed: string; // revealed
+ serverSeedHash: string; // must match what was committed pre-selection
+ clientSeed: string;
+ nonce: number;
+ libraryId: string;
+ libraryHash: string;
+ modeName: string;
+ indexHash: string; // computeFairnessIndexHash of the mode index this outcome was drawn from
+ outcomeId: string;
+ weight: number;
+ recordHash: string; // the drawn outcome's own OutcomeLibraryBundleIndexEntry.recordHash
+ commitmentHash: string; // computeFairnessCommitmentHash of the exact FairnessCommitment this round was built from
+ revealedAt: string;
 };
 ```
 
@@ -127,35 +127,35 @@ reading it. `modeName` (and, through it, the index/outcomes file this eventually
 it comes straight off an untrusted `FairnessCommitment`/`FairnessRoundProof`, and every step below is guarded
 accordingly.
 
-0. `modeName` is checked against this bundle format's own canonical rule (`[A-Za-z0-9_-]+`) **before any file is
-   read at all**. `FairnessCommitmentValidating`/`FairnessRoundProofValidating` already enforce this same rule, so
-   in practice this is a redundant, defense-in-depth check — but it's what makes `drawPinnedFairnessOutcome`
-   itself provably safe regardless of what validated it first.
+0. `modeName` is checked against this bundle format's own rule (`[A-Za-z0-9_-]+`) **before any file is
+ read at all**. `FairnessCommitmentValidating`/`FairnessRoundProofValidating` already enforce this same rule, so
+ in practice this is a redundant, defense-in-depth check — but it's what makes `drawPinnedFairnessOutcome`
+ itself provably safe regardless of what validated it first.
 1. a mode's own index is read exactly **once** and validated via an internal `validatePinnedFairnessModeIndex`
-   check — never trusted blindly: `OutcomeLibraryBundleReader.readModeIndex` itself does no runtime shape
-   checking at all (a raw `JSON.parse` + type-cast), so a malformed or hand-tampered `index_<modeName>.json`
-   would otherwise be trusted as-is. This check mirrors the relevant parts of
-   [`OutcomeLibraryBundleValidator`](outcome-library-bundle.md)'s own per-mode checks — closed shape at both the
-   index and the per-entry level (every entry must be *exactly* `{id, weight, byteOffset, byteLength,
-   recordHash}`, no more, no fewer), current schema/library-schema versions, `index.modeName` matching the mode
-   actually requested, `index.outcomesFile` matching `outcomes_<modeName>.jsonl` **exactly** (not just "a
-   safe-looking string"), positive safe `outcomeCount`/`totalWeight`/entry weights, canonically sorted and unique
-   entry ids, and a canonical byte layout across all entries — the first entry's `byteOffset` is exactly `0`, and
-   every later entry's `byteOffset` is exactly the previous entry's own `byteOffset + byteLength + 1` (the `+1`
-   accounts for the trailing `"\n"` every record is written with — see `streamModeOutcomesToTempFile`'s own
-   `offset += lineBuffer.byteLength + 1`), so ranges can never overlap or leave a gap, and `byteOffset +
-   byteLength` is checked to never overflow a safe integer either — then the validated index is held in memory;
+ check — never trusted blindly: `OutcomeLibraryBundleReader.readModeIndex` itself does no runtime shape
+ checking at all (a raw `JSON.parse` + type-cast), so a malformed or hand-tampered `index_<modeName>.json`
+ would otherwise be trusted as-is. This check mirrors the relevant parts of
+ [`OutcomeLibraryBundleValidator`](outcome-library-bundle.md)'s own per-mode checks — closed shape at both the
+ index and the per-entry level (every entry must be *exactly* `{id, weight, byteOffset, byteLength,
+ recordHash}`, no more, no fewer), current schema/library-schema versions, `index.modeName` matching the mode
+ actually requested, `index.outcomesFile` matching `outcomes_<modeName>.jsonl` **exactly** (not just "a
+ safe-looking string"), positive safe `outcomeCount`/`totalWeight`/entry weights, canonically sorted and unique
+ entry ids, and a canonical byte layout across all entries — the first entry's `byteOffset` is exactly `0`, and
+ every later entry's `byteOffset` is exactly the previous entry's own `byteOffset + byteLength + 1` (the `+1`
+ accounts for the trailing `"\n"` every record is written with — see `streamModeOutcomesToTempFile`'s own
+ `offset += lineBuffer.byteLength + 1`), so ranges can never overlap or leave a gap, and `byteOffset +
+ byteLength` is checked to never overflow a safe integer either — then the validated index is held in memory;
 2. a winning entry is selected against that captured index via `selectIndexEntryByCumulativeWeight` (the exact
-   cumulative-weight walk `OutcomeLibraryBundleReader.drawOutcome` uses internally);
+ cumulative-weight walk `OutcomeLibraryBundleReader.drawOutcome` uses internally);
 3. that exact entry's own byte range is read and verified via `readAndVerifyOutcomeAtByteRange`, against a path
-   resolved via `resolveSafeStakeEngineFilePath` — **never a plain `path.join` of `index.outcomesFile`**. Step 1
-   already pins `outcomesFile` to one exact, self-constructed filename, but resolving it through the same
-   safe-path helper every other bundle-reading class in this codebase uses is a second, independent guard against
-   ever opening a path outside `sourceBundleDir`;
+ resolved via `resolveSafeStakeEngineFilePath` — **never a plain `path.join` of `index.outcomesFile`**. Step 1
+ already pins `outcomesFile` to one exact, self-constructed filename, but resolving it through the same
+ safe-path helper every other bundle-reading class in this codebase uses is a second, independent guard against
+ ever opening a path outside `sourceBundleDir`;
 4. the mode's own index is read a **second** time and re-hashed (`computeFairnessIndexHash` — the whole object,
-   not just `libraryHash`, which a hand-tampered index could leave stale while its entries were rewritten
-   underneath it) — any difference from the first hash throws/reports bundle drift, and nothing is
-   built/verified from a snapshot caught changing mid-draw.
+ not just `libraryHash`, which a hand-tampered index could leave stale while its entries were rewritten
+ underneath it) — any difference from the first hash throws/reports bundle drift, and nothing is
+ built/verified from a snapshot caught changing mid-draw.
 
 This is the same "Pinned-snapshot sampling" + "Snapshot consistency" discipline
 [`CertificationPackBuilder`](certification-evidence-bundle.md#pinned-snapshot-sampling) already
@@ -175,12 +175,12 @@ const serverSeedCommitment = computeFairnessServerSeedCommitment({serverSeed});
 // serverSeedCommitment.serverSeedHash is published to the player now — before clientSeed/nonce are solicited.
 
 const commitment = computeFairnessCommitment({
-    serverSeedCommitment,
-    clientSeed: "player-supplied-seed",
-    nonce: 0,
-    libraryId: index.libraryId,
-    libraryHash: index.libraryHash,
-    modeName: "base",
+ serverSeedCommitment,
+ clientSeed: "player-supplied-seed",
+ nonce: 0,
+ libraryId: index.libraryId,
+ libraryHash: index.libraryHash,
+ modeName: "base",
 });
 // commitment is published to the player now — before the round is played.
 
@@ -228,7 +228,7 @@ silently drift from what this validator actually enforces. Never throws.
 
 `FairnessCommitmentValidating.validate(candidate)` checks a commitment **by itself** — closed shape (an extra,
 unexpected field is exactly as invalid as a missing one), current schema/algorithm versions, valid `sha256:<hex>`
-hashes, non-empty `clientSeed`/`libraryId`, a `modeName` matching this bundle format's own canonical rule
+hashes, non-empty `clientSeed`/`libraryId`, a `modeName` matching this bundle format's own rule
 (`[A-Za-z0-9_-]+` — the same rule `OutcomeLibraryBundleValidator`/`CertificationPackValidator` enforce;
 `modeName` ends up embedded in a filename the moment a draw is attempted, so anything else is rejected here,
 before it ever could be), a non-negative safe `nonce`, and a strictly canonical ISO timestamp. Used both by
@@ -282,7 +282,7 @@ pokie fairness verify proof.json --commitment commitment.json --source bundle
 | `fairness-verify-source-bundle-dir-required` | no `sourceBundleDir` was given |
 | `fairness-verify-source-bundle-unreadable` | the source bundle's own mode index couldn't be read at `sourceBundleDir` |
 | `fairness-verify-bundle-drift` | the mode's own index changed between the pinned draw's first read and its post-draw re-verification |
-| `fairness-verify-mode-index-invalid` | the live mode's own index doesn't validate on its own (closed shape, schema/library-schema version, expected `modeName`, exact `outcomes_<modeName>.jsonl`, positive safe counts/weights, canonical entries) |
+| `fairness-verify-mode-index-invalid` | the live mode's own index doesn't validate on its own (closed shape, schema/library-schema version, expected `modeName`, exact `outcomes_<modeName>.jsonl`, positive safe counts/weights, entries) |
 | `fairness-verify-library-mismatch` | the live mode's own `libraryId`/`libraryHash` no longer matches this proof's own recorded values |
 | `fairness-verify-index-hash-mismatch` | the live mode's own index no longer hashes to this proof's own recorded `indexHash` |
 | `fairness-verify-outcome-missing` | the proof's own `outcomeId` is no longer present in the live bundle's mode |
@@ -299,12 +299,12 @@ fresh `serverSeed`/`clientSeed`/`nonce` and drawing a real, self-consistent outc
 Verification therefore layers three genuinely independent checks, each catching something the others can't:
 
 - **Commitment binding** (`commitmentHash` + field-by-field match): catches a proof never actually built from the
-  genuine commitment at all, however internally self-consistent it is on its own.
+ genuine commitment at all, however internally self-consistent it is on its own.
 - **Live record check** (index-only `weight`/`recordHash` comparison): catches a substituted-but-individually-
-  valid outcome id whose content was tampered.
+ valid outcome id whose content was tampered.
 - **Selection reproduction** (the full pinned redraw): catches a substituted outcome id whose content is
-  completely genuine and untampered elsewhere in the library — the id is simply not the one this seed/nonce would
-  actually have drawn.
+ completely genuine and untampered elsewhere in the library — the id is simply not the one this seed/nonce would
+ actually have drawn.
 
 No game/win calculation is ever involved in any of the three — only id/weight/`recordHash` and the byte-range
 integrity the pinned draw already verifies on its own single read.
@@ -315,9 +315,9 @@ The full commit-reveal-verify flow, end to end:
 
 ```
 pokie fairness seed-commit serverSeed.txt --out seed-commitment.json
-pokie fairness commit seed-commitment.json --client-seed player-seed --nonce 0 --source ../bundle --mode <modeName> --out commitment.json
-pokie fairness reveal commitment.json --server-seed serverSeed.txt --source ../bundle --out proof.json
-pokie fairness verify proof.json --commitment commitment.json --source ../bundle
+pokie fairness commit seed-commitment.json --client-seed player-seed --nonce 0 --source../bundle --mode <modeName> --out commitment.json
+pokie fairness reveal commitment.json --server-seed serverSeed.txt --source../bundle --out proof.json
+pokie fairness verify proof.json --commitment commitment.json --source../bundle
 ```
 
 `seed-commit`/`commit`/`reveal` call straight through to `computeFairnessServerSeedCommitment`/
@@ -347,6 +347,6 @@ const issues = await new FairnessRoundProofVerifier().verify(proof, {commitment,
 ```
 
 
-## Canonical dossier preparation
+## Dossier preparation
 
 Dossier preparation currently marks fairness evidence unavailable rather than inferring it from a model or bundle. The supported `pokie-fairness-hmac-sha256-v1` proof/commitment checks remain separate, scoped to the selected library/index/outcome identities. Deterministic/HMAC selection does not establish precommit publication timing, general game fairness or certification. See [dossier boundaries](certification-evidence-bundle.md).

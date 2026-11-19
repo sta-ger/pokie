@@ -2,7 +2,7 @@
 
 # Stake Engine Export
 
-`stakeengine/` exports a canonical [`WeightedOutcomeLibrary`](weighted-outcome-library.md) (one per bet mode) to
+`stakeengine/` exports a [`WeightedOutcomeLibrary`](weighted-outcome-library.md) (one per bet mode) to
 the real [Stake Engine math-sdk static file format](https://stakeengine.github.io/math-sdk/rgs_docs/data_format/):
 a strict `index.json`, a per-mode lookup CSV, and per-mode zstd-compressed JSONL "books". It's the first static
 export target POKIE ships and, like every other exporter in the project (`ParSheetExporter`, `GamePackageGenerator`),
@@ -20,24 +20,24 @@ SDK's per-target-fixed-descriptor model can't represent).
 
 ```
 <outDir>/
-  index.json            # Stake's own strict schema — never any extra fields
-  lookup_<mode>.csv      # per mode: no header, "simulationId,weight,payoutMultiplier"
-  books_<mode>.jsonl.zst # per mode: zstd-compressed JSONL, one {id, events, payoutMultiplier} line per outcome
-  pokie-manifest.json    # POKIE's own provenance — never read by Stake's own tooling
+ index.json # Stake's own strict schema — never any extra fields
+ lookup_<mode>.csv # per mode: no header, "simulationId,weight,payoutMultiplier"
+ books_<mode>.jsonl.zst # per mode: zstd-compressed JSONL, one {id, events, payoutMultiplier} line per outcome
+ pokie-manifest.json # POKIE's own provenance — never read by Stake's own tooling
 ```
 
 `index.json` is kept exactly to Stake's own schema:
 
 ```json
 {
-    "modes": [
-        {"name": "base", "cost": 1, "events": "books_base.jsonl.zst", "weights": "lookup_base.csv"},
-        {"name": "bonus", "cost": 100, "events": "books_bonus.jsonl.zst", "weights": "lookup_bonus.csv"}
-    ]
+ "modes": [
+ {"name": "base", "cost": 1, "events": "books_base.jsonl.zst", "weights": "lookup_base.csv"},
+ {"name": "bonus", "cost": 100, "events": "books_bonus.jsonl.zst", "weights": "lookup_bonus.csv"}
+ ]
 }
 ```
 
-POKIE's own provenance (which `pokie` version produced this export, each mode's library hash, when it ran, ...)
+POKIE's own provenance (which `pokie` version produced this export, each mode's library hash, when it ran,...)
 never gets added to `index.json` itself — it goes to a sibling `pokie-manifest.json` instead, the same way
 `GameBuildInfo`/`build-info.json` sits alongside a generated game package without polluting the package's own
 files (see [Game Packages](game-packages.md)).
@@ -46,9 +46,9 @@ files (see [Game Packages](game-packages.md)).
 
 ```ts
 type StakeEngineExportModeInput<T = string> = {
-    readonly modeName: string;
-    readonly cost: number;
-    readonly library: WeightedOutcomeLibrary<T>;
+ readonly modeName: string;
+ readonly cost: number;
+ readonly library: WeightedOutcomeLibrary<T>;
 };
 ```
 
@@ -81,12 +81,12 @@ denomination that makes it exact), not something this exporter papers over.
 
 The same reasoning applies to `WeightedOutcome.id`: Stake's own "id" column is an integer, but a `WeightedOutcome`'s
 `id` is always a caller-supplied string (see [Weighted Outcome Library](weighted-outcome-library.md)). Rather than
-invent a mapping (a hash, an incidental array index, ...), the exporter requires the string to already be the
-canonical decimal form of a safe non-negative integer (`"0"`, `"1"`, `"2"`, ... — not `"01"`, `"-1"`, or `"1.5"`)
+invent a mapping (a hash, an incidental array index,...), the exporter requires the string to already be the
+canonical decimal form of a safe non-negative integer (`"0"`, `"1"`, `"2"`,... — not `"01"`, `"-1"`, or `"1.5"`)
 and simply parses it. `weight` has no unit conversion (Stake's own weight column is just an integer, not scaled
 by `cost`) but must likewise already be a whole number.
 
-This means a library produced by the canonical outcome-library generator (`generateExactWeightedOutcomeLibrary`,
+This means a library produced by the outcome-library generator (`generateExactWeightedOutcomeLibrary`,
 whose own ids are content-addressed — see [Weighted Outcome Library](weighted-outcome-library.md)) never satisfies
 this exporter/validator on its own, and by design: neither invents that mapping itself. The Project Dashboard's own
 Stake Engine Export integration (`StudioStakeEngineExportService`) is where that gap is actually bridged, one layer
@@ -99,7 +99,7 @@ alone.
 ## Events: a generic, mechanic-agnostic mapping
 
 Stake's own math-sdk doesn't standardize an event schema beyond "a list of dictionary objects" — every game
-defines its own mechanic-specific vocabulary (anticipation, tumble-specific fields, ...). `StakeEngineRoundEventsProjector`
+defines its own mechanic-specific vocabulary (anticipation, tumble-specific fields,...). `StakeEngineRoundEventsProjector`
 therefore only maps what a `RoundRecord` itself already models generically, implementing its own
 `StakeEngineRoundEventsProjecting<T>` interface — deliberately not the generic `RoundRecordProjector<T, TOutput>`
 extension point `PokieJsonRoundRecordProjector` uses (see [Round Records](round-records.md)), since a Stake
@@ -109,7 +109,7 @@ projection needs the mode's own `cost` to convert amounts into Stake units:
 type StakeEngineRoundProjectionContext = {readonly cost: number};
 
 interface StakeEngineRoundEventsProjecting<T = string> {
-    project(artifact: RoundRecord<T>, context: StakeEngineRoundProjectionContext): readonly StakeEngineEvent[];
+ project(artifact: RoundRecord<T>, context: StakeEngineRoundProjectionContext): readonly StakeEngineEvent[];
 }
 ```
 
@@ -133,7 +133,7 @@ indistinguishable on import from the real structural event of the same name. Ren
 before exporting.
 
 This is a deliberate non-goal: no invented game-specific event vocabulary. A game with mechanic-specific events
-Stake's own front-end expects (anticipation reels, per-symbol tumble animations, ...) needs its own projector —
+Stake's own front-end expects (anticipation reels, per-symbol tumble animations,...) needs its own projector —
 implement `StakeEngineRoundEventsProjecting<T>` directly, the same way you'd implement any other custom
 representation. Whatever a custom projector returns is still checked for canonical-JSON-safety before anything
 is written (see Validation below), so it can't smuggle a `NaN`/`Infinity`/cycle/other non-JSON value into a book.
@@ -175,12 +175,12 @@ directory is moved in. That fallback has a brief window where `outDir` does not 
 if the publish rename fails, and never exposes a partially written directory. Both paths have two consequences:
 
 - **A failure anywhere before the swap — a validation error, a projector throwing, a disk write failing — leaves
-  an existing `--out` directory completely untouched**, byte for byte; there's no window where a reader could
-  see a half-written mix of old and new files.
+ an existing `--out` directory completely untouched**, byte for byte; there's no window where a reader could
+ see a half-written mix of old and new files.
 - **A re-export starts from nothing, not from the previous directory's contents.** If a mode that was present in
-  a prior export is missing from this run's `modes`, its `lookup_*.csv`/`books_*.jsonl.zst` are simply not
-  written into the new directory, and the swap discards the old ones along with everything else — no stale
-  per-mode files are ever left behind.
+ a prior export is missing from this run's `modes`, its `lookup_*.csv`/`books_*.jsonl.zst` are simply not
+ written into the new directory, and the swap discards the old ones along with everything else — no stale
+ per-mode files are ever left behind.
 
 Because the whole directory is discarded and rebuilt this way, using the programmatic writer with an existing `outDir` is only
 allowed when that directory is either empty or recognized as a prior POKIE adapter-export run's own
@@ -195,22 +195,22 @@ On hosts with `mv --exchange`, re-exporting into an existing `--out` is one atom
 uses three same-directory renames, and each one has a distinct, deliberate failure behavior:
 
 1. **Move the existing directory aside** (to a private sibling name). If this fails, `--out` was never touched —
-   nothing to restore, just the leftover temp directory is cleaned up (best-effort) before the error propagates.
+ nothing to restore, just the leftover temp directory is cleaned up (best-effort) before the error propagates.
 2. **Move the freshly-built temp directory into `--out`** — the actual publish step. If *this* fails, the old
-   directory is restored back to `--out` (a third rename) before the error propagates, so the export still fails
-   with `--out` exactly as it was, byte for byte. In the one truly unrecoverable case — the restore itself also
-   fails — the thrown error names the private backup path the old directory's contents are still sitting at, so
-   it can be renamed back by hand.
+ directory is restored back to `--out` (a third rename) before the error propagates, so the export still fails
+ with `--out` exactly as it was, byte for byte. In the one truly unrecoverable case — the restore itself also
+ fails — the thrown error names the private backup path the old directory's contents are still sitting at, so
+ it can be renamed back by hand.
 3. **Remove the now-superseded directory.** By this point the new export is already live at `--out` — a failure
-   here is cosmetic, not a failed export: it's reported as a `stakeengine-stale-export-cleanup-failed` warning
-   (not an error) in the result's `issues`, and the superseded directory is simply left behind for manual cleanup
-   rather than causing the whole export to be reported as failed.
+ here is cosmetic, not a failed export: it's reported as a `stakeengine-stale-export-cleanup-failed` warning
+ (not an error) in the result's `issues`, and the superseded directory is simply left behind for manual cleanup
+ rather than causing the whole export to be reported as failed.
 
 Every one of these failure branches also guarantees the staging directory itself never lingers past the call that
 created it (removed best-effort, without ever masking whichever error is actually being thrown/returned). A
 private backup path is retained only when it holds the previous payload for manual recovery.
 
-The canonical CLI build, `pokie build <config.json> --target stakeAdapter`, deliberately has a stricter public
+The CLI build, `pokie build <config.json> --target stakeAdapter`, deliberately has a stricter public
 contract: it rejects every occupied destination before this writer is invoked. Choose a different unused `--out`
 path (or remove the destination yourself after checking it); the build never replaces an occupied destination.
 
@@ -227,17 +227,17 @@ incompatible source or occupied destination before a publish is attempted.
 
 ```json
 {
-    "modes": [
-        {"modeName": "base", "cost": 1, "libraryPath": "./libraries/base.json"},
-        {"modeName": "bonus", "cost": 100, "libraryPath": "./libraries/bonus.json"}
-    ]
+ "modes": [
+ {"modeName": "base", "cost": 1, "libraryPath": "./libraries/base.json"},
+ {"modeName": "bonus", "cost": 100, "libraryPath": "./libraries/bonus.json"}
+ ]
 }
 ```
 
 `libraryPath` entries resolve relative to `<config.json>`'s own directory. Default `--out` is `<config.json>`'s
 directory plus `/stakeAdapter`.
 
-A mode entry can load its library from a canonical [Outcome Library Bundle](outcome-library-bundle.md) instead
+A mode entry can load its library from a [Outcome Library Bundle](outcome-library-bundle.md) instead
 of a plain JSON file — replace `libraryPath` with `bundleDir` (and optionally `bundleModeName`, which defaults
 to `modeName`):
 
@@ -261,17 +261,17 @@ import {StakeEngineExporter} from "@fromstan/pokie";
 
 const exporter = new StakeEngineExporter(pokieVersion);
 const result = await exporter.exportToDirectory(
-    [
-        {modeName: "base", cost: 1, library: baseLibrary},
-        {modeName: "bonus", cost: 100, library: bonusLibrary},
-    ],
-    "./stakeengine",
+ [
+ {modeName: "base", cost: 1, library: baseLibrary},
+ {modeName: "bonus", cost: 100, library: bonusLibrary},
+ ],
+ "./stakeengine",
 );
 
 if (result.issues.some((issue) => issue.severity === "error")) {
-    // nothing was written — inspect result.issues
+ // nothing was written — inspect result.issues
 } else {
-    console.log(result.files); // every file this run wrote, relative to "./stakeengine"
+ console.log(result.files); // every file this run wrote, relative to "./stakeengine"
 }
 ```
 
@@ -288,11 +288,11 @@ import {StakeEngineBundleStreamingExporter} from "@fromstan/pokie";
 
 const exporter = new StakeEngineBundleStreamingExporter(pokieVersion);
 const result = await exporter.exportToDirectory(
-    [
-        {modeName: "base", cost: 1, bundleDir: "./bundle", bundleModeName: "base"},
-        {modeName: "bonus", cost: 100, bundleDir: "./bundle", bundleModeName: "bonus"},
-    ],
-    "./stakeengine",
+ [
+ {modeName: "base", cost: 1, bundleDir: "./bundle", bundleModeName: "base"},
+ {modeName: "bonus", cost: 100, bundleDir: "./bundle", bundleModeName: "bonus"},
+ ],
+ "./stakeengine",
 );
 ```
 
@@ -330,7 +330,7 @@ The ordinary direct library exporter additionally retains its documented atomic
 rebuild of a recognized prior export. It also accepts an empty physical directory;
 symlinked and unrelated occupied directories remain rejected.
 
-Prepared canonical conversions retain the destination identity while source inputs
+Prepared conversions retain the destination identity while source inputs
 are read. A recognized export created by another caller during that preparation
 is a conflict, rather than permission to rebuild it. Cancellation or a failure
 removes only an output owned by the current conversion; foreign replacements survive.

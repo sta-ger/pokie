@@ -13,17 +13,17 @@ directly on top of a `WeightedOutcomeLibrary` as *content*, rather than as an an
 
 ```ts
 interface WeightedOutcomeRandomSource {
-    nextInt(exclusiveUpperBound: number): number; // exact, unbiased integer in [0, exclusiveUpperBound)
+ nextInt(exclusiveUpperBound: number): number; // exact, unbiased integer in [0, exclusiveUpperBound)
 }
 
 class SeededWeightedOutcomeRandomSource implements WeightedOutcomeRandomSource {
-    constructor(seed: string);
+ constructor(seed: string);
 }
 
 class SecureWeightedOutcomeRandomSource implements WeightedOutcomeRandomSource {}
 
 class WeightedOutcomeSelector implements WeightedOutcomeSelecting {
-    select<T = string>(library: WeightedOutcomeLibrary<T>, randomSource: WeightedOutcomeRandomSource): WeightedOutcome<T>;
+ select<T = string>(library: WeightedOutcomeLibrary<T>, randomSource: WeightedOutcomeRandomSource): WeightedOutcome<T>;
 }
 ```
 
@@ -40,16 +40,16 @@ Randomness is injected, not hardwired, and both implementations share one reject
 (`drawUnbiasedInt`, internal) so they can never silently drift apart on what "unbiased" means:
 
 - `SeededWeightedOutcomeRandomSource` takes its seed as a **plain string, in full** — never folded down into a
-  32-bit integer first (a hash-then-truncate step would throw away almost all of a hash digest's own entropy and
-  reintroduce a birthday-bound collision risk across different seeds a full string doesn't have to accept). It's
-  built as a small hash-counter DRBG: block #0/#1/#2/... of its output stream are each
-  `SHA-256("<seed>:<counter>")`, concatenated on demand into an arbitrarily long byte stream, from which unbiased
-  integers up to `2^53` are drawn via rejection sampling. Deterministic and reproducible — the same seed always
-  produces the same sequence — which is what makes `PreGeneratedRoundReplayer`'s reconstruction of a past round
-  exact rather than best-effort.
+ 32-bit integer first (a hash-then-truncate step would throw away almost all of a hash digest's own entropy and
+ reintroduce a birthday-bound collision risk across different seeds a full string doesn't have to accept). It's
+ built as a small hash-counter DRBG: block #0/#1/#2/... of its output stream are each
+ `SHA-256("<seed>:<counter>")`, concatenated on demand into an arbitrarily long byte stream, from which unbiased
+ integers up to `2^53` are drawn via rejection sampling. Deterministic and reproducible — the same seed always
+ produces the same sequence — which is what makes `PreGeneratedRoundReplayer`'s reconstruction of a past round
+ exact rather than best-effort.
 - `SecureWeightedOutcomeRandomSource` draws raw bytes from `crypto.randomBytes` (not `crypto.randomInt`, which is
-  itself unbiased but capped at ranges below `2^48` — too small for a library whose total weight can exceed that,
-  e.g. a fine-grained reel-combination count in the billions) and reduces them the same way.
+ itself unbiased but capped at ranges below `2^48` — too small for a library whose total weight can exceed that,
+ e.g. a fine-grained reel-combination count in the billions) and reduces them the same way.
 
 Both are exact/unbiased for any `exclusiveUpperBound` up to `2^53`, not just powers of two: a plain
 `Math.floor(nextFloat() * n)` (or `raw % n` alone) would subtly favor smaller remainders whenever `n` doesn't
@@ -68,14 +68,14 @@ real bug surfaced as an error instead.
 
 ```ts
 type PreGeneratedOutcomeSelection<T = string> = {
-    libraryId: string;
-    libraryHash: string;
-    totalWeight: number;
-    outcome: WeightedOutcome<T>;
+ libraryId: string;
+ libraryHash: string;
+ totalWeight: number;
+ outcome: WeightedOutcome<T>;
 };
 
 interface PreGeneratedOutcomeSourcing<T = string> {
-    drawOutcome(randomSource: WeightedOutcomeRandomSource): Promise<PreGeneratedOutcomeSelection<T>>;
+ drawOutcome(randomSource: WeightedOutcomeRandomSource): Promise<PreGeneratedOutcomeSelection<T>>;
 }
 ```
 
@@ -85,16 +85,16 @@ the outcome *together with* the exact `libraryId`/`libraryHash`/`totalWeight` it
 the same underlying snapshot. Two implementations ship out of the box:
 
 - **`InMemoryPreGeneratedOutcomeSource`** — wraps an already-built `WeightedOutcomeLibrary` and a caller-claimed
-  `libraryHash`, verified against `computeWeightedOutcomeLibraryHash(library)` once, at construction (fails fast
-  with `InMemoryPreGeneratedOutcomeSourceError` on a mismatch — the library never changes for this adapter's
-  whole lifetime, so there's nothing to gain from re-verifying on every draw). Internally reuses
-  `WeightedOutcomeSelector`, so its own draws are byte-for-byte the same as before this abstraction existed.
+ `libraryHash`, verified against `computeWeightedOutcomeLibraryHash(library)` once, at construction (fails fast
+ with `InMemoryPreGeneratedOutcomeSourceError` on a mismatch — the library never changes for this adapter's
+ whole lifetime, so there's nothing to gain from re-verifying on every draw). Internally reuses
+ `WeightedOutcomeSelector`, so its own draws are byte-for-byte the same as before this abstraction existed.
 - **`OutcomeLibraryBundleOutcomeSource`** (see [Outcome Library Bundle](outcome-library-bundle.md)) — reads a
-  canonical outcome-library bundle directly off disk: one small `index_<modeName>.json` read per draw (never the
-  full outcomes file, never `readLibrary()`), a weighted pick by exact integer cumulative weight over that
-  index's own entries, then a single byte-range read for exactly the winning outcome. The whole `{libraryId,
-  libraryHash, totalWeight, outcome}` result comes from that *one* index read, never a separately-fetched hash —
-  see "Library identity" below for why that matters.
+ outcome-library bundle directly off disk: one small `index_<modeName>.json` read per draw (never the
+ full outcomes file, never `readLibrary()`), a weighted pick by exact integer cumulative weight over that
+ index's own entries, then a single byte-range read for exactly the winning outcome. The whole `{libraryId,
+ libraryHash, totalWeight, outcome}` result comes from that *one* index read, never a separately-fetched hash —
+ see "Library identity" below for why that matters.
 
 ### Source-level conflicts and selection validation
 
@@ -102,7 +102,7 @@ the same underlying snapshot. Two implementations ship out of the box:
 class PreGeneratedOutcomeSourceConflictError extends Error {}
 
 class PreGeneratedOutcomeSelectionValidator<T = string> implements ValidationRule<PreGeneratedOutcomeSelection<T>> {
-    validate(selection: PreGeneratedOutcomeSelection<T>): ValidationIssue[];
+ validate(selection: PreGeneratedOutcomeSelection<T>): ValidationIssue[];
 }
 ```
 
@@ -125,28 +125,28 @@ selection as a real adapter drifting out of sync would be — this is what catch
 
 ```ts
 type PreGeneratedRoundSelectionProvenance = {
-    libraryId: string;
-    libraryHash: string;
-    outcomeId: string;
-    weight: number;
-    totalWeight: number;
-    probability: number;
+ libraryId: string;
+ libraryHash: string;
+ outcomeId: string;
+ weight: number;
+ totalWeight: number;
+ probability: number;
 };
 
 type PreGeneratedRoundRuntimeContext = {
-    roundId: string;
-    sessionId: string;
-    requestId?: string;
-    balanceBefore: number;
-    balanceAfter: number;
-    transactions: readonly {id: string; type: "debit" | "credit"; amount: number}[];
+ roundId: string;
+ sessionId: string;
+ requestId?: string;
+ balanceBefore: number;
+ balanceAfter: number;
+ transactions: readonly {id: string; type: "debit" | "credit"; amount: number}[];
 };
 
 type PreGeneratedRoundResult<T = string> = {
-    schemaVersion: number;
-    selection: PreGeneratedRoundSelectionProvenance;
-    runtime: PreGeneratedRoundRuntimeContext;
-    artifact: RoundRecord<T>; // the library's own artifact reference, never copied or mutated
+ schemaVersion: number;
+ selection: PreGeneratedRoundSelectionProvenance;
+ runtime: PreGeneratedRoundRuntimeContext;
+ artifact: RoundRecord<T>; // the library's own artifact reference, never copied or mutated
 };
 ```
 
@@ -159,7 +159,7 @@ type PreGeneratedRoundResult<T = string> = {
 integer `selection.outcome.weight`/`selection.totalWeight` (the same integer requirement `WeightedOutcomeSelector`
 itself needs), an invalid `runtime.roundId`/`sessionId`, a non-finite balance, a malformed transaction entry, or
 content that isn't JSON-safe. `artifact` is always the exact object reference the selection's own outcome
-already holds — canonical library content is never copied, re-derived, or re-run through a second calculation
+already holds — library content is never copied, re-derived, or re-run through a second calculation
 path. There is no longer a "the outcome must be the library's own array element" reference-identity check —
 without a full library there's no array to check against — but that guarantee now comes structurally from
 `PreGeneratedOutcomeSourcing` itself: the only way to obtain a `PreGeneratedOutcomeSelection` at all is a real
@@ -178,8 +178,8 @@ equals `artifact.stake` and total credit equals `artifact.totalWin`, that `runti
 
 ```ts
 class PreGeneratedRoundResultProjector<T = string> {
-    projectPublic(result: PreGeneratedRoundResult<T>): PreGeneratedRoundPublicView<T>;
-    projectInternal(result: PreGeneratedRoundResult<T>): PreGeneratedRoundInternalView<T>;
+ projectPublic(result: PreGeneratedRoundResult<T>): PreGeneratedRoundPublicView<T>;
+ projectInternal(result: PreGeneratedRoundResult<T>): PreGeneratedRoundInternalView<T>;
 }
 ```
 
@@ -193,7 +193,7 @@ where the concepts overlap.
 
 ```ts
 class PreGeneratedRoundReplayer implements PreGeneratedRoundReplaying {
-    replay<T = string>(options: {library: WeightedOutcomeLibrary<T>; libraryHash: string; modeName: string; seed: string; round: number}): PreGeneratedRoundReplayDescriptor;
+ replay<T = string>(options: {library: WeightedOutcomeLibrary<T>; libraryHash: string; modeName: string; seed: string; round: number}): PreGeneratedRoundReplayDescriptor;
 }
 ```
 
@@ -203,16 +203,16 @@ seek-to-round primitive there), `PreGeneratedRoundReplayer` is exact: a round's 
 library always reproduces the identical draw — no wallet, session, or idempotency state involved.
 
 The resulting durable descriptor records `modeName` and `selectionAlgorithm: "derived-round-seed-v1"` as well as
-library id/hash, seed, round, selected outcome, stake, screen, payout and the canonical artifact. A blank seed,
+library id/hash, seed, round, selected outcome, stake, screen, payout and the artifact. A blank seed,
 mode or library hash is rejected before selection. Server `/sessions/:id/spin` responses expose the portable replay
-identity (including seed and mode) in `replay`; use those values with `pokie replay <bundle> --seed ... --round ...
---mode ...`. A descriptor missing any canonical provenance can still be inspected, but it cannot substantiate an
+identity (including seed and mode) in `replay`; use those values with `pokie replay <bundle> --seed... --round...
+--mode...`. A descriptor missing any provenance can still be inspected, but it cannot substantiate an
 exact recorded-result comparison: `replayOutcomeSourceProject(..., recordedDescriptor)` rejects it with recovery
 instructions. Omitting `recordedDescriptor` remains a current-bundle reconstruction rather than a comparison.
 
 Studio follows this exact selection contract too: a seeded Outcome Library Play spin and a seeded Outcome Source
 sample return (and retain in Recent Rounds) the same full `replay` descriptor, including library id/hash, mode,
-canonical artifact, screen and payout. That object is portable input provenance, not a generated UI fixture.
+artifact, screen and payout. That object is portable input provenance, not a generated UI fixture.
 
 ## Server integration (`pokie serve`)
 
@@ -225,14 +225,14 @@ match the loaded `PokieGame`'s manifest: a library built for the wrong game, or 
 configuration mistake caught at startup, never something a caller discovers mid-round.
 
 - `POST /pregenerated-sessions` — body `{seed?: string; initialBalance?: number}` — creates a session with a tiny
-  persisted state (`{libraryId, libraryHash, seed, roundsPlayed}`; see `PreGeneratedSessionState`) and, when given,
-  seeds the wallet balance (there's no live session to default it from, unlike the `/sessions` path).
+ persisted state (`{libraryId, libraryHash, seed, roundsPlayed}`; see `PreGeneratedSessionState`) and, when given,
+ seeds the wallet balance (there's no live session to default it from, unlike the `/sessions` path).
 - `POST /pregenerated-sessions/:id/spin` — body `{requestId?: string}` — draws the session's next round
-  deterministically (its configured `PreGeneratedOutcomeSourcing`, seeded from the session's own `seed` and round
-  index), settles the wallet (debit `artifact.stake`, credit `artifact.totalWin` when positive), and returns the
-  public projection by default, or the full internal view under `?debug=1` (same convention as the live spin
-  path). `PokieDevServerOptions.preGeneratedOutcomeLibrary` is wrapped in an `InMemoryPreGeneratedOutcomeSource`
-  internally; nothing about that option itself changed.
+ deterministically (its configured `PreGeneratedOutcomeSourcing`, seeded from the session's own `seed` and round
+ index), settles the wallet (debit `artifact.stake`, credit `artifact.totalWin` when positive), and returns the
+ public projection by default, or the full internal view under `?debug=1` (same convention as the live spin
+ path). `PokieDevServerOptions.preGeneratedOutcomeLibrary` is wrapped in an `InMemoryPreGeneratedOutcomeSource`
+ internally; nothing about that option itself changed.
 
 `PreGeneratedSpinCommandHandler` orchestrates this: idempotency replay (same `IdempotencyRepository` contract as
 `SpinCommandHandler`, keyed by `(sessionId, requestId)`), per-session command serialization, and best-effort
@@ -272,23 +272,23 @@ and all — except the last — caught before the idempotency cache is consulted
 so there's nothing to compensate:
 
 - **Source-level conflict**: `drawOutcome()` itself threw `PreGeneratedOutcomeSourceConflictError` — the content
-  this draw relied on no longer matches what the source last promised (e.g. a bundle rewritten, or one of its
-  records tampered in place, between the index being read and the winning record's own byte range being read).
+ this draw relied on no longer matches what the source last promised (e.g. a bundle rewritten, or one of its
+ records tampered in place, between the index being read and the winning record's own byte range being read).
 - **Invalid selection**: the drawn selection failed `PreGeneratedOutcomeSelectionValidator` — a forged or buggy
-  custom `PreGeneratedOutcomeSourcing` implementation returned something structurally untrustworthy (an empty
-  `libraryId`, a weight exceeding `totalWeight`, an artifact that fails `RoundRecordValidator`, ...).
+ custom `PreGeneratedOutcomeSourcing` implementation returned something structurally untrustworthy (an empty
+ `libraryId`, a weight exceeding `totalWeight`, an artifact that fails `RoundRecordValidator`,...).
 - **Library mismatch**: the loaded session's own `libraryId`/`libraryHash` (stamped at creation) doesn't match the
-  identity the handler's outcome source reports for the round it just atomically drew — e.g. a session from
-  before a redeploy that swapped the library/bundle, or a same-id library/bundle regenerated with different
-  weights. A stale cached result can never bypass it either, since all three checks above run before the
-  idempotency cache is ever consulted.
+ identity the handler's outcome source reports for the round it just atomically drew — e.g. a session from
+ before a redeploy that swapped the library/bundle, or a same-id library/bundle regenerated with different
+ weights. A stale cached result can never bypass it either, since all three checks above run before the
+ idempotency cache is ever consulted.
 - **Optimistic-locking version conflict**: when the configured `PreGeneratedSessionRepository` additionally
-  implements `VersionedPreGeneratedSessionRepository` (`InMemoryPreGeneratedSessionRepository` does out of the
-  box — the same additive pattern as `VersionedSessionRepository`/`isVersionedSessionRepository` for the live spin
-  path), the state loaded at the start of an attempt is saved back via `saveVersioned()` with the version it was
-  read at. A mismatch — someone else's save landed in between, e.g. another `PreGeneratedSpinCommandHandler`
-  instance sharing this repository — throws `PreGeneratedSessionVersionConflictError`, caught and turned into a
-  `"conflict"` result only *after* every wallet transaction this attempt applied has already been reversed (using
-  that attempt's own `attemptId`-scoped transaction ids, so a winning concurrent attempt's transactions are never
-  touched — see above). A played result's own `version` field carries the repository's new revision when one is
-  available.
+ implements `VersionedPreGeneratedSessionRepository` (`InMemoryPreGeneratedSessionRepository` does out of the
+ box — the same additive pattern as `VersionedSessionRepository`/`isVersionedSessionRepository` for the live spin
+ path), the state loaded at the start of an attempt is saved back via `saveVersioned()` with the version it was
+ read at. A mismatch — someone else's save landed in between, e.g. another `PreGeneratedSpinCommandHandler`
+ instance sharing this repository — throws `PreGeneratedSessionVersionConflictError`, caught and turned into a
+ `"conflict"` result only *after* every wallet transaction this attempt applied has already been reversed (using
+ that attempt's own `attemptId`-scoped transaction ids, so a winning concurrent attempt's transactions are never
+ touched — see above). A played result's own `version` field carries the repository's new revision when one is
+ available.

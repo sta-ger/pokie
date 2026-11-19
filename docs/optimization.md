@@ -10,16 +10,16 @@ Conversions remain `build SOURCE --target TARGET`.
 
 ```json
 {
-  "targets": [{"metric": "rtp", "unit": "ratio", "value": 0.75,
-    "tolerance": {"kind": "absolute", "value": 0}}],
-  "policy": {
-    "strategy": "exact-finite-v1", "seed": "review-1",
-    "budget": 3, "maxOutcomes": 10000,
-    "mode": "base", "stake": 1, "scope": "logical-round",
-    "tunables": [{"path": "/paytable/A/3", "values": [2, 3, 4]}],
-    "locks": ["/paylines", "/reelStrips", "/mechanics"],
-    "constraints": {"maxWin": {"value": 10, "unit": "betMultiple"}}
-  }
+ "targets": [{"metric": "rtp", "unit": "ratio", "value": 0.75,
+ "tolerance": {"kind": "absolute", "value": 0}}],
+ "policy": {
+ "strategy": "exact-finite-v1", "seed": "review-1",
+ "budget": 3, "maxOutcomes": 10000,
+ "mode": "base", "stake": 1, "scope": "logical-round",
+ "tunables": [{"path": "/paytable/A/3", "values": [2, 3, 4]}],
+ "locks": ["/paylines", "/reelStrips", "/mechanics"],
+ "constraints": {"maxWin": {"value": 10, "unit": "betMultiple"}}
+ }
 }
 ```
 
@@ -37,11 +37,11 @@ even when the user supplies no locks.
 | Input/output ProjectType | Concrete finite workflow and authority |
 | --- | --- |
 | Blueprint | Existing authored paytable multipliers; literal strips or weighted whole-sequence reels; existing authored bets. Returns Blueprint JSON. |
-| PAR workbook | Existing paytable cells in a canonical lossless workbook; edits the workbook in place in a detached copy, updates its provenance hash, and reimports it. Ignored/defaulted/formula features fail before candidate writes. Returns XLSX. |
+| PAR workbook | Existing paytable cells in a lossless workbook; edits the workbook in place in a detached copy, updates its provenance hash, and reimports it. Ignored/defaulted/formula features fail before candidate writes. Returns XLSX. |
 | TS package | An author-declared `pokie-tuning.json` v1 contract binds a JSON parameter Blueprint, permitted paytable paths, every custom source-file hash, and executable `getConfigHash()` / exact enumeration. Copies the package and edits only parameters and their contract hash; preserves custom code bytes and evaluates the real loaded candidate. No build script is launched. Returns a loadable package. |
 | Outcome Library | `/modes/MODE/outcomes/ID/weight` numeric weights, scoped to one mode. Preserves IDs, artifacts and other modes; the native writer rebuilds indexes, hashes, totals and analysis; deep validation/readback precedes measurement. Returns a native bundle. |
-| Stake | The same weight paths, with canonical uint64 **decimal strings**, never JavaScript numeric weights. Retains IDs, payout units, mode costs, books and events, and reads the directory with `StakeEngineOutcomeSourceReader`. Returns a native Stake directory. |
-| WASM | An explicitly bound canonical component with a `pokie.wasm-tuning.v1` companion containing source, paths, source hash, module hash and builder version. Recompilation must reproduce the original bytes before search. Tunes literal-reel, feature-free source, rebuilds WASM and companions, and checks the executable over every stop tuple. Returns canonical WASM. |
+| Stake | The same weight paths, with uint64 **decimal strings**, never JavaScript numeric weights. Retains IDs, payout units, mode costs, books and events, and reads the directory with `StakeEngineOutcomeSourceReader`. Returns a native Stake directory. |
+| WASM | An explicitly bound component with a `pokie.wasm-tuning.v1` companion containing source, paths, source hash, module hash and builder version. Recompilation must reproduce the original bytes before search. Tunes literal-reel, feature-free source, rebuilds WASM and companions, and checks the executable over every stop tuple. Returns WASM. |
 
 `declarePackageTuning(packageRoot, parameterFile, paths)` is an explicit authoring
 operation that writes a new contract. Authors must make the executable load the
@@ -77,8 +77,8 @@ Filesystem aliases in authored input/publication paths are rejected.
 
 `bindCanonicalWasmTuningSource(wasmPath, blueprint, paths)` is the separate,
 explicit source-binding action. It writes a new `.tuning.json` companion only
-when compiling that source with the canonical descriptor reproduces the module
-bytes. Canonical integrity alone, legacy sidecars, an embedded model, or an opaque
+when compiling that source with the descriptor reproduces the module
+bytes. Integrity alone, legacy sidecars, an embedded model, or an opaque
 custom component cannot authorize regeneration. WASM candidates preserve compact
 runtime state and the existing host RNG contract.
 
@@ -97,30 +97,30 @@ to retain native uint64 weights and books without reconstruction.
 Targets and exactness:
 
 - RTP is a return **ratio**, not a percentage. Hit frequency is the probability
-  of positive payout. Volatility requires `variance` or `standardDeviation`, in
-  payout-multiple units squared or payout-multiple units respectively.
+ of positive payout. Volatility requires `variance` or `standardDeviation`, in
+ payout-multiple units squared or payout-multiple units respectively.
 - Feature frequency is the probability that a selected outcome contains at
-  least one event with the supplied `event` type. Its denominator is selected
-  outcomes, not event occurrences. Native Stake uses its exact native event type.
+ least one event with the supplied `event` type. Its denominator is selected
+ outcomes, not event occurrences. Native Stake uses its exact native event type.
 - Distribution targets specify nonoverlapping half-open payout-multiple buckets
-  `[min,max)`; `max: null` means infinity. Values are probability mass, together
-  at most one; a partial collection of buckets need not cover all mass.
+ `[min,max)`; `max: null` means infinity. Values are probability mass, together
+ at most one; a partial collection of buckets need not cover all mass.
 - Maximum win uses `currency` or `betMultiple`. `constraints.maxWin` is an output
-  bound in the same selected population, never an installed payout cap. Native Outcome
-  Library and Stake weights must be positive; zero-weight tuning domains are rejected
-  during preflight. Authored zero paytable/grant values and zero-weight reel variants
-  keep their separate canonical contracts.
+ bound in the same selected population, never an installed payout cap. Native Outcome
+ Library and Stake weights must be positive; zero-weight tuning domains are rejected
+ during preflight. Authored zero paytable/grant values and zero-weight reel variants
+ keep their separate contracts.
 - Tolerances are nonnegative finite numbers. Omitted tolerance means exact
-  binary64 comparison (the same as explicit absolute zero); explicit zero is
-  preserved in evidence. Relative tolerance multiplies the absolute target
-  value, so a zero target has zero relative allowance. Binary64 rounding can
-  require a small explicit tolerance, including at fractional stakes.
+ binary64 comparison (the same as explicit absolute zero); explicit zero is
+ preserved in evidence. Relative tolerance multiplies the absolute target
+ value, so a zero target has zero relative allowance. Binary64 rounding can
+ require a small explicit tolerance, including at fractional stakes.
 - Authored base-mode workflows use `paid-entry` or, for feature-free games,
-  `logical-round`. Free-game entry enumeration supports only `paid-entry`;
-  it does not prove a generating game's full feature-round target. Other
-  advanced/stateful mechanics fail as unsupported. Native weights require
-  `native-outcomes`: even a sampled input bundle establishes only that bundle's
-  distribution, never its generating game's full-round RTP.
+ `logical-round`. Free-game entry enumeration supports only `paid-entry`;
+ it does not prove a generating game's full feature-round target. Other
+ advanced/stateful mechanics fail as unsupported. Native weights require
+ `native-outcomes`: even a sampled input bundle establishes only that bundle's
+ distribution, never its generating game's full-round RTP.
 
 `constraints.fixed` contains `{path,value}` entries; fixed fields cannot also be
 tunables. `constraints.sums` contains `{paths,value}` entries, using strings for
@@ -152,12 +152,12 @@ const service = new ProjectOptimizationService();
 const project = await new ProjectTargetResolver().resolve(sourcePath);
 const result = await service.optimize(project, request, {signal, onProgress});
 if (result.status === "success") {
-    try {
-        // Review result.evidence.diff and measured values first.
-        await service.publish(result.candidate, request, newDestination, {signal});
-    } finally {
-        await service.discard(result.candidate);
-    }
+ try {
+ // Review result.evidence.diff and measured values first.
+ await service.publish(result.candidate, request, newDestination, {signal});
+ } finally {
+ await service.discard(result.candidate);
+ }
 }
 ```
 
@@ -210,9 +210,9 @@ Set `policy.strategy` to `seeded-search-v1` and supply a complete `sampling` obj
 
 ```json
 {
-  "searchSamples": 400, "searchBudget": 1200, "assessmentSamples": 6000,
-  "minSamples": 1000, "minEventCount": 5, "confidence": 0.95,
-  "chunkSize": 100, "workers": 1
+ "searchSamples": 400, "searchBudget": 1200, "assessmentSamples": 6000,
+ "minSamples": 1000, "minEventCount": 5, "confidence": 0.95,
+ "chunkSize": 100, "workers": 1
 }
 ```
 
@@ -226,11 +226,11 @@ candidate attempts at most 10000, and confidence must be finite in `[0.8,1)`.
 | Adapter | Seeded population/support (exact support is unchanged) |
 | --- | --- |
 | Blueprint | Literal reels or whole-sequence variants; line payouts; feature-free logical rounds or paid entries. Free-game entry triggers may be counted, not their continuations. |
-| Lossless canonical PAR | Same supported authored populations; native paytable-cell readback preserves other declarations. |
+| Lossless PAR | Same supported authored populations; native paytable-cell readback preserves other declarations. |
 | Explicitly declared TS package | Feature-free complete rounds with finite executable enumeration, source/dependency binding and model hash. The executable enumeration establishes the return support bound; actual seeded sessions supply observations. The package must honor the `createSession({seed})` RNG contract, including independent seeds. An opaque/hash-only runtime is insufficient. |
 | Outcome Library | Selected `native-outcomes` numeric weights, matching artifact stake; event identities come from stored `featureEvents[].type`. |
 | Stake | Selected `native-outcomes` uint64 string weights (never rounded to numbers); actual paid cost is denomination times native mode cost. |
-| Source-bound canonical WASM | Supported feature-free literal reels, rebuilt reproducibly and checked against every executable stop tuple before using the bound authored population. |
+| Source-bound WASM | Supported feature-free literal reels, rebuilt reproducibly and checked against every executable stop tuple before using the bound authored population. |
 
 Only RTP, hit probability, named feature-event presence and requested half-open payout-multiple
 buckets are sampled targets. For example `{"metric":"featureFrequency","unit":"ratio","event":"bonus","value":0.25,"tolerance":{"kind":"absolute","value":0.04}}`
@@ -273,7 +273,7 @@ rerun its request against the same identified source and dependencies to compare
 
 One fixed held-out assessment uses two-sided Hoeffding intervals, with Bonferroni allocation
 `delta=(1-confidence)/numberOfTargets`. Probability observations have range `[0,1]`; RTP observations
-use a finite support bound derived from the canonical resolved line/scatter math (including default
+use a finite support bound derived from the resolved line/scatter math (including default
 paylines over evaluated geometry) or the validated native/executable
 population, never a sampled maximum. This deliberately does not reuse the empirical normal interval's
 zero-variance shortcut. Existing simulation precision convergence is not optimization attainment.
@@ -290,11 +290,11 @@ separate user-initiated reruns; do not cherry-pick reruns as stronger evidence.
 
 - `attained`: all requested assessment regions established and the declared search completed.
 - `inconclusive`: a candidate exists but assessment is uncertain or missed; even exhaustive **sampling**
-  of candidates is not a proof of infeasibility.
+ of candidates is not a proof of infeasibility.
 - `exhausted`: candidate/search budget stopped the search or assessment cannot meet its minimum;
-  evidence retains the concrete stop reason and any best-so-far candidate.
+ evidence retains the concrete stop reason and any best-so-far candidate.
 - `infeasible`: reserved for exhaustive exact target exclusion or structural exclusion of every declared
-  candidate. Contradictory declarations/target intervals instead return `invalid` before preparation.
+ candidate. Contradictory declarations/target intervals instead return `invalid` before preparation.
 
 Candidate presence never means approval. Direct callers may explicitly `publish` and then `discard`
 an `attained`, `inconclusive` or `exhausted` candidate. CLI `--out` and Studio save follow the same
@@ -320,7 +320,7 @@ from these implementation checks.
 
 Artifact publication and authored apply are separate operations. `publish(candidate, request,
 newDestination)` and CLI `--out` preserve the source and require a new/empty destination.
-`apply(candidate, currentRequest)` explicitly commits Blueprint JSON, canonical PAR paytable
+`apply(candidate, currentRequest)` explicitly commits Blueprint JSON, PAR paytable
 cells/provenance, or a declared TS package's parameter file and contract model hash. Outcome
 Library, Stake and WASM remain generated artifacts: save them to a new destination. Source
 code, package metadata, dependency bindings, workbook declarations and locked model fields
@@ -357,7 +357,7 @@ rollback preserves conflicting external edits and reports recovery instructions.
 cleanup occurs before authored mutation. Studio clears the old Play session, refreshes its project
 runtime from committed bytes, and requires fresh support/review for another apply.
 
-Browser reload reattaches server-owned jobs through canonical identity. Server restart retains
+Browser reload reattaches server-owned jobs through identity. Server restart retains
 terminal evidence but cannot resume an optimization search or restore candidate apply/save authority.
 Use a fresh support check and run after cancellation, operational failure, restart or lost authority.
 The generic recover endpoint only resumes separately supported generation jobs. Project close/switch

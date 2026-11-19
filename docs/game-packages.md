@@ -13,39 +13,39 @@ A game package is a regular npm package that depends on `@fromstan/pokie` and ex
 
 ```ts
 type PokieGameManifest = {
-    id: string;
-    name: string;
-    version: string;
-    description?: string;
-    author?: string;
+ id: string;
+ name: string;
+ version: string;
+ description?: string;
+ author?: string;
 };
 
 type PokieGameContext = {
-    seed?: string | number;
-    options?: Record<string, unknown>;
+ seed?: string | number;
+ options?: Record<string, unknown>;
 };
 
 interface PokieGame {
-    getManifest(): PokieGameManifest;
-    createSession(context?: PokieGameContext): GameSessionHandling;
-    getSessionSerializer?(): GameSessionSerializing;
+ getManifest(): PokieGameManifest;
+ createSession(context?: PokieGameContext): GameSessionHandling;
+ getSessionSerializer?(): GameSessionSerializing;
 }
 ```
 
-- `getManifest()` — static metadata about the game (id, display name, version, ...), independent of any session.
+- `getManifest()` — static metadata about the game (id, display name, version,...), independent of any session.
 - `createSession(context?)` — returns a **fresh** `GameSessionHandling` (e.g. a `VideoSlotSession`) ready to play.
-  Called once per simulation run, per player session, or per replay. `context.seed`, if provided, is meant to be
-  passed to a `SeededRandomNumberGenerator` (see [Reels & Symbol Sequences](reels-and-sequences.md#rngs)) so the
-  caller can reproduce a specific run; `context.options` is a free-form bag for anything else the game needs
-  (RTP variant, bonus buy mode, etc.) — the game package defines and interprets its own option keys.
+ Called once per simulation run, per player session, or per replay. `context.seed`, if provided, is meant to be
+ passed to a `SeededRandomNumberGenerator` (see [Reels & Symbol Sequences](reels-and-sequences.md#rngs)) so the
+ caller can reproduce a specific run; `context.options` is a free-form bag for anything else the game needs
+ (RTP variant, bonus buy mode, etc.) — the game package defines and interprets its own option keys.
 - `getSessionSerializer?()` — **optional and additive**. When implemented, returns the [`net/` session
-  serializer](serialization.md) that knows how to turn this game's own session type into a rich, game-specific
-  JSON payload (e.g. `new VideoSlotSessionSerializer()`, or a custom `CascadeSessionSerializer`/
-  `MultiStageRoundSessionSerializer` subclass for a multi-stage mechanic). `pokie serve` uses it, when present,
-  instead of its own narrow default response shape — see [`pokie serve`'s session responses](cli.md#post-sessions)
-  and [Session storage & wallet](cli.md#session-storage--wallet). A game that doesn't implement this keeps getting
-  exactly the response shape it always has; this is not required for `loadPokieGame`/`pokie validate`/`pokie sim`/
-  any other command to work.
+ serializer](serialization.md) that knows how to turn this game's own session type into a rich, game-specific
+ JSON payload (e.g. `new VideoSlotSessionSerializer()`, or a custom `CascadeSessionSerializer`/
+ `MultiStageRoundSessionSerializer` subclass for a multi-stage mechanic). `pokie serve` uses it, when present,
+ instead of its own narrow default response shape — see [`pokie serve`'s session responses](cli.md#post-sessions)
+ and [Session storage & wallet](cli.md#session-storage--wallet). A game that doesn't implement this keeps getting
+ exactly the response shape it always has; this is not required for `loadPokieGame`/`pokie validate`/`pokie sim`/
+ any other command to work.
 
 ## Declaring the entrypoint
 
@@ -54,14 +54,14 @@ field:
 
 ```json
 {
-    "name": "sample-slot",
-    "version": "1.0.0",
-    "dependencies": {
-        "@fromstan/pokie": "^2.0.0"
-    },
-    "pokie": {
-        "entry": "./dist/index.js"
-    }
+ "name": "sample-slot",
+ "version": "1.0.0",
+ "dependencies": {
+ "@fromstan/pokie": "^2.0.0"
+ },
+ "pokie": {
+ "entry": "./dist/index.js"
+ }
 }
 ```
 
@@ -130,18 +130,18 @@ files.
 The entry module's **default export** must be a `PokieGame`:
 
 ```ts
-// src/index.ts, compiled to ./dist/index.js (see "pokie.entry" above)
+// src/index.ts, compiled to./dist/index.js (see "pokie.entry" above)
 import {PokieGame, VideoSlotConfig, VideoSlotSession} from "@fromstan/pokie";
 
 const game: PokieGame = {
-    getManifest() {
-        return {id: "sample-slot", name: "Sample Slot", version: "1.0.0"};
-    },
-    createSession(context) {
-        const config = new VideoSlotConfig();
-        config.setAvailableSymbols(["Cherry", "Lemon", "Bell", "Seven"]);
-        return new VideoSlotSession(config);
-    },
+ getManifest() {
+ return {id: "sample-slot", name: "Sample Slot", version: "1.0.0"};
+ },
+ createSession(context) {
+ const config = new VideoSlotConfig();
+ config.setAvailableSymbols(["Cherry", "Lemon", "Bell", "Seven"]);
+ return new VideoSlotSession(config);
+ },
 };
 
 export default game;
@@ -183,7 +183,7 @@ machinery. It's a shallower check than what `loadPokieGame` runs internally (sha
 import {isPokieGame} from "@fromstan/pokie";
 
 if (!isPokieGame(candidate)) {
-    throw new Error("not a POKIE game");
+ throw new Error("not a POKIE game");
 }
 ```
 
@@ -198,7 +198,7 @@ const issues = new PokieGameContractValidationRule().validate(candidate);
 const result = new ValidationResult(issues);
 
 if (result.hasErrors()) {
-    // reject the package
+ // reject the package
 }
 ```
 
@@ -255,11 +255,11 @@ context contract; weighted-definition recognition survives that module boundary.
 The model hash includes authored variants and versioned context/sampling semantics.
 Existing exact-only models keep their stop draws and seeded mathematics.
 
-`loadGameBlueprint()` checks canonical sequence definitions before runtime use.
+`loadGameBlueprint()` checks sequence definitions before runtime use.
 Authoring adapters may request `{preserveInvalidAuthoredContent: true}` to retain a
 broken draft for correction; this does not authorize build or runtime publication.
 Studio and CLI editing use that authoring option and validate before saving the new
-source. PAR and canonical WASM preserve the `reelSequences` representation and its identity. See [the reel contract](reels-and-sequences.md#weighted-whole-sequence-reels).
+source. PAR and WASM preserve the `reelSequences` representation and its identity. See [the reel contract](reels-and-sequences.md#weighted-whole-sequence-reels).
 
 ## Public package model extraction
 
@@ -275,14 +275,14 @@ A package may implement the optional `PokieGame.getModelDescriptor()` capability
 
 ```ts
 getModelDescriptor(): PackageModelDescriptor {
-    return {
-        descriptorVersion: 1,
-        blueprintSchemaVersion: 1,
-        sourceKind: "custom",
-        model: effectiveModel,
-        // Declare custom behavior outside the Blueprint contract:
-        // unsupported: [{path: "mechanics", code: "custom-feature", message: "..."}],
-    };
+ return {
+ descriptorVersion: 1,
+ blueprintSchemaVersion: 1,
+ sourceKind: "custom",
+ model: effectiveModel,
+ // Declare custom behavior outside the Blueprint contract:
+ // unsupported: [{path: "mechanics", code: "custom-feature", message: "..."}],
+ };
 }
 ```
 
@@ -368,19 +368,19 @@ Blueprint `mechanics` accepts `freeGames`, `holdAndWin`, `jackpot`, `modifiers`,
 
 ```json
 {
-  "holdAndWin": {
-    "minimumCount": 3,
-    "initialRespins": 3,
-    "retriggerPolicy": "reset-on-new-lock",
-    "symbolEffects": {"C": {"kind": "value", "amount": 2}, "M": {"kind": "multiplier", "factor": 3}},
-    "payout": {"type": "sum-with-multiplier", "amountsAreBetMultiples": true}
-  },
-  "jackpot": {
-    "pool": {"id": "mini", "type": "accumulating", "seedValue": 10},
-    "contribution": {"type": "percentage", "percentage": 0.01},
-    "trigger": {"type": "symbol-count", "symbolId": "J", "minimumCount": 3},
-    "award": "single-tier"
-  }
+ "holdAndWin": {
+ "minimumCount": 3,
+ "initialRespins": 3,
+ "retriggerPolicy": "reset-on-new-lock",
+ "symbolEffects": {"C": {"kind": "value", "amount": 2}, "M": {"kind": "multiplier", "factor": 3}},
+ "payout": {"type": "sum-with-multiplier", "amountsAreBetMultiples": true}
+ },
+ "jackpot": {
+ "pool": {"id": "mini", "type": "accumulating", "seedValue": 10},
+ "contribution": {"type": "percentage", "percentage": 0.01},
+ "trigger": {"type": "symbol-count", "symbolId": "J", "minimumCount": 3},
+ "award": "single-tier"
+ }
 }
 ```
 
@@ -390,7 +390,7 @@ Assembly order is base (optionally free games), Hold&Win if present, executable 
 
 Executable modes require every mode's `runtimeType`, exactly one safe default, and compatible free games for purchases. `costMultiplier`/labels/`isDefault` without runtime semantics remain metadata; `forcedFreeGames` without runtime opt-in is invalid. Base/ante selections persist. Buy-feature selection is consumed once at entry and resets to the default; another purchase requires a fresh action after feature completion. Original charged mode attribution remains available separately from current selection.
 
-Generated CJS and TypeScript, exact descriptor extraction and real XLSX interchange retain these fields. The Mechanics workbook sheet uses `Mechanic` and `Configuration JSON` rows for extended configurations, preserving explicit retrigger policies; legacy free-game award sheets remain readable. Structural hashes include all mechanic and executable mode fields. Build conversions retain `build SOURCE --target TARGET`, explicit Save/Apply and new/empty destinations. Canonical WASM preserves Hold&Win/jackpot histories; paid-grid outcome-library/Stake projections reject those histories rather than erase them; generated games with these mechanics expose no paid-grid exact-enumeration constructor.
+Generated CJS and TypeScript, exact descriptor extraction and real XLSX interchange retain these fields. The Mechanics workbook sheet uses `Mechanic` and `Configuration JSON` rows for extended configurations, preserving explicit retrigger policies; legacy free-game award sheets remain readable. Structural hashes include all mechanic and executable mode fields. Build conversions retain `build SOURCE --target TARGET`, explicit Save/Apply and new/empty destinations. WASM preserves Hold&Win/jackpot histories; paid-grid outcome-library/Stake projections reject those histories rather than erase them; generated games with these mechanics expose no paid-grid exact-enumeration constructor.
 
 Custom collectors/triggers/aggregators, stake-dependent/random jackpot triggers, custom contributions or entry handlers, multi-tier selection, and shared/distributed progressives remain custom code. A descriptor states representable data; it cannot certify opaque collaborator behavior. Built-in restoration certification requires resolved built-in collaborators and a restorable nested seeded session. Sharing a mutable accumulating pool invalidates built-in certification.
 

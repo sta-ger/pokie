@@ -199,13 +199,9 @@ export class StakeEngineCommand implements CliCommandHandling {
 
     public getDescription(): string {
         return (
-            "Export WeightedOutcomeLibrary JSON files to the Stake Engine math-sdk static file format, reconstruct only " +
-            "a POKIE-produced export with pokie-manifest.json back into libraries, " +
-            "standalone-analyze an arbitrary Stake Engine outcome directory with no pokie-manifest.json required, or diff " +
-            "two such directories/analyses. Compatible foreign directories without that manifest are for analyze/report " +
-            "or diff, not reconstruction " +
-            '("pokie stakeengine export <config.json>" / "pokie stakeengine import <stakeDir>" / ' +
-            '"pokie stakeengine analyze <stakeDir>" / "pokie stakeengine diff <leftStakeDir> <rightStakeDir>").'
+            "Export an outcome library to the Stake Engine math-sdk format, reconstruct a POKIE-produced export, " +
+            "analyze any Stake Engine outcome folder, or compare two folders " +
+            '("pokie stakeengine export|import|analyze|diff").'
         );
     }
 

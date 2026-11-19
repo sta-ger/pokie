@@ -57,11 +57,11 @@ session.setBet(10);
 session.play();
 
 session.getSymbolsCombination().toMatrix(); // string[][] — the symbols shown on screen
-session.getWinAmount();                     // total win for this round
-session.getWinEvaluationResult();           // unified win breakdown object
-session.getWinningLines();                  // Record<string, WinningLineDescribing>
-session.getWinningScatters();               // Record<string, WinningScatterDescribing>
-session.getCreditsAmount();                 // credits after the bet was placed and the win added
+session.getWinAmount(); // total win for this round
+session.getWinEvaluationResult(); // unified win breakdown object
+session.getWinningLines(); // Record<string, WinningLineDescribing>
+session.getWinningScatters(); // Record<string, WinningScatterDescribing>
+session.getCreditsAmount(); // credits after the bet was placed and the win added
 ```
 
 `new VideoSlotSession()` wires up working defaults for every collaborator (config, combinations generator, win
@@ -80,10 +80,10 @@ swapped out.
 Two pieces are relevant if you need to reproduce or audit a specific round:
 
 - `SeededRandomNumberGenerator(seed)` — a reproducible random generator; the same seed always produces the same
-  sequence of draws, for tests, replays and demos. Not cryptographically secure — don't use it for real-money play.
+ sequence of draws, for tests, replays and demos. Not cryptographically secure — don't use it for real-money play.
 - `SymbolsCombinationsGenerator.getLastStopPositions()` — the per-reel stop position (index into that reel's
-  `SymbolsSequence`) that produced the most recently generated combination, so you can reconstruct or log exactly
-  how a round's outcome was produced.
+ `SymbolsSequence`) that produced the most recently generated combination, so you can reconstruct or log exactly
+ how a round's outcome was produced.
 
 ## Where to go next
 
@@ -91,10 +91,10 @@ Two pieces are relevant if you need to reproduce or audit a specific round:
 - Want free spins / bonus rounds? → [Free Games](free-games.md)
 - Want a grid that grows or shrinks between rounds? → [Resizable Grid](resizable-grid.md)
 - Want cluster pays, per-symbol value pays, or ways-to-win instead of fixed paylines? →
-  [Paytable & Win Calculation](paytable-and-wins.md)
+ [Paytable & Win Calculation](paytable-and-wins.md)
 - Want to balance RTP/volatility or run bulk simulations? → [Simulation](simulation.md) and
-  [Modeling Slot Math with POKIE](math-modeling.md)
+ [Modeling Slot Math with POKIE](math-modeling.md)
 - Want to send round results to a game client? → [Network Serialization](serialization.md)
 - Want to record, replay or audit a round? → [Round Records](round-records.md) and
-  [Provably Fair](provably-fair.md)
+ [Provably Fair](provably-fair.md)
 - Want to prepare evidence for an auditor? → [Certification Pack](certification-pack.md)

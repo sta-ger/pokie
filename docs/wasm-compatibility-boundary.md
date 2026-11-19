@@ -6,7 +6,7 @@ POKIE WASM is a first-class, portable artifact target. `pokie build <Blueprint> 
 `game.wasm` and an integrity-bound `game.wasm.pokie-wasm.json` manifest. The portable `@fromstan/pokie/wasm` runtime
 instantiates only standard WebAssembly and receives randomness from its host; Node file loading, Studio state,
 and process concerns stay outside that runtime. POKIE intentionally does **not** promise that an arbitrary
-handwritten Node package can be compiled to WASM: Blueprint is the canonical source, and PAR reaches WASM via
+handwritten Node package can be compiled to WASM: Blueprint is the source, and PAR reaches WASM via
 the existing model-preserving Blueprint import.
 
 The production-readable source for this boundary is `WASM_PRODUCT_CONTRACT` in
@@ -15,9 +15,9 @@ unsupported-operation diagnostics, conversion planning, and Studio's refreshed
 WASM availability all derive from that contract; this page explains it but does
 not define a second product route.
 
-**Scope:** canonical Blueprint/PAR artifact production, integrity-checked resolution, portable runtime API,
+**Scope:** Blueprint/PAR artifact production, integrity-checked resolution, portable runtime API,
 and explicit package portability advisory. A legacy compatible sidecar remains readable for migration but is
-not runnable until rebuilt as a canonical artifact.
+not runnable until rebuilt as a artifact.
 
 ## Current execution and mechanics
 
@@ -51,7 +51,7 @@ External wallet/shared-progressive services and arbitrary callbacks, evaluators,
 generators or opaque wrappers fail preflight.
 
 The arithmetic model remains `pokie.game.v2` / `pokie.math.v2`. A versioned
-`features: {schemaVersion: "pokie.features.v1", blueprint: ...}` extension binds
+`features: {schemaVersion: "pokie.features.v1", blueprint:...}` extension binds
 the complete resolved declarative definition. The runtime checks that its
 arithmetic projection agrees with that definition. Byte count, SHA-256,
 configuration hash, component identity, imports, export signatures, memory layout,
@@ -82,36 +82,36 @@ where that file lives) shaped as `PokieWasmComponentManifest`:
 
 ```ts
 type PokieWasmComponentManifest = {
-    schemaVersion: string;                 // which version of *this* contract the manifest targets
-    component: {id: string; version: string};
-    minPokieVersion?: string;              // lowest POKIE release accepted by the resolver and portable runtime
-    serialization: {
-        session: string;                   // format id for a session's own config
-        play: string;                      // format id for one played round's request/result
-        state: string;                     // format id for a session's own persisted state
-    };
-    host: {
-        rng: string;                       // format/protocol id for the host-provided RNG the component must draw through
-        services: readonly string[];       // any other host-provided service ids the component needs
-    };
-    capabilities: readonly string[];       // open vocabulary of capability ids the component declares support for
+ schemaVersion: string; // which version of *this* contract the manifest targets
+ component: {id: string; version: string};
+ minPokieVersion?: string; // lowest POKIE release accepted by the resolver and portable runtime
+ serialization: {
+ session: string; // format id for a session's own config
+ play: string; // format id for one played round's request/result
+ state: string; // format id for a session's own persisted state
+ };
+ host: {
+ rng: string; // format/protocol id for the host-provided RNG the component must draw through
+ services: readonly string[]; // any other host-provided service ids the component needs
+ };
+ capabilities: readonly string[]; // open vocabulary of capability ids the component declares support for
 };
 ```
 
 - **Metadata** — `component.id`/`component.version` identify the component build itself, independent of
-  `schemaVersion` (POKIE's own contract version) and `minPokieVersion` (the lowest package release the component
-  claims compatibility with — enforced during canonical resolution and before portable runtime instantiation).
+ `schemaVersion` (POKIE's own contract version) and `minPokieVersion` (the lowest package release the component
+ claims compatibility with — enforced during resolution and before portable runtime instantiation).
 - **Session/play/state serialization** — three format ids naming the wire shape the component's own host
-  boundary expects for a session's config, one played round, and persisted state. POKIE places no constraint on
-  the ids themselves beyond the canonical runtime ABI it validates before execution.
+ boundary expects for a session's config, one played round, and persisted state. POKIE places no constraint on
+ the ids themselves beyond the runtime ABI it validates before execution.
 - **Host RNG/services** — `host.rng` names the format/protocol id for the host-provided random source the
-  component must draw through (a component never brings or seeds its own RNG — POKIE's fairness/provably-fair
-  model requires every draw to be traceable to a host-issued source; see [Provably Fair](provably-fair.md)).
-  `host.services` is the open list of any other host-provided service ids the component needs.
+ component must draw through (a component never brings or seeds its own RNG — POKIE's fairness/provably-fair
+ model requires every draw to be traceable to a host-issued source; see [Provably Fair](provably-fair.md)).
+ `host.services` is the open list of any other host-provided service ids the component needs.
 - **Capability discovery** — `capabilities` is an open vocabulary of ids the component declares support for,
-  the same convention `ProjectCapability`/`ExternalDeploymentCapability` (see the
-  [External Adapter SDK](external-adapter-sdk.md)) already use elsewhere in this package: never closed to a
-  union, so a component author can declare ids a generic POKIE check simply never looks at.
+ the same convention `ProjectCapability`/`ExternalDeploymentCapability` (see the
+ [External Adapter SDK](external-adapter-sdk.md)) already use elsewhere in this package: never closed to a
+ union, so a component author can declare ids a generic POKIE check simply never looks at.
 
 `POKIE_WASM_CONTRACT_VERSION` (currently `"1.0.0"`) is the version of this contract the running POKIE package
 understands. `PokieWasmComponentManifestValidator` checks a manifest's own shape (every field present and
@@ -137,12 +137,12 @@ outcomes:
 | Sidecar present, well-shaped, and compatible | Resolves as a `"wasm"` `PokieProject`. |
 
 Every compatible WASM project carries `WASM_MANIFEST_READ_CAPABILITY` (`"wasm.manifest.read"`). Integrity-bound
-canonical artifacts additionally carry `WASM_CANONICAL_ARTIFACT_CAPABILITY` (`"wasm.canonical"`): that proves the
-module bytes and manifest have one canonical identity, but authorizes no runtime operation by itself. The manifest's
+artifacts additionally carry `WASM_CANONICAL_ARTIFACT_CAPABILITY` (`"wasm.canonical"`): that proves the
+module bytes and manifest have one identity, but authorizes no runtime operation by itself. The manifest's
 declared `runtime.play`, `runtime.serialize`, `runtime.replay`, and `artifact.inspect` operations grant their
 matching capabilities independently after that integrity check. The complete portable play/serialize/replay
 declaration set additionally grants `WASM_RUNTIME_EXECUTE_CAPABILITY` (`"wasm.runtime.execute"`). Consumers must
-use the relevant declared per-operation capability, not treat canonical identity or the aggregate bundle as a
+use the relevant declared per-operation capability, not treat identity or the aggregate bundle as a
 substitute for it.
 
 A legacy sidecar-only component deliberately retains only manifest inspection so Studio and the CLI can explain the
@@ -151,21 +151,21 @@ migration boundary without falsely advertising execution. A resolved WASM artifa
 `parWorkbook` project types grant `wasm.export` for the explicit Blueprint/PAR matrix edges.
 
 `readWasmComponentManifest(project)` reads component id/version, serialization format ids, host bindings, and
-declared capabilities. Canonical resolution also verifies the module/manifest integrity binding before runtime
+declared capabilities. Resolution also verifies the module/manifest integrity binding before runtime
 operations; a swapped, stale, malformed, or incompatible sidecar is rejected before instantiation.
 
 ## Package-to-WASM preflight — `assessWasmPackagingPreflight`
 
 For an existing POKIE `tsPackage`, `assessWasmPackagingPreflight`
 runs an advisory-only scan over that package's own source: it statically finds every `import`/`require` of a
-Node.js built-in module (`fs`, `path`, `child_process`, `net`, ...) — none of which exist inside a
+Node.js built-in module (`fs`, `path`, `child_process`, `net`,...) — none of which exist inside a
 WASM/component-model sandbox — and lists the package's own declared `package.json` runtime dependencies
 verbatim, for a human to review (POKIE has no way to know whether any third-party dependency is itself portable
-without actually trying to bundle it). The scan is advisory only; it is not a route into the canonical builder.
+without actually trying to bundle it). The scan is advisory only; it is not a route into the builder.
 
 The scan is a plain regex over import/require specifiers, not a real parser — good enough to *name* a blocker,
 never a guarantee that an empty result means a package is actually portable. `report.notes` explicitly says that
-the canonical Blueprint/PAR builder is intentionally different from package compilation, so the report can never
+the Blueprint/PAR builder is intentionally different from package compilation, so the report can never
 be read as "no blockers found, therefore compilation works": **no POKIE command compiles an arbitrary package to
 WASM, regardless of what this scan finds.**
 
@@ -248,7 +248,7 @@ accounting and focused regression commands.
 
 ## Generated, visible and evaluated coordinates
 
-Canonical WASM retains supported screen geometry, fractional visible coverage,
+WASM retains supported screen geometry, fractional visible coverage,
 evaluated paylines and mapped win/feature positions. Hidden wilds/scatters do not
 acquire modifiers, pay or trigger features outside the evaluation window. PAR's
 nonrepresentable geometry boundary remains an explicit rejection.
@@ -285,7 +285,7 @@ maps every mandatory family separately from arbitrary custom callbacks.
 
 ## Studio browser ownership
 
-`pokie game.wasm` opens Project Studio, including Home/recent/registered reopening. `inspect` remains explicit CLI inspection. `/api/project/wasm/artifact` delivers a matching byte/sidecar pair scoped to the active Project generation. Canonical integrity and compatibility checks run before admission, in browser loading, at Worker initialization and before publication. Same-path replacement invalidates an active Play session and stale job output. No package loader handles a failed WASM artifact.
+`pokie game.wasm` opens Project Studio, including Home/recent/registered reopening. `inspect` remains explicit CLI inspection. `/api/project/wasm/artifact` delivers a matching byte/sidecar pair scoped to the active Project generation. Integrity and compatibility checks run before admission, in browser loading, at Worker initialization and before publication. Same-path replacement invalidates an active Play session and stale job output. No package loader handles a failed WASM artifact.
 
 `PokieWasmWorkerClient` correlates requests and progress with Project, generation, artifact and job identities. The Vite module Worker is emitted with installed Studio assets, including dynamic simulation imports. Both public browser exports keep filesystem code in the Node adapter. Worker load/error/messageerror/malformed response/trap failures settle requests and release the Worker. Long loops yield to the Worker event loop; Studio active cancellation uses termination, so it can interrupt initialization and long execution. Progress retains only the latest accepted prefix; cancelled/failed jobs publish no completed report.
 

@@ -12,43 +12,43 @@ strip, feed its `toArray()` into `SymbolsSequence.fromArray(...)` to actually us
 
 ```ts
 import {
-    ForbiddenAdjacencyConstraint,
-    MaximumConsecutiveOccurrencesConstraint,
-    MinimumCircularDistanceConstraint,
-    ReelStripAnalyzer,
-    ReelStripGenerator,
+ ForbiddenAdjacencyConstraint,
+ MaximumConsecutiveOccurrencesConstraint,
+ MinimumCircularDistanceConstraint,
+ ReelStripAnalyzer,
+ ReelStripGenerator,
 } from "@fromstan/pokie";
 
 const generator = new ReelStripGenerator();
 
 const result = generator.generate({
-    length: 32,
-    symbolCounts: {W: 2, A: 6, K: 8, Q: 8, J: 8},
-    seed: 12345, // omit for non-deterministic generation
-    lockedPositions: {0: "W"}, // symbol "W" is pinned to position 0
-    constraints: [
-        new MinimumCircularDistanceConstraint(6, ["W"]), // wilds at least 6 apart, wrap-aware
-        new MaximumConsecutiveOccurrencesConstraint(3), // no symbol repeats more than 3 times in a row
-        new ForbiddenAdjacencyConstraint([["W", "W"]]), // redundant here, just for illustration
-    ],
+ length: 32,
+ symbolCounts: {W: 2, A: 6, K: 8, Q: 8, J: 8},
+ seed: 12345, // omit for non-deterministic generation
+ lockedPositions: {0: "W"}, // symbol "W" is pinned to position 0
+ constraints: [
+ new MinimumCircularDistanceConstraint(6, ["W"]), // wilds at least 6 apart, wrap-aware
+ new MaximumConsecutiveOccurrencesConstraint(3), // no symbol repeats more than 3 times in a row
+ new ForbiddenAdjacencyConstraint([["W", "W"]]), // redundant here, just for illustration
+ ],
 });
 
 if (result.success) {
-    console.log(result.strip!.toArray()); // the canonical, immutable symbol sequence
+ console.log(result.strip!.toArray()); // the canonical, immutable symbol sequence
 } else {
-    // every attempt's violations are available for diagnosis
-    console.log(result.diagnostics.at(-1)!.violations);
+ // every attempt's violations are available for diagnosis
+ console.log(result.diagnostics.at(-1)!.violations);
 }
 ```
 
-## `ReelStripDefinition` / `ReelStrip` — the canonical strip
+## `ReelStripDefinition` / `ReelStrip` — the strip
 
 ```ts
 interface ReelStripDefinition {
-    getLength(): number;
-    getSymbolAt(position: number): string;   // circular index resolution, like SymbolsSequence.getIndex
-    toArray(): string[];
-    getSymbolCounts(): Record<string, number>;
+ getLength(): number;
+ getSymbolAt(position: number): string; // circular index resolution, like SymbolsSequence.getIndex
+ toArray(): string[];
+ getSymbolCounts(): Record<string, number>;
 }
 ```
 
@@ -60,10 +60,10 @@ can't be used to mutate internal state.
 
 ```ts
 constructor(
-    strategy: ReelStripGenerationStrategy = new ShuffleReelStripGenerationStrategy(),
-    validator: ReelStripConstraintValidator = new CompositeReelStripConstraintValidator(),
-    scorer: ReelStripScorer = new ViolationCountReelStripScorer(),
-    symbolWeightsConverter: ReelStripSymbolWeightsConverter = new LargestRemainderReelStripSymbolWeightsConverter(),
+ strategy: ReelStripGenerationStrategy = new ShuffleReelStripGenerationStrategy(),
+ validator: ReelStripConstraintValidator = new CompositeReelStripConstraintValidator(),
+ scorer: ReelStripScorer = new ViolationCountReelStripScorer(),
+ symbolWeightsConverter: ReelStripSymbolWeightsConverter = new LargestRemainderReelStripSymbolWeightsConverter(),
 )
 generate(request: ReelStripGenerationRequest): ReelStripGenerationResult
 generateFromSymbolWeights(request: ReelStripWeightedGenerationRequest): ReelStripGenerationResult
@@ -71,30 +71,30 @@ generateFromSymbolWeights(request: ReelStripWeightedGenerationRequest): ReelStri
 
 ```ts
 type ReelStripGenerationRequest = {
-    length: number;
-    symbolCounts: Record<string, number>;       // must sum to length
-    seed?: number;                              // same seed -> same result, deterministically
-    lockedPositions?: Record<number, string>;   // fixed/locked positions, honored by construction
-    constraints?: ReelStripConstraint[];
-    maxAttempts?: number;                       // default 200
-    scorer?: ReelStripScorer;                   // overrides the constructor-level scorer for this call
+ length: number;
+ symbolCounts: Record<string, number>; // must sum to length
+ seed?: number; // same seed -> same result, deterministically
+ lockedPositions?: Record<number, string>; // fixed/locked positions, honored by construction
+ constraints?: ReelStripConstraint[];
+ maxAttempts?: number; // default 200
+ scorer?: ReelStripScorer; // overrides the constructor-level scorer for this call
 };
 
 type ReelStripGenerationResult = {
-    success: boolean;                           // true iff some attempt satisfied every constraint
-    strip?: ReelStripDefinition;                // the best candidate found, even when success is false
-    attemptsUsed: number;
-    diagnostics: ReelStripGenerationDiagnostic[]; // one entry per attempt (or one, if the request itself was malformed)
-    symbolWeightsConversion?: ReelStripSymbolWeightsConversionDiagnostic; // present only from generateFromSymbolWeights
+ success: boolean; // true iff some attempt satisfied every constraint
+ strip?: ReelStripDefinition; // the best candidate found, even when success is false
+ attemptsUsed: number;
+ diagnostics: ReelStripGenerationDiagnostic[]; // one entry per attempt (or one, if the request itself was malformed)
+ symbolWeightsConversion?: ReelStripSymbolWeightsConversionDiagnostic; // present only from generateFromSymbolWeights
 };
 ```
 
 Each attempt asks `strategy` for one candidate strip and checks it in two layers:
 
 1. **Invariants** — `symbolCounts` and `lockedPositions` are re-validated directly against the candidate, independent
-   of whichever `validator`/`constraints` are in play. This is not optional and can't be swapped out: even a buggy
-   or malicious custom `ReelStripGenerationStrategy` can never produce a `success: true` result whose strip doesn't
-   actually match the request's counts and locked positions.
+ of whichever `validator`/`constraints` are in play. This is not optional and can't be swapped out: even a buggy
+ or malicious custom `ReelStripGenerationStrategy` can never produce a `success: true` result whose strip doesn't
+ actually match the request's counts and locked positions.
 2. **`request.constraints`** — validated via `validator`, exactly as configured.
 
 A candidate that clears both layers is accepted **immediately** as `success: true` — `scorer` is never consulted for
@@ -122,7 +122,7 @@ always produces the same sequence of candidates and the same final result. Omit 
 
 Builds the exact symbol pool described by `symbolCounts`, seats locked symbols first, then Fisher–Yates-shuffles the
 remaining pool into the remaining positions. Exact counts and locked positions therefore hold **by construction**
-for every candidate — only constraints beyond that (distance, run length, adjacency, ...) can still fail and trigger
+for every candidate — only constraints beyond that (distance, run length, adjacency,...) can still fail and trigger
 another attempt. Swap in your own `ReelStripGenerationStrategy` to change how candidates are produced without
 touching `ReelStripGenerator` itself (Open/Closed: `ReelStripGenerator` never needs to know which strategy it's
 driving) — `ReelStripGenerator` re-checks `symbolCounts`/`lockedPositions` regardless of which strategy produced the
@@ -141,24 +141,24 @@ import {ReelStripGenerator} from "@fromstan/pokie";
 const generator = new ReelStripGenerator();
 
 const result = generator.generateFromSymbolWeights({
-    length: 32,
-    symbolWeights: {W: 2, A: 6, K: 8, Q: 8, J: 8}, // proportions, not exact counts (need not sum to length)
-    seed: 12345,
+ length: 32,
+ symbolWeights: {W: 2, A: 6, K: 8, Q: 8, J: 8}, // proportions, not exact counts (need not sum to length)
+ seed: 12345,
 });
 
 if (result.success) {
-    result.strip!.toArray();               // the generated strip, exactly as from generate()
-    result.symbolWeightsConversion!.counts; // the exact counts the weights resolved to: {W: 2, A: 6, K: 8, Q: 8, J: 8}
+ result.strip!.toArray(); // the generated strip, exactly as from generate()
+ result.symbolWeightsConversion!.counts; // the exact counts the weights resolved to: {W: 2, A: 6, K: 8, Q: 8, J: 8}
 }
 ```
 
 ```ts
 type ReelStripWeightedGenerationRequest = {
-    length: number;
-    symbolWeights: Record<string, number>;                             // proportions, need not sum to length or to 100
-    roundingPolicy?: ReelStripSymbolWeightsRoundingPolicy;              // default "floor"
-    remainderTieBreakPolicy?: ReelStripSymbolWeightsRemainderTieBreakPolicy; // default "symbol-id"
-    // ...plus seed / lockedPositions / constraints / maxAttempts / scorer, same as ReelStripGenerationRequest
+ length: number;
+ symbolWeights: Record<string, number>; // proportions, need not sum to length or to 100
+ roundingPolicy?: ReelStripSymbolWeightsRoundingPolicy; // default "floor"
+ remainderTieBreakPolicy?: ReelStripSymbolWeightsRemainderTieBreakPolicy; // default "symbol-id"
+ //...plus seed / lockedPositions / constraints / maxAttempts / scorer, same as ReelStripGenerationRequest
 };
 ```
 
@@ -166,7 +166,7 @@ type ReelStripWeightedGenerationRequest = {
 
 ```ts
 interface ReelStripSymbolWeightsConverter {
-    convert(request: ReelStripSymbolWeightsConversionRequest): ReelStripSymbolWeightsConversionResult;
+ convert(request: ReelStripSymbolWeightsConversionRequest): ReelStripSymbolWeightsConversionResult;
 }
 ```
 
@@ -175,25 +175,25 @@ Hare-quota apportionment — the same family of algorithm used for proportional 
 
 1. Each symbol's exact quota is `weight / totalWeight * length` (a real number).
 2. `roundingPolicy` turns each quota into an initial integer count:
-   - `"floor"` (default) — never overshoots `length` on its own, so step 3 only ever *adds* units.
-   - `"round"` — nearest integer; may overshoot or undershoot.
-   - `"ceil"` — always overshoots unless every quota is already an integer; step 3 only ever *removes* units.
+ - `"floor"` (default) — never overshoots `length` on its own, so step 3 only ever *adds* units.
+ - `"round"` — nearest integer; may overshoot or undershoot.
+ - `"ceil"` — always overshoots unless every quota is already an integer; step 3 only ever *removes* units.
 3. The gap between the sum of those initial counts and `length` (the "remainder") is corrected one unit at a time,
-   always picking the symbol(s) whose quota was least well served by the initial rounding (largest fractional
-   remainder gets the next `+1`; smallest gets the next `-1`).
+ always picking the symbol(s) whose quota was least well served by the initial rounding (largest fractional
+ remainder gets the next `+1`; smallest gets the next `-1`).
 4. Ties in step 3 are broken deterministically per `remainderTieBreakPolicy`. Each policy defines a single priority
-   order — the higher-priority symbol is the one more "deserving" of representation:
-   - `"symbol-id"` (default) — ascending symbol ID is higher priority, independent of declaration order.
-   - `"declared-order"` — earlier appearance in `symbolWeights` is higher priority.
-   - `"largest-weight-first"` — the heavier original weight is higher priority; falls back to `"symbol-id"` if
-     weights also tie.
+ order — the higher-priority symbol is the one more "deserving" of representation:
+ - `"symbol-id"` (default) — ascending symbol ID is higher priority, independent of declaration order.
+ - `"declared-order"` — earlier appearance in `symbolWeights` is higher priority.
+ - `"largest-weight-first"` — the heavier original weight is higher priority; falls back to `"symbol-id"` if
+ weights also tie.
 
-   **The same priority order governs both directions, symmetrically**: when *adding* a unit (`remainder > 0`), the
-   highest-priority tied symbol receives it first. When *removing* a unit (`remainder < 0`, i.e. `roundingPolicy`
-   overshot `length`), the priority order is reversed — the **lowest**-priority tied symbol loses a unit first, and
-   the highest-priority symbol is protected. A policy never both "receives extra copies first" and "loses copies
-   first"; if `"largest-weight-first"` favors the heavier symbol when adding, it also protects that same heavier
-   symbol from losing a count when removing.
+ **The same priority order governs both directions, symmetrically**: when *adding* a unit (`remainder > 0`), the
+ highest-priority tied symbol receives it first. When *removing* a unit (`remainder < 0`, i.e. `roundingPolicy`
+ overshot `length`), the priority order is reversed — the **lowest**-priority tied symbol loses a unit first, and
+ the highest-priority symbol is protected. A policy never both "receives extra copies first" and "loses copies
+ first"; if `"largest-weight-first"` favors the heavier symbol when adding, it also protects that same heavier
+ symbol from losing a count when removing.
 
 The same `symbolWeights`, `length`, and policies always produce the same `symbolCounts` — swap in your own
 `ReelStripSymbolWeightsConverter` (the generator's 4th constructor argument) for a different apportionment algorithm
@@ -203,11 +203,11 @@ without touching `ReelStripGenerator` itself (Open/Closed, same as the other thr
 
 ```ts
 type ReelStripSymbolWeightsConversionDiagnostic = {
-    weights: Record<string, number>;            // the original input weights, unchanged
-    counts: Record<string, number>;              // the resolved exact counts (includes 0-count symbols)
-    targetProportions: Record<string, number>;   // weight / totalWeight, the ideal proportion
-    actualProportions: Record<string, number>;   // count / length, what was actually achievable
-    deviations: Record<string, number>;          // actualProportion - targetProportion, per symbol
+ weights: Record<string, number>; // the original input weights, unchanged
+ counts: Record<string, number>; // the resolved exact counts (includes 0-count symbols)
+ targetProportions: Record<string, number>; // weight / totalWeight, the ideal proportion
+ actualProportions: Record<string, number>; // count / length, what was actually achievable
+ deviations: Record<string, number>; // actualProportion - targetProportion, per symbol
 };
 ```
 
@@ -217,8 +217,8 @@ import {LargestRemainderReelStripSymbolWeightsConverter} from "@fromstan/pokie";
 const converter = new LargestRemainderReelStripSymbolWeightsConverter();
 const conversion = converter.convert({length: 10, symbolWeights: {A: 1, B: 1, C: 1}});
 
-conversion.symbolCounts;              // {A: 4, B: 3, C: 3} -- 10/3 doesn't divide evenly
-conversion.diagnostic!.deviations;    // {A: 0.0667, B: -0.0333, C: -0.0333} -- A got the rounding-up
+conversion.symbolCounts; // {A: 4, B: 3, C: 3} -- 10/3 doesn't divide evenly
+conversion.diagnostic!.deviations; // {A: 0.0667, B: -0.0333, C: -0.0333} -- A got the rounding-up
 ```
 
 `result.symbolWeightsConversion` on `ReelStripGenerationResult` is this same diagnostic, so you don't need to call
@@ -232,20 +232,20 @@ computed):
 - A non-positive/non-integer `length`.
 - An empty `symbolWeights`.
 - Any weight that is zero, negative, `NaN`, or `Infinity` (weights must be positive finite numbers — to exclude a
-  symbol entirely, omit it from `symbolWeights` rather than giving it a weight of `0`).
+ symbol entirely, omit it from `symbolWeights` rather than giving it a weight of `0`).
 - **The sum of all weights**, even if every individual weight is finite — two `Number.MAX_VALUE` weights, for
-  example, are each individually valid but overflow to `Infinity` once summed, which would otherwise silently corrupt
-  every quota (`weight / totalWeight * length`). The sum must be finite and positive.
+ example, are each individually valid but overflow to `Infinity` once summed, which would otherwise silently corrupt
+ every quota (`weight / totalWeight * length`). The sum must be finite and positive.
 - **An unrecognized `roundingPolicy` or `remainderTieBreakPolicy` string.** TypeScript callers can't construct one of
-  these outside the literal union, but anything crossing a JS/JSON/`any`-typed boundary can — an unknown value is
-  rejected with a violation rather than silently falling back to `"floor"`/`"symbol-id"`.
+ these outside the literal union, but anything crossing a JS/JSON/`any`-typed boundary can — an unknown value is
+ rejected with a violation rather than silently falling back to `"floor"`/`"symbol-id"`.
 
 ## Constraints (`ReelStripConstraint`)
 
 ```ts
 interface ReelStripConstraint {
-    getId(): string;
-    validate(strip: ReelStripDefinition): ReelStripConstraintViolation[];
+ getId(): string;
+ validate(strip: ReelStripDefinition): ReelStripConstraintViolation[];
 }
 ```
 
@@ -295,17 +295,17 @@ Both adjacency constraints default to **undirected**: a pair `[A, B]` matches re
 lands on. Pass `directed = true` to make order matter:
 
 - **`ForbiddenAdjacencyConstraint(pairs, wrapAround, directed = true)`** — `[A, B]` only forbids `A` immediately
-  followed by `B`; `B` followed by `A` is unaffected (list both pairs explicitly to forbid both orders).
+ followed by `B`; `B` followed by `A` is unaffected (list both pairs explicitly to forbid both orders).
 - **`RequiredAdjacencyConstraint(pairs, directed = true, wrapAround)`** — `[subject, requiredNeighbor]` only counts
-  the *next* position; the subject's previous neighbor is not considered at all, even if it happens to match.
+ the *next* position; the subject's previous neighbor is not considered at all, even if it happens to match.
 
 ```ts
 import {ReelStrip, RequiredAdjacencyConstraint} from "@fromstan/pokie";
 
 // Every "W" must have an "M" or an "X" next to it, in either direction (undirected, the default).
 const flanked = new RequiredAdjacencyConstraint([
-    ["W", "M"],
-    ["W", "X"],
+ ["W", "M"],
+ ["W", "X"],
 ]);
 flanked.validate(new ReelStrip(["M", "W", "A"])); // [] -- "M" is on the left, that's enough
 
@@ -368,10 +368,10 @@ Each violation is a plain, inspectable object:
 
 ```ts
 type ReelStripConstraintViolation = {
-    constraintId: string;
-    message: string;             // human-readable explanation
-    positions?: number[];        // the offending position(s), if applicable
-    details?: Record<string, unknown>;
+ constraintId: string;
+ message: string; // human-readable explanation
+ positions?: number[]; // the offending position(s), if applicable
+ details?: Record<string, unknown>;
 };
 ```
 
@@ -383,7 +383,7 @@ it.
 
 ```ts
 interface ReelStripScorer {
-    score(strip: ReelStripDefinition, violations: ReelStripConstraintViolation[]): number;
+ score(strip: ReelStripDefinition, violations: ReelStripConstraintViolation[]): number;
 }
 ```
 
@@ -405,12 +405,12 @@ static analyze(strip: ReelStripDefinition): ReelStripAnalysis
 
 ```ts
 type ReelStripAnalysis = {
-    length: number;
-    symbolCounts: Record<string, number>;
-    symbolFrequencies: Record<string, number>;              // count / length, per symbol
-    minimumCircularDistances: Record<string, number>;       // per symbol with 2+ occurrences
-    maximumCircularDistances: Record<string, number>;       // per symbol with 2+ occurrences
-    maximumConsecutiveOccurrences: Record<string, number>;  // per symbol, longest run (wrap-aware)
+ length: number;
+ symbolCounts: Record<string, number>;
+ symbolFrequencies: Record<string, number>; // count / length, per symbol
+ minimumCircularDistances: Record<string, number>; // per symbol with 2+ occurrences
+ maximumCircularDistances: Record<string, number>; // per symbol with 2+ occurrences
+ maximumConsecutiveOccurrences: Record<string, number>; // per symbol, longest run (wrap-aware)
 };
 ```
 
@@ -418,10 +418,10 @@ type ReelStripAnalysis = {
 import {ReelStrip, ReelStripAnalyzer} from "@fromstan/pokie";
 
 const analysis = ReelStripAnalyzer.analyze(new ReelStrip(["A", "A", "B", "A", "C"]));
-analysis.symbolCounts;                 // {A: 3, B: 1, C: 1}
-analysis.symbolFrequencies;            // {A: 0.6, B: 0.2, C: 0.2}
-analysis.minimumCircularDistances;     // {A: 1} -- B/C occur once, so no distance applies
-analysis.maximumCircularDistances;     // {A: 2} -- B/C occur once, so no distance applies
+analysis.symbolCounts; // {A: 3, B: 1, C: 1}
+analysis.symbolFrequencies; // {A: 0.6, B: 0.2, C: 0.2}
+analysis.minimumCircularDistances; // {A: 1} -- B/C occur once, so no distance applies
+analysis.maximumCircularDistances; // {A: 2} -- B/C occur once, so no distance applies
 analysis.maximumConsecutiveOccurrences; // {A: 2, B: 1, C: 1}
 ```
 
@@ -436,14 +436,14 @@ how `MinimumCircularDistanceConstraint`/`MaximumCircularDistanceConstraint` trea
 build-time distributions and seeds in `reelStripGeneration` and `symbolWeights`.
 Do not replace alternatives with a generated strip: doing so changes the model.
 See [weighted whole-sequence reels](reels-and-sequences.md#weighted-whole-sequence-reels)
-for the canonical authoring and context rules.
+for the authoring and context rules.
 
 Studio identifies this source as **Whole-sequence variants**. Use rendered controls
 in Home Design or Project Reels to add/edit/remove complete alternatives. Preview
 validates the current definitions; Apply changes the draft and Save persists it.
 Unrelated form edits preserve unapplied definitions. Source-mode edits are
 reversible drafts and reach the file only through Save. Preview shows alternatives
-without selecting or saving them. Validation/save/build share canonical diagnostics
+without selecting or saving them. Validation/save/build share diagnostics
 with reel/variant paths in the Reels section. Invalid authored content can still be
 loaded for correction; failed validation or build leaves the source and output
 unchanged. `pokie reel generate` does not flatten this runtime source, and generation

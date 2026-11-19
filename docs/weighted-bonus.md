@@ -11,58 +11,58 @@ The table declares `id`, `context: "triggered-paid-entry"`, a symbol/count
 
 ```json
 {
-    "id": "prizes",
-    "context": "triggered-paid-entry",
-    "trigger": {
-        "symbolId": "C",
-        "minimumCount": 3
-    },
-    "feature": {
-        "id": "bonus-respins",
-        "type": "bonus-respins",
-        "maxDuration": 2
-    },
-    "outcomes": [
-        {
-            "id": "small",
-            "weight": 1,
-            "targetId": "bonus-respins",
-            "payout": 3,
-            "payoutUnits": "currency",
-            "duration": 0
-        },
-        {
-            "id": "large",
-            "weight": 3,
-            "targetId": "bonus-respins",
-            "payout": 5,
-            "payoutUnits": "bet-multiple",
-            "duration": 2
-        },
-        {
-            "id": "zero",
-            "weight": 0,
-            "targetId": "bonus-respins",
-            "payout": 0,
-            "payoutUnits": "currency",
-            "duration": 0
-        }
-    ]
+ "id": "prizes",
+ "context": "triggered-paid-entry",
+ "trigger": {
+ "symbolId": "C",
+ "minimumCount": 3
+ },
+ "feature": {
+ "id": "bonus-respins",
+ "type": "bonus-respins",
+ "maxDuration": 2
+ },
+ "outcomes": [
+ {
+ "id": "small",
+ "weight": 1,
+ "targetId": "bonus-respins",
+ "payout": 3,
+ "payoutUnits": "currency",
+ "duration": 0
+ },
+ {
+ "id": "large",
+ "weight": 3,
+ "targetId": "bonus-respins",
+ "payout": 5,
+ "payoutUnits": "bet-multiple",
+ "duration": 2
+ },
+ {
+ "id": "zero",
+ "weight": 0,
+ "targetId": "bonus-respins",
+ "payout": 0,
+ "payoutUnits": "currency",
+ "duration": 0
+ }
+ ]
 }
 ```
 
 - IDs use lowercase ASCII letters, digits and hyphens, start with a letter, and
-  contain at most 64 characters. Reserved object names are forbidden. Comparison
-  is exact; whitespace/case variants are rejected, never normalized or merged.
+ contain at most 64 characters. Reserved object names are forbidden. Comparison
+ is exact; whitespace/case variants are rejected, never normalized or merged.
 - Weights are nonnegative safe integers whose sum is in `[1, 2^32]`. Zero weights
-  remain in authoring, interchange and reports but cannot be selected. Missing,
-  fractional, negative, nonfinite and oversized values fail validation.
+ remain in authoring, interchange and reports but cannot be selected. Missing,
+ fractional, negative, nonfinite and oversized values fail validation.
 - Outcome IDs are unique. Duplicate effects (target, payout, units and duration)
-  must be combined into one outcome; different IDs do not resolve that ambiguity.
+ must be combined into one outcome; different IDs do not resolve that ambiguity.
 - `targetId` must match the configured feature ID. Payout is finite and
-  nonnegative. Duration and maximum duration are integers in `[0, 90]`, and each
-  outcome's duration must not exceed that maximum. Zero payout and duration are
-  meaningful authored values.
+ nonnegative. Duration and maximum duration are integers in `[0, 90]`, and each
+ outcome's duration must not exceed that maximum. Zero payout and duration are
+ meaningful authored values.
 
 Selection happens after the paid entry's ordinary screen evaluation, only when
 its symbol-count trigger holds. The shared session RNG supplies an unsigned
@@ -102,7 +102,7 @@ and RNG owner. `validateWeightedBonus` is also available for data-only checks.
 `selectWeightedBonus` is the pure selection boundary for a validated definition
 and an existing RNG; it does not execute or settle a feature.
 
-Canonical executable state retains selected table/outcome/model/context,
+Executable state retains selected table/outcome/model/context,
 remaining and executed duration, entry bet, cumulative outcome/completion counts,
 pending context and implicit entry counter, alongside the base RNG state.
 Restoration validates all of these before changing nested state. Explicit runtime
@@ -115,7 +115,7 @@ Stepwise/composite delivery, durable fresh-handler recovery and direct play use
 the same progression. Duplicate commands and delivery-only frames do not draw
 or count again. Failed uncommitted steps roll back effects, money, counters and
 RNG; committed prefixes remain available for continuation and settle once.
-Public network data exposes `boundedMechanics.weightedBonus`; canonical artifacts
+Public network data exposes `boundedMechanics.weightedBonus`; artifacts
 retain the corresponding `boundedMechanics` feature event. Public Play/Replay
 views show selected table/outcome/context and duration. Exact audit replay binds
 that identity and configuration instead of silently resampling tampered state.
@@ -144,7 +144,7 @@ cascade/respins/collections), modifiers, jackpot, modes and custom geometry cann
 be combined with this table. Those standalone launch families retain their own
 supported workflows. Unsupported combinations reject before build or drawing.
 
-Canonical WASM preserves this selection/payout/duration contract through the shared session runtime. Independent-grid
+WASM preserves this selection/payout/duration contract through the shared session runtime. Independent-grid
 outcome-library generation and downstream Stake conversion lack an exact
 enumeration capability for it and must fail before final publication. Build a
 TypeScript package, Blueprint or PAR workbook to preserve these rules.
@@ -161,7 +161,7 @@ restoration or exact extraction. Lossy Blueprint publication remains blocked.
 Restoration binds the selected identity **and** `executed`/`remaining` to the
 last accepted observation. Conserving their sum is insufficient: changing
 `0/2` to `1/1` against an unchanged entry observation is corrupt state. Explicit
-logical delivery checks the last mathematical subround's canonical event;
+logical delivery checks the last mathematical subround's event;
 ordinary delivery checks the retained serialized bounded-mechanic observation
 (or full-capture artifact). Retained copies must agree. These checks precede
 fresh session creation, RNG advancement and repository/wallet effects.

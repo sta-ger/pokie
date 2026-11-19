@@ -166,7 +166,7 @@ export class SimCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Simulate a POKIE game package, Blueprint, native outcome library or canonical WASM artifact and report RTP/hit-frequency/max win.";
+        return "Simulate a game package, game design, outcome library or WASM build and report RTP, hit frequency and max win.";
     }
 
     public getCommanderCommand(): Command {
@@ -221,7 +221,7 @@ export class SimCommand implements CliCommandHandling {
     private buildCommand(): Command {
         return createCommanderCliCommand("sim")
             .description(this.getDescription())
-            .argument("<packageRoot>", "a POKIE game package, Blueprint, canonical WASM artifact, or native outcome-library bundle (with --mode)")
+            .argument("<packageRoot>", "a POKIE game package, game design, WASM build, or outcome-library folder (with --mode)")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
             .option("--rounds <number>", `number of rounds to simulate (default: ${SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS})`, (value: string): number => {
                 const parsed = Number(value);
@@ -284,7 +284,7 @@ export class SimCommand implements CliCommandHandling {
                 }
                 return parsed;
             })
-            .addHelpText("after", "\nCanonical WASM: use --workers 1; declared modes support --mode <id|all>. Adaptive convergence is unavailable.\nCompare with replay using the same explicit --seed and --round as simulation --rounds.\nExample: pokie sim game.wasm --rounds 6 --workers 1 --seed demo --format json\n         pokie replay game.wasm --round 6 --seed demo\n")
+            .addHelpText("after", "\nWASM: use --workers 1; declared modes support --mode <id|all>. Adaptive convergence is unavailable.\nCompare with replay using the same explicit --seed and --round as simulation --rounds.\nExample: pokie sim game.wasm --rounds 6 --workers 1 --seed demo --format json\n         pokie replay game.wasm --round 6 --seed demo\n")
             .action(async (packageRoot: string, excess: string[], rawOptions: SimCliOptions) => {
                 // An empty-string positional ("pokie sim ''") is present as far as Commander's own
                 // required-argument check is concerned, but the pre-Commander behavior this preserves
@@ -369,10 +369,10 @@ export class SimCommand implements CliCommandHandling {
             throw new Error("This WASM component is inspection-only and cannot be simulated.");
         }
         if (options.workers !== 1) {
-            throw new Error("Canonical WASM simulation currently supports --workers 1 because its portable host is executed in-process.");
+            throw new Error("WASM simulation currently supports --workers 1 because its portable host is executed in-process.");
         }
         if (options.convergence !== undefined) {
-            throw new Error("Canonical WASM simulation does not support adaptive convergence yet; omit --min-rounds, --rtp-tolerance, and --check-interval.");
+            throw new Error("WASM simulation does not support adaptive convergence yet; omit --min-rounds, --rtp-tolerance, and --check-interval.");
         }
 
         const seed = options.seed ?? "pokie-wasm-simulation";

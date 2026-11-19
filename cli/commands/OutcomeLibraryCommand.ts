@@ -204,10 +204,9 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
 
     public getDescription(): string {
         return (
-            "Generate a WeightedOutcomeLibrary from a built package's own runtime (exact reel-stop enumeration), or " +
-            "build a canonical outcome-library persistence bundle from WeightedOutcomeLibrary JSON files, or validate one " +
-            '("pokie outcomelibrary generate <packageRoot>" / "pokie outcomelibrary build <config.json>" / ' +
-            '"pokie outcomelibrary validate <bundleDir>").'
+            "Generate an outcome library from a built package's runtime, build an outcome-library folder from " +
+            'JSON files, or validate one ("pokie outcomelibrary generate <packageRoot>" / ' +
+            '"pokie outcomelibrary build <config.json>" / "pokie outcomelibrary validate <bundleDir>").'
         );
     }
 

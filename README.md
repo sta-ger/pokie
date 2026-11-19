@@ -26,17 +26,17 @@ support.
 
 - **Game design** — one JSON file describes the symbols, reels, paytable, paylines and features.
 - **Play and test** — run real rounds locally, or simulate millions of rounds and read RTP, hit
-  frequency, volatility and confidence intervals.
+ frequency, volatility and confidence intervals.
 - **Exact math** — an outcome library can list every possible outcome and its weight, so RTP and payout
-  distributions are exact, not sampled.
+ distributions are exact, not sampled.
 - **Build** — turn a game design into a TypeScript game package, an outcome library, a Stake Engine
-  export, a PAR workbook or a WASM build.
+ export, a PAR workbook or a WASM build.
 - **Replay and audit** — every round can be recorded, replayed and checked. Certification packs collect
-  the evidence an auditor needs.
+ the evidence an auditor needs.
 - **CLI and Studio** — author, build, validate, simulate, replay and inspect games from the terminal or
-  a local browser UI.
+ a local browser UI.
 - **Network primitives** — session serialization plus a local reference HTTP server with pluggable
-  session storage and wallet connectors. It is not a casino backend or RGS.
+ session storage and wallet connectors. It is not a casino backend or RGS.
 
 ## The seven objects
 
@@ -114,9 +114,9 @@ generator.generateSymbolsCombination(); // the same seed reproduces the same com
 The `pokie` executable has three main entry points:
 
 ```bash
-pokie                    # open Studio Home
-pokie .                  # open the current project in Studio
-pokie <project>          # open a specific project in Studio
+pokie # open Studio Home
+pokie. # open the current project in Studio
+pokie <project> # open a specific project in Studio
 ```
 
 Author and run games without the browser:

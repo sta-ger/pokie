@@ -7,17 +7,17 @@ nonempty combinations are listed in `AUTHORED_BOUNDED_MECHANIC_CATALOG`.
 
 ```json
 {
-  "cascade": {"maxCascades": 10},
-  "respins": {
-    "trigger": {"symbolId": "C", "minimumCount": 1},
-    "grant": 2,
-    "retrigger": "reset",
-    "maxRespins": 8
-  },
-  "collection": {
-    "symbolId": "C", "contribution": 1, "threshold": 4, "cap": 5,
-    "reset": "subtract-threshold", "payout": 10
-  }
+ "cascade": {"maxCascades": 10},
+ "respins": {
+ "trigger": {"symbolId": "C", "minimumCount": 1},
+ "grant": 2,
+ "retrigger": "reset",
+ "maxRespins": 8
+ },
+ "collection": {
+ "symbolId": "C", "contribution": 1, "threshold": 4, "cap": 5,
+ "reset": "subtract-threshold", "payout": 10
+ }
 }
 ```
 
@@ -72,7 +72,7 @@ paytable awards, while the collection award remains 10.
 | Standard rectangular geometry, explicit missing/zero payouts, fractional stakes | Yes |
 | Free games, Hold & Win, jackpots, bet modes, screen modifiers, nonstandard geometry with these new rules | Rejected before execution |
 | Opaque generators, custom evaluator callbacks or config subclasses in the bounded adapter | Rejected; use a custom session with its own complete codec instead |
-| Canonical WASM | Supported through the shared feature runtime |
+| WASM | Supported through the shared feature runtime |
 | Paid-grid outcome-library / Stake conversion | Rejected before publication |
 | Blueprint JSON / guided Studio form, generated CJS/TS, extraction and XLSX PAR | Yes |
 | CLI / Studio Play, simulations, report formats/downloads and audit replay | Yes |
@@ -108,7 +108,7 @@ execution retains the accepted prefix and its continuation.
 Cascade deliveries are saved mathematical artifacts, not additional calculations
 or settlements. Feature observations include meaningful zeros for collection
 value/cap/threshold/contribution/trigger/reset/payout, respin progress and cascade
-counts. Canonical artifacts and their public projection preserve these in
+counts. Artifacts and their public projection preserve these in
 `boundedMechanics` events. Play, history and artifact-only Replay interpret the
 same event. Restoring an executable snapshot does not manufacture a historical
 win; durable state/artifacts and original retry results own that historical

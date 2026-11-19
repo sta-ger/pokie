@@ -93,11 +93,10 @@ export class OutcomeSourceCommand implements CliCommandHandling {
 
     public getDescription(): string {
         return (
-            "Inspect a resolved outcome-library/Stake Engine outcome source through its own canonical reader, " +
-            "draw one outcome from a native outcome library through the same selector path live/pre-generated play " +
-            "uses, or diff two resolved outcome sources' own exact analyses " +
-            '("pokie outcomesource inspect <path>" / "pokie outcomesource sample <path> --mode <modeName>" / ' +
-            '"pokie outcomesource diff <leftPath> <rightPath>").'
+            "Inspect an outcome library or Stake Engine outcome folder with its own reader, draw one outcome " +
+            "from a native outcome library through the same selector used by live and pre-generated play, or " +
+            'compare two outcome sources ("pokie outcomesource inspect <path>" / "pokie outcomesource sample ' +
+            '<path> --mode <modeName>" / "pokie outcomesource diff <leftPath> <rightPath>").'
         );
     }
 

@@ -93,7 +93,7 @@ export class ValidateCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Validate a resolved POKIE project's supported contract without running it.";
+        return "Validate a POKIE project without running it.";
     }
 
     public getCommanderCommand(): Command {

@@ -2,7 +2,7 @@
 
 # Outcome Library Bundle
 
-`weightedoutcome/bundle/` persists a canonical [`WeightedOutcomeLibrary`](weighted-outcome-library.md) (one per
+`weightedoutcome/bundle/` persists a [`WeightedOutcomeLibrary`](weighted-outcome-library.md) (one per
 mode) as a directory bundle — a small manifest, a small per-mode index, and one streaming JSONL file of outcomes
 per mode — instead of the single, whole-file JSON document `PokieJsonWeightedOutcomeLibraryProjector` produces.
 This is the one canonical, on-disk source both the [pre-generated runtime](pregenerated-runtime.md) and the
@@ -16,34 +16,34 @@ or to serve one weighted draw. This bundle format is streaming end to end, so no
 ever has to hold a whole mode's outcomes in memory at once:
 
 - **The writer streams from an `Iterable`/`AsyncIterable` source** — one canonical-JSON line per outcome, written
-  directly to disk as it arrives, hashed incrementally in the same pass. A caller with millions of outcomes can
-  hand the writer an async generator reading from a database cursor or a JSONL file on disk (see `pokie build <config.json> --target outcomeLibrary`'s `outcomesPath` config below) without ever building the equivalent
-  `WeightedOutcomeLibrary` in memory first.
+ directly to disk as it arrives, hashed incrementally in the same pass. A caller with millions of outcomes can
+ hand the writer an async generator reading from a database cursor or a JSONL file on disk (see `pokie build <config.json> --target outcomeLibrary`'s `outcomesPath` config below) without ever building the equivalent
+ `WeightedOutcomeLibrary` in memory first.
 - **The reader supports four genuinely different access patterns**, none of which require loading everything:
-  - `iterateModeOutcomes` — full sequential streaming, one outcome in memory at a time.
-  - `readOutcomeById` / `drawOutcome` — exactly one outcome loaded, via the mode's own small index and a single
-    byte-range read — verified against the index entry's own `id`/`weight` before ever being returned (see
-    below).
-  - `readLibrary` — the "give me everything" convenience a caller that genuinely needs the whole
-    `WeightedOutcomeLibrary` uses.
-  - `OutcomeLibraryBundleOutcomeSource` — a thin, bundle-native wrapper around `drawOutcome`, built specifically
-    for the [pre-generated runtime](pregenerated-runtime.md): it serves weighted draws straight from a bundle on
-    disk and never calls `readLibrary()`, so a game can be played entirely off a bundle without ever
-    materializing a `WeightedOutcomeLibrary`.
+ - `iterateModeOutcomes` — full sequential streaming, one outcome in memory at a time.
+ - `readOutcomeById` / `drawOutcome` — exactly one outcome loaded, via the mode's own small index and a single
+ byte-range read — verified against the index entry's own `id`/`weight` before ever being returned (see
+ below).
+ - `readLibrary` — the "give me everything" convenience a caller that genuinely needs the whole
+ `WeightedOutcomeLibrary` uses.
+ - `OutcomeLibraryBundleOutcomeSource` — a thin, bundle-native wrapper around `drawOutcome`, built specifically
+ for the [pre-generated runtime](pregenerated-runtime.md): it serves weighted draws straight from a bundle on
+ disk and never calls `readLibrary()`, so a game can be played entirely off a bundle without ever
+ materializing a `WeightedOutcomeLibrary`.
 - **The validator has a shallow mode** that never opens an outcomes file's content at all — only the manifest and
-  each mode's own small index, plus an exact byte-layout check (see Validation below) — so validating a bundle
-  doesn't itself defeat the point of the format.
+ each mode's own small index, plus an exact byte-layout check (see Validation below) — so validating a bundle
+ doesn't itself defeat the point of the format.
 - **The Stake Engine exporter can stream a mode directly from a bundle** (`StakeEngineBundleStreamingExporter`),
-  writing CSV/books output as outcomes arrive rather than building a `WeightedOutcomeLibrary` first — see
-  [Stake Engine Export](stake-engine-export.md).
+ writing CSV/books output as outcomes arrive rather than building a `WeightedOutcomeLibrary` first — see
+ [Stake Engine Export](stake-engine-export.md).
 
 ## Bundle directory layout
 
 ```
 <bundleDir>/
-  manifest.json              # OutcomeLibraryBundleManifest
-  index_<modeName>.json      # OutcomeLibraryBundleModeIndex, one per mode
-  outcomes_<modeName>.jsonl  # one canonical-JSON WeightedOutcome<T> per line, one per mode
+ manifest.json # OutcomeLibraryBundleManifest
+ index_<modeName>.json # OutcomeLibraryBundleModeIndex, one per mode
+ outcomes_<modeName>.jsonl # one canonical-JSON WeightedOutcome<T> per line, one per mode
 ```
 
 `manifest.json` carries the "who/what version/when" provenance stamp every generated-artifact manifest in this
@@ -52,17 +52,17 @@ codebase uses (`schemaVersion`/`generatedBy`/`pokieVersion`/`generatedAt`, match
 
 ```ts
 type OutcomeLibraryBundleManifestModeEntry = {
-    modeName: string;
-    betMode: string;
-    stake: number;
-    libraryId: string;
-    libraryHash: string;                    // computeWeightedOutcomeLibraryHash(library) — reused as-is
-    outcomeCount: number;
-    totalWeight: number;
-    analysis: WeightedOutcomeLibraryAnalysis; // WeightedOutcomeLibraryAnalyzer output, embedded verbatim
-    indexFile: string;                       // "index_<modeName>.json"
-    outcomesFile: string;                    // "outcomes_<modeName>.jsonl"
-    generator?: OutcomeLibraryGeneratorDiagnostics; // present only for a mode built via generateExactWeightedOutcomeLibrary
+ modeName: string;
+ betMode: string;
+ stake: number;
+ libraryId: string;
+ libraryHash: string; // computeWeightedOutcomeLibraryHash(library) — reused as-is
+ outcomeCount: number;
+ totalWeight: number;
+ analysis: WeightedOutcomeLibraryAnalysis; // WeightedOutcomeLibraryAnalyzer output, embedded verbatim
+ indexFile: string; // "index_<modeName>.json"
+ outcomesFile: string; // "outcomes_<modeName>.jsonl"
+ generator?: OutcomeLibraryGeneratorDiagnostics; // present only for a mode built via generateExactWeightedOutcomeLibrary
 };
 ```
 
@@ -76,10 +76,10 @@ The manifest also carries two distinct, deliberately-never-conflated pokie-versi
 
 ```ts
 type OutcomeLibraryBundleManifest = {
-    // ...
-    pokieVersion: string;         // which package release built *this bundle file* (ran the Outcome Library build)
-    artifactPokieVersion: string; // which package release *computed* the outcomes themselves
-    // ...
+ //...
+ pokieVersion: string; // which package release built *this bundle file* (ran the Outcome Library build)
+ artifactPokieVersion: string; // which package release *computed* the outcomes themselves
+ //...
 };
 ```
 
@@ -96,11 +96,11 @@ difference there as corruption would reject a perfectly valid bundle.
 
 ```ts
 type OutcomeLibraryBundleIndexEntry = {
-    id: string;
-    weight: number;
-    byteOffset: number; // where this line's JSON begins in the outcomes file
-    byteLength: number; // exact byte length of the line's JSON (excludes the trailing "\n")
-    recordHash: string; // sha256:<hex> of exactly those byteOffset/byteLength bytes
+ id: string;
+ weight: number;
+ byteOffset: number; // where this line's JSON begins in the outcomes file
+ byteLength: number; // exact byte length of the line's JSON (excludes the trailing "\n")
+ recordHash: string; // sha256:<hex> of exactly those byteOffset/byteLength bytes
 };
 ```
 
@@ -136,35 +136,35 @@ Each outcome's own JSONL line is written in the same canonically-sorted-by-id or
 
 ```ts
 interface OutcomeLibraryBundleReading<T extends string | number = string> {
-    readManifest(bundleDir: string): Promise<OutcomeLibraryBundleManifest>;
-    readModeIndex(bundleDir: string, modeName: string): Promise<OutcomeLibraryBundleModeIndex>;
-    iterateModeOutcomes(bundleDir: string, modeName: string): AsyncIterable<WeightedOutcome<T>>;
-    readOutcomeById(bundleDir: string, modeName: string, id: string): Promise<WeightedOutcome<T> | undefined>;
-    drawOutcome(bundleDir: string, modeName: string, randomSource: WeightedOutcomeRandomSource): Promise<WeightedOutcome<T>>;
-    readLibrary(bundleDir: string, modeName: string): Promise<WeightedOutcomeLibrary<T>>;
+ readManifest(bundleDir: string): Promise<OutcomeLibraryBundleManifest>;
+ readModeIndex(bundleDir: string, modeName: string): Promise<OutcomeLibraryBundleModeIndex>;
+ iterateModeOutcomes(bundleDir: string, modeName: string): AsyncIterable<WeightedOutcome<T>>;
+ readOutcomeById(bundleDir: string, modeName: string, id: string): Promise<WeightedOutcome<T> | undefined>;
+ drawOutcome(bundleDir: string, modeName: string, randomSource: WeightedOutcomeRandomSource): Promise<WeightedOutcome<T>>;
+ readLibrary(bundleDir: string, modeName: string): Promise<WeightedOutcomeLibrary<T>>;
 }
 ```
 
 - `iterateModeOutcomes` streams the outcomes file line by line (via Node's `readline` over a read stream) —
-  the one place in this codebase that reads a file as a true, never-buffer-the-whole-thing async stream, since
-  that's exactly what "never materialize the whole file" sequential reading requires.
+ the one place in this codebase that reads a file as a true, never-buffer-the-whole-thing async stream, since
+ that's exactly what "never materialize the whole file" sequential reading requires.
 - `readOutcomeById` binary-searches the mode's own small index (already sorted by id) for the matching entry,
-  then does a single `fs.read` for exactly that byte range — never touching any other part of the outcomes file.
-  The record found there is verified to have exactly the `id`/`weight` the index entry promised, and to hash to
-  that entry's own `recordHash`, before it's ever returned; a mismatch (a corrupted byte range, a record tampered
-  in place, an index and outcomes file that have drifted out of sync) throws `OutcomeLibraryBundleInvariantError`
-  rather than silently handing back the wrong (or altered) outcome.
+ then does a single `fs.read` for exactly that byte range — never touching any other part of the outcomes file.
+ The record found there is verified to have exactly the `id`/`weight` the index entry promised, and to hash to
+ that entry's own `recordHash`, before it's ever returned; a mismatch (a corrupted byte range, a record tampered
+ in place, an index and outcomes file that have drifted out of sync) throws `OutcomeLibraryBundleInvariantError`
+ rather than silently handing back the wrong (or altered) outcome.
 - `drawOutcome` picks a winning outcome by walking exact integer cumulative weights against
-  `randomSource.nextInt(totalWeight)` — the same algorithm
-  [`WeightedOutcomeSelector`](pregenerated-runtime.md) uses, deliberately mirrored rather than called directly
-  (that class's own type requires every outcome's full `RoundRecord`, which is exactly what a streaming,
-  index-only weighted draw exists to avoid loading) — over the index's own entries, then loads exactly the one
-  winning outcome via `readOutcomeById`. The two algorithms are deliberately kept in lockstep for the same
-  inputs, so they cannot silently diverge.
+ `randomSource.nextInt(totalWeight)` — the same algorithm
+ [`WeightedOutcomeSelector`](pregenerated-runtime.md) uses, deliberately mirrored rather than called directly
+ (that class's own type requires every outcome's full `RoundRecord`, which is exactly what a streaming,
+ index-only weighted draw exists to avoid loading) — over the index's own entries, then loads exactly the one
+ winning outcome via `readOutcomeById`. The two algorithms are deliberately kept in lockstep for the same
+ inputs, so they cannot silently diverge.
 - `readLibrary` drains `iterateModeOutcomes` into `buildWeightedOutcomeLibrary` — the same builder every other
-  in-memory library goes through, so the result carries the exact same validation/sort/freeze guarantees as any
-  other `WeightedOutcomeLibrary`. This is the one shared "give me everything" path both integration points below
-  call.
+ in-memory library goes through, so the result carries the exact same validation/sort/freeze guarantees as any
+ other `WeightedOutcomeLibrary`. This is the one shared "give me everything" path both integration points below
+ call.
 
 Assumes an already-valid bundle (see Validation below for a bundle from an untrusted source) and throws rather
 than returning diagnostics — the same "assume already validated, fail fast on a genuine surprise" contract
@@ -178,14 +178,14 @@ interface `PreGeneratedSpinCommandHandler` consumes:
 
 ```ts
 type PreGeneratedOutcomeSelection<T extends string | number = string> = {
-    libraryId: string;
-    libraryHash: string;
-    totalWeight: number;
-    outcome: WeightedOutcome<T>;
+ libraryId: string;
+ libraryHash: string;
+ totalWeight: number;
+ outcome: WeightedOutcome<T>;
 };
 
 interface PreGeneratedOutcomeSourcing<T extends string | number = string> {
-    drawOutcome(randomSource: WeightedOutcomeRandomSource): Promise<PreGeneratedOutcomeSelection<T>>;
+ drawOutcome(randomSource: WeightedOutcomeRandomSource): Promise<PreGeneratedOutcomeSelection<T>>;
 }
 ```
 
@@ -212,15 +212,15 @@ treatment.
 
 ```ts
 interface OutcomeLibraryBundleWriting<T extends string | number = string> {
-    writeToDirectory(modes: readonly OutcomeLibraryBundleModeInput<T>[], outDir: string): Promise<OutcomeLibraryBundleWriteResult>;
+ writeToDirectory(modes: readonly OutcomeLibraryBundleModeInput<T>[], outDir: string): Promise<OutcomeLibraryBundleWriteResult>;
 }
 
 type OutcomeLibraryBundleModeInput<T extends string | number = string> = {
-    modeName: string;
-    libraryId: string;
-    schemaVersion?: number;
-    outcomes: Iterable<WeightedOutcomeInput<T>> | AsyncIterable<WeightedOutcomeInput<T>>;
-    generator?: OutcomeLibraryGeneratorDiagnostics; // copied verbatim into this mode's own manifest entry, see above
+ modeName: string;
+ libraryId: string;
+ schemaVersion?: number;
+ outcomes: Iterable<WeightedOutcomeInput<T>> | AsyncIterable<WeightedOutcomeInput<T>>;
+ generator?: OutcomeLibraryGeneratorDiagnostics; // copied verbatim into this mode's own manifest entry, see above
 };
 ```
 
@@ -302,24 +302,24 @@ mode reports everything it finds rather than stopping at the first kind of corru
 ## Integration
 
 - **Pre-generated runtime** — `PreGeneratedSpinCommandHandler` is wired to a
-  [`PreGeneratedOutcomeSourcing`](pregenerated-runtime.md#pregeneratedoutcomesourcing--decoupling-the-runtime-from-a-full-library),
-  not a raw `WeightedOutcomeLibrary` (`WeightedOutcomeSelector`/`PokieDevServerOptions` themselves are unchanged
-  — see [Pre-Generated Runtime](pregenerated-runtime.md)). A caller that still wants a full in-memory
-  `WeightedOutcomeLibrary` calls `loadWeightedOutcomeLibraryFromBundle(bundleDir, modeName)` (which just calls
-  `reader.readLibrary`) then `computeWeightedOutcomeLibraryHash` to build an `InMemoryPreGeneratedOutcomeSource`;
-  a caller that wants to avoid materializing a library entirely uses `OutcomeLibraryBundleOutcomeSource` directly
-  (see above) — either one plugs straight into `PreGeneratedSpinCommandHandler`'s constructor.
+ [`PreGeneratedOutcomeSourcing`](pregenerated-runtime.md#pregeneratedoutcomesourcing--decoupling-the-runtime-from-a-full-library),
+ not a raw `WeightedOutcomeLibrary` (`WeightedOutcomeSelector`/`PokieDevServerOptions` themselves are unchanged
+ — see [Pre-Generated Runtime](pregenerated-runtime.md)). A caller that still wants a full in-memory
+ `WeightedOutcomeLibrary` calls `loadWeightedOutcomeLibraryFromBundle(bundleDir, modeName)` (which just calls
+ `reader.readLibrary`) then `computeWeightedOutcomeLibraryHash` to build an `InMemoryPreGeneratedOutcomeSource`;
+ a caller that wants to avoid materializing a library entirely uses `OutcomeLibraryBundleOutcomeSource` directly
+ (see above) — either one plugs straight into `PreGeneratedSpinCommandHandler`'s constructor.
 - **Stake Engine exporter** — `pokie build --target stakeAdapter`'s `config.json` mode entries gain an alternative to
-  `libraryPath`:
-  ```json
-  {"modeName": "bonus", "cost": 100, "bundleDir": "./bundle", "bundleModeName": "bonus"}
-  ```
-  (`bundleModeName` defaults to `modeName` when omitted; exactly one of `libraryPath`/`bundleDir` is required per
-  mode.) When **every** mode in one export uses `bundleDir`, the whole export streams directly from the bundle(s)
-  via `StakeEngineBundleStreamingExporter` — reading each mode's `libraryHash`/`libraryId`/`outcomeCount` straight
-  from its own index and never calling `readLibrary()`. Mixing even one `libraryPath` mode into the same export
-  falls back to the existing `StakeEngineExporter`, which needs every mode's library fully in memory anyway. See
-  [Stake Engine Export](stake-engine-export.md) for the rest of that config format.
+ `libraryPath`:
+ ```json
+ {"modeName": "bonus", "cost": 100, "bundleDir": "./bundle", "bundleModeName": "bonus"}
+ ```
+ (`bundleModeName` defaults to `modeName` when omitted; exactly one of `libraryPath`/`bundleDir` is required per
+ mode.) When **every** mode in one export uses `bundleDir`, the whole export streams directly from the bundle(s)
+ via `StakeEngineBundleStreamingExporter` — reading each mode's `libraryHash`/`libraryId`/`outcomeCount` straight
+ from its own index and never calling `readLibrary()`. Mixing even one `libraryPath` mode into the same export
+ falls back to the existing `StakeEngineExporter`, which needs every mode's library fully in memory anyway. See
+ [Stake Engine Export](stake-engine-export.md) for the rest of that config format.
 
 ## CLI usage
 
@@ -333,7 +333,7 @@ incompatible source or occupied destination before a bundle is published.
 `build`'s config.json lists one outcome source per mode, either a plain `WeightedOutcomeLibrary` JSON file —
 `{"modes": [{"modeName": "base", "libraryPath": "./libraries/base.json"}]}` — fully loaded into memory, or a
 streaming JSONL file of outcomes for a mode too large to hold in memory at once — `{"modeName": "bonus",
-"outcomesPath": "./outcomes-bonus.jsonl", "libraryId": "bonus-lib"}` (one canonical `{"id", "weight", "artifact"}`
+"outcomesPath": "./outcomes-bonus.jsonl", "libraryId": "bonus-lib"}` (one `{"id", "weight", "artifact"}`
 record per line, not wrapped in a library object; `libraryId` is required since there's no wrapping library
 object to read it from, and `schemaVersion` is optional). Exactly one of `libraryPath`/`outcomesPath` is required
 per mode. The bundle validator prints every issue and returns a non-zero exit code if any is `error`-severity;
@@ -345,22 +345,22 @@ See [CLI](cli.md#pokie-build-project) for full option details.
 
 ```ts
 import {
-    OutcomeLibraryBundleOutcomeSource,
-    OutcomeLibraryBundleReader,
-    OutcomeLibraryBundleWriter,
-    loadWeightedOutcomeLibraryFromBundle,
+ OutcomeLibraryBundleOutcomeSource,
+ OutcomeLibraryBundleReader,
+ OutcomeLibraryBundleWriter,
+ loadWeightedOutcomeLibraryFromBundle,
 } from "@fromstan/pokie";
 
 // "outcomes" can be a plain array or a genuine AsyncIterable (e.g. an async generator reading from a database
 // cursor or a JSONL file) — consumed exactly once, streamed straight to disk.
 await new OutcomeLibraryBundleWriter(pokieVersion).writeToDirectory(
-    [{modeName: "base", libraryId: "base-lib", outcomes}],
-    "./bundle",
+ [{modeName: "base", libraryId: "base-lib", outcomes}],
+ "./bundle",
 );
 
 const reader = new OutcomeLibraryBundleReader();
 for await (const outcome of reader.iterateModeOutcomes("./bundle", "base")) {
-    // one outcome in memory at a time
+ // one outcome in memory at a time
 }
 
 const oneOutcome = await reader.drawOutcome("./bundle", "base", randomSource);

@@ -31,7 +31,7 @@ export class NameCommand implements CliCommandHandling {
 
     public getDescription(): string {
         return (
-            "Generate deterministic, offline slot game name(s) from SlotGameNameGenerator " +
+            "Generate slot game names offline " +
             '("pokie name [--count <n>] [--theme <theme>] [--words <2|3>] [--seed <n>] [--json]").'
         );
     }

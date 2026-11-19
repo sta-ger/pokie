@@ -76,8 +76,8 @@ describe("buildUsageText", () => {
 
     it("exposes the WASM sim/replay workflows through the real public command descriptions", () => {
         const usage = buildUsageText([new SimCommand(), new ReplayCommand()]);
-        expect(usage).toMatch(/sim\s+.*canonical WASM artifact/);
-        expect(usage).toMatch(/replay\s+.*deterministic canonical WASM replay/);
+        expect(usage).toMatch(/sim\s+.*WASM build/);
+        expect(usage).toMatch(/replay\s+.*WASM build/);
     });
 
     it("does not lose a command when one name is far longer than the others", () => {

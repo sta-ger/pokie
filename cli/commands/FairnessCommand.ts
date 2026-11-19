@@ -113,8 +113,8 @@ export class FairnessCommand implements CliCommandHandling {
     public getDescription(): string {
         return (
             "Provably Fair commit-reveal workflow: publish a server-seed commitment, publish a round commitment " +
-            "against a live outcome-library bundle, reveal the round proof, and verify a proof against its " +
-            'commitment/bundle ("pokie fairness seed-commit|commit|reveal|verify").'
+            "against a live outcome library, reveal the round proof, and verify it " +
+            '("pokie fairness seed-commit|commit|reveal|verify").'
         );
     }
 

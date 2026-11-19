@@ -60,14 +60,9 @@ export class ReelCommand implements CliCommandHandling {
 
     public getDescription(): string {
         return (
-            'Generate one or every "generated" reel a Blueprint Project\'s reelStripGeneration declares, via the ' +
-            "same ReelStripGenerator/constraints/presets \"pokie build\" already runs -- a deterministic preview/diff " +
-            "by default, only pinning the result back in as a literal strip with --apply, or fully collapsing the " +
-            'whole blueprint into a plain top-level "reelStrips" (no "reelStripGeneration" left) with optional --materialize ' +
-            'persistence for tools that only understand literal reels. PAR workbook export snapshots supported generated, weighted, ' +
-            'default, and literal reel sources without materializing the authored Blueprint ' +
-            '("pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply | --materialize] ' +
-            '[--out <file>] [--format json]").'
+            'Generate one or every generated reel declared by a game design ("pokie reel generate <design.json>"). ' +
+            "By default it previews and diffs; --apply pins the result as a literal strip, and --materialize writes " +
+            "the resolved reels into the design for tools that only understand literal reels."
         );
     }
 

@@ -92,11 +92,9 @@ export class BuildCommand implements CliCommandHandling {
 
     public getDescription(): string {
         return (
-            'Build an artifact from a resolved POKIE project ("pokie build <project> --target <artifact>") -- ' +
-            "the supported source-to-target matrix includes PAR workbook -> Blueprint/tsPackage/outcomeLibrary/stakeAdapter/parWorkbook/wasm; GameBlueprint -> tsPackage/outcomeLibrary/stakeAdapter/parWorkbook/wasm, " +
-            "tsPackage -> Blueprint/tsPackage/PAR/wasm with a complete public model descriptor, or outcomeLibrary/stakeAdapter, outcomeLibrary -> outcomeLibrary/stakeAdapter, and same-type " +
-            'republish for stakeAdapter/parWorkbook (for a first random game instead, see "pokie ' +
-            'create --random"). --dry-run validates and previews without writing anything.'
+            'Build a game package or another output from a game design ("pokie build <project> --target <format>"). ' +
+            "Supported formats include a TypeScript game package, an outcome library, a Stake Engine export, a PAR workbook and a WASM build. " +
+            'Run "pokie build --help" for the full list. --dry-run validates and previews without writing anything.'
         );
     }
 

@@ -48,7 +48,7 @@ export class ImportCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Import a PAR workbook or POKIE-produced Stake Engine export with pokie-manifest.json into POKIE artifacts.";
+        return "Import a PAR workbook or a POKIE-produced Stake Engine export into a build output.";
     }
 
     public getCommanderCommand(): Command {

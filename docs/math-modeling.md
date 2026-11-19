@@ -17,8 +17,8 @@ editor, build, runtime/restore, simulation/report, extraction, PAR and replay wo
 targets remain explicit; arbitrary callbacks and dynamic targets remain custom-only, and lossy extraction
 is blocked. PAR does not represent nonidentity geometry.
 
-[Canonical definition comparison](#canonical-definition-comparison) reads authoritative Blueprint,
-package descriptor, PAR and canonical WASM data, preserving partial/unsupported status when authority is
+[definition comparison](#canonical-definition-comparison) reads authoritative Blueprint,
+package descriptor, PAR and WASM data, preserving partial/unsupported status when authority is
 incomplete. It is separate from statistical report and Outcome Library/Stake comparisons.
 [Advanced declared-model validation](#advanced-declared-model-validation) adds bounded reachability,
 all-path termination and invariant analysis using supported runtime handlers or finite declared transitions.
@@ -31,11 +31,11 @@ A worked walkthrough of using POKIE to balance RTP, hit frequency, and volatilit
 ## The vocabulary
 
 - **RTP (Return to Player)** — the percentage of wagered money players can expect to recoup over time (e.g. 93%
-  means, on average, 93 credits return for every 100 wagered).
+ means, on average, 93 credits return for every 100 wagered).
 - **Hit frequency** — how often a round produces any win at all (e.g. 0.62 means roughly 62% of rounds pay
-  something).
+ something).
 - **Volatility** — low volatility means frequent, smaller wins; high volatility means rarer, bigger wins. Measured
-  via the standard deviation of round payouts.
+ via the standard deviation of round payouts.
 
 A slot's math model is defined by four things, all configurable on `VideoSlotConfig`
 (see [Game Session & Configuration](game-session.md)): available symbols, reel symbol sequences, the paytable, and
@@ -62,9 +62,7 @@ Build one `SymbolsSequence` per reel — either an exact count per symbol, or a 
 ```ts
 const symbolsNumbers = {"9": 20, "10": 20, "J": 15, "Q": 15, "K": 7, "A": 6, "S": 5};
 
-const sequences = new Array(config.getReelsNumber())
-    .fill(0)
-    .map(() => new SymbolsSequence().fromNumbersOfSymbols(symbolsNumbers).shuffle());
+const sequences = new Array(config.getReelsNumber()).fill(0).map(() => new SymbolsSequence().fromNumbersOfSymbols(symbolsNumbers).shuffle());
 
 config.setSymbolsSequences(sequences);
 ```
@@ -100,8 +98,8 @@ gives you every possible reel-stop combination, so you can compute RTP exactly r
 import {SymbolsCombinationsAnalyzer, SymbolsCombination, VideoSlotWinCalculator} from "@fromstan/pokie";
 
 const allCombinations = SymbolsCombinationsAnalyzer.getAllPossibleSymbolsCombinations(
-    config.getSymbolsSequences(),
-    config.getReelsSymbolsNumber(),
+ config.getSymbolsSequences(),
+ config.getReelsSymbolsNumber(),
 );
 
 const winCalculator = new VideoSlotWinCalculator(config);
@@ -114,8 +112,8 @@ const combinationProbability = SymbolsCombinationsAnalyzer.getCombinationProbabi
 
 let expectedWinPerBet = 0;
 for (const {combination, weight} of uniqueCombinations) {
-    winCalculator.calculateWin(bet, new SymbolsCombination().fromMatrix(combination));
-    expectedWinPerBet += (winCalculator.getWinAmount() / bet) * weight * combinationProbability;
+ winCalculator.calculateWin(bet, new SymbolsCombination().fromMatrix(combination));
+ expectedWinPerBet += (winCalculator.getWinAmount() / bet) * weight * combinationProbability;
 }
 
 const theoreticalRtp = expectedWinPerBet;
@@ -141,8 +139,8 @@ simulationConfig.setNumberOfRounds(100_000);
 const simulation = new Simulation(session, simulationConfig);
 simulation.run();
 
-simulation.getAverageRtp();               // should converge close to theoreticalRtp
-simulation.getHitFrequency();             // how often rounds pay anything
+simulation.getAverageRtp(); // should converge close to theoreticalRtp
+simulation.getHitFrequency(); // how often rounds pay anything
 simulation.getPayoutsStandardDeviation(); // volatility indicator
 ```
 
@@ -229,7 +227,7 @@ failed evaluation/settlement and duplicate delivery cannot commit another advanc
 
 All six variants compose with line, ways and cluster win models, exact/weighted
 reel sources, supported geometry, free games, bet modes and jackpots. Hold & Win
-and value evaluators are explicitly unsupported with these declarations. Canonical WASM
+and value evaluators are explicitly unsupported with these declarations. WASM
 preserves these supported modifier contracts. Persistent sticky rules block independent-spin exact
 outcome enumeration and its downstream conversions; stateless rules use the same
 session payout path during enumeration. Custom callbacks retain their custom
@@ -249,7 +247,7 @@ payout/duration units, authoring/interchange, restoration/replay, statistics and
 custom-rule/target boundaries. The [launch support register](supported-mechanics.md)
 maps every mandatory family separately from arbitrary custom callbacks.
 
-## Canonical definition comparison
+## Definition comparison
 
 `compareMathDefinitions(left, right, {signal})` and `MathDefinitionSourceReader`
 read definitions; `MathDefinitionDiffer.diff(leftSnapshot, rightSnapshot)` is the
@@ -262,7 +260,7 @@ hashes and payout engines are unchanged.
 
 Inputs may be paths, resolved projects, caller-owned `PokieGame` objects, or
 `{kind: "blueprint", model, location?}`. Blueprint JSON, package model descriptors,
-PAR import and integrity-bound canonical WASM readers supply data. Display
+PAR import and integrity-bound WASM readers supply data. Display
 projections and reel preview samples are never definition authorities. Package
 extraction releases its own snapshots; caller games and unrelated leases remain
 caller-owned. Both reads settle and all owned cleanup completes before returning,
@@ -287,8 +285,8 @@ ordering. Object insertion order is ignored. Optional `context` identifies
 reels, variant IDs, mode IDs, symbols/match counts, weighted-bonus table/outcome
 and feature IDs, selection context and sampling contract.
 
-Each side is either `{present: false, provenance: ...}` or
-`{present: true, value: <exact JSON value>, provenance: ...}`. Missing values are
+Each side is either `{present: false, provenance:...}` or
+`{present: true, value: <exact JSON value>, provenance:...}`. Missing values are
 never serialized as null or zero. Provenance records authority, authored
 presence/value, and `authored`, `effective`, `defaulted` or `unknown` status.
 For package inputs, authored presence means presence in the supplied descriptor
@@ -364,7 +362,7 @@ pointers for property names containing dots or brackets.
 Validation changes are grouped at `/validation/<escaped diagnostic path>/<code>`.
 When each side has at most one diagnostic in a group, changed severity/message
 retains that key. If either side has multiple distinct diagnostics, the key adds
-`/<escaped canonical diagnostic JSON>` as a deterministic identity; unchanged
+`/<escaped diagnostic JSON>` as a deterministic identity; unchanged
 identities cancel, while removals/additions remain explicit. Colliding messages
 are never overwritten or guessed to be edits of each other. Both sources retain
 all distinct diagnostics with stable `code`, `severity`, `path`, and `message`. Invalid authored fields remain visible;
@@ -378,11 +376,11 @@ Blueprint payout-cap setting and not a new runtime cap:
 
 ```ts
 maxWinPolicy: {
-    type: "declared",
-    value: 10000,
-    unit: "bet-multiple", // or "currency"
-    scope: "logical-round", // or "paid-entry"
-    authority: "declared custom payout collaborator"
+ type: "declared",
+ value: 10000,
+ unit: "bet-multiple", // or "currency"
+ scope: "logical-round", // or "paid-entry"
+ authority: "declared custom payout collaborator"
 }
 ```
 
@@ -410,8 +408,7 @@ boundaries. Unsupported field authority overrides defaults and exact evidence at
 all descendants. Unknown fields retain declarations without fabricated effective
 defaults or asserted mathematical changes; provenance traversal includes array
 elements in modifiers, variants and modes. Known partial fields are still compared. PAR comparison covers only
-what its importer represents and carries conversion diagnostics/limits. Canonical
-WASM compares its effective symbol inventory, strips, payouts, paylines and win model with partial status because
+what its importer represents and carries conversion diagnostics/limits. WASM compares its effective symbol inventory, strips, payouts, paylines and win model with partial status because
 original authoring omissions/default choices are unavailable. Legacy WASM metadata
 and outcome-only artifacts cannot reconstruct a definition. These limitations
 cannot be upgraded to equality by matching report totals or matching subsets.

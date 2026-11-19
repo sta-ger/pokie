@@ -11,7 +11,7 @@ already-computed absolute amount, not a multiplier).
 ```ts
 constructor(availableBets: number[], availableSymbols?: string[], wildSymbols?: string[], reelsNumber?: number)
 
-getWinAmountForSymbol(symbolId: string, numberOfSymbols: number, bet: number): number   // 0 if unknown, never throws
+getWinAmountForSymbol(symbolId: string, numberOfSymbols: number, bet: number): number // 0 if unknown, never throws
 getAvailableSymbolsForBet(bet: number): string[]
 getNumbersOfSymbolsForBet(bet: number, symbolId: string): number[]
 setPayoutForSymbol(symbolId: string, times: number, betMultiplier: number, bet?: number): void
@@ -49,71 +49,71 @@ exception — it doesn't consult the paytable at all (see [Value pays](#value-pa
 
 ```ts
 constructor(
-    conf: VideoSlotConfigDescribing,
-    lineWinCalculator: LineWinCalculating = new LineWinCalculator(conf),
-    scatterWinCalculator: ScatterWinCalculating = new ScatterWinCalculator(conf),
-    clusterWinCalculator?: ClusterWinCalculating,   // opt-in, no default instance — see Cluster pays
-    valueWinCalculator?: ValueWinCalculating,       // opt-in, no default instance — see Value pays
-    waysWinCalculator?: WaysWinCalculating,         // opt-in, no default instance — see Ways to win
+ conf: VideoSlotConfigDescribing,
+ lineWinCalculator: LineWinCalculating = new LineWinCalculator(conf),
+ scatterWinCalculator: ScatterWinCalculating = new ScatterWinCalculator(conf),
+ clusterWinCalculator?: ClusterWinCalculating, // opt-in, no default instance — see Cluster pays
+ valueWinCalculator?: ValueWinCalculating, // opt-in, no default instance — see Value pays
+ waysWinCalculator?: WaysWinCalculating, // opt-in, no default instance — see Ways to win
 )
 calculateWin(bet: number, symbolsCombination: SymbolsCombinationDescribing): void
 getWinningLines(): Record<string, WinningLineDescribing>
 getWinningScatters(): Record<string, WinningScatterDescribing>
-getWinningClusters(): Record<string, WinningClusterDescribing>   // {} unless a clusterWinCalculator was injected
-getWinningValues(): Record<string, WinningValueDescribing>       // {} unless a valueWinCalculator was injected
-getWinningWays(): Record<string, WinningWayDescribing>           // {} unless a waysWinCalculator was injected
+getWinningClusters(): Record<string, WinningClusterDescribing> // {} unless a clusterWinCalculator was injected
+getWinningValues(): Record<string, WinningValueDescribing> // {} unless a valueWinCalculator was injected
+getWinningWays(): Record<string, WinningWayDescribing> // {} unless a waysWinCalculator was injected
 getLinesWinning(): number
 getScattersWinning(): number
 getClustersWinning(): number
 getValuesWinning(): number
 getWaysWinning(): number
-getWinAmount(): number   // canonical total from the current WinEvaluationResult (or legacy fallback)
+getWinAmount(): number // total from the current WinEvaluationResult (or legacy fallback)
 ```
 
 `calculateWin(bet, combination)`:
 
 1. **Throws** `Bet ${bet} is not specified at paytable` if `bet` isn't in `config.getAvailableBets()`. (Note the
-   asymmetry: `Paytable.getWinAmountForSymbol` itself never throws — it defaults to `0` for anything unknown. Only
-   the calculator's entry point validates the bet.)
+ asymmetry: `Paytable.getWinAmountForSymbol` itself never throws — it defaults to `0` for anything unknown. Only
+ the calculator's entry point validates the bet.)
 2. Builds a unified `WinEvaluationResult` from the configured evaluator pipeline. `getWinAmount()` reads that
-   canonical result (or falls back to the legacy calculator amount if no `getWinEvaluationResult()` is implemented).
+ result (or falls back to the legacy calculator amount if no `getWinEvaluationResult()` is implemented).
 
 Constructing `VideoSlotWinCalculator` with only the first argument (or via `VideoSlotSession`'s default) gives you
 line + scatter pays only — the classic model. Cluster/value/ways are additive: pass any subset of them to combine
 win styles in the same game (e.g. lines + scatters + a value-pay bonus symbol).
 
 Legacy custom win calculators that do **not** implement `getWinEvaluationResult()` are still supported: the session
-adapts their legacy `getWinAmount()` into a canonical `WinEvaluationResult` instead of silently paying `0`.
+adapts their legacy `getWinAmount()` into a `WinEvaluationResult` instead of silently paying `0`.
 
 ## Line pays
 
 ```ts
 interface LineWinCalculating<T = string> {
-    calculateWinningLines(bet: number, symbolsCombination: SymbolsCombinationDescribing<T>): Record<string, WinningLineDescribing<T>>;
+ calculateWinningLines(bet: number, symbolsCombination: SymbolsCombinationDescribing<T>): Record<string, WinningLineDescribing<T>>;
 }
 ```
 
 `LineWinCalculator` (the default `lineWinCalculator`):
 
 1. Finds every winning line id via
-   `SymbolsCombinationsAnalyzer.getWinningLinesIds(matrix, linesDefinitions, patterns, wildSymbols, wildSubstitutions)`.
+ `SymbolsCombinationsAnalyzer.getWinningLinesIds(matrix, linesDefinitions, patterns, wildSymbols, wildSubstitutions)`.
 2. For each, builds a `WinningLine`: extracts the line's symbols (`getSymbolsForDefinition`), finds the matching
-   pattern (`getMatchingPattern` — since pattern arrays are built longest-first, this always resolves to the
-   **longest** matching run, never a shorter subset), resolves the winning symbol (ignoring wilds), and looks up its
-   payout.
+ pattern (`getMatchingPattern` — since pattern arrays are built longest-first, this always resolves to the
+ **longest** matching run, never a shorter subset), resolves the winning symbol (ignoring wilds), and looks up its
+ payout.
 3. **Filters the result:** a line is only kept if its symbol is **not** a configured scatter symbol, and its
-   `winAmount > 0`. So a contiguous run of scatters along a payline never becomes a "line win", and a match whose
-   paytable lookup resolves to `0` (e.g. a 2-symbol match under the default 3..reelsNumber paytable) is silently
-   dropped rather than surfaced as a zero-value win.
+ `winAmount > 0`. So a contiguous run of scatters along a payline never becomes a "line win", and a match whose
+ paytable lookup resolves to `0` (e.g. a 2-symbol match under the default 3..reelsNumber paytable) is silently
+ dropped rather than surfaced as a zero-value win.
 
 ```ts
 interface WinningLineDescribing<T = string> extends WinAmountDetermining {
-    getDefinition(): number[];
-    getPattern(): number[];
-    getSymbolId(): T;
-    getLineId(): string;
-    getSymbolsPositions(): number[];
-    getWildSymbolsPositions(): number[];
+ getDefinition(): number[];
+ getPattern(): number[];
+ getSymbolId(): T;
+ getLineId(): string;
+ getSymbolsPositions(): number[];
+ getWildSymbolsPositions(): number[];
 }
 ```
 
@@ -124,16 +124,16 @@ paying lines share a symbol" bonuses):
 
 ```ts
 static allLinesHaveSameSymbolId(lines: WinningLineDescribing[]): boolean
-static getLinesWithSymbol(lines, symbolsCombination: string[][], symbolId: string): WinningLineDescribing[]       // full line contains symbolId anywhere
-static getLinesWithWinningSymbol(lines, symbolId: string): WinningLineDescribing[]                                 // matched/paid symbol equals symbolId
-static getLinesWithDifferentWinningSymbols(lines): WinningLineDescribing[]                                         // [] unless ≥2 distinct symbols
+static getLinesWithSymbol(lines, symbolsCombination: string[][], symbolId: string): WinningLineDescribing[] // full line contains symbolId anywhere
+static getLinesWithWinningSymbol(lines, symbolId: string): WinningLineDescribing[] // matched/paid symbol equals symbolId
+static getLinesWithDifferentWinningSymbols(lines): WinningLineDescribing[] // [] unless ≥2 distinct symbols
 ```
 
 ## Scatter pays
 
 ```ts
 interface ScatterWinCalculating<T = string> {
-    calculateWinningScatters(bet: number, symbolsCombination: SymbolsCombinationDescribing<T>): Record<T, WinningScatterDescribing<T>>;
+ calculateWinningScatters(bet: number, symbolsCombination: SymbolsCombinationDescribing<T>): Record<T, WinningScatterDescribing<T>>;
 }
 ```
 
@@ -147,8 +147,8 @@ win calculator).
 
 ```ts
 interface WinningScatterDescribing<T = string> extends WinAmountDetermining {
-    getSymbolId(): T;
-    getSymbolsPositions(): number[][]; // [reel, row] pairs, anywhere on the grid
+ getSymbolId(): T;
+ getSymbolsPositions(): number[][]; // [reel, row] pairs, anywhere on the grid
 }
 ```
 
@@ -160,16 +160,16 @@ no adjacency requirement).
 
 ```ts
 interface ClusterWinCalculating<T = string> {
-    calculateWinningClusters(bet: number, symbolsCombination: SymbolsCombinationDescribing<T>): Record<string, WinningClusterDescribing<T>>;
+ calculateWinningClusters(bet: number, symbolsCombination: SymbolsCombinationDescribing<T>): Record<string, WinningClusterDescribing<T>>;
 }
 
 class ClusterWinCalculator<T = string> implements ClusterWinCalculating<T> {
-    constructor(config: VideoSlotConfigDescribing<T>, minimumClusterSize = 5);
+ constructor(config: VideoSlotConfigDescribing<T>, minimumClusterSize = 5);
 }
 
 interface WinningClusterDescribing<T = string> extends WinAmountDetermining {
-    getSymbolId(): T;
-    getSymbolsPositions(): number[][];
+ getSymbolId(): T;
+ getSymbolsPositions(): number[][];
 }
 ```
 
@@ -180,13 +180,13 @@ import {ClusterWinCalculator, VideoSlotConfig, VideoSlotWinCalculator} from "@fr
 
 const config = new VideoSlotConfig();
 const winCalculator = new VideoSlotWinCalculator(
-    config,
-    undefined,                              // keep default LineWinCalculator
-    undefined,                              // keep default ScatterWinCalculator
-    new ClusterWinCalculator(config, 5),    // minimum cluster size = 5 cells
-    undefined,
-    undefined,
-    {aggregationPolicy: new SelectedEvaluatorGroupWinAggregationPolicy("cluster")},
+ config,
+ undefined, // keep default LineWinCalculator
+ undefined, // keep default ScatterWinCalculator
+ new ClusterWinCalculator(config, 5), // minimum cluster size = 5 cells
+ undefined,
+ undefined,
+ {aggregationPolicy: new SelectedEvaluatorGroupWinAggregationPolicy("cluster")},
 );
 ```
 
@@ -204,16 +204,16 @@ use.
 
 ```ts
 interface ValueWinCalculating<T = string> {
-    calculateWinningValues(bet: number, symbolsCombination: SymbolsCombinationDescribing<T>): Record<T, WinningValueDescribing<T>>;
+ calculateWinningValues(bet: number, symbolsCombination: SymbolsCombinationDescribing<T>): Record<T, WinningValueDescribing<T>>;
 }
 
 class ValueWinCalculator<T = string> implements ValueWinCalculating<T> {
-    constructor(symbolValues: Partial<Record<T, number>>);   // symbolId -> bet multiplier, NOT read from Paytable
+ constructor(symbolValues: Partial<Record<T, number>>); // symbolId -> bet multiplier, NOT read from Paytable
 }
 
 interface WinningValueDescribing<T = string> extends WinAmountDetermining {
-    getSymbolId(): T;
-    getSymbolsPositions(): number[][];
+ getSymbolId(): T;
+ getSymbolsPositions(): number[][];
 }
 ```
 
@@ -222,13 +222,13 @@ import {ValueWinCalculator, VideoSlotConfig, VideoSlotWinCalculator} from "@from
 
 const config = new VideoSlotConfig();
 const winCalculator = new VideoSlotWinCalculator(
-    config,
-    undefined,
-    undefined,
-    undefined,
-    new ValueWinCalculator({VALUE_5: 5, VALUE_10: 10}),
-    undefined,
-    {aggregationPolicy: new SelectedEvaluatorGroupWinAggregationPolicy("value")},
+ config,
+ undefined,
+ undefined,
+ undefined,
+ new ValueWinCalculator({VALUE_5: 5, VALUE_10: 10}),
+ undefined,
+ {aggregationPolicy: new SelectedEvaluatorGroupWinAggregationPolicy("value")},
 );
 ```
 
@@ -246,17 +246,17 @@ itself.
 
 ```ts
 interface WaysWinCalculating<T = string> {
-    calculateWinningWays(bet: number, symbolsCombination: SymbolsCombinationDescribing<T>): Record<T, WinningWayDescribing<T>>;
+ calculateWinningWays(bet: number, symbolsCombination: SymbolsCombinationDescribing<T>): Record<T, WinningWayDescribing<T>>;
 }
 
 class WaysWinCalculator<T = string> implements WaysWinCalculating<T> {
-    constructor(config: VideoSlotConfigDescribing<T>);
+ constructor(config: VideoSlotConfigDescribing<T>);
 }
 
 interface WinningWayDescribing<T = string> extends WinAmountDetermining {
-    getSymbolId(): T;
-    getSymbolsPositions(): number[][];
-    getWaysCount(): number;
+ getSymbolId(): T;
+ getSymbolsPositions(): number[][];
+ getWaysCount(): number;
 }
 ```
 
@@ -265,13 +265,13 @@ import {VideoSlotConfig, VideoSlotWinCalculator, WaysWinCalculator} from "@froms
 
 const config = new VideoSlotConfig();
 const winCalculator = new VideoSlotWinCalculator(
-    config,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    new WaysWinCalculator(config),
-    {aggregationPolicy: new SelectedEvaluatorGroupWinAggregationPolicy("ways")},
+ config,
+ undefined,
+ undefined,
+ undefined,
+ undefined,
+ new WaysWinCalculator(config),
+ {aggregationPolicy: new SelectedEvaluatorGroupWinAggregationPolicy("ways")},
 );
 ```
 
@@ -309,28 +309,28 @@ When more than one evaluator group is enabled (line/scatter/cluster/value/ways),
 
 ```ts
 interface WinAggregationPolicy<T = string> {
-    getPolicyName(): string;
-    aggregate(
-        componentsByEvaluator: {evaluator: WinEvaluator<T>; components: WinComponent<T>[]}[],
-        context: WinEvaluationContext<T>,
-    ): WinComponent<T>[];
+ getPolicyName(): string;
+ aggregate(
+ componentsByEvaluator: {evaluator: WinEvaluator<T>; components: WinComponent<T>[]}[],
+ context: WinEvaluationContext<T>,
+ ): WinComponent<T>[];
 }
 ```
 
 Built-in policies:
 
 - `ErrorOnIncompatibleWinAggregationPolicy` (default) — concatenates every enabled evaluator group's components
-  as-is; paired with the validation rule below to flag when that concatenation is mixing normally-exclusive
-  evaluator groups.
+ as-is; paired with the validation rule below to flag when that concatenation is mixing normally-exclusive
+ evaluator groups.
 - `SumAllEnabledWinAggregationPolicy` — same concatenation behavior, without the incompatibility flag; use it once
-  you've deliberately decided that summing mixed evaluator groups (e.g. lines + value pays) is correct for your
-  game.
+ you've deliberately decided that summing mixed evaluator groups (e.g. lines + value pays) is correct for your
+ game.
 - `HighestWinOnlyAggregationPolicy` — keeps only the evaluator group with the highest total win amount, discarding
-  the rest. Used to pick a winner among mutually exclusive evaluation styles run over the same grid (see the
-  [mixed win evaluators example](https://github.com/sta-ger/pokie-examples/tree/main/src/games/mixed-evaluators)).
+ the rest. Used to pick a winner among mutually exclusive evaluation styles run over the same grid (see the
+ [mixed win evaluators example](https://github.com/sta-ger/pokie-examples/tree/main/src/games/mixed-evaluators)).
 - `SelectedEvaluatorGroupWinAggregationPolicy(group)` — keeps only the named evaluator group's components
-  (`"line"`, `"scatter"`, `"cluster"`, `"value"`, or `"ways"`), discarding the others; used above to pin the
-  calculator to a single win style while a game only has one calculator enabled.
+ (`"line"`, `"scatter"`, `"cluster"`, `"value"`, or `"ways"`), discarding the others; used above to pin the
+ calculator to a single win style while a game only has one calculator enabled.
 
 `MixedEvaluatorsPolicyInfoValidationRule` (one of the pipeline's default validation rules) surfaces an
 informational issue whenever more than one of the mutually-exclusive evaluator groups (`line`, `cluster`, `ways`,
@@ -403,9 +403,9 @@ anything else the dispatcher already does correctly:
 import {LineWinCalculating, VideoSlotConfig, VideoSlotWinCalculator} from "@fromstan/pokie";
 
 class CustomLineCalculator implements LineWinCalculating {
-    public calculateWinningLines(bet, symbolsCombination) {
-        // your own logic
-    }
+ public calculateWinningLines(bet, symbolsCombination) {
+ // your own logic
+ }
 }
 
 const config = new VideoSlotConfig();
@@ -415,16 +415,16 @@ const calculator = new VideoSlotWinCalculator(config, new CustomLineCalculator()
 ## Rules worth knowing before you tune a paytable
 
 1. **Wild-only runs never win** (lines/clusters/ways). Matching requires at least one non-wild symbol remaining
-   after wilds are stripped; an all-wild payline/cluster/way produces zero wins.
+ after wilds are stripped; an all-wild payline/cluster/way produces zero wins.
 2. **Scatters never form line wins**, even if they line up contiguously on a configured payline — they're explicitly
-   excluded from the line-win pass.
+ excluded from the line-win pass.
 3. **There is only one `bet` value** per round, used for every win calculator's paytable lookup — there's no
-   per-line/per-cluster bet-splitting model.
+ per-line/per-cluster bet-splitting model.
 4. **Mixed evaluators require explicit policy**. The default pipeline rejects incompatible sets such as lines + ways
-   or lines + clusters.
+ or lines + clusters.
 5. **Effective minimum-to-win for lines depends on two independently configured things**: the line pattern's
-   `minimumWinningSymbols` (default 2) *and* which counts the paytable actually has non-zero payouts for (default
-   constructor only fills 3..reelsNumber). Changing one without the other silently changes what pays.
+ `minimumWinningSymbols` (default 2) *and* which counts the paytable actually has non-zero payouts for (default
+ constructor only fills 3..reelsNumber). Changing one without the other silently changes what pays.
 
 ## Headless runtime contract
 

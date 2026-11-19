@@ -42,11 +42,11 @@ written once:
 import {AbstractVideoSlotSessionDecorator, VideoSlotSessionHandling} from "@fromstan/pokie";
 
 class LoggingSession<T extends string | number | symbol = string> extends AbstractVideoSlotSessionDecorator<T> {
-    public override play(): void {
-        console.log("playing round, bet =", this.getBet());
-        super.play();
-        console.log("win =", this.getWinAmount());
-    }
+ public override play(): void {
+ console.log("playing round, bet =", this.getBet());
+ super.play();
+ console.log("win =", this.getWinAmount());
+ }
 }
 
 const session = new LoggingSession(new VideoSlotSession());
@@ -62,7 +62,7 @@ The public root exports `SessionRuntimeHandling`, `SessionRuntime`, `SessionComm
 
 ### Transactional round storage
 
-`TransactionalRoundStore` is the explicit canonical round boundary. Its transaction
+`TransactionalRoundStore` is the explicit round boundary. Its transaction
 callback receives `RoundTransaction` (versioned sessions, result repository, operation
 log and local ledger) tied to one owning transaction. Implementations must acquire
 cross-process ownership before loading/constructing/calculating, preserve supplied intent

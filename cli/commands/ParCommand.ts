@@ -95,7 +95,7 @@ export class ParCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return 'Import/export a GameBlueprint to/from a PAR sheet XLSX workbook ("pokie par import <input.xlsx>" / "pokie par export <config.json>").';
+        return 'Import or export a game design as a PAR sheet workbook ("pokie par import <input.xlsx>" / "pokie par export <design.json>").';
     }
 
     public getCommanderCommand(): Command {

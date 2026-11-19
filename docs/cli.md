@@ -8,11 +8,11 @@ inside a game project. Choose a project explicitly to open its dashboard instead
 starting a server, use `npx --package @fromstan/pokie pokie --help`.
 
 ```
-npx --package @fromstan/pokie pokie                       # Studio Home
-npx --package @fromstan/pokie pokie .                     # Studio for the current project
-npx --package @fromstan/pokie pokie ./my-game              # Studio for a specified project
-npx --package @fromstan/pokie pokie --help                 # CLI help; no server
-npx --package @fromstan/pokie pokie --version              # Installed version; no server
+npx --package @fromstan/pokie pokie # Studio Home
+npx --package @fromstan/pokie pokie. # Studio for the current project
+npx --package @fromstan/pokie pokie./my-game # Studio for a specified project
+npx --package @fromstan/pokie pokie --help # CLI help; no server
+npx --package @fromstan/pokie pokie --version # Installed version; no server
 ```
 
 Use `npx --package @fromstan/pokie pokie init <directory>` when you want a prepared game package immediately. Use `npx --package @fromstan/pokie pokie create <name>`
@@ -26,14 +26,14 @@ WASM is a normal POKIE artifact target. Build a portable, self-describing compon
 
 ```sh
 npx --package @fromstan/pokie pokie build slot.blueprint.json --target wasm --out game.wasm
-npx --package @fromstan/pokie pokie game.wasm              # open its Studio Project (browser Worker execution)
+npx --package @fromstan/pokie pokie game.wasm # open its Studio Project (browser Worker execution)
 npx --package @fromstan/pokie pokie validate game.wasm
 npx --package @fromstan/pokie pokie run game.wasm --seed demo
 npx --package @fromstan/pokie pokie sim game.wasm --rounds 6 --workers 1 --seed demo --format json
 npx --package @fromstan/pokie pokie replay game.wasm --round 6 --seed demo
 ```
 
-Canonical WASM artifacts also support deterministic `pokie sim game.wasm --rounds <number> --seed <seed>` and `pokie replay game.wasm --round <number> --seed <seed>` through the portable runtime; neither command materializes a game package. `pokie serve game.wasm` is intentionally unavailable because the portable component contract does not declare the local HTTP/server adapter required by the dev server. It validates the artifact binding and returns the normal capability diagnostic before loading a package or allocating a server.
+WASM artifacts also support deterministic `pokie sim game.wasm --rounds <number> --seed <seed>` and `pokie replay game.wasm --round <number> --seed <seed>` through the portable runtime; neither command materializes a game package. `pokie serve game.wasm` is intentionally unavailable because the portable component contract does not declare the local HTTP/server adapter required by the dev server. It validates the artifact binding and returns the normal capability diagnostic before loading a package or allocating a server.
 
 Use the same explicit seed for comparisons: run, sim and replay have different WASM defaults
 (`pokie-wasm-cli`, `pokie-wasm-simulation`, `pokie-wasm-replay`). `replay --round N` plays through N rounds,
@@ -56,7 +56,7 @@ unchanged. After a conflict, choose another destination and retry; the prior art
 WASM and generated Node games share `pokie.math.v2` evaluation for ordinary lines, ways and clusters,
 including wilds, authored paytables and effective `availableBets`. Current ABI 3.0 generates stops and screens and
 evaluates payouts through the shared WASM kernel from host draws. Stops use a bounded i32 array;
-the host owns RNG continuation, ledger and IO. Feature-aware canonical components support declared launch
+the host owns RNG continuation, ledger and IO. Feature-aware components support declared launch
 mechanics, weighted whole-sequence reels, geometry and bet modes through the shared session contracts.
 Support remains composition-specific: opaque custom code/services and conflicting feature combinations
 fail preflight; execution capability alone does not grant optimizer tuning authority. Blueprint is canonical;
@@ -65,7 +65,7 @@ extraction, without compiling arbitrary TypeScript behavior. See [execution, ide
 
 ## `pokie run <artifact.wasm>`
 
-Runs one deterministic round from a canonical POKIE WASM artifact using the portable host. It needs no package installation, compiler, local server, or browser-only setup:
+Runs one deterministic round from a POKIE WASM artifact using the portable host. It needs no package installation, compiler, local server, or browser-only setup:
 
 ```sh
 pokie run game.wasm --seed demo
@@ -133,22 +133,22 @@ for confirmation before writing anything:
 
 ```
 Preview:
-  Game:        Sample Slot (id: "sample-slot", v0.1.0)
-  Layout:      5 reels x 3 rows
-  Symbols:     A, K, Q, J
-  Paytable:    4 symbol(s) with payouts
-  Bets:        1, 2, 5
-  Mechanics:   (none)
-  Destination: ./sample-slot.blueprint.json
+ Game: Sample Slot (id: "sample-slot", v0.1.0)
+ Layout: 5 reels x 3 rows
+ Symbols: A, K, Q, J
+ Paytable: 4 symbol(s) with payouts
+ Bets: 1, 2, 5
+ Mechanics: (none)
+ Destination:./sample-slot.blueprint.json
 
 Save this blueprint? [Y/n]: y
-  created  ./sample-slot.blueprint.json
+ created./sample-slot.blueprint.json
 
 Game blueprint "Sample Slot" (id: "sample-slot") created at "./sample-slot.blueprint.json".
 
 Build it:
-  pokie build ./sample-slot.blueprint.json --target tsPackage --out <dir> --dry-run
-  pokie build ./sample-slot.blueprint.json --target tsPackage --out <dir>
+ pokie build./sample-slot.blueprint.json --target tsPackage --out <dir> --dry-run
+ pokie build./sample-slot.blueprint.json --target tsPackage --out <dir>
 ```
 
 Declining that confirmation, cancelling (**Ctrl+C**), or closing the input stream (**EOF**) at any point — including
@@ -159,7 +159,7 @@ written until every question has been answered and the preview has been confirme
 
 **Every question has a default and shows it in `[brackets]`**, so pressing Enter through the entire wizard — without
 typing a single answer — produces a complete, valid blueprint: one that passes `GameBlueprintValidator` with no
-errors. Those defaults are not a second set of values maintained here: they are read off the same canonical starter
+errors. Those defaults are not a second set of values maintained here: they are read off the same starter
 blueprint `createStarterGameBlueprint()` builds internally, so an Enter-only run describes the same game (5×3,
 symbols `A,K,Q,J`, their payouts and weights) apart from the generated id/name.
 
@@ -173,7 +173,7 @@ their wild/scatter roles, reels, paytable, bets), plus the one mechanic Studio's
 scatter-triggered free games (see `mechanics.freeGames`) — asked only when at least one scatter symbol was
 declared, since a free games award needs a scatter symbol to trigger off of. During creation a symbol marked wild
 gets no paytable question or payout: an all-wild line resolves to no winning symbol id, so such an entry would be
-dead data. Editing preserves an existing authored wild entry, which still receives the canonical warning.
+dead data. Editing preserves an existing authored wild entry, which still receives the warning.
 Selectable bet modes (`betModes`) aren't offered yet; add those by hand-editing the generated blueprint.
 
 The game id question offers a ready-made suggestion rather than requiring one to be typed: the wizard mints a
@@ -190,7 +190,7 @@ title-casing that typed id, the same as before this generator integration existe
 The wizard assembles a plain `GameBlueprint` object — the same shape a `<config.json>` file has — and hands it to
 `GameBlueprintValidator`, so everything in [`pokie build`](#pokie-build-project)'s own section (the field
 format, validation rules) applies identically; the wizard has no *generation* logic of its own. It does do light,
-per-prompt input-shape checks (a number is a number, a symbol id isn't blank, ...), and a handful of these
+per-prompt input-shape checks (a number is a number, a symbol id isn't blank,...), and a handful of these
 deliberately mirror `GameBlueprintValidator`'s own error-level rules — specifically the ones cheap to check
 immediately against fields already collected earlier in the same run (a paytable `matchCount` within the
 symbol's evaluation bounds; a reel-weighting/reel-strip symbol that's actually one of the symbols entered earlier) — so a
@@ -201,38 +201,38 @@ remaining question. This is a convenience, not a second source of truth: the fin
 Per-question input handling:
 
 - An answer that doesn't parse (e.g. non-numeric reels, a duplicate symbol id, a malformed `matchCount:multiplier`
-  pair, a paytable `matchCount` outside its model bounds, a reel-weighting symbol not among the symbols entered earlier)
-  prints a one-line reason and re-asks the same question — it never silently drops or guesses at bad input.
+ pair, a paytable `matchCount` outside its model bounds, a reel-weighting symbol not among the symbols entered earlier)
+ prints a one-line reason and re-asks the same question — it never silently drops or guesses at bad input.
 - Pressing **Ctrl+C** at any prompt cancels the wizard gracefully: it prints `Create cancelled.` and exits with a
-  non-zero status without writing anything, rather than a stack trace. So does closing/exhausting the input stream
-  (EOF) — e.g. a scripted/piped run that provides fewer answers than the wizard asks for.
+ non-zero status without writing anything, rather than a stack trace. So does closing/exhausting the input stream
+ (EOF) — e.g. a scripted/piped run that provides fewer answers than the wizard asks for.
 - The paytable and reel-strip prompts are asked once per symbol/reel (so the number of prompts scales with how
-  many symbols/reels you configured earlier in the same run).
+ many symbols/reels you configured earlier in the same run).
 - Reel weighting is a single choice up front — blank for default weights covering exactly the symbols entered
-  earlier (the preset's own weight for every symbol it knows, a rarest-first fallback for any it doesn't), `w` for
-  symbol weights typed by hand (one combined `symbol:count` line), `s` for explicit reel strips (one line per
-  reel), or `-` for the engine's built-in default weighting — mirroring the blueprint's own
-  `reelStrips`/`symbolWeights` mutual exclusivity.
+ earlier (the preset's own weight for every symbol it knows, a rarest-first fallback for any it doesn't), `w` for
+ symbol weights typed by hand (one combined `symbol:count` line), `s` for explicit reel strips (one line per
+ reel), or `-` for the engine's built-in default weighting — mirroring the blueprint's own
+ `reelStrips`/`symbolWeights` mutual exclusivity.
 - When creating, a blank paytable answer applies the starter preset's entry when it fits the symbol's bounds,
-  otherwise a generated ladder up to the chosen reel count. When editing, Enter preserves the authored entries,
-  including counts above `reels`, explicit zeros, empty entries and omitted payouts. A layout change never
-  substitutes a creation ladder; incompatible authored counts receive validation before Save.
-  Line/ways counts are integers in `2..reels`; cluster counts are in `2..evaluationCells`; scatter counts are
-  in `1..evaluationCells`, where `evaluationCells = reels * evaluatedRows` (normally `reels * rows`).
-  Answer `-` to leave a symbol without a payout. A finite nonnegative multiplier is accepted: `2:0` authors an
-  explicit zero award, and `2:0.5` pays half the stake. Each comma-separated pair must contain exactly two
-  nonempty fields; empty, negative and non-finite multipliers and extra fields are rejected with retry available.
+ otherwise a generated ladder up to the chosen reel count. When editing, Enter preserves the authored entries,
+ including counts above `reels`, explicit zeros, empty entries and omitted payouts. A layout change never
+ substitutes a creation ladder; incompatible authored counts receive validation before Save.
+ Line/ways counts are integers in `2..reels`; cluster counts are in `2..evaluationCells`; scatter counts are
+ in `1..evaluationCells`, where `evaluationCells = reels * evaluatedRows` (normally `reels * rows`).
+ Answer `-` to leave a symbol without a payout. A finite nonnegative multiplier is accepted: `2:0` authors an
+ explicit zero award, and `2:0.5` pays half the stake. Each comma-separated pair must contain exactly two
+ nonempty fields; empty, negative and non-finite multipliers and extra fields are rejected with retry available.
 - Symbol ids can't contain `:` — the wizard's own prompts reuse it as a pair separator later on (paytable, symbol
-  weights), so a symbol id containing one would be unparseable there.
+ weights), so a symbol id containing one would be unparseable there.
 - Wild/scatter symbols must each be one of the symbols already entered, and a symbol can't be both at once. Leaving
-  either question blank omits `wilds`/`scatters` from the blueprint entirely, rather than writing out an empty list.
+ either question blank omits `wilds`/`scatters` from the blueprint entirely, rather than writing out an empty list.
 - Free games, when asked at all, offers the first declared scatter as the trigger symbol's own default (or `-` to
-  skip the mechanic entirely), then asks for its `matchCount:games` award pairs (e.g. `3:8,4:15,5:20`).
-  Counts must be integers >= 1 and grants must be nonnegative integers: `1:1` and `2:0` are valid.
-  Grant counts have no upper bound in the canonical model; an unreachable count does not trigger an award.
-  Empty fields, negative or fractional values, non-finite values and extra colon-separated fields are rejected
-  with retry available. Enter preserves an existing grant map when editing; without a default, at least one
-  authored pair is required.
+ skip the mechanic entirely), then asks for its `matchCount:games` award pairs (e.g. `3:8,4:15,5:20`).
+ Counts must be integers >= 1 and grants must be nonnegative integers: `1:1` and `2:0` are valid.
+ Grant counts have no upper bound in the model; an unreachable count does not trigger an award.
+ Empty fields, negative or fractional values, non-finite values and extra colon-separated fields are rejected
+ with retry available. Enter preserves an existing grant map when editing; without a default, at least one
+ authored pair is required.
 
 Answers can also be piped/scripted (e.g. `printf '...\n...\n' | pokie create`, or piping a saved answers file) —
 each question is answered from the piped input in the same order it would be asked interactively, one line per
@@ -251,13 +251,13 @@ blueprint) or "pokie create --random" (an always-valid randomly generated one).
 Options:
 
 - `--blank` — **non-interactively** write the bare-minimum blueprint (3x3, three symbols, one payout each, no
-  paylines/`symbolWeights`/`availableBets`) instead of running the wizard — never prompts, for someone who wants to
-  author every field themselves or run this from a script. `<name>` still overrides the manifest id/name;
-  `--out <file>` still picks the destination.
+ paylines/`symbolWeights`/`availableBets`) instead of running the wizard — never prompts, for someone who wants to
+ author every field themselves or run this from a script. `<name>` still overrides the manifest id/name;
+ `--out <file>` still picks the destination.
 - `--out <file>` — the wizard's own destination question defaults to this instead of
-  `./<manifest.id>.blueprint.json` (still editable, like every other question); with `--blank`/`--random`, writes
-  here directly, without asking. It fails if the destination file already exists — pick a different `--out` path,
-  or remove/edit the existing file first.
+ `./<manifest.id>.blueprint.json` (still editable, like every other question); with `--blank`/`--random`, writes
+ here directly, without asking. It fails if the destination file already exists — pick a different `--out` path,
+ or remove/edit the existing file first.
 
 ### `pokie create [name] --random`
 
@@ -273,9 +273,9 @@ ratio) before writing — a blueprint that already carries its own literal `reel
 untouched.
 
 ```
-pokie create --random                          # name and file path picked for you
-pokie create my-random-game --random           # named ./my-random-game.blueprint.json instead
-pokie create --random --seed 42                # reproduce a specific earlier random blueprint
+pokie create --random # name and file path picked for you
+pokie create my-random-game --random # named./my-random-game.blueprint.json instead
+pokie create --random --seed 42 # reproduce a specific earlier random blueprint
 pokie create --random --seed 42 --preset variant # same seed, richer strategy -- a different game
 pokie create --random --out my-game.blueprint.json # write to a specific path instead
 ```
@@ -284,13 +284,13 @@ pokie create --random --out my-game.blueprint.json # write to a specific path in
 Generated random game "Blazing Riches" (id: "blazing-riches") from seed 1845220913.
 Reproduce this exact game with: pokie create --random --seed 1845220913 --preset default
 Provenance: generator 1.1.0, strategy "default-line-pay".
-  created  ./blazing-riches.blueprint.json
+ created./blazing-riches.blueprint.json
 
 Game blueprint "Blazing Riches" (id: "blazing-riches") created at "./blazing-riches.blueprint.json".
 
 Build it:
-  pokie build ./blazing-riches.blueprint.json --target tsPackage --out <dir> --dry-run
-  pokie build ./blazing-riches.blueprint.json --target tsPackage --out <dir>
+ pokie build./blazing-riches.blueprint.json --target tsPackage --out <dir> --dry-run
+ pokie build./blazing-riches.blueprint.json --target tsPackage --out <dir>
 ```
 
 `<name>`, when given, is used verbatim as the manifest name (and, via the default output path, the written
@@ -310,28 +310,28 @@ or smoke-simulated here: `pokie create --random` only ever writes the blueprint 
 programmatically:
 
 - [`SlotGameNameGenerator`](#slotgamenamegenerator--randomgameblueprintgenerator) — picks a themed name (e.g.
-  `title: "Blazing Riches"`) from small curated word lists, projected as a `title`/`slug`/`packageName` triple;
+ `title: "Blazing Riches"`) from small curated word lists, projected as a `title`/`slug`/`packageName` triple;
 - [`RandomGameBlueprintGenerator`](#slotgamenamegenerator--randomgameblueprintgenerator) — fills in reels (3-6),
-  rows (3-4), 5-8 symbols, a paytable, and reel weights, using `SlotGameNameGenerator` for the manifest, and one
-  of two `RandomGameBlueprintStrategy` implementations (see `--preset` below) for the mechanic-bearing fields.
+ rows (3-4), 5-8 symbols, a paytable, and reel weights, using `SlotGameNameGenerator` for the manifest, and one
+ of two `RandomGameBlueprintStrategy` implementations (see `--preset` below) for the mechanic-bearing fields.
 
 Both take an optional integer `seed`: the same seed (and the same `--preset`) always produces the exact same
 name/blueprint. Options:
 
 - `--seed <integer>` — reproduce a specific earlier random game. Omit it to mint a fresh one — the seed actually
-  used is always echoed back on the first line, together with the exact command to reproduce it.
+ used is always echoed back on the first line, together with the exact command to reproduce it.
 - `--preset default|variant` — which `RandomGameBlueprintStrategy` fills in the mechanic-bearing fields. Defaults
-  to `default`:
-  - `default` (`DefaultRandomGameBlueprintStrategy`, `provenance.strategy` `"default-line-pay"`) — the minimal
-    line-pay shape (reels/rows/symbols/paytable/`reelStripGeneration`, default paylines, no
-    wilds/scatters/`winModel`) — its reel weighting is always inspectable, already-per-reel-generated content, not
-    a flat `symbolWeights` map;
-  - `variant` (`RandomGameBlueprintVariantStrategy`, `provenance.strategy` `"random-variant"`) — a richer shape
-    drawn from the same guaranteed-valid space: custom paylines, "ways"/"clusters" `winModel`, and literal
-    `reelStrips` in place of `symbolWeights`, picked per build (never combining `paylines` with a `winModel`, since
-    `GameBlueprintValidator` warns on that combination).
-  Same seed *and* same `--preset` always reproduces the same blueprint — switching `--preset` with the same seed
-  produces a different game, since it selects an entirely different strategy.
+ to `default`:
+ - `default` (`DefaultRandomGameBlueprintStrategy`, `provenance.strategy` `"default-line-pay"`) — the minimal
+ line-pay shape (reels/rows/symbols/paytable/`reelStripGeneration`, default paylines, no
+ wilds/scatters/`winModel`) — its reel weighting is always inspectable, already-per-reel-generated content, not
+ a flat `symbolWeights` map;
+ - `variant` (`RandomGameBlueprintVariantStrategy`, `provenance.strategy` `"random-variant"`) — a richer shape
+ drawn from the same guaranteed-valid space: custom paylines, "ways"/"clusters" `winModel`, and literal
+ `reelStrips` in place of `symbolWeights`, picked per build (never combining `paylines` with a `winModel`, since
+ `GameBlueprintValidator` warns on that combination).
+ Same seed *and* same `--preset` always reproduces the same blueprint — switching `--preset` with the same seed
+ produces a different game, since it selects an entirely different strategy.
 
 The line right after the reproduce-command hint — `Provenance: generator <generatorVersion>, strategy
 "<strategy>".` — echoes `RandomGameBlueprintResult.provenance` (also available programmatically, see below):
@@ -348,13 +348,13 @@ several candidate games to pick from):
 ```ts
 import {RandomGameBlueprintGenerator, RandomGameBlueprintVariantStrategy, SlotGameNameGenerator} from "@fromstan/pokie";
 
-const {title, slug, packageName} = new SlotGameNameGenerator().generate();          // fresh every call
-const reproduced = new SlotGameNameGenerator().generate({seed: 42});                // deterministic for seed 42
+const {title, slug, packageName} = new SlotGameNameGenerator().generate(); // fresh every call
+const reproduced = new SlotGameNameGenerator().generate({seed: 42}); // deterministic for seed 42
 const themed = new SlotGameNameGenerator().generate({theme: "cosmic", style: "bold", wordCount: 3});
-const batch = new SlotGameNameGenerator().generateUnique(5, {seed: 42});            // 5 distinct titles, one seed
+const batch = new SlotGameNameGenerator().generateUnique(5, {seed: 42}); // 5 distinct titles, one seed
 
 const {blueprint, seed, provenance} = new RandomGameBlueprintGenerator().generate(); // seed is minted and echoed back
-const reproduced = new RandomGameBlueprintGenerator().generate({seed}); // .blueprint deep-equals blueprint above
+const reproduced = new RandomGameBlueprintGenerator().generate({seed}); //.blueprint deep-equals blueprint above
 const variant = new RandomGameBlueprintGenerator(new SlotGameNameGenerator(), new RandomGameBlueprintVariantStrategy());
 ```
 
@@ -376,7 +376,7 @@ explicitly. Its constructor optionally takes a name generator, a `RandomGameBlue
 `DefaultRandomGameBlueprintStrategy`; pass `RandomGameBlueprintVariantStrategy` for the same richer mechanics
 `--preset variant` selects), and a `GameMechanicCompatibilityPolicy` that rejects an incompatible strategy at
 construction time rather than at `generate()` time. The result's `provenance` (`{generatorVersion, strategy, seed}`)
-is what the CLI's `Provenance: ...` output line above echoes.
+is what the CLI's `Provenance:...` output line above echoes.
 
 `SlotGameNameGenerator` is also the implementation behind every name the CLI itself suggests — Design Game (see
 below) and [`pokie create`](#pokie-create-name)'s own wizard's game-id suggestion both call through it directly;
@@ -401,15 +401,15 @@ for the field/validation rules) and prints a diff against the file as it was loa
 
 ```
 Changes:
-  version: 0.1.0 -> 0.2.0
-  symbols: ["A","K","Q","J"] -> ["A","K","Q","J","W"]
-  wilds: (none) -> ["W"]
+ version: 0.1.0 -> 0.2.0
+ symbols: ["A","K","Q","J"] -> ["A","K","Q","J","W"]
+ wilds: (none) -> ["W"]
 
 Destination: sample-slot.blueprint.json
 
 Save this blueprint? [Y/n]: y
 
-  saved  sample-slot.blueprint.json
+ saved sample-slot.blueprint.json
 
 Game blueprint "Sample Slot" (id: "sample-slot") saved at "sample-slot.blueprint.json".
 ```
@@ -447,12 +447,11 @@ validate`/`pokie build --dry-run`.
 ## `pokie build <project>`
 
 POKIE's universal build pipeline: resolves `<project>` to a POKIE project and builds `--target <artifact>` from
-it, writing the result to `--out <path>` (default: a `<target>`-named sibling of `<project>`, except canonical
-WASM defaults to `game.wasm`; e.g. building `tsPackage` from `./blueprints/sample-slot.blueprint.json` defaults
+it, writing the result to `--out <path>` (default: a `<target>`-named sibling of `<project>`, except WASM defaults to `game.wasm`; e.g. building `tsPackage` from `./blueprints/sample-slot.blueprint.json` defaults
 to `./blueprints/tsPackage`).
 
 The build command supports targets: `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`,
-and `wasm`. Blueprint is the canonical portable-WASM source; PAR workbooks use the same model-preserving
+and `wasm`. Blueprint is the portable-WASM source; PAR workbooks use the same model-preserving
 Blueprint import before publication. A resolved WASM artifact is not a source for another conversion, and an
 arbitrary Node package is never compiled to WASM.
 
@@ -463,8 +462,8 @@ fails safely when the outcome space is too large or the game does not support ex
 sampled form only when its deterministic approximation is the workflow you intend:
 
 ```
-pokie generate ./sample-slot --out outcomes.json
-pokie generate ./sample-slot --sample 10000 --seed audit-seed --format json --out outcomes.json
+pokie generate./sample-slot --out outcomes.json
+pokie generate./sample-slot --sample 10000 --seed audit-seed --format json --out outcomes.json
 ```
 
 `--exact` is the default and is mutually exclusive with `--sample <n> --seed <string>`. `--estimate` (or
@@ -490,29 +489,29 @@ npm install
 Options:
 
 - `<project>` — a path the CLI resolves to a POKIE project: a `GameBlueprint` JSON file (a `blueprint` project), or an
-  already-built `tsPackage`/`outcomeLibrary`/`stakeAdapter` artifact directory, `parWorkbook` file, or `wasm` file. Missing or
-  unrecognized throws, naming the project types the CLI understands.
+ already-built `tsPackage`/`outcomeLibrary`/`stakeAdapter` artifact directory, `parWorkbook` file, or `wasm` file. Missing or
+ unrecognized throws, naming the project types the CLI understands.
 - `--target <artifact>` — **required**; one of `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, `wasm`.
-  Never an output directory (that's `--out`, below) — omitting it, or passing an unrecognized value, throws listing
-  the full accepted vocabulary. `--target` must also be buildable from `<project>`'s own resolved type — building a
-  unsupported source/target pair, for instance, throws naming which source types that target actually
-  supports (`ArtifactBuilderRegistry.describe(target)`, also available
-  programmatically, reports the same thing without resolving a project first).
+ Never an output directory (that's `--out`, below) — omitting it, or passing an unrecognized value, throws listing
+ the full accepted vocabulary. `--target` must also be buildable from `<project>`'s own resolved type — building a
+ unsupported source/target pair, for instance, throws naming which source types that target actually
+ supports (`ArtifactBuilderRegistry.describe(target)`, also available
+ programmatically, reports the same thing without resolving a project first).
 - `--exact` — only for `--target outcomeLibrary`; forces full exact enumeration instead of the managed
-  bounded-coverage default for a large Blueprint/package source.
+ bounded-coverage default for a large Blueprint/package source.
 - `--sample <n> --seed <string>` — only for `--target outcomeLibrary`; explicitly chooses `n` deterministic
-  bounded-coverage draws and records that choice in the library manifest.
+ bounded-coverage draws and records that choice in the library manifest.
 - `--out <path>` — where the built artifact is written; optional, defaulting to a `<target>`-named sibling of
-  `<project>` (`game.wasm` for `wasm`, a `.xlsx` file for `parWorkbook`, a `.json` file for `blueprint`, a bare directory for every other target). An explicit `--out`
-  always overrides the default and never changes what `--target` means. Must not already exist, or must be an
-  empty directory (a file target like `wasm` or `parWorkbook` must simply not exist yet) — see [Conflict
-  handling](#conflict-handling-an-existing---out-destination) below.
+ `<project>` (`game.wasm` for `wasm`, a `.xlsx` file for `parWorkbook`, a `.json` file for `blueprint`, a bare directory for every other target). An explicit `--out`
+ always overrides the default and never changes what `--target` means. Must not already exist, or must be an
+ empty directory (a file target like `wasm` or `parWorkbook` must simply not exist yet) — see [Conflict
+ handling](#conflict-handling-an-existing---out-destination) below.
 - `--dry-run` — validate and preview without writing anything.
 
 The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its conditional supported edges are
 `blueprint` → `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`, `tsPackage` → `outcomeLibrary`/`stakeAdapter`, plus `blueprint`/`tsPackage`/`parWorkbook`/`wasm` when public model extraction is complete,
 `outcomeLibrary` → `outcomeLibrary`/`stakeAdapter`, `stakeAdapter` → `stakeAdapter`, and `parWorkbook` →
-`blueprint`/`tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`. Every other advertised cell reports its exact missing prerequisite and a next command. Canonical WASM is built from supported Blueprint models, including PAR imports and complete public package descriptors; legacy sidecar-only WASM remains inspection-only. PAR-derived targets first import a durable Blueprint intermediate; dry-run prints that stage and
+`blueprint`/`tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`. Every other advertised cell reports its exact missing prerequisite and a next command. WASM is built from supported Blueprint models, including PAR imports and complete public package descriptors; legacy sidecar-only WASM remains inspection-only. PAR-derived targets first import a durable Blueprint intermediate; dry-run prints that stage and
 any generated/reused Outcome intermediate without writing it.
 
 A `blueprint` → `tsPackage` conversion is the classic "generate a game package from a `GameBlueprint`" path,
@@ -540,8 +539,8 @@ build <the written file> --target tsPackage --out <dir>` turns it into a real pa
 ### `tsPackage` -> `blueprint`: public model extraction
 
 ```sh
-pokie build ./my-package --target blueprint --out ./recovered.blueprint.json --dry-run
-pokie build ./my-package --target blueprint --out ./recovered.blueprint.json
+pokie build./my-package --target blueprint --out./recovered.blueprint.json --dry-run
+pokie build./my-package --target blueprint --out./recovered.blueprint.json
 ```
 
 Preview reports the shared extractor's source kind, field-level diagnostics/defaults and comparison
@@ -560,7 +559,7 @@ boundaries and the difference between declaration fidelity and arbitrary-code lo
 ### `blueprint` -> `tsPackage`: generating a game package from a `GameBlueprint`
 
 Generates a working [game package](game-packages.md) from a `GameBlueprint` — reels/rows, symbols, paylines,
-paytable, and reel strips/weights for a standard line-pay video slot. It writes the exact same canonical package
+paytable, and reel strips/weights for a standard line-pay video slot. It writes the exact same package
 file set `pokie init` does (`package.json`, `package-lock.json`, `tsconfig.json`, `README.md`, `src/index.ts`,
 `dist/index.js`) — `dist/index.js` is written directly rather than requiring a real `npm install`/`npm run build`
 first. CLI/Studio builds link the running POKIE installation into the package for immediate local play;
@@ -580,24 +579,24 @@ no errors, creates `<dir>` — which must not already exist, or must be empty (s
 handling](#conflict-handling-an-existing---out-destination) below) — and writes:
 
 - `package.json` — name/version/description from `manifest` (a default description if `manifest.description` is
-  omitted), a `pokie` dependency, `start`/`server`/`client`/`build` scripts, and `pokie.entry`/`main`/`exports`
-  all pointing at `./dist/index.js` — the exact same entry path `pokie init` packages compile their own
-  TypeScript source into, written by the exact same shared `buildPackageJsonPatch` those commands use;
+ omitted), a `pokie` dependency, `start`/`server`/`client`/`build` scripts, and `pokie.entry`/`main`/`exports`
+ all pointing at `./dist/index.js` — the exact same entry path `pokie init` packages compile their own
+ TypeScript source into, written by the exact same shared `buildPackageJsonPatch` those commands use;
 - `package-lock.json`/`tsconfig.json` — a lockfile seed matching the generated dependencies and the shared
-  compiler config. CLI/Studio builds persist the running POKIE installation as a `file:` dependency in
-  both manifests, so `npm install && npm run build` also works with an unpublished local candidate;
+ compiler config. CLI/Studio builds persist the running POKIE installation as a `file:` dependency in
+ both manifests, so `npm install && npm run build` also works with an unpublished local candidate;
 - `README.md` — a short orientation doc for the built package itself: what each file is, that `src/index.ts`/
-  `dist/index.js` shouldn't be hand-edited, and the `build -> inspect -> validate -> sim -> report -> replay ->
-  serve`/`dev` workflow below;
+ `dist/index.js` shouldn't be hand-edited, and the `build -> inspect -> validate -> sim -> report -> replay ->
+ serve`/`dev` workflow below;
 - `src/index.ts`/`dist/index.js` — a `PokieGame` implementation built from the blueprint: a `VideoSlotConfig`
-  with the given reels/rows/symbols/wilds/scatters/paytable/paylines/reel strips, wrapped in a
-  `VideoSlotSession`, with `getSessionSerializer()` returning `new VideoSlotSessionSerializer()`. Both files hold
-  the exact same generated logic — organized into labeled sections (blueprint data, config assembly, `PokieGame`
-  exports) with a short header comment naming the game and the `pokie` version that built it — no blueprint-
-  hash/provenance metadata is embedded, so re-running `pokie build` on an unchanged blueprint always regenerates
-  byte-identical files. `dist/index.js` is written directly, not compiled from `src/index.ts`, so the package is
-  locally loadable through the CLI/Studio runtime link without a compile step; `src/index.ts` is typed (`GameBlueprint`
-  imported from `@fromstan/pokie`) so a real `npm run build`, if you ever run one, reproduces an equivalent `dist/index.js`.
+ with the given reels/rows/symbols/wilds/scatters/paytable/paylines/reel strips, wrapped in a
+ `VideoSlotSession`, with `getSessionSerializer()` returning `new VideoSlotSessionSerializer()`. Both files hold
+ the exact same generated logic — organized into labeled sections (blueprint data, config assembly, `PokieGame`
+ exports) with a short header comment naming the game and the `pokie` version that built it — no blueprint-
+ hash/provenance metadata is embedded, so re-running `pokie build` on an unchanged blueprint always regenerates
+ byte-identical files. `dist/index.js` is written directly, not compiled from `src/index.ts`, so the package is
+ locally loadable through the CLI/Studio runtime link without a compile step; `src/index.ts` is typed (`GameBlueprint`
+ imported from `@fromstan/pokie`) so a real `npm run build`, if you ever run one, reproduces an equivalent `dist/index.js`.
 
 The built package carries no metadata of its own about where it came from — no embedded blueprint copy, no
 build-info file, no `src/generated` nesting — so a later source edit or rebuild never has to reconcile against,
@@ -623,39 +622,39 @@ re-export unchanged" round trip each format's own import/export commands already
 these targets, since nothing is generated, only copied.
 
 ```
-pokie build ./my-outcome-bundle --target outcomeLibrary --out ./my-outcome-bundle-copy
-pokie build ./my-stake-export --target stakeAdapter --out ./my-stake-export-copy
-pokie build ./my-par-sheet.xlsx --target parWorkbook --out ./my-par-sheet-copy.xlsx
+pokie build./my-outcome-bundle --target outcomeLibrary --out./my-outcome-bundle-copy
+pokie build./my-stake-export --target stakeAdapter --out./my-stake-export-copy
+pokie build./my-par-sheet.xlsx --target parWorkbook --out./my-par-sheet-copy.xlsx
 ```
 
 ### The `GameBlueprint` format
 
 ```ts
 {
-    manifest: {id: string; name: string; version: string; description?: string; author?: string};
-    reels: number;
-    rows: number;
-    symbols: string[];
-    wilds?: string[];        // must be a subset of "symbols"
-    scatters?: string[];     // must be a subset of "symbols"
-    // Row index (0-based) per reel, one array per payline. Omit for the engine's default: one
-    // horizontal line per row (VideoSlotConfig's own default via HorizontalLines).
-    paylines?: number[][];
-    // symbolId -> matchCount -> bet multiplier, applied across every configured bet.
-    paytable: Record<string, Record<string, number>>;
-    // One strip (an ordered array of symbol ids) per reel. Takes precedence over reelStripGeneration
-    // and symbolWeights. Unchanged since before reelStripGeneration existed.
-    reelStrips?: string[][];
-    // Per-reel build-time alternative to a literal reelStrips: one entry per reel (must have exactly
-    // "reels" entries), each independently either a literal strip or its own generation config — see
-    // "reelStripGeneration" below. Mutually exclusive with reelStrips (an error if both are set);
-    // takes precedence over symbolWeights.
-    reelStripGeneration?: ReelStripGenerationSpec[];
-    // symbolId -> relative count, applied uniformly (independently shuffled) to every reel. Ignored
-    // when reelStrips or reelStripGeneration is present. Omit all three for the engine's built-in
-    // default weighting.
-    symbolWeights?: Record<string, number>;
-    availableBets?: number[];
+ manifest: {id: string; name: string; version: string; description?: string; author?: string};
+ reels: number;
+ rows: number;
+ symbols: string[];
+ wilds?: string[]; // must be a subset of "symbols"
+ scatters?: string[]; // must be a subset of "symbols"
+ // Row index (0-based) per reel, one array per payline. Omit for the engine's default: one
+ // horizontal line per row (VideoSlotConfig's own default via HorizontalLines).
+ paylines?: number[][];
+ // symbolId -> matchCount -> bet multiplier, applied across every configured bet.
+ paytable: Record<string, Record<string, number>>;
+ // One strip (an ordered array of symbol ids) per reel. Takes precedence over reelStripGeneration
+ // and symbolWeights. Unchanged since before reelStripGeneration existed.
+ reelStrips?: string[][];
+ // Per-reel build-time alternative to a literal reelStrips: one entry per reel (must have exactly
+ // "reels" entries), each independently either a literal strip or its own generation config — see
+ // "reelStripGeneration" below. Mutually exclusive with reelStrips (an error if both are set);
+ // takes precedence over symbolWeights.
+ reelStripGeneration?: ReelStripGenerationSpec[];
+ // symbolId -> relative count, applied uniformly (independently shuffled) to every reel. Ignored
+ // when reelStrips or reelStripGeneration is present. Omit all three for the engine's built-in
+ // default weighting.
+ symbolWeights?: Record<string, number>;
+ availableBets?: number[];
 }
 ```
 
@@ -663,15 +662,15 @@ A minimal example (5x3, 3 symbols, no wilds/scatters, default paylines and reel 
 
 ```json
 {
-    "manifest": {"id": "sample-slot", "name": "Sample Slot", "version": "0.1.0"},
-    "reels": 5,
-    "rows": 3,
-    "symbols": ["A", "K", "Q"],
-    "paytable": {
-        "A": {"3": 5, "4": 10, "5": 20},
-        "K": {"3": 4, "4": 8, "5": 16},
-        "Q": {"3": 3, "4": 6, "5": 12}
-    }
+ "manifest": {"id": "sample-slot", "name": "Sample Slot", "version": "0.1.0"},
+ "reels": 5,
+ "rows": 3,
+ "symbols": ["A", "K", "Q"],
+ "paytable": {
+ "A": {"3": 5, "4": 10, "5": 20},
+ "K": {"3": 4, "4": 8, "5": 16},
+ "Q": {"3": 3, "4": 6, "5": 12}
+ }
 }
 ```
 
@@ -679,27 +678,27 @@ A complete example using every optional field (wilds, scatters, `symbolWeights`,
 
 ```json
 {
-    "manifest": {
-        "id": "sample-slot",
-        "name": "Sample Slot",
-        "version": "0.1.0",
-        "description": "A pokie build example: 5x3, wilds, scatters, weighted reels."
-    },
-    "reels": 5,
-    "rows": 3,
-    "symbols": ["A", "K", "Q", "J", "10", "W", "S"],
-    "wilds": ["W"],
-    "scatters": ["S"],
-    "paytable": {
-        "A": {"3": 4, "4": 7, "5": 14},
-        "K": {"3": 3, "4": 6, "5": 11},
-        "Q": {"3": 2, "4": 5, "5": 9},
-        "J": {"3": 1, "4": 3, "5": 7},
-        "10": {"3": 1, "4": 2, "5": 4},
-        "S": {"2": 2, "3": 5, "4": 20, "5": 100}
-    },
-    "symbolWeights": {"A": 4, "K": 6, "Q": 8, "J": 10, "10": 12, "W": 3, "S": 2},
-    "availableBets": [1, 2, 5, 10]
+ "manifest": {
+ "id": "sample-slot",
+ "name": "Sample Slot",
+ "version": "0.1.0",
+ "description": "A pokie build example: 5x3, wilds, scatters, weighted reels."
+ },
+ "reels": 5,
+ "rows": 3,
+ "symbols": ["A", "K", "Q", "J", "10", "W", "S"],
+ "wilds": ["W"],
+ "scatters": ["S"],
+ "paytable": {
+ "A": {"3": 4, "4": 7, "5": 14},
+ "K": {"3": 3, "4": 6, "5": 11},
+ "Q": {"3": 2, "4": 5, "5": 9},
+ "J": {"3": 1, "4": 3, "5": 7},
+ "10": {"3": 1, "4": 2, "5": 4},
+ "S": {"2": 2, "3": 5, "4": 20, "5": 100}
+ },
+ "symbolWeights": {"A": 4, "K": 6, "Q": 8, "J": 10, "10": 12, "W": 3, "S": 2},
+ "availableBets": [1, 2, 5, 10]
 }
 ```
 
@@ -718,21 +717,21 @@ blueprint already has).
 
 ```ts
 type ReelStripGenerationSpec =
-    | {type: "literal"; strip: string[]}                    // same data a reelStrips[i] entry would hold
-    | {type: "generated"} & ReelStripGenerationConfig;
+ | {type: "literal"; strip: string[]} // same data a reelStrips[i] entry would hold
+ | {type: "generated"} & ReelStripGenerationConfig;
 
 type ReelStripGenerationConfig = {
-    length: number;
-    // Exactly one of these two must be set.
-    symbolCounts?: Record<string, number>;
-    symbolWeights?: Record<string, number>;
-    // Required (not optional): build-time generation must be reproducible.
-    seed: number;
-    roundingPolicy?: "floor" | "round" | "ceil";                              // only with symbolWeights
-    remainderTieBreakPolicy?: "symbol-id" | "declared-order" | "largest-weight-first"; // only with symbolWeights
-    lockedPositions?: Record<number, string>;
-    constraints?: ReelStripConstraintSpec[];
-    maxAttempts?: number;
+ length: number;
+ // Exactly one of these two must be set.
+ symbolCounts?: Record<string, number>;
+ symbolWeights?: Record<string, number>;
+ // Required (not optional): build-time generation must be reproducible.
+ seed: number;
+ roundingPolicy?: "floor" | "round" | "ceil"; // only with symbolWeights
+ remainderTieBreakPolicy?: "symbol-id" | "declared-order" | "largest-weight-first"; // only with symbolWeights
+ lockedPositions?: Record<number, string>;
+ constraints?: ReelStripConstraintSpec[];
+ maxAttempts?: number;
 };
 ```
 
@@ -746,13 +745,13 @@ that constraint's own constructor parameters:
 
 ```ts
 type ReelStripConstraintSpec =
-    | {type: "minimumCircularDistance"; minimumDistance: number; symbolIds?: string[]; wrapAround?: boolean}
-    | {type: "maximumCircularDistance"; maximumDistance: number; symbolIds?: string[]; wrapAround?: boolean}
-    | {type: "maximumConsecutiveOccurrences"; maximumConsecutive: number; symbolIds?: string[]; wrapAround?: boolean}
-    | {type: "forbiddenAdjacency"; pairs: [string, string][]; wrapAround?: boolean; directed?: boolean}
-    | {type: "requiredAdjacency"; pairs: [string, string][]; directed?: boolean; wrapAround?: boolean}
-    | {type: "forbiddenSequence"; sequence: string[]; maximumOccurrences?: number; reversed?: boolean; wrapAround?: boolean}
-    | {type: "requiredSequence"; sequence: string[]; minimumOccurrences?: number; maximumOccurrences?: number; reversed?: boolean; wrapAround?: boolean};
+ | {type: "minimumCircularDistance"; minimumDistance: number; symbolIds?: string[]; wrapAround?: boolean}
+ | {type: "maximumCircularDistance"; maximumDistance: number; symbolIds?: string[]; wrapAround?: boolean}
+ | {type: "maximumConsecutiveOccurrences"; maximumConsecutive: number; symbolIds?: string[]; wrapAround?: boolean}
+ | {type: "forbiddenAdjacency"; pairs: [string, string][]; wrapAround?: boolean; directed?: boolean}
+ | {type: "requiredAdjacency"; pairs: [string, string][]; directed?: boolean; wrapAround?: boolean}
+ | {type: "forbiddenSequence"; sequence: string[]; maximumOccurrences?: number; reversed?: boolean; wrapAround?: boolean}
+ | {type: "requiredSequence"; sequence: string[]; minimumOccurrences?: number; maximumOccurrences?: number; reversed?: boolean; wrapAround?: boolean};
 ```
 
 A complete example (one hand-placed literal reel, four independently generated reels — different lengths, seeds,
@@ -760,66 +759,66 @@ constraints, `symbolCounts` vs. `symbolWeights`, and a locked position):
 
 ```json
 {
-    "manifest": {
-        "id": "generated-reels",
-        "name": "Generated Reels",
-        "version": "0.1.0",
-        "description": "A pokie build example: 5x3, wilds, scatters, per-reel reel strips - one hand-placed, four generated at build time."
-    },
-    "reels": 5,
-    "rows": 3,
-    "symbols": ["A", "K", "Q", "J", "10", "W", "S"],
-    "wilds": ["W"],
-    "scatters": ["S"],
-    "paytable": {
-        "A": {"3": 4, "4": 7, "5": 14},
-        "K": {"3": 3, "4": 6, "5": 11},
-        "Q": {"3": 2, "4": 5, "5": 9},
-        "J": {"3": 1, "4": 3, "5": 7},
-        "10": {"3": 1, "4": 2, "5": 4},
-        "S": {"2": 2, "3": 5, "4": 20, "5": 100}
-    },
-    "reelStripGeneration": [
-        {
-            "type": "literal",
-            "strip": ["A", "10", "K", "10", "Q", "10", "J", "10", "A", "10", "K", "10", "Q", "10", "J", "10", "S", "W"]
-        },
-        {
-            "type": "generated",
-            "length": 30,
-            "symbolWeights": {"A": 4, "K": 6, "Q": 8, "J": 10, "10": 12, "W": 2, "S": 2},
-            "seed": 20260713,
-            "constraints": [
-                {"type": "maximumConsecutiveOccurrences", "maximumConsecutive": 3},
-                {"type": "minimumCircularDistance", "minimumDistance": 6, "symbolIds": ["W"]}
-            ]
-        },
-        {
-            "type": "generated",
-            "length": 28,
-            "symbolWeights": {"A": 4, "K": 6, "Q": 8, "J": 10, "10": 12, "W": 2, "S": 2},
-            "seed": 20260714,
-            "constraints": [
-                {"type": "maximumConsecutiveOccurrences", "maximumConsecutive": 3},
-                {"type": "minimumCircularDistance", "minimumDistance": 6, "symbolIds": ["S"]}
-            ]
-        },
-        {
-            "type": "generated",
-            "length": 34,
-            "symbolCounts": {"A": 4, "K": 5, "Q": 7, "J": 9, "10": 7, "W": 1, "S": 1},
-            "seed": 7,
-            "lockedPositions": {"0": "W"},
-            "constraints": [{"type": "maximumConsecutiveOccurrences", "maximumConsecutive": 2}]
-        },
-        {
-            "type": "generated",
-            "length": 24,
-            "symbolWeights": {"A": 4, "K": 6, "Q": 8, "J": 10, "10": 12, "W": 2, "S": 2},
-            "seed": 999
-        }
-    ],
-    "availableBets": [1, 2, 5, 10]
+ "manifest": {
+ "id": "generated-reels",
+ "name": "Generated Reels",
+ "version": "0.1.0",
+ "description": "A pokie build example: 5x3, wilds, scatters, per-reel reel strips - one hand-placed, four generated at build time."
+ },
+ "reels": 5,
+ "rows": 3,
+ "symbols": ["A", "K", "Q", "J", "10", "W", "S"],
+ "wilds": ["W"],
+ "scatters": ["S"],
+ "paytable": {
+ "A": {"3": 4, "4": 7, "5": 14},
+ "K": {"3": 3, "4": 6, "5": 11},
+ "Q": {"3": 2, "4": 5, "5": 9},
+ "J": {"3": 1, "4": 3, "5": 7},
+ "10": {"3": 1, "4": 2, "5": 4},
+ "S": {"2": 2, "3": 5, "4": 20, "5": 100}
+ },
+ "reelStripGeneration": [
+ {
+ "type": "literal",
+ "strip": ["A", "10", "K", "10", "Q", "10", "J", "10", "A", "10", "K", "10", "Q", "10", "J", "10", "S", "W"]
+ },
+ {
+ "type": "generated",
+ "length": 30,
+ "symbolWeights": {"A": 4, "K": 6, "Q": 8, "J": 10, "10": 12, "W": 2, "S": 2},
+ "seed": 20260713,
+ "constraints": [
+ {"type": "maximumConsecutiveOccurrences", "maximumConsecutive": 3},
+ {"type": "minimumCircularDistance", "minimumDistance": 6, "symbolIds": ["W"]}
+ ]
+ },
+ {
+ "type": "generated",
+ "length": 28,
+ "symbolWeights": {"A": 4, "K": 6, "Q": 8, "J": 10, "10": 12, "W": 2, "S": 2},
+ "seed": 20260714,
+ "constraints": [
+ {"type": "maximumConsecutiveOccurrences", "maximumConsecutive": 3},
+ {"type": "minimumCircularDistance", "minimumDistance": 6, "symbolIds": ["S"]}
+ ]
+ },
+ {
+ "type": "generated",
+ "length": 34,
+ "symbolCounts": {"A": 4, "K": 5, "Q": 7, "J": 9, "10": 7, "W": 1, "S": 1},
+ "seed": 7,
+ "lockedPositions": {"0": "W"},
+ "constraints": [{"type": "maximumConsecutiveOccurrences", "maximumConsecutive": 2}]
+ },
+ {
+ "type": "generated",
+ "length": 24,
+ "symbolWeights": {"A": 4, "K": 6, "Q": 8, "J": 10, "10": 12, "W": 2, "S": 2},
+ "seed": 999
+ }
+ ],
+ "availableBets": [1, 2, 5, 10]
 }
 ```
 
@@ -828,7 +827,7 @@ constraints, `symbolCounts` vs. `symbolWeights`, and a locked position):
 count, and the closest attempt's constraint violations, then exits non-zero without writing any files. Other
 reels' generation is unaffected (each is entirely independent) — only the failing reel(s) are reported. This only
 runs *after* validation passes (validation only checks `reelStripGeneration`'s shape — one entry per reel, each a
-well-formed `{type: "literal", strip}` or `{type: "generated", ...}` with a positive `length`, an integer `seed`,
+well-formed `{type: "literal", strip}` or `{type: "generated",...}` with a positive `length`, an integer `seed`,
 exactly one of `symbolCounts`/`symbolWeights`, and a fully validated `constraints` array — every required field
 present, correct types, unknown symbols, and numeric bounds checked per constraint `type`; see
 [Validation](#validation) below) — whether a configuration is actually *satisfiable* is a question only
@@ -854,16 +853,15 @@ multipliers. `evaluationCells` is `reels * evaluatedRows`: `evaluatedRows` is `r
 defines a separate evaluated window. Free-game grant counts are integers >= 1 and grants are nonnegative
 integers; omitted grants pay no free games. `paylines` entries must have exactly `reels` row indexes, each within
 `[0, evaluatedRows)`; `reelStrips` must have exactly one strip per reel; `reelStripGeneration` must have exactly one entry per reel, each entry either a
-well-formed `{type: "literal", strip}` (a non-empty array of known symbol ids) or `{type: "generated", ...}` with
+well-formed `{type: "literal", strip}` (a non-empty array of known symbol ids) or `{type: "generated",...}` with
 a positive `length`, an integer `seed`, exactly one of `symbolCounts`/`symbolWeights`, well-shaped
 `lockedPositions`, a positive `maxAttempts`, and valid `roundingPolicy`/`remainderTieBreakPolicy` enum values where
 present; `availableBets` must be positive numbers.
 
 Every `constraints[]` entry inside a `"generated"` reel is fully validated too, not just its `type`: every field
-that `type` requires must be present with the correct JS type (a number, a boolean, an array of known symbol ids,
-...), numeric bounds must make sense (positive/non-negative integers, and for `requiredSequence`,
+that `type` requires must be present with the correct JS type (a number, a boolean, an array of known symbol ids,...), numeric bounds must make sense (positive/non-negative integers, and for `requiredSequence`,
 `maximumOccurrences >= minimumOccurrences`), and any symbol id referenced anywhere in the spec (`symbolIds`,
-sequence/pair entries, ...) must actually be listed in `symbols`.
+sequence/pair entries,...) must actually be listed in `symbols`.
 
 A `symbolCounts` entry of exactly `0` is treated as **absent from that reel** for reachability purposes (it will
 never actually land), exactly like a symbol simply omitted from a literal `reelStrips` entry — declaring
@@ -879,7 +877,7 @@ after validation passes (see [`reelStripGeneration`](#reelstripgeneration-build-
 Setting both `reelStrips` and `reelStripGeneration` is an error (not a warning): a reel's strip must come from
 exactly one of them, so there's no sensible precedence to fall back to. Within a single blueprint, though, literal
 and generated reels freely mix — that mixing lives entirely inside `reelStripGeneration`'s own per-reel array (a
-`{type: "literal", ...}` entry alongside `{type: "generated", ...}` entries), not between `reelStrips` and
+`{type: "literal",...}` entry alongside `{type: "generated",...}` entries), not between `reelStrips` and
 `reelStripGeneration`.
 
 A number of further checks catch configs that parse fine but are almost certainly mistakes, so they're reported as
@@ -901,24 +899,24 @@ simulation) and only apply to non-scatter, non-wild symbols with at least one pa
 their economics (paying from 2-of-a-kind, much bigger multipliers) are legitimately different:
 
 - **Frequent low-match payouts** (`blueprint-paytable-frequent-low-match`) — a payout at 2 matching symbols. Most
-  line-pay symbols start at 3-of-a-kind; paying from 2 hits very often and inflates hit frequency and RTP.
+ line-pay symbols start at 3-of-a-kind; paying from 2 hits very often and inflates hit frequency and RTP.
 - **Missing base payout** (`blueprint-paytable-missing-base-payout`) — payouts defined only for 4/5-of-a-kind but
-  not 3, when `reels` is at least 3.
+ not 3, when `reels` is at least 3.
 - **Generous entry-tier payout** (`blueprint-paytable-generous-entry-payout`) — a symbol's lowest configured
-  match-count pays more than 10x bet, unusually generous for what's normally the most frequently-hit tier.
+ match-count pays more than 10x bet, unusually generous for what's normally the most frequently-hit tier.
 - **No low/high-pay tiering** (`blueprint-paytable-no-tiering`) — every symbol with a payout tops out at the exact
-  same multiplier, so there's no differentiation between filler and premium symbols.
+ same multiplier, so there's no differentiation between filler and premium symbols.
 - **A symbol dominates the reels** (`blueprint-weighting-dominant-symbol`) — one symbol makes up more than 40% of
-  `symbolWeights` (or `reelStripGeneration`'s own `symbolCounts`/`symbolWeights`, or, counting occurrences across
-  every strip, `reelStrips`), crowding out the rest.
+ `symbolWeights` (or `reelStripGeneration`'s own `symbolCounts`/`symbolWeights`, or, counting occurrences across
+ every strip, `reelStrips`), crowding out the rest.
 - **A wild is too common** (`blueprint-weighting-wild-too-common`) — a wild symbol's weight is at least as high as
-  the average of the regular symbols. Wilds substitute for everything, so landing this often inflates RTP well
-  beyond what the paytable alone suggests.
+ the average of the regular symbols. Wilds substitute for everything, so landing this often inflates RTP well
+ beyond what the paytable alone suggests.
 - **Payout doesn't track rarity** (`blueprint-weighting-pay-mismatch`) — a higher-paying symbol isn't rarer (in
-  `symbolWeights`/`reelStripGeneration`/`reelStrips`) than a lower-paying one. This is the most common way a
-  blueprint's RTP quietly runs away: identical weights across symbols with different payouts (every symbol equally
-  likely, but some worth much more) mean the high-value symbol lands just as often as the low-value one — see
-  the complete example above's own `symbolWeights`/`paytable` for what a fix looks like (low-pay symbols weighted heavier, high-pay symbols rarer).
+ `symbolWeights`/`reelStripGeneration`/`reelStrips`) than a lower-paying one. This is the most common way a
+ blueprint's RTP quietly runs away: identical weights across symbols with different payouts (every symbol equally
+ likely, but some worth much more) mean the high-value symbol lands just as often as the low-value one — see
+ the complete example above's own `symbolWeights`/`paytable` for what a fix looks like (low-pay symbols weighted heavier, high-pay symbols rarer).
 
 None of these check the actual math (that's what [`pokie sim`](#pokie-sim-packageroot) is for) — they flag shapes
 that are very likely to be a mistake, so run `pokie sim --rounds 100000` on anything they flag before trusting the
@@ -930,19 +928,19 @@ generating anything.
 Failure modes:
 
 - `<project>` missing, or not recognized as a POKIE project at all (`pokie build` with no arguments, or an unknown
-  option) throws a `Usage: pokie build <project> --target <artifact> [--out <path>]` error naming the project types
-  the CLI understands.
+ option) throws a `Usage: pokie build <project> --target <artifact> [--out <path>]` error naming the project types
+ the CLI understands.
 - `--target` omitted, or given a value outside `blueprint`/`tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`,
-  throws before `<project>` is even resolved, listing the full accepted vocabulary.
+ throws before `<project>` is even resolved, listing the full accepted vocabulary.
 - `--target` given a value `<project>`'s own resolved type can't build throws naming which source types that target
-  actually supports and how to recover.
+ actually supports and how to recover.
 - A blueprint (`tsPackage` target) with any error-level issue prints every error and exits `1` without generating
-  anything.
+ anything.
 - `--out` already existing as a *file* where a directory target expects one (or vice versa for either file target,
-  `parWorkbook` or `wasm`)
-  throws — pick a different `--out` or remove it first.
+ `parWorkbook` or `wasm`)
+ throws — pick a different `--out` or remove it first.
 - `--out` already existing and having any content in it at all — even just your own unrelated `package.json`, or a
-  directory a previous `pokie build` run itself produced — throws, naming the destination. See the next section.
+ directory a previous `pokie build` run itself produced — throws, naming the destination. See the next section.
 
 ### Conflict handling: an existing `--out` destination
 
@@ -955,7 +953,7 @@ different, empty destination. Every target enforces this the same way (`Artifact
 per-target-different overwrite policy.
 
 `parWorkbook` and `wasm` are file destinations: their target file must be missing, rather than an empty
-directory. A canonical WASM publication also owns its integrity-bound sidecar and any operation-owned companion
+directory. A WASM publication also owns its integrity-bound sidecar and any operation-owned companion
 under that file's companion layout; a conflict never authorizes replacing those files in place.
 
 Building the *same* blueprint with the same `pokie` version, into two different empty directories, reproduces
@@ -978,18 +976,18 @@ pass `runtimePackageRoot` in the generation options. No TypeScript compile step 
 
 ```
 pokie build sample-slot.blueprint.json --target tsPackage --out sample-slot
-# Optional for local developer dependencies: cd sample-slot && npm install && cd ..
+# Optional for local developer dependencies: cd sample-slot && npm install && cd..
 
-pokie inspect ./sample-slot
+pokie inspect./sample-slot
 
-pokie validate ./sample-slot
+pokie validate./sample-slot
 
-pokie sim ./sample-slot --rounds 100000 --seed demo --out sim.json
+pokie sim./sample-slot --rounds 100000 --seed demo --out sim.json
 pokie report sim.json
 
-pokie replay ./sample-slot --seed demo --round 42
+pokie replay./sample-slot --seed demo --round 42
 
-pokie dev ./sample-slot
+pokie dev./sample-slot
 ```
 
 `pokie build`'s own success output prints exactly this sequence (with real paths substituted in) as its "Next:"
@@ -1024,7 +1022,7 @@ pokie par export starter.blueprint.json --out starter.par.xlsx
 pokie par import starter.par.xlsx --out starter.blueprint.json
 ```
 
-The canonical builds use these same physical PAR paths: `pokie build <config.json> --target parWorkbook` exports the identical workbook, and `pokie import <input.xlsx>` imports it. The
+The builds use these same physical PAR paths: `pokie build <config.json> --target parWorkbook` exports the identical workbook, and `pokie import <input.xlsx>` imports it. The
 workbook suffix is case-insensitive (`.xlsx` and `.XLSX` both select the PAR importer); the
 generic import command only routes a directory to Stake Engine reconstruction when it is a
 POKIE-produced export with `pokie-manifest.json`. For a compatible foreign Stake directory,
@@ -1035,32 +1033,32 @@ A minimal starter Blueprint:
 
 ```json
 {
-    "manifest": {
-        "id": "par-sheet-starter",
-        "name": "PAR Sheet Starter",
-        "version": "0.1.0",
-        "description": "A pokie par export/import example: 3x3, a wild, literal reel strips, and 3 horizontal paylines."
-    },
-    "reels": 3,
-    "rows": 3,
-    "symbols": ["A", "K", "Q", "W"],
-    "wilds": ["W"],
-    "paytable": {
-        "A": {"3": 10},
-        "K": {"3": 6},
-        "Q": {"3": 3}
-    },
-    "paylines": [
-        [0, 0, 0],
-        [1, 1, 1],
-        [2, 2, 2]
-    ],
-    "reelStrips": [
-        ["A", "K", "Q", "K", "A", "Q", "K", "Q", "W"],
-        ["K", "Q", "A", "Q", "K", "A", "Q", "A", "W"],
-        ["Q", "A", "K", "A", "Q", "K", "A", "K", "W"]
-    ],
-    "availableBets": [1, 2, 5]
+ "manifest": {
+ "id": "par-sheet-starter",
+ "name": "PAR Sheet Starter",
+ "version": "0.1.0",
+ "description": "A pokie par export/import example: 3x3, a wild, literal reel strips, and 3 horizontal paylines."
+ },
+ "reels": 3,
+ "rows": 3,
+ "symbols": ["A", "K", "Q", "W"],
+ "wilds": ["W"],
+ "paytable": {
+ "A": {"3": 10},
+ "K": {"3": 6},
+ "Q": {"3": 3}
+ },
+ "paylines": [
+ [0, 0, 0],
+ [1, 1, 1],
+ [2, 2, 2]
+ ],
+ "reelStrips": [
+ ["A", "K", "Q", "K", "A", "Q", "K", "Q", "W"],
+ ["K", "Q", "A", "Q", "K", "A", "Q", "A", "W"],
+ ["Q", "A", "K", "A", "Q", "K", "A", "K", "W"]
+ ],
+ "availableBets": [1, 2, 5]
 }
 ```
 
@@ -1081,7 +1079,7 @@ A `.par.xlsx` workbook has up to ten sheets:
 | `BetModes` | `Id`, `Label`, `Cost Multiplier`, `Target RTP`, `Runtime Type`, `Is Default`, `Forced Free Games` — one row per selectable bet mode | no | `betModes` |
 | `Meta` | `Key`, `Value` (rows: `Schema Version`, `Pokie Version`, `Exported At`, `Source`, `Blueprint Hash`) | no | nothing — provenance only, see below |
 
-`ReelStrips`/`Paylines` columns must be named exactly `Reel 1`, `Reel 2`, ... `Reel N` (case-insensitive, one
+`ReelStrips`/`Paylines` columns must be named exactly `Reel 1`, `Reel 2`,... `Reel N` (case-insensitive, one
 physical column per reel) — a column with any other name is never treated as reel data (see Diagnostics below).
 
 `BetModes`' `Runtime Type`/`Is Default`/`Forced Free Games` columns are an explicit, opt-in runtime-semantics
@@ -1120,7 +1118,7 @@ Options:
 
 - `--out <file>` — where to write the imported `GameBlueprint` JSON.
 - `--format json` — print the full `{blueprint, provenance, issues, conversionEvidence}` importer result as JSON instead of a human-readable
-  summary. `conversionEvidence` retains the original Meta cells, diagnostics and explicit import facts.
+ summary. `conversionEvidence` retains the original Meta cells, diagnostics and explicit import facts.
 - `--dry-run` — validate and show the prepared file destination and evidence sidecar without writing either file.
 
 Successful imports also write `<blueprint>.conversion-evidence.json`. The sidecar records the source workbook,
@@ -1132,7 +1130,7 @@ Exit code is non-zero (and nothing is written) if there are any error-level diag
 ### `pokie par export <config.json>`
 
 Loads `<config.json>` (a `GameBlueprint`, same as [`pokie build`](#pokie-build-project)), validates it, materializes
-its canonical reel source into the workbook's literal snapshot, and writes a `.par.xlsx` workbook to `--out <file>` (default:
+its reel source into the workbook's literal snapshot, and writes a `.par.xlsx` workbook to `--out <file>` (default:
 `<config.json>` with `.blueprint.json`/`.json` replaced by `.par.xlsx`). On any error, nothing is written — see
 the atomicity guarantee above.
 
@@ -1147,42 +1145,42 @@ Both directions report problems as `ValidationIssue`s (the same `{code, severity
 shape as [`pokie build`'s validation](#validation)):
 
 - an unrecognized sheet name (`parsheet-unknown-sheet`, warning) or column (`parsheet-unknown-column`, warning) —
-  a column that isn't literally `Reel <k>` in `ReelStrips`/`Paylines` is reported this way too, and its data never
-  becomes part of the imported blueprint;
+ a column that isn't literally `Reel <k>` in `ReelStrips`/`Paylines` is reported this way too, and its data never
+ becomes part of the imported blueprint;
 - a missing required sheet (`parsheet-missing-sheet`) or column (`parsheet-missing-column`);
 - a `Reel <k>` column repeated more than once (`parsheet-reel-column-duplicate`, error — only the first occurrence
-  is used) or missing from the `1..N` sequence (`parsheet-reel-column-missing`, error, one per missing index);
+ is used) or missing from the `1..N` sequence (`parsheet-reel-column-missing`, error, one per missing index);
 - a cell that can't be parsed as the type its column expects — e.g. a non-numeric `Multiplier`
-  (`parsheet-paytable-invalid-multiplier-cell`) or an unrecognizable `Wild`/`Scatter` flag
-  (`parsheet-symbol-invalid-flag`);
+ (`parsheet-paytable-invalid-multiplier-cell`) or an unrecognizable `Wild`/`Scatter` flag
+ (`parsheet-symbol-invalid-flag`);
 - a blank cell in a required column, which drops that row (`parsheet-symbol-missing-id`,
-  `parsheet-paytable-missing-symbol`);
+ `parsheet-paytable-missing-symbol`);
 - two rows that collide once turned into a single `GameBlueprint` field, e.g. the same `(Symbol, Matches)` pair
-  twice in `Paytable` (`parsheet-paytable-duplicate-entry`, warning — the last one wins) or the same key twice in
-  `Manifest`/`Meta` (`parsheet-manifest-duplicate-key`, warning);
+ twice in `Paytable` (`parsheet-paytable-duplicate-entry`, warning — the last one wins) or the same key twice in
+ `Manifest`/`Meta` (`parsheet-manifest-duplicate-key`, warning);
 - a gap in `ReelStrips` — a blank cell followed by a non-blank one further down the same column
-  (`parsheet-reelstrips-gap`) — as opposed to a shorter (ragged) reel's trailing blank cells, which are fine;
+ (`parsheet-reelstrips-gap`) — as opposed to a shorter (ragged) reel's trailing blank cells, which are fine;
 - on export, a generated reel that cannot satisfy its own constraints
-  (`parsheet-reel-generation-failed`, naming `reelStripGeneration[index]`) — export aborts with nothing written;
+ (`parsheet-reel-generation-failed`, naming `reelStripGeneration[index]`) — export aborts with nothing written;
 - on import, a `WinModel` sheet with no recognizable `Type` value at all (`parsheet-winmodel-missing-type` if
-  blank, `parsheet-winmodel-invalid-type` if present but not `lines`/`ways`/`clusters`) — `winModel` is dropped
-  rather than silently defaulting to `lines`; a `Minimum Cluster Size` given for a non-`clusters` type is ignored
-  with a warning (`parsheet-winmodel-cluster-size-ignored`); a `Minimum Cluster Size` that's present but not a
-  number is reported (`parsheet-winmodel-invalid-cluster-size`, error) rather than silently dropped;
+ blank, `parsheet-winmodel-invalid-type` if present but not `lines`/`ways`/`clusters`) — `winModel` is dropped
+ rather than silently defaulting to `lines`; a `Minimum Cluster Size` given for a non-`clusters` type is ignored
+ with a warning (`parsheet-winmodel-cluster-size-ignored`); a `Minimum Cluster Size` that's present but not a
+ number is reported (`parsheet-winmodel-invalid-cluster-size`, error) rather than silently dropped;
 - on import, a `Mechanics` sheet whose rows disagree on which scatter symbol they're for
-  (`parsheet-mechanics-multiple-scatter-symbols`) — a single free-games award has exactly one scatter symbol, so
-  this can't round-trip losslessly and is reported as an error rather than silently picking one;
+ (`parsheet-mechanics-multiple-scatter-symbols`) — a single free-games award has exactly one scatter symbol, so
+ this can't round-trip losslessly and is reported as an error rather than silently picking one;
 - on import, provenance problems — see below;
 - everything `GameBlueprintValidator` itself already checks once the blueprint is assembled (unknown/duplicate
-  symbols, unreachable symbols, out-of-range match counts, paytable/weighting quality warnings, ...) — these use
-  the same `blueprint-*` codes documented under [Validation](#validation), not `parsheet-*`.
+ symbols, unreachable symbols, out-of-range match counts, paytable/weighting quality warnings,...) — these use
+ the same `blueprint-*` codes documented under [Validation](#validation), not `parsheet-*`.
 
 ### Provenance (`Meta` sheet)
 
 `pokie par export <config.json>` always writes a `Meta` sheet recording the `GameBlueprint` schema version, the `pokie` version
 that exported it, an ISO 8601 export timestamp, the source blueprint's file path (when known), and a `sha256`
 hash of the exported literal snapshot. `Source` identifies the authored Blueprint path, while `Blueprint Hash`
-identifies the materialized data actually stored in the workbook. That hash is computed over a canonical field order
+identifies the materialized data actually stored in the workbook. That hash is computed over a field order
 (not the source JSON's own key order — see `computeBlueprintHash`), so an untouched round trip always reproduces
 the same hash regardless of how the original file's keys were ordered.
 
@@ -1190,20 +1188,20 @@ the same hash regardless of how the original file's keys were ordered.
 issue, and verifies it against the blueprint it just assembled:
 
 - no `Meta` sheet at all → `provenance` is `undefined`, and `parsheet-provenance-missing` (warning) — e.g. a
-  hand-authored PAR sheet that was never exported by `pokie par export <config.json>` in the first place;
+ hand-authored PAR sheet that was never exported by `pokie par export <config.json>` in the first place;
 - `Meta` present but missing/invalid `Schema Version`/`Blueprint Hash` → `parsheet-provenance-malformed` (warning);
-  no further hash/schema check is attempted;
+ no further hash/schema check is attempted;
 - a well-formed but unrecognized `Schema Version` → `parsheet-provenance-schema-mismatch` (warning);
 - a well-formed `Blueprint Hash` that doesn't match a fresh hash of the imported data →
-  `parsheet-provenance-hash-mismatch` (warning) — the workbook was likely hand-edited (or otherwise changed) since
-  `pokie par export <config.json>` produced it;
+ `parsheet-provenance-hash-mismatch` (warning) — the workbook was likely hand-edited (or otherwise changed) since
+ `pokie par export <config.json>` produced it;
 - otherwise, `parsheet-provenance-present` (info) — the recorded hash matches the imported data.
 
 A missing, malformed or unsupported schema cannot qualify for lossless eligibility,
 even when the represented hash matches. An explicitly invalid `Lossless Eligible`
 value produces a field diagnostic and remains ineligible. Older supported workbooks
 may omit that optional field. `Meta` also retains detailed conversion diagnostics
-and loss facts in `Conversion Evidence`; canonical build previews/results and Studio
+and loss facts in `Conversion Evidence`; build previews/results and Studio
 show those observations. Re-export retains prior import/materialization losses from
 the workbook or its Blueprint conversion-evidence sidecar. A new matching hash does
 not erase that history.
@@ -1226,26 +1224,26 @@ By default this is a **dry run**: it prints every targeted reel's generated stri
 has a `reelStrips` entry at that index, how many positions differ from it) and writes nothing. Options:
 
 - `--reel <index>` — target a single 0-based reel index instead of every `"generated"` entry. Errors if the index
-  is out of range, or names a reel that's already `"literal"` (there's no generation config to run).
+ is out of range, or names a reel that's already `"literal"` (there's no generation config to run).
 - `--seed <integer>` — override every targeted reel's own `seed` for this run only (useful for trying a different
-  candidate without editing the file) — never written back unless combined with `--apply`.
+ candidate without editing the file) — never written back unless combined with `--apply`.
 - `--apply` — pin each successfully generated reel's resulting strip into `reelStripGeneration[i]` as
-  `{type: "literal", strip}`, replacing that entry outright. Every other reel (untargeted, or already `"literal"`)
-  is left completely unchanged. Nothing is written at all unless **every** targeted reel generates successfully —
-  see below. `reelStripGeneration` stays present (now all-`"literal"`), so a blueprint that started this way still
-  can't be read by a tool that only understands plain `reelStrips` — see `--materialize` for that. If a hand-edited
-  input also has an incompatible top-level `reelStrips` field, the applied output removes that stale source so the
-  saved Blueprint validates and downstream tools use the newly pinned per-reel entries.
+ `{type: "literal", strip}`, replacing that entry outright. Every other reel (untargeted, or already `"literal"`)
+ is left completely unchanged. Nothing is written at all unless **every** targeted reel generates successfully —
+ see below. `reelStripGeneration` stays present (now all-`"literal"`), so a blueprint that started this way still
+ can't be read by a tool that only understands plain `reelStrips` — see `--materialize` for that. If a hand-edited
+ input also has an incompatible top-level `reelStrips` field, the applied output removes that stale source so the
+ saved Blueprint validates and downstream tools use the newly pinned per-reel entries.
 - `--materialize` — resolve **every** `"generated"` entry (always the whole blueprint, using each reel's own
-  declared `seed` — incompatible with `--reel`/`--seed`/`--apply`) and collapse the result into a plain top-level
-  `reelStrips` array with `reelStripGeneration` removed entirely. This is the same materialization `pokie build`
-  performs internally when compiling a runtime module, exposed here as its own persisted output — it's the
-  optional way to persist the literal snapshot beside the authored Blueprint; PAR export and
-  `pokie build --target parWorkbook` materialize their workbook snapshot automatically without changing the source.
+ declared `seed` — incompatible with `--reel`/`--seed`/`--apply`) and collapse the result into a plain top-level
+ `reelStrips` array with `reelStripGeneration` removed entirely. This is the same materialization `pokie build`
+ performs internally when compiling a runtime module, exposed here as its own persisted output — it's the
+ optional way to persist the literal snapshot beside the authored Blueprint; PAR export and
+ `pokie build --target parWorkbook` materialize their workbook snapshot automatically without changing the source.
 - `--out <file>` — write the resulting blueprint to a different path instead of overwriting `<blueprint.json>` in
-  place (only meaningful together with `--apply`/`--materialize`).
+ place (only meaningful together with `--apply`/`--materialize`).
 - `--format json` — print the full per-reel result (`success`, `attemptsUsed`, `diagnostics`, `strip`) as JSON
-  instead of the human-readable summary.
+ instead of the human-readable summary.
 
 This command only ever reads and writes the given Blueprint Project file — it never touches a built package.
 
@@ -1262,9 +1260,9 @@ pokie reel generate game.blueprint.json --materialize --out game.materialized.js
 
 Use the inline `reelStripGeneration` example above to try this against.
 
-## Canonical artifact builds and standalone descriptors
+## Artifact builds and standalone descriptors
 
-`pokie build` names the artifact a project receives. Every canonical build accepts the same preview flag:
+`pokie build` names the artifact a project receives. Every build accepts the same preview flag:
 
 ```
 pokie build outcomelibrary-config.json --target outcomeLibrary --out bundle --dry-run
@@ -1281,7 +1279,7 @@ Library lifecycle described in [`pokie build`](#pokie-build-project). Large reel
 deterministic bounded-coverage library, so a random Blueprint can then use either artifact conversion on the
 standard Node heap; inspect `manifest.json` to see the recorded strategy and seed.
 
-Standalone descriptors use the same canonical command and prepared planner operation. Outcome descriptors
+Standalone descriptors use the same command and prepared planner operation. Outcome descriptors
 support `libraryPath` or streamed `outcomesPath` with `libraryId`; Stake descriptors support `libraryPath` or
 `bundleDir`/`bundleModeName`, including imported `config.json` with generator metadata and source provenance.
 Relative paths resolve against the descriptor directory. Project recognition errors propagate before descriptor
@@ -1292,7 +1290,7 @@ These differ from historical artifact-command defaults (`outcomelibrary`, `stake
 
 ## `pokie build <config.json> --target stakeAdapter [--out <dir>] [--dry-run]`
 
-Exports one or more canonical [`WeightedOutcomeLibrary`](weighted-outcome-library.md) JSON files (one per bet
+Exports one or more [`WeightedOutcomeLibrary`](weighted-outcome-library.md) JSON files (one per bet
 mode) to the real [Stake Engine math-sdk static file format](https://stakeengine.github.io/math-sdk/rgs_docs/data_format/)
 — see [Stake Engine Export](stake-engine-export.md) for the full output layout, validation rules, and the
 `RoundRecord` → Stake "events" mapping.
@@ -1305,16 +1303,16 @@ pokie build stake-config.json --target stakeAdapter --out stakeengine [--dry-run
 
 ```json
 {
-    "modes": [
-        {"modeName": "base", "cost": 1, "libraryPath": "./libraries/base.json"},
-        {"modeName": "bonus", "cost": 100, "libraryPath": "./libraries/bonus.json"}
-    ]
+ "modes": [
+ {"modeName": "base", "cost": 1, "libraryPath": "./libraries/base.json"},
+ {"modeName": "bonus", "cost": 100, "libraryPath": "./libraries/bonus.json"}
+ ]
 }
 ```
 
 `libraryPath` entries resolve relative to `<config.json>`'s own directory.
 
-A mode entry can load from a canonical [Outcome Library Bundle](outcome-library-bundle.md) instead — replace
+A mode entry can load from a [Outcome Library Bundle](outcome-library-bundle.md) instead — replace
 `libraryPath` with `bundleDir` (and optionally `bundleModeName`, which defaults to `modeName`):
 
 ```json
@@ -1337,7 +1335,7 @@ Every `payoutMultiplier`/amount is converted into Stake's own integer unit conve
 never rounded — see [Stake unit conversion](stake-engine-export.md#stake-unit-conversion--explicit-never-rounded))
 before it's written.
 
-The canonical adapter build rejects an occupied destination, including a prior adapter export, without
+The adapter build rejects an occupied destination, including a prior adapter export, without
 touching it. Choose a different unused `--out` path (or remove the destination yourself after checking it) and
 retry. A failed export never leaves a partial artifact — see [Rebuild safety](stake-engine-export.md#rebuild-safety--the-programmatic-writer-replaces-the-whole-directory)
 for the writer's publish discipline.
@@ -1362,10 +1360,10 @@ Writes exactly the shape `pokie build <config.json> --target stakeAdapter` reads
 
 ```json
 {
-    "modes": [
-        {"modeName": "base", "cost": 1, "libraryPath": "./libraries/base.json"},
-        {"modeName": "bonus", "cost": 100, "libraryPath": "./libraries/bonus.json"}
-    ]
+ "modes": [
+ {"modeName": "base", "cost": 1, "libraryPath": "./libraries/base.json"},
+ {"modeName": "bonus", "cost": 100, "libraryPath": "./libraries/bonus.json"}
+ ]
 }
 ```
 
@@ -1391,7 +1389,7 @@ reconstructed `roundId`/win breakdown/`provenance.pokieVersion` don't match the 
 ## `pokie report <stakeDir>`
 
 Resolves, validates, and computes exact weighted statistics over **any** Stake Engine outcome directory
-(`index.json`, per-mode lookup CSV, per-mode zstd-compressed JSONL books) through its canonical reader — no
+(`index.json`, per-mode lookup CSV, per-mode zstd-compressed JSONL books) through its reader — no
 `pokie-manifest.json` required. See [Stake Engine Standalone](stake-engine-standalone.md) for the full data
 shapes, validation-code table, and pluggable event classification.
 
@@ -1400,15 +1398,14 @@ pokie report stakeengine
 ```
 
 It prints the source kind, streaming limitation(s), structural issues when present, and otherwise an exact
-per-mode summary (RTP, hit frequency, and standard deviation). `--format json` instead prints the canonical
-structured outcome-source analysis (`rootPath`, `descriptor`, `issues`, and per-mode `analysis`), and `--out
+per-mode summary (RTP, hit frequency, and standard deviation). `--format json` instead prints the structured outcome-source analysis (`rootPath`, `descriptor`, `issues`, and per-mode `analysis`), and `--out
 <file>` writes the same payload. Without `--format json`, `--out <file>` writes the human-readable analysis.
 
 ## Diffing Stake Engine outcome directories: `pokie diff <leftPath> <rightPath>`
 
 Reads and analyzes two Stake Engine outcome directories with the same canonical-reader pipeline `pokie report` uses,
 then diffs the two resulting analyses mode-by-mode: added/removed modes, every scalar metric (`rtp`,
-`hitFrequency`, `variance`, ...), event classification categories, and the payout distribution. See
+`hitFrequency`, `variance`,...), event classification categories, and the payout distribution. See
 [Diffing two analyses](stake-engine-standalone.md#diffing-two-analyses) for the full shape and why it never
 attempts an event-level (per-outcome) diff.
 
@@ -1419,9 +1416,9 @@ pokie diff stakeengine-before stakeengine-after --format json
 Options:
 
 - `--format json` — print the machine-readable `{stakeDir: {left, right}, issues: {left, right}, diff}` shape
-  instead of a text summary.
+ instead of a text summary.
 - `--out <file>` — also write that same JSON shape to a new file. It refuses an existing destination and any path
-  inside either input directory; choose a new unused path before retrying.
+ inside either input directory; choose a new unused path before retrying.
 
 `diff` is `undefined` whenever either side reports an error-level issue. Exit code follows the Unix `diff(1)`
 convention rather than the usual plain 0/1:
@@ -1434,10 +1431,10 @@ convention rather than the usual plain 0/1:
 
 ## `pokie build <config.json> --target outcomeLibrary [--out <dir>] [--dry-run]`
 
-Builds a canonical [Outcome Library Bundle](outcome-library-bundle.md) — a directory with a small manifest, a
+Builds a [Outcome Library Bundle](outcome-library-bundle.md) — a directory with a small manifest, a
 small per-mode index, and one streaming JSONL outcomes file per mode — streaming each mode's outcomes straight to
 disk one at a time, never materializing a full `WeightedOutcomeLibrary` in memory to do it. This is the one
-canonical bundle format both the pre-generated runtime and `pokie build <config.json> --target stakeAdapter` (via a mode's
+bundle format both the pre-generated runtime and `pokie build <config.json> --target stakeAdapter` (via a mode's
 `bundleDir`/`bundleModeName`) load from.
 
 ```
@@ -1449,17 +1446,17 @@ loaded into memory) or a streaming JSONL file of outcomes for a mode too large t
 
 ```json
 {
-    "modes": [
-        {"modeName": "base", "libraryPath": "./libraries/base.json"},
-        {"modeName": "bonus", "outcomesPath": "./outcomes-bonus.jsonl", "libraryId": "bonus-lib"}
-    ]
+ "modes": [
+ {"modeName": "base", "libraryPath": "./libraries/base.json"},
+ {"modeName": "bonus", "outcomesPath": "./outcomes-bonus.jsonl", "libraryId": "bonus-lib"}
+ ]
 }
 ```
 
 - `libraryPath` — a plain `WeightedOutcomeLibrary` JSON file, resolved relative to `<config.json>`.
-- `outcomesPath` — a JSONL file of outcomes, one canonical `{"id", "weight", "artifact"}` record per line, **not**
-  wrapped in a library object, resolved relative to `<config.json>` and streamed line by line. Requires a string
-  `libraryId` alongside it (there's no wrapping library object to read one from); `schemaVersion` is optional.
+- `outcomesPath` — a JSONL file of outcomes, one `{"id", "weight", "artifact"}` record per line, **not**
+ wrapped in a library object, resolved relative to `<config.json>` and streamed line by line. Requires a string
+ `libraryId` alongside it (there's no wrapping library object to read one from); `schemaVersion` is optional.
 
 Exactly one of `libraryPath`/`outcomesPath` is required per mode.
 
@@ -1480,7 +1477,7 @@ Use `pokie report <path>`, `pokie sample <path> --mode <modeName>`, or `pokie di
 
 Operates directly on a resolved outcome-source project — an Outcome Library Bundle written by `pokie build
 <config.json> --target outcomeLibrary` or a Stake adapter directory written by `pokie build <config.json> --target stakeAdapter`
-— through its own canonical reader/selector, never `loadPokieGame` and never a re-derived
+— through its own reader/selector, never `loadPokieGame` and never a re-derived
 game-model calculation.
 
 ```
@@ -1496,7 +1493,7 @@ per-mode analysis (every outcome's own weight, enumerated exactly — no simulat
 outcome from a native outcome library's own mode through the same selector/session/server path live and
 pre-generated play already use (`WeightedOutcomeSelector` over the mode's own index). With `--seed <string>`, it
 selects derived round 1 (`derived-round-seed-v1`) and prints the standard JSON `ReplayDescriptor`, including its
-complete `outcomeSource` provenance (seed, round, mode, game/library identity and canonical result). Replay it
+complete `outcomeSource` provenance (seed, round, mode, game/library identity and result). Replay it
 with `pokie replay <bundle> --seed <seed> --round 1 --mode <mode>`. Without `--seed`, `sample` uses a
 cryptographically secure source and prints a human-readable selection only; it does **not** emit portable replay
 provenance. A
@@ -1505,11 +1502,11 @@ diagnostic every other unsupported project operation does, rather than attemptin
 two resolved outcome sources' own exact analyses mode-by-mode over the core metrics both a native bundle and a
 Stake Engine export already share (rtp, hit frequency, zero-win frequency, variance, standard deviation, max
 win probability) — either side may be either kind, since diffing never draws/samples anything and both kinds
-already expose a canonical reader's own exact analysis.
+already expose a reader's own exact analysis.
 
 ## `pokie certification build <bundleDir> <config.json>`
 
-Builds a canonical [Certification/Evidence Bundle](certification-evidence-bundle.md) on top of an already-built
+Builds a [Certification/Evidence Bundle](certification-evidence-bundle.md) on top of an already-built
 [Outcome Library Bundle](outcome-library-bundle.md) — a deterministic manifest (game/library hashes, provenance,
 per-mode exact weighted metrics, the source bundle's own deep-validation diagnostics) plus one JSONL file per
 mode of deterministically sampled, independently verifiable `RoundRecord` records. Never a second calculation
@@ -1524,15 +1521,15 @@ pokie certification build bundle certification-config.json --out certification
 
 ```json
 {
-    "modes": [
-        {"modeName": "base", "seed": "cert-2026-07-15-base", "sampleCount": 200},
-        {"modeName": "bonus", "seed": "cert-2026-07-15-bonus", "sampleCount": 50}
-    ]
+ "modes": [
+ {"modeName": "base", "seed": "cert-2026-07-15-base", "sampleCount": 200},
+ {"modeName": "bonus", "seed": "cert-2026-07-15-bonus", "sampleCount": 50}
+ ]
 }
 ```
 
 - `seed` — drives a `SeededWeightedOutcomeRandomSource` for this mode: the same `(bundleDir, seed, sampleCount)`
-  always reproduces the exact same sequence of sampled outcomes, byte-identically.
+ always reproduces the exact same sequence of sampled outcomes, byte-identically.
 - `sampleCount` — how many rounds to draw (with replacement) from this mode as evidence.
 
 Options:
@@ -1554,15 +1551,15 @@ files, its recorded metrics, and each individually sampled outcome. See
 [Certification/Evidence Bundle](certification-evidence-bundle.md#verification) for the full code table.
 
 ```
-pokie certification verify certification --source ../bundle
+pokie certification verify certification --source../bundle
 ```
 
 Options:
 
 - `--source <bundleDir>` — **required.** Where the live source Outcome Library Bundle actually is. The
-  certification bundle's own recorded `manifest.sourceBundleDir` is informational only and is never used as a
-  fallback — omitting `--source` fails with a usage error, and running `verify` without it programmatically
-  reports a diagnostic instead of reading anything outside `<certDir>`.
+ certification bundle's own recorded `manifest.sourceBundleDir` is informational only and is never used as a
+ fallback — omitting `--source` fails with a usage error, and running `verify` without it programmatically
+ reports a diagnostic instead of reading anything outside `<certDir>`.
 
 Exit code is non-zero if any issue is `error`-severity; warnings/info are printed either way.
 
@@ -1589,8 +1586,8 @@ pokie fairness seed-commit serverSeed.txt --out seed-commitment.json
 Options:
 
 - `--out <file>` — where to write the commitment JSON. Optional; the commitment is always printed to stdout
-  either way. If `<file>` already exists, the command fails with a usage error unless `--overwrite` is also given
-  (the same explicit-override convention `--overwrite` uses on `commit`/`reveal` below).
+ either way. If `<file>` already exists, the command fails with a usage error unless `--overwrite` is also given
+ (the same explicit-override convention `--overwrite` uses on `commit`/`reveal` below).
 - `--overwrite` — allow `--out` to replace an existing file.
 
 Exit code is non-zero (and nothing is written) if `serverSeed.txt` is empty/unreadable or a custom `issuedAt`
@@ -1605,20 +1602,20 @@ the same reader `FairnessRoundProofBuilder`/`Verifier` themselves use), so a com
 `libraryId`/`libraryHash` a real bundle actually has, never one a caller merely claims.
 
 ```
-pokie fairness commit seed-commitment.json --client-seed player-seed --nonce 0 --source ../bundle --mode <modeName> --out commitment.json
+pokie fairness commit seed-commitment.json --client-seed player-seed --nonce 0 --source../bundle --mode <modeName> --out commitment.json
 ```
 
 Options:
 
 - `--client-seed <seed>` — **required.** The player-supplied client seed.
-- `--nonce <n>` — **required.** A canonical non-negative decimal integer string (`"0"`, `"1"`, `"2"`, ... — the
-  same `"0"|[1-9]\d*"` rule `docs/stake-engine-export.md`'s own outcome-id parsing already uses), no larger than
-  `Number.MAX_SAFE_INTEGER`. Rejects a leading zero/sign, a decimal point, scientific notation (`"1e3"`), and
-  hexadecimal notation (`"0x10"`) — all of which `Number(...)` alone would otherwise silently accept.
+- `--nonce <n>` — **required.** A canonical non-negative decimal integer string (`"0"`, `"1"`, `"2"`,... — the
+ same `"0"|[1-9]\d*"` rule `docs/stake-engine-export.md`'s own outcome-id parsing already uses), no larger than
+ `Number.MAX_SAFE_INTEGER`. Rejects a leading zero/sign, a decimal point, scientific notation (`"1e3"`), and
+ hexadecimal notation (`"0x10"`) — all of which `Number(...)` alone would otherwise silently accept.
 - `--source <bundleDir>` — **required.** The live Outcome Library Bundle `--mode` is read from.
 - `--mode <modeName>` — **required.** Which mode's own index to pin `libraryId`/`libraryHash` from.
 - `--out <file>` — where to write the commitment JSON. Optional; always printed to stdout either way. Same
-  `--overwrite` convention as `seed-commit` above.
+ `--overwrite` convention as `seed-commit` above.
 - `--overwrite` — allow `--out` to replace an existing file.
 
 Exit code is non-zero (and nothing is written) if `<serverSeedCommitment.json>` doesn't parse or doesn't itself
@@ -1634,17 +1631,17 @@ commitment's own `clientSeed`/`nonce`/(now-revealed) `serverSeed` deterministica
 carry the revealed `serverSeed` — that's the point of a reveal — so redacting it would defeat the command.
 
 ```
-pokie fairness reveal commitment.json --server-seed serverSeed.txt --source ../bundle --out proof.json
+pokie fairness reveal commitment.json --server-seed serverSeed.txt --source../bundle --out proof.json
 ```
 
 Options:
 
 - `--server-seed <file>` — **required.** Plain text file holding the revealed `serverSeed`, normalized the
-  exact same way `seed-commit`'s own `<serverSeed.txt>` is (see that section's own "Seed file normalization"
-  above) — the same file used for both commands round-trips correctly by construction.
+ exact same way `seed-commit`'s own `<serverSeed.txt>` is (see that section's own "Seed file normalization"
+ above) — the same file used for both commands round-trips correctly by construction.
 - `--source <bundleDir>` — **required.** The live Outcome Library Bundle the round is drawn from.
 - `--out <file>` — where to write the proof JSON. Optional; always printed to stdout either way. Same
-  `--overwrite` convention as `seed-commit`/`commit` above.
+ `--overwrite` convention as `seed-commit`/`commit` above.
 - `--overwrite` — allow `--out` to replace an existing file.
 
 Exit code is non-zero (and nothing is written) if `<commitment.json>` doesn't parse or doesn't itself validate,
@@ -1666,19 +1663,19 @@ draw itself, against one pinned snapshot of the live bundle (a forged proof). No
 involved. See [Provably Fair](provably-fair.md#verification) for the full code table.
 
 ```
-pokie fairness verify proof.json --commitment commitment.json --source ../bundle
+pokie fairness verify proof.json --commitment commitment.json --source../bundle
 ```
 
 Options:
 
 - `--commitment <commitment.json>` — **required.** The original `FairnessCommitment` this proof claims to have
-  been built from. A `FairnessRoundProof` carries its own copies of the fields a commitment pins, but copies
-  alone can't prove they match anything that was ever actually committed to — without `--commitment`, full
-  verification is impossible and the command fails with a usage error (or, programmatically, a
-  `fairness-verify-commitment-required` diagnostic without reading anything).
+ been built from. A `FairnessRoundProof` carries its own copies of the fields a commitment pins, but copies
+ alone can't prove they match anything that was ever actually committed to — without `--commitment`, full
+ verification is impossible and the command fails with a usage error (or, programmatically, a
+ `fairness-verify-commitment-required` diagnostic without reading anything).
 - `--source <bundleDir>` — **required.** Where the live source Outcome Library Bundle actually is. A
-  `FairnessRoundProof` carries no bundle location of its own — omitting `--source` fails with a usage error, and
-  running `verify` without it programmatically reports a diagnostic instead of reading anything.
+ `FairnessRoundProof` carries no bundle location of its own — omitting `--source` fails with a usage error, and
+ running `verify` without it programmatically reports a diagnostic instead of reading anything.
 
 Exit code is non-zero if any issue is `error`-severity; warnings/info are printed either way.
 
@@ -1696,41 +1693,41 @@ pokie init
 ```
 
 ```
-  created  package.json
-  created  tsconfig.json
-  created  README.md
-  created  src/index.ts
+ created package.json
+ created tsconfig.json
+ created README.md
+ created src/index.ts
 
 Game package "sample-slot" (id: "sample-slot") prepared and verified in "/path/to/sample-slot".
 Load it anywhere with: loadPokieGame("/path/to/sample-slot") from "@fromstan/pokie".
 
 Next:
-  pokie validate /path/to/sample-slot
-  pokie sim /path/to/sample-slot --rounds 10000 --seed demo --out sim.json
-  pokie dev /path/to/sample-slot
-  npm start
+ pokie validate /path/to/sample-slot
+ pokie sim /path/to/sample-slot --rounds 10000 --seed demo --out sim.json
+ pokie dev /path/to/sample-slot
+ npm start
 ```
 
 `pokie init` never asks a single reel/paytable/mechanics question — it is entirely non-interactive, every default
 coming from the target directory itself:
 
 1. **Merge/create `package.json`** — a pre-existing `package.json` is patched in place: its own `name`, `version`,
-   and any other fields are preserved, and `main`/`exports`/`pokie.entry`/`scripts.build`/the `pokie` dependency
-   are filled in wherever they're missing. If one of those already has a *different* value — a real npm
-   project's own build output, or a `package.json` hand-edited since a previous `pokie init` — nothing is forced
-   over it: `pokie init` fails with exactly which field(s) conflict and leaves `package.json` completely
-   unmodified, so re-running after resolving the conflict by hand is always safe. With no `package.json` yet, one
-   is created fresh, with its `name` defaulting to the target directory's own basename (slugified into a valid
-   npm package name — lowercased, spaces/invalid characters replaced — since a directory name was never chosen
-   to double as one).
+ and any other fields are preserved, and `main`/`exports`/`pokie.entry`/`scripts.build`/the `pokie` dependency
+ are filled in wherever they're missing. If one of those already has a *different* value — a real npm
+ project's own build output, or a `package.json` hand-edited since a previous `pokie init` — nothing is forced
+ over it: `pokie init` fails with exactly which field(s) conflict and leaves `package.json` completely
+ unmodified, so re-running after resolving the conflict by hand is always safe. With no `package.json` yet, one
+ is created fresh, with its `name` defaulting to the target directory's own basename (slugified into a valid
+ npm package name — lowercased, spaces/invalid characters replaced — since a directory name was never chosen
+ to double as one).
 2. **Write `tsconfig.json`, `README.md`, `src/index.ts` wherever they're missing** — an existing one of these is
-   never overwritten, only reported as `skipped`, so re-running `pokie init` in a directory you've already started
-   hand-editing never clobbers your changes.
+ never overwritten, only reported as `skipped`, so re-running `pokie init` in a directory you've already started
+ hand-editing never clobbers your changes.
 3. **Install dependencies** (`npm install`, writing `package-lock.json`) — skip with `--no-install`.
 4. **Build** (`npm run build`, i.e. `tsc`, producing `dist/index.js`) and **verify** the result actually loads (the
-   same check [`pokie validate`](#pokie-validate-project) runs) — skipped, along with step 3, by `--no-prepare`.
-   A validation error or a failed build/load exits non-zero with the printed issues instead of silently leaving a
-   broken package on disk.
+ same check [`pokie validate`](#pokie-validate-project) runs) — skipped, along with step 3, by `--no-prepare`.
+ A validation error or a failed build/load exits non-zero with the printed issues instead of silently leaving a
+ broken package on disk.
 
 `--package-name <name>` overrides `package.json`'s own `name` field directly; short of that, an existing
 `package.json`'s own `name` is preserved untouched, and only with neither does the target directory's own
@@ -1743,13 +1740,12 @@ itself produced or is resuming (no `package.json`, or one whose `pokie.entry` do
 merge would write there), is left untouched unless `--yes` is given:
 
 ```
-$ pokie init ./some-other-project
+$ pokie init./some-other-project
 "/path/to/some-other-project" already has files in it and doesn't look like a POKIE package yet.
 Re-run with --yes to merge POKIE's package files into it -- existing files are only ever added to, never overwritten.
-$ pokie init ./some-other-project --yes
-  updated  package.json
-  created  tsconfig.json
-  ...
+$ pokie init./some-other-project --yes
+ updated package.json
+ created tsconfig.json...
 ```
 
 An empty or not-yet-existing directory never needs `--yes`, and neither does re-running `pokie init` again in a
@@ -1771,45 +1767,45 @@ game.createSession().play();
 
 From here, replace the generated `src/index.ts` with your own symbols, paytable, and session wiring — see
 [Getting Started](getting-started.md) and [Game Session & Configuration](game-session.md). `npm start` (from
-inside the package directory) runs [`pokie dev .`](#pokie-dev-packageroot) — the fastest way to see a change.
+inside the package directory) runs [`pokie dev.`](#pokie-dev-packageroot) — the fastest way to see a change.
 
 ## `pokie sim <packageRoot>`
 
 Loads a [game package](game-packages.md) with `loadPokieGame` and runs an [aggregate simulation](simulation.md)
 (`AggregateSimulationRunner`) against it, then reports RTP/hit-frequency/max-win statistics.
 
-The positional also accepts a Blueprint, a native Outcome Library (with `--mode`), or a canonical WASM
+The positional also accepts a Blueprint, a native Outcome Library (with `--mode`), or a WASM
 artifact. See the [WASM quick start](#wasm-quick-start) for the seeded single-worker comparison with replay.
 
 ```
-pokie sim ./sample-slot --rounds 10000 --seed demo --out report.json
-pokie sim ./sample-slot --rounds 1000000 --seed demo --workers 4 --out report.json
+pokie sim./sample-slot --rounds 10000 --seed demo --out report.json
+pokie sim./sample-slot --rounds 1000000 --seed demo --workers 4 --out report.json
 ```
 
 Options:
 
 - `--rounds <number>` — how many rounds to play (default `1000`, `SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS`).
 - `--seed <string>` — forwarded as `context.seed` to `game.createSession(context)`. **Best-effort, not guaranteed**:
-  POKIE has no built-in way to seed an arbitrary loaded game — it's up to the game package's own `createSession`
-  to read `context.seed` and thread it into a `SeededRandomNumberGenerator`. A game that ignores `context` will
-  simply run unseeded, seed or no seed. Note also that `VideoSlotConfig`'s *default* reel-strip generator shuffles
-  with an unseeded `Math.random()` at construction time, independently of any RNG passed to
-  `SymbolsCombinationsGenerator` — a game package needs fixed (non-shuffled) symbol sequences, e.g. via
-  `config.setSymbolsSequences(...)`, for `--seed` to make a whole run reproducible, not just individual reel stops.
+ POKIE has no built-in way to seed an arbitrary loaded game — it's up to the game package's own `createSession`
+ to read `context.seed` and thread it into a `SeededRandomNumberGenerator`. A game that ignores `context` will
+ simply run unseeded, seed or no seed. Note also that `VideoSlotConfig`'s *default* reel-strip generator shuffles
+ with an unseeded `Math.random()` at construction time, independently of any RNG passed to
+ `SymbolsCombinationsGenerator` — a game package needs fixed (non-shuffled) symbol sequences, e.g. via
+ `config.setSymbolsSequences(...)`, for `--seed` to make a whole run reproducible, not just individual reel stops.
 - `--workers <number>` — split `--rounds` across this many worker threads (default `1`; must be an integer between
-  1 and `MAX_SIMULATION_WORKERS`, currently 32). See
-  [Parallel simulation](simulation.md#parallel-simulation-workers) for the full mechanism, reproducibility
-  guarantees, and memory/CPU tradeoffs — the short version: `--workers 1` is the original, unchanged sequential
-  path; `--workers N > 1` runs N real OS threads, each independently loading `<packageRoot>` and playing its own
-  share of the rounds, merged back into one report. **`--workers > 1` requires `<packageRoot>` to be a real,
-  on-disk game package** — each worker thread calls `loadPokieGame` on it independently, so this doesn't work
-  against an in-memory/mocked game (not a concern for normal CLI use, only for embedding `pokie sim`'s underlying
-  API in your own tooling).
+ 1 and `MAX_SIMULATION_WORKERS`, currently 32). See
+ [Parallel simulation](simulation.md#parallel-simulation-workers) for the full mechanism, reproducibility
+ guarantees, and memory/CPU tradeoffs — the short version: `--workers 1` is the original, unchanged sequential
+ path; `--workers N > 1` runs N real OS threads, each independently loading `<packageRoot>` and playing its own
+ share of the rounds, merged back into one report. **`--workers > 1` requires `<packageRoot>` to be a real,
+ on-disk game package** — each worker thread calls `loadPokieGame` on it independently, so this doesn't work
+ against an in-memory/mocked game (not a concern for normal CLI use, only for embedding `pokie sim`'s underlying
+ API in your own tooling).
 - `--out <file>` — write the JSON report to `<file>`.
 - `--format json` — print the JSON report to stdout instead of the default human-readable summary. Independent of
-  `--out`: combine both to see the report and save it in the same run.
+ `--out`: combine both to see the report and save it in the same run.
 - `--min-rounds <number>`, `--rtp-tolerance <number>`, `--check-interval <number>`, `--stable-checks <number>` —
-  opt-in adaptive early stop. See [Adaptive early stop (convergence)](#adaptive-early-stop-convergence) below.
+ opt-in adaptive early stop. See [Adaptive early stop (convergence)](#adaptive-early-stop-convergence) below.
 
 The session's credit balance is set to `Number.MAX_SAFE_INTEGER` before the run starts — `pokie sim` measures
 RTP/volatility, not risk of ruin, so `--rounds` is never cut short by the session running out of credits.
@@ -1818,51 +1814,51 @@ The JSON report shape:
 
 ```ts
 {
-    game: {id: string; name: string; version: string};
-    requestedRounds: number;
-    rounds: number;           // rounds actually played — can be less than requestedRounds if the game
-                               // itself stops early (canPlayNextGame() returning false)
-    seed: string | null;
-    totalBet: number;
-    totalWin: number;
-    rtp: number;               // 0-1, e.g. 0.9532 for 95.32%
-    hitFrequency: number;      // 0-1
-    maxWin: number;
-    durationMs: number;
-    spinsPerSecond: number;
-    workers?: number;            // how many worker threads the run was split across (1 by default)
-    reproducibility?: {
-        game: {id: string; name: string; version: string};
-        seed: string | null;
-        requestedRounds: number;
-        actualRounds: number;
-        command: string;         // e.g. `pokie sim <packageRoot> --rounds 10000 --seed demo`, ready to re-run
-                                  // (includes `--workers N` when N > 1)
-        workerSeedStrategy?: string; // human-readable description of how per-worker seeds were derived
-    };
-    warnings?: string[];         // e.g. no seed given, low rounds, 0 hit frequency/maxWin/totalBet, early stop
-    recommendations?: string[];  // simple next-step hints, e.g. use --seed, raise --rounds, run pokie diff/--out
-    breakdown?: {
-        components: Record<string, {         // keyed by category, e.g. "base", "freeGames"
-            rounds: number;
-            totalBet: number;
-            totalWin: number;
-            rtp: number;           // this category's OWN payback ratio: totalWin / totalBet (within the category)
-            contribution: number;  // this category's share of the report's overall rtp: totalWin / report.totalBet
-            hitFrequency: number;
-            maxWin: number;
-        }>;
-    };
-    stopReason?: "maxRounds" | "sessionStopped" | "converged"; // why `rounds` stopped where it did
-    convergence?: {               // present only when --min-rounds/--rtp-tolerance/--check-interval were given
-        minRounds: number;
-        rtpTolerance: number;
-        checkIntervalRounds: number;
-        stableChecks: number;
-        checksPerformed: number;
-        consecutiveStableChecks: number;
-        achievedRtpHalfWidth: number;
-    };
+ game: {id: string; name: string; version: string};
+ requestedRounds: number;
+ rounds: number; // rounds actually played — can be less than requestedRounds if the game
+ // itself stops early (canPlayNextGame() returning false)
+ seed: string | null;
+ totalBet: number;
+ totalWin: number;
+ rtp: number; // 0-1, e.g. 0.9532 for 95.32%
+ hitFrequency: number; // 0-1
+ maxWin: number;
+ durationMs: number;
+ spinsPerSecond: number;
+ workers?: number; // how many worker threads the run was split across (1 by default)
+ reproducibility?: {
+ game: {id: string; name: string; version: string};
+ seed: string | null;
+ requestedRounds: number;
+ actualRounds: number;
+ command: string; // e.g. `pokie sim <packageRoot> --rounds 10000 --seed demo`, ready to re-run
+ // (includes `--workers N` when N > 1)
+ workerSeedStrategy?: string; // human-readable description of how per-worker seeds were derived
+ };
+ warnings?: string[]; // e.g. no seed given, low rounds, 0 hit frequency/maxWin/totalBet, early stop
+ recommendations?: string[]; // simple next-step hints, e.g. use --seed, raise --rounds, run pokie diff/--out
+ breakdown?: {
+ components: Record<string, { // keyed by category, e.g. "base", "freeGames"
+ rounds: number;
+ totalBet: number;
+ totalWin: number;
+ rtp: number; // this category's OWN payback ratio: totalWin / totalBet (within the category)
+ contribution: number; // this category's share of the report's overall rtp: totalWin / report.totalBet
+ hitFrequency: number;
+ maxWin: number;
+ }>;
+ };
+ stopReason?: "maxRounds" | "sessionStopped" | "converged"; // why `rounds` stopped where it did
+ convergence?: { // present only when --min-rounds/--rtp-tolerance/--check-interval were given
+ minRounds: number;
+ rtpTolerance: number;
+ checkIntervalRounds: number;
+ stableChecks: number;
+ checksPerformed: number;
+ consecutiveStableChecks: number;
+ achievedRtpHalfWidth: number;
+ };
 }
 ```
 
@@ -1872,24 +1868,24 @@ a `sim.json` produced by an older `pokie` (or handwritten JSON without them) sti
 populates all three on every report it produces.
 
 `breakdown` is optional: a feature-level RTP breakdown split by
-category. `components` is a plain `Record<string, ...>` — there's no fixed category list, and its key order is
+category. `components` is a plain `Record<string,...>` — there's no fixed category list, and its key order is
 stable (`"base"` first when present, then alphabetically) regardless of which round was categorized first during
 simulation. Each round is categorized by a 3-step fallback chain, in this order:
 
 1. **Explicit** — the session implements the optional `SimulationCategoryDetermining` contract
-   (`getSimulationCategory(): string`) and returns a valid category (`"bonus"`, `"respins"`, `"holdAndWin"`,
-   `"jackpot"`, anything — see [category name rules](simulation.md#category-name-rules-simulationcategorynamenormalizer))
-   for this particular round.
+ (`getSimulationCategory(): string`) and returns a valid category (`"bonus"`, `"respins"`, `"holdAndWin"`,
+ `"jackpot"`, anything — see [category name rules](simulation.md#category-name-rules-simulationcategorynamenormalizer))
+ for this particular round.
 2. **Stake-based** — otherwise, the session implements `StakeAmountDetermining` — the same contract
-   `SpinCommandHandler` already uses server-side to tell a charged base-game round from an unfinished free-games
-   round that charges nothing (see [Free Games](free-games.md) and
-   [Spin orchestration & idempotency](#spin-orchestration--idempotency)). The round is `"freeGames"` when, right
-   before it's played, `session.getStakeAmount() === 0`; `"base"` otherwise.
+ `SpinCommandHandler` already uses server-side to tell a charged base-game round from an unfinished free-games
+ round that charges nothing (see [Free Games](free-games.md) and
+ [Spin orchestration & idempotency](#spin-orchestration--idempotency)). The round is `"freeGames"` when, right
+ before it's played, `session.getStakeAmount() === 0`; `"base"` otherwise.
 3. **No breakdown** — otherwise, the round simply isn't attributed to any category (it still plays and counts
-   toward `totalBet`/`totalWin`/etc. as normal). If *every* round in the run falls through to this step, `pokie
-   sim` omits `breakdown` from the report entirely — it never guesses a category from incidental data like
-   balance, and it doesn't nag about the absence either: most games don't have a free-games (or other special)
-   feature, and that's not a problem worth flagging on every single report forever.
+ toward `totalBet`/`totalWin`/etc. as normal). If *every* round in the run falls through to this step, `pokie
+ sim` omits `breakdown` from the report entirely — it never guesses a category from incidental data like
+ balance, and it doesn't nag about the absence either: most games don't have a free-games (or other special)
+ feature, and that's not a problem worth flagging on every single report forever.
 
 See [Simulation → Feature-level breakdown](simulation.md#feature-level-breakdown-simulationroundcategorydetermining)
 for the full mechanism, including how to plug in an entirely custom `SimulationRoundCategoryDetermining` as
@@ -1908,11 +1904,11 @@ the number to reach for when asking "how many RTP percentage points does this fe
 false positives are worse than missing a real signal here:
 
 - If no non-`"base"` category ever appeared at all, that's only flagged once `rounds >= 10000` (the same threshold
-  used for the "requested rounds is low" warning) — below that, a feature simply not having triggered yet is normal
-  variance, not a signal.
+ used for the "requested rounds is low" warning) — below that, a feature simply not having triggered yet is normal
+ variance, not a signal.
 - If a non-`"base"` category did appear but never won, that's only flagged once it has at least
-  `SimulationReportBuilder.MIN_FEATURE_ROUNDS_FOR_ZERO_WIN_WARNING` (20) rounds of its own — an all-zero streak
-  shorter than that is common even for an intentional, working feature.
+ `SimulationReportBuilder.MIN_FEATURE_ROUNDS_FOR_ZERO_WIN_WARNING` (20) rounds of its own — an all-zero streak
+ shorter than that is common even for an intentional, working feature.
 
 ### Metrics on every report: `averageBet`/`averagePayout`/`volatility`/`payoutHistogram`/`maxWinFrequency`
 
@@ -1921,65 +1917,65 @@ surfaced straight from the same `SimulationStatistics` the run already computed,
 
 ```ts
 {
-    // ...core fields above...
-    averageBet?: number;         // totalBet / rounds (uses THIS report's own totalBet, already
-                                  // bet-mode-adjusted when a mode is locked — see below)
-    averagePayout?: number;      // totalWin / rounds, same basis
-    volatility?: number;         // standard deviation of per-round payout amounts (unaffected by bet mode —
-                                  // it's the payouts themselves that vary, not which stake basis prices them)
-    payoutHistogram?: Record<string, number>; // round counts per fixed payout bucket ("0", "1-9", "10-99", "100+")
-    maxWinFrequency?: number;    // share of rounds whose payout landed in the same bucket as maxWin
+ //...core fields above...
+ averageBet?: number; // totalBet / rounds (uses THIS report's own totalBet, already
+ // bet-mode-adjusted when a mode is locked — see below)
+ averagePayout?: number; // totalWin / rounds, same basis
+ volatility?: number; // standard deviation of per-round payout amounts (unaffected by bet mode —
+ // it's the payouts themselves that vary, not which stake basis prices them)
+ payoutHistogram?: Record<string, number>; // round counts per fixed payout bucket ("0", "1-9", "10-99", "100+")
+ maxWinFrequency?: number; // share of rounds whose payout landed in the same bucket as maxWin
 }
 ```
 
 ### Bet modes: `--mode <betModeId>` / `--mode all`
 
 - `--mode <betModeId>` — locks the run to one [bet mode](game-packages.md) (e.g. `"ante"`, `"buy-bonus"`) via the
-  session's optional `BetModeSelecting` contract (`setBetMode`/`getBetModeId`) — see
-  [`VideoSlotWithBetModesSession`](game-packages.md). The bet mode actually drives the runtime the whole time
-  (real stake multiplier, real forced-feature-entry cost), never just a label: `report.betMode` is set, and
-  `report.totalBet`/`totalWin`/`rtp`/`hitFrequency`/`maxWin` reflect the mode's real cost — a persistent `"ante"`
-  mode's `totalBet` is genuinely `rounds * bet * stakeMultiplier`, not the plain nominal bet. A game whose session
-  doesn't support `BetModeSelecting` at all makes `--mode` (any value) **fail clearly** rather than silently
-  simulating the plain base game and still labeling the report with the requested mode. An unknown mode id
-  surfaces the runtime's own `UnknownBetModeError`, listing the modes that ARE configured.
+ session's optional `BetModeSelecting` contract (`setBetMode`/`getBetModeId`) — see
+ [`VideoSlotWithBetModesSession`](game-packages.md). The bet mode actually drives the runtime the whole time
+ (real stake multiplier, real forced-feature-entry cost), never just a label: `report.betMode` is set, and
+ `report.totalBet`/`totalWin`/`rtp`/`hitFrequency`/`maxWin` reflect the mode's real cost — a persistent `"ante"`
+ mode's `totalBet` is genuinely `rounds * bet * stakeMultiplier`, not the plain nominal bet. A game whose session
+ doesn't support `BetModeSelecting` at all makes `--mode` (any value) **fail clearly** rather than silently
+ simulating the plain base game and still labeling the report with the requested mode. An unknown mode id
+ surfaces the runtime's own `UnknownBetModeError`, listing the modes that ARE configured.
 - `--mode all` — runs a **full, independent `--rounds` simulation for every mode the game declares** (via
-  `PokieGame.getBetModes()` — see [Game Packages](game-packages.md)), one at a time, through the exact same
-  pipeline as `--mode <id>` (no math is duplicated between the two paths). Requires the game package to actually
-  declare its bet modes; a game with no `getBetModes()` (or an empty array) makes `--mode all` fail clearly rather
-  than running just the base game. The result is a **`SimulationReportSet`**, not a single `SimulationReport`:
+ `PokieGame.getBetModes()` — see [Game Packages](game-packages.md)), one at a time, through the exact same
+ pipeline as `--mode <id>` (no math is duplicated between the two paths). Requires the game package to actually
+ declare its bet modes; a game with no `getBetModes()` (or an empty array) makes `--mode all` fail clearly rather
+ than running just the base game. The result is a **`SimulationReportSet`**, not a single `SimulationReport`:
 
-  ```ts
-  {
-      game: {id: string; name: string; version: string};
-      requestedRounds: number;
-      seed: string | null;
-      workers?: number;
-      modes: Record<string, SimulationReport>; // one full, independent report per bet mode id
-  }
-  ```
+ ```ts
+ {
+ game: {id: string; name: string; version: string};
+ requestedRounds: number;
+ seed: string | null;
+ workers?: number;
+ modes: Record<string, SimulationReport>; // one full, independent report per bet mode id
+ }
+ ```
 
-  **There is deliberately no combined/blended RTP, totalBet, or any other "overall across modes" figure anywhere
-  on this shape.** Without knowing real traffic/player-selection weights (what share of players actually pick each
-  mode), any single blended number would be a made-up average, not a real statistic — compare modes side by side
-  instead (see [`pokie report`](#pokie-report-simulationreportjson) below), or compute a real weighted figure
-  yourself once you have real weights. The console summary for `--mode all` prints each mode's own summary block
-  separately, headed `=== Mode: <id> ===` — never one combined block.
+ **There is deliberately no combined/blended RTP, totalBet, or any other "overall across modes" figure anywhere
+ on this shape.** Without knowing real traffic/player-selection weights (what share of players actually pick each
+ mode), any single blended number would be a made-up average, not a real statistic — compare modes side by side
+ instead (see [`pokie report`](#pokie-report-simulationreportjson) below), or compute a real weighted figure
+ yourself once you have real weights. The console summary for `--mode all` prints each mode's own summary block
+ separately, headed `=== Mode: <id> ===` — never one combined block.
 
 - `targetRtp`/`rtpDeviation` — when a locked mode's [`BetMode`](game-packages.md) declares a `targetRtp`, the
-  report carries it through unchanged (`pokie sim` reads it off `getBetModes()`, never guesses or derives it) plus
-  the trivial `rtpDeviation = rtp - targetRtp`. Absent for a mode that never declared a `targetRtp`, or when no
-  mode was locked at all.
+ report carries it through unchanged (`pokie sim` reads it off `getBetModes()`, never guesses or derives it) plus
+ the trivial `rtpDeviation = rtp - targetRtp`. Absent for a mode that never declared a `targetRtp`, or when no
+ mode was locked at all.
 
 Failure modes:
 
-- Missing `<packageRoot>`, an unknown option, or a non-positive `--rounds` throw a `Usage: pokie sim ...` error.
+- Missing `<packageRoot>`, an unknown option, or a non-positive `--rounds` throw a `Usage: pokie sim...` error.
 - An invalid `packageRoot` (no `package.json`, no `pokie.entry`, or an entry module that doesn't export a valid
-  `PokieGame`) throws the same descriptive error `loadPokieGame` would throw directly — see
-  [Game Packages](game-packages.md).
+ `PokieGame`) throws the same descriptive error `loadPokieGame` would throw directly — see
+ [Game Packages](game-packages.md).
 - `--mode <id>` against a session that doesn't support `BetModeSelecting` at all, or `--mode all` against a game
-  that doesn't declare any bet modes, both fail with a clear, descriptive error — never a silent fallback to the
-  plain base game.
+ that doesn't declare any bet modes, both fail with a clear, descriptive error — never a silent fallback to the
+ plain base game.
 
 ### Adaptive early stop (convergence)
 
@@ -1988,22 +1984,22 @@ By default `pokie sim` plays exactly `--rounds` rounds — the pre-existing, unc
 running RTP estimate has stabilized, instead of always playing every requested round:
 
 ```
-pokie sim ./sample-slot --rounds 5000000 --seed demo \
-  --min-rounds 100000 --rtp-tolerance 0.002 --check-interval 25000 --out report.json
+pokie sim./sample-slot --rounds 5000000 --seed demo \
+ --min-rounds 100000 --rtp-tolerance 0.002 --check-interval 25000 --out report.json
 ```
 
 - `--min-rounds <number>` — no early stop can trigger before this many rounds have been played, even if the
-  estimate already looks stable by chance on a tiny sample.
+ estimate already looks stable by chance on a tiny sample.
 - `--rtp-tolerance <number>` — the run is considered converged once the running RTP's 95% confidence interval
-  half-width (the same figure already exposed as `SimulationStatistics.rtpConfidenceInterval95` — never
-  recomputed for this feature) is at or under this value, in RTP units (`0.002` = the true RTP is estimated to
-  within ±0.2 percentage points).
+ half-width (the same figure already exposed as `SimulationStatistics.rtpConfidenceInterval95` — never
+ recomputed for this feature) is at or under this value, in RTP units (`0.002` = the true RTP is estimated to
+ within ±0.2 percentage points).
 - `--check-interval <number>` — how many rounds to play between convergence checks. With convergence enabled,
-  this also becomes the run's effective chunk size (any `--check-interval` you'd otherwise want as a separate
-  progress granularity doesn't apply here — a check can only happen at a chunk boundary).
+ this also becomes the run's effective chunk size (any `--check-interval` you'd otherwise want as a separate
+ progress granularity doesn't apply here — a check can only happen at a chunk boundary).
 - `--stable-checks <number>` (optional, default `3`) — how many consecutive checks must satisfy `--rtp-tolerance`
-  back to back before the run actually stops. A failing check resets the streak to zero — this is what keeps a
-  single lucky/noisy interval from ending the run early.
+ back to back before the run actually stops. A failing check resets the streak to zero — this is what keeps a
+ single lucky/noisy interval from ending the run early.
 
 All three of `--min-rounds`/`--rtp-tolerance`/`--check-interval` must be given together — providing only one or
 two is a usage error, and `--stable-checks` on its own (without the other three) is also a usage error, so a
@@ -2012,13 +2008,13 @@ mistyped flag name is never silently ignored. With `--rounds` capping the maximu
 — convergence just adds *why*:
 
 - `stopReason` — `"maxRounds"` (every requested round was played — the only possibility without convergence
-  enabled, and still possible with it enabled if the criteria are never satisfied within `--rounds`),
-  `"sessionStopped"` (the pre-existing `canPlayNextGame()`/play-strategy early stop), or `"converged"` (the
-  adaptive stop criteria were satisfied). `pokie sim`'s usual "actual rounds is less than requested rounds"
-  warning is suppressed for a `"converged"` stop — that's the feature working as intended, not a problem.
+ enabled, and still possible with it enabled if the criteria are never satisfied within `--rounds`),
+ `"sessionStopped"` (the pre-existing `canPlayNextGame()`/play-strategy early stop), or `"converged"` (the
+ adaptive stop criteria were satisfied). `pokie sim`'s usual "actual rounds is less than requested rounds"
+ warning is suppressed for a `"converged"` stop — that's the feature working as intended, not a problem.
 - `convergence` — echoes the options used plus what actually happened: `checksPerformed`, `consecutiveStableChecks`
-  at the point the run stopped, and `achievedRtpHalfWidth` at the last check. Absent whenever convergence wasn't
-  enabled for that run, same as `betMode`/`targetRtp` being absent for a run that never locked a bet mode.
+ at the point the run stopped, and `achievedRtpHalfWidth` at the last check. Absent whenever convergence wasn't
+ enabled for that run, same as `betMode`/`targetRtp` being absent for a run that never locked a bet mode.
 
 **`--workers > 1` and convergence**: each worker evaluates `--min-rounds`/`--rtp-tolerance`/`--check-interval`
 independently against its own share of the rounds — there's no live coordination of a single global running RTP
@@ -2045,11 +2041,11 @@ the `AggregateSimulationRunner`/`ParallelSimulationRunner`/`pokie sim` path.
 
 Renders a JSON report produced by [`pokie sim --out`](#pokie-sim-packageroot) as JSON, a human-readable Markdown
 document, or a complete HTML document. When the path instead resolves to an Outcome Library Bundle or Stake adapter
-project, it dispatches to that project's canonical reader and renders the same three formats from that source's
+project, it dispatches to that project's reader and renders the same three formats from that source's
 exact per-mode outcome analysis.
 
 ```
-pokie sim ./sample-slot --rounds 10000 --out sim.json
+pokie sim./sample-slot --rounds 10000 --out sim.json
 pokie report sim.json --format html --out report.html
 
 pokie report outcome-library-bundle
@@ -2059,11 +2055,11 @@ pokie report stakeengine --format json --out stake-analysis.json
 Options:
 
 - `--format markdown|html|json` — output format for either supported input (default `markdown`). JSON preserves the
-  complete simulation report (including every mode of an all-modes simulation report set) or canonical source-analysis
-  payload; Markdown and HTML are readable documents.
+ complete simulation report (including every mode of an all-modes simulation report set) or source-analysis
+ payload; Markdown and HTML are readable documents.
 - `--out <file>` — also write the complete printed artifact to `<file>`. The command writes atomically and only
-  announces the destination after success; for a write error choose an existing writable directory and rerun the
-  shown command.
+ announces the destination after success; for a write error choose an existing writable directory and rerun the
+ shown command.
 
 The rendered report includes, at minimum: game id/name/version, requested rounds, actual rounds, seed, total bet,
 total win, RTP, hit frequency, max win, duration, and spins per second. The HTML output is plain semantic HTML
@@ -2108,26 +2104,26 @@ rather than guessing or rendering only one mode).
 Failure modes:
 
 - Missing `<projectOrSimulationReportJson>`, an unknown option, or an invalid `--format`/`--out` value throw a
-  `Usage: pokie report ...` error.
+ `Usage: pokie report...` error.
 - An unrecognized `<projectOrSimulationReportJson>` that can't be read (missing file, permissions) throws
-  `Could not read simulation report at "<path>": <reason>`.
+ `Could not read simulation report at "<path>": <reason>`.
 - An unrecognized `<projectOrSimulationReportJson>` that isn't valid JSON throws `"<path>" is not valid JSON: <reason>`.
 - Valid JSON that doesn't look like a `SimulationReport` or `SimulationReportSet` (missing `game`/`rtp`/`rounds`/...
-  or `game`/`modes`/... fields) throws `"<path>" does not look like a pokie sim report ...`.
+ or `game`/`modes`/... fields) throws `"<path>" does not look like a pokie sim report...`.
 - A `SimulationReportSet` against a renderer without `renderSet()` throws
-  `This renderer does not support multi-mode report sets ...`.
+ `This renderer does not support multi-mode report sets...`.
 
 ## `pokie diff <leftProjectOrReportJson> <rightProjectOrReportJson>`
 
 Compares two JSON reports produced by [`pokie sim --out`](#pokie-sim-packageroot), or two resolved Outcome
 Library bundles and/or Stake Engine exports. Simulation reports show sampled runtime metrics and feature/category
-breakdowns; outcome sources show their canonical exact per-mode analyses. A simulation report and an outcome
+breakdowns; outcome sources show their exact per-mode analyses. A simulation report and an outcome
 source cannot be mixed because they do not share one meaningful metric contract.
 
 ```
-pokie sim ./sample-slot --rounds 100000 --seed demo --out before.json
-# ...change the game's config...
-pokie sim ./sample-slot --rounds 100000 --seed demo --out after.json
+pokie sim./sample-slot --rounds 100000 --seed demo --out before.json
+#...change the game's config...
+pokie sim./sample-slot --rounds 100000 --seed demo --out after.json
 pokie diff before.json after.json
 ```
 
@@ -2139,25 +2135,25 @@ Options:
 
 - `--format json` — print the JSON diff to stdout instead of the default human-readable summary.
 - `--out <file>` — also write the JSON diff to a new `<file>`. Independent of `--format`: the summary/JSON is always
-  printed to the console; `--out` additionally saves the JSON diff to disk. It refuses an existing destination or
-  either input path. When an input is an Outcome Library bundle or Stake Engine export, it also refuses destinations
-  inside that source directory (including symlink aliases), so choose a new unused path (or inspect and remove an old
-  diff artifact yourself) before retrying.
+ printed to the console; `--out` additionally saves the JSON diff to disk. It refuses an existing destination or
+ either input path. When an input is an Outcome Library bundle or Stake Engine export, it also refuses destinations
+ inside that source directory (including symlink aliases), so choose a new unused path (or inspect and remove an old
+ diff artifact yourself) before retrying.
 
 The human-readable summary looks like:
 
 ```
 Diff: Sample Slot (id: "sample-slot")
-  seed            demo -> demo2
-  requested rounds 10000 -> 10000 (0, 0.00%)
-  rounds          9800 -> 9850 (+50, +0.51%)
-  total bet       9800.00 -> 9850.00 (+50.00, +0.51%)
-  total win       9331.40 -> 9400.00 (+68.60, +0.74%)
-  rtp             95.22% -> 95.43% (+0.21 pp, +0.22%)
-  hit frequency   24.10% -> 24.50% (+0.40 pp, +1.66%)
-  max win         120.50 -> 130.00 (+9.50, +7.88%)
-  duration        1234ms -> 1300ms (+66ms, +5.35%)
-  spins/s         7942 -> 7900 (-42, -0.53%)
+ seed demo -> demo2
+ requested rounds 10000 -> 10000 (0, 0.00%)
+ rounds 9800 -> 9850 (+50, +0.51%)
+ total bet 9800.00 -> 9850.00 (+50.00, +0.51%)
+ total win 9331.40 -> 9400.00 (+68.60, +0.74%)
+ rtp 95.22% -> 95.43% (+0.21 pp, +0.22%)
+ hit frequency 24.10% -> 24.50% (+0.40 pp, +1.66%)
+ max win 120.50 -> 130.00 (+9.50, +7.88%)
+ duration 1234ms -> 1300ms (+66ms, +5.35%)
+ spins/s 7942 -> 7900 (-42, -0.53%)
 ```
 
 A `Warnings:` section is appended whenever RTP, hit frequency, or max win moved by a noticeable amount (by
@@ -2171,32 +2167,32 @@ The simulation-report JSON diff shape:
 
 ```ts
 {
-    changed: boolean;
-    game: {left: {id, name, version}; right: {id, name, version}; changed: boolean};
-    seed: {left: string | null; right: string | null; changed: boolean};
-    requestedRounds: {left: number; right: number; delta: number; percentDelta: number | null};
-    rounds: {left: number; right: number; delta: number; percentDelta: number | null};
-    totalBet: {left: number; right: number; delta: number; percentDelta: number | null};
-    totalWin: {left: number; right: number; delta: number; percentDelta: number | null};
-    rtp: {left: number; right: number; delta: number; percentDelta: number | null};
-    hitFrequency: {left: number; right: number; delta: number; percentDelta: number | null};
-    maxWin: {left: number; right: number; delta: number; percentDelta: number | null};
-    durationMs: {left: number; right: number; delta: number; percentDelta: number | null};
-    spinsPerSecond: {left: number; right: number; delta: number; percentDelta: number | null};
-    warnings: string[];
-    breakdown?: {
-        components: Record<string, {   // keyed by category, e.g. "base", "freeGames"
-            left: {rounds, totalBet, totalWin, rtp, contribution, hitFrequency, maxWin} | null;
-            right: {rounds, totalBet, totalWin, rtp, contribution, hitFrequency, maxWin} | null;
-            rounds: {left: number; right: number; delta: number; percentDelta: number | null};
-            totalBet: {left: number; right: number; delta: number; percentDelta: number | null};
-            totalWin: {left: number; right: number; delta: number; percentDelta: number | null};
-            rtp: {left: number; right: number; delta: number; percentDelta: number | null};
-            contribution: {left: number; right: number; delta: number; percentDelta: number | null};
-            hitFrequency: {left: number; right: number; delta: number; percentDelta: number | null};
-            maxWin: {left: number; right: number; delta: number; percentDelta: number | null};
-        }>;
-    };
+ changed: boolean;
+ game: {left: {id, name, version}; right: {id, name, version}; changed: boolean};
+ seed: {left: string | null; right: string | null; changed: boolean};
+ requestedRounds: {left: number; right: number; delta: number; percentDelta: number | null};
+ rounds: {left: number; right: number; delta: number; percentDelta: number | null};
+ totalBet: {left: number; right: number; delta: number; percentDelta: number | null};
+ totalWin: {left: number; right: number; delta: number; percentDelta: number | null};
+ rtp: {left: number; right: number; delta: number; percentDelta: number | null};
+ hitFrequency: {left: number; right: number; delta: number; percentDelta: number | null};
+ maxWin: {left: number; right: number; delta: number; percentDelta: number | null};
+ durationMs: {left: number; right: number; delta: number; percentDelta: number | null};
+ spinsPerSecond: {left: number; right: number; delta: number; percentDelta: number | null};
+ warnings: string[];
+ breakdown?: {
+ components: Record<string, { // keyed by category, e.g. "base", "freeGames"
+ left: {rounds, totalBet, totalWin, rtp, contribution, hitFrequency, maxWin} | null;
+ right: {rounds, totalBet, totalWin, rtp, contribution, hitFrequency, maxWin} | null;
+ rounds: {left: number; right: number; delta: number; percentDelta: number | null};
+ totalBet: {left: number; right: number; delta: number; percentDelta: number | null};
+ totalWin: {left: number; right: number; delta: number; percentDelta: number | null};
+ rtp: {left: number; right: number; delta: number; percentDelta: number | null};
+ contribution: {left: number; right: number; delta: number; percentDelta: number | null};
+ hitFrequency: {left: number; right: number; delta: number; percentDelta: number | null};
+ maxWin: {left: number; right: number; delta: number; percentDelta: number | null};
+ }>;
+ };
 }
 ```
 
@@ -2216,8 +2212,8 @@ change:
 
 - **Added** (only on the right): `"<category>" is a new category in the right report (rtp X%, contributing Y pp)`.
 - **Removed** (only on the left): `"<category>" is no longer present in the right report (was rtp X%, contributing Y pp)`.
-- **Present on both sides**: the existing `"<category>" RTP changed by ...` message, still gated by the RTP delta
-  threshold like the top-level `RTP changed by ...` warning.
+- **Present on both sides**: the existing `"<category>" RTP changed by...` message, still gated by the RTP delta
+ threshold like the top-level `RTP changed by...` warning.
 
 The added/removed messages always fire (a category structurally appearing or disappearing is worth knowing about
 regardless of magnitude) — unlike the "RTP changed" message, which only fires past the threshold. A `"freeGames"`
@@ -2262,11 +2258,11 @@ computed by the exact same `SimulationReportDiffing` (no diff math is duplicated
 
 ```ts
 {
-    changed: boolean;
-    game: {left: {...}; right: {...}; changed: boolean};
-    perMode: Record<string, SimulationReportDiff>; // only modes present on BOTH sides
-    onlyInLeft: string[];   // mode ids only the left set declared
-    onlyInRight: string[];  // mode ids only the right set declared
+ changed: boolean;
+ game: {left: {...}; right: {...}; changed: boolean};
+ perMode: Record<string, SimulationReportDiff>; // only modes present on BOTH sides
+ onlyInLeft: string[]; // mode ids only the left set declared
+ onlyInRight: string[]; // mode ids only the right set declared
 }
 ```
 
@@ -2288,26 +2284,26 @@ const setDiff = setDiffer.diff(leftSet, rightSet); // leftSet/rightSet: Simulati
 ### Diffing Outcome Library bundles and Stake Engine exports
 
 When both paths resolve to an Outcome Library bundle or Stake Engine export, `pokie diff` uses each artifact's
-canonical reader and exact per-mode analysis. Native bundles, Stake exports, and a native/Stake pair are all
+reader and exact per-mode analysis. Native bundles, Stake exports, and a native/Stake pair are all
 supported. Its JSON is intentionally composable with the report form: `changed`, `perMode`, and
 `onlyInLeft`/`onlyInRight` make changed metrics and added/removed modes explicit.
 
 ```ts
 {
-    changed: boolean;
-    left: {rootPath: string; kind: "native" | "stakeEngine"; issues: ValidationIssue[]};
-    right: {rootPath: string; kind: "native" | "stakeEngine"; issues: ValidationIssue[]};
-    perMode: Record<string, {
-        modeName: string;
-        rtp: {left, right, delta, percentDelta};
-        hitFrequency: {left, right, delta, percentDelta};
-        zeroWinFrequency: {left, right, delta, percentDelta};
-        variance: {left, right, delta, percentDelta};
-        standardDeviation: {left, right, delta, percentDelta};
-        maxWinProbability: {left, right, delta, percentDelta};
-    }>;
-    onlyInLeft: string[];
-    onlyInRight: string[];
+ changed: boolean;
+ left: {rootPath: string; kind: "native" | "stakeEngine"; issues: ValidationIssue[]};
+ right: {rootPath: string; kind: "native" | "stakeEngine"; issues: ValidationIssue[]};
+ perMode: Record<string, {
+ modeName: string;
+ rtp: {left, right, delta, percentDelta};
+ hitFrequency: {left, right, delta, percentDelta};
+ zeroWinFrequency: {left, right, delta, percentDelta};
+ variance: {left, right, delta, percentDelta};
+ standardDeviation: {left, right, delta, percentDelta};
+ maxWinProbability: {left, right, delta, percentDelta};
+ }>;
+ onlyInLeft: string[];
+ onlyInRight: string[];
 }
 ```
 
@@ -2318,13 +2314,13 @@ selected console format.
 Failure modes:
 
 - Missing `<leftProjectOrReportJson>`/`<rightProjectOrReportJson>`, an unknown option, or an invalid `--format`/`--out` value throw
-  a `Usage: pokie diff ...` error.
+ a `Usage: pokie diff...` error.
 - Each report path is read/parsed/validated the same way as [`pokie report`](#pokie-report-simulationreportjson) —
-  the same "could not read"/"not valid JSON"/"does not look like a pokie sim report" errors apply to either side.
+ the same "could not read"/"not valid JSON"/"does not look like a pokie sim report" errors apply to either side.
 - Diffing a `SimulationReport` against a `SimulationReportSet` (one single-mode, one multi-mode) throws
-  `Cannot diff a single-mode pokie sim report against a multi-mode report set ...`.
+ `Cannot diff a single-mode pokie sim report against a multi-mode report set...`.
 - Diffing a simulation report and an Outcome Library bundle or Stake Engine export explains that the command needs
-  two simulation reports or two outcome sources; it never exposes resolver implementation terms.
+ two simulation reports or two outcome sources; it never exposes resolver implementation terms.
 
 ## `pokie replay <packageRoot>`
 
@@ -2332,44 +2328,44 @@ Best-effort replay of a single round, identified by `--seed`/`--round`, from a [
 This is the first foundation for POKIE replay — it does not (yet) reconstruct full session/RNG/audit state; see
 [Limitations](#limitations) below.
 
-The positional also accepts a Blueprint, a native Outcome Library (with `--mode`), or a canonical WASM
-artifact. Canonical WASM replay is deterministic and includes cumulative totals and portable continuation
+The positional also accepts a Blueprint, a native Outcome Library (with `--mode`), or a WASM
+artifact. WASM replay is deterministic and includes cumulative totals and portable continuation
 state where supported; the package limitations below apply to the package path. See the
 [WASM quick start](#wasm-quick-start) for matching seeds and round counts.
 
 ```
-pokie replay ./sample-slot --seed demo --round 42 --out replay.json
+pokie replay./sample-slot --seed demo --round 42 --out replay.json
 ```
 
 Options:
 
 - `--round <number>` — **required**. A positive integer: the 1-indexed round to replay.
 - `--seed <string>` — forwarded as `context.seed` to `game.createSession(context)`, same best-effort caveat as
-  [`pokie sim --seed`](#pokie-sim-packageroot).
+ [`pokie sim --seed`](#pokie-sim-packageroot).
 - `--mode <betModeId>` — for packages/Blueprints, selects the executable mode repeatedly at available
-  entries using the shared simulation/Studio replay policy. Purchases are consumed at paid entry;
-  zero-stake continuations stay uncharged, and another purchase is selected only when entry is available.
-  The descriptor retains `modePolicy: {betModeId, selection: "repeat-when-available"}` and the executed
-  `commands`, with mode selections on paid entries. Unknown or unsupported selections fail before any
-  spin or output publication. Omit this flag to retain the package's default selection behavior.
+ entries using the shared simulation/Studio replay policy. Purchases are consumed at paid entry;
+ zero-stake continuations stay uncharged, and another purchase is selected only when entry is available.
+ The descriptor retains `modePolicy: {betModeId, selection: "repeat-when-available"}` and the executed
+ `commands`, with mode selections on paid entries. Unknown or unsupported selections fail before any
+ spin or output publication. Omit this flag to retain the package's default selection behavior.
 - `--unit step|logical-round` — package address unit (default: step). Package `--mode` requires step
-  replay and cannot be combined with `--unit logical-round` or `--recording`. Logical-round replay uses
-  the package's declared progress; `--recording` reproduces its bound audit commands and selections.
+ replay and cannot be combined with `--unit logical-round` or `--recording`. Logical-round replay uses
+ the package's declared progress; `--recording` reproduces its bound audit commands and selections.
 - `--out <file>` — write the JSON replay descriptor to `<file>`.
 - `--format json` — accepted for symmetry with `pokie sim`/`pokie validate`; JSON is currently the only supported
-  format, and is always printed to stdout regardless of this flag.
+ format, and is always printed to stdout regardless of this flag.
 
 When `<packageRoot>` is a native Outcome Library bundle, replay is an exact reconstruction against the currently
 opened library rather than best-effort package replay and requires `seed`, one-based `round`, and `mode`:
 
 ```sh
-pokie replay ./outcome-library --seed recorded-seed --round 7 --mode base --out replay.json
+pokie replay./outcome-library --seed recorded-seed --round 7 --mode base --out replay.json
 ```
 
 The returned descriptor includes `outcomeSource` with the game, library id/hash, mode, selection algorithm,
-outcome id, canonical artifact, screen, stake and payout. Do not substitute a default mode: a missing seed or mode
+outcome id, artifact, screen, stake and payout. Do not substitute a default mode: a missing seed or mode
 is rejected. The CLI reconstructs from the current bundle; for an exact comparison with a saved recorded round,
-the exported `replayOutcomeSourceProject(..., recordedDescriptor)` API requires the complete canonical provenance
+the exported `replayOutcomeSourceProject(..., recordedDescriptor)` API requires the complete provenance
 and fails closed for omissions or mismatches, telling the caller to restore the original artifact/bundle. Package
 replay remains best-effort; it may inspect a round with unavailable state, but must not claim an exact comparison.
 
@@ -2386,14 +2382,14 @@ The JSON replay descriptor shape (`ReplayDescriptor`):
 
 ```ts
 {
-    game: {id: string; name: string; version: string};
-    seed: string | null;
-    round: number;
-    totalBet: number;          // sum of getBet() across every round played to reach `round`
-    totalWin: number;          // sum of getWinAmount() across every round played to reach `round`
-    screen: unknown[][] | null; // getSymbolsCombination().toMatrix() when the session exposes it, else null
-    timestamp: number;          // Date.now() when the replay started
-    durationMs: number;         // wall-clock time spent replaying
+ game: {id: string; name: string; version: string};
+ seed: string | null;
+ round: number;
+ totalBet: number; // sum of getBet() across every round played to reach `round`
+ totalWin: number; // sum of getWinAmount() across every round played to reach `round`
+ screen: unknown[][] | null; // getSymbolsCombination().toMatrix() when the session exposes it, else null
+ timestamp: number; // Date.now() when the replay started
+ durationMs: number; // wall-clock time spent replaying
 }
 ```
 
@@ -2404,15 +2400,15 @@ replaying round N means creating a fresh session and calling `play()` N times in
 entirely dependent on the game package:
 
 - The game package's `createSession(context)` must actually read `context.seed` and thread it into a deterministic
-  RNG/setup — a game that ignores `context` will not replay identically across runs, seed or no seed.
+ RNG/setup — a game that ignores `context` will not replay identically across runs, seed or no seed.
 - Anything else non-deterministic in the game package's session construction (e.g. `VideoSlotConfig`'s default
-  reel-strip shuffling, which uses unseeded `Math.random()` — see the [`pokie sim`](#pokie-sim-packageroot) seed
-  caveat) will also break reproducibility.
+ reel-strip shuffling, which uses unseeded `Math.random()` — see the [`pokie sim`](#pokie-sim-packageroot) seed
+ caveat) will also break reproducibility.
 - `screen` is only populated when the session exposes `getSymbolsCombination()` (as `VideoSlotSessionHandling`
-  does) — the base `GameSessionHandling` contract has no screen/result accessor, so a plain `GameSession` replays
-  with `screen: null`.
+ does) — the base `GameSessionHandling` contract has no screen/result accessor, so a plain `GameSession` replays
+ with `screen: null`.
 - This does **not** replay full session/RNG/audit state — no win breakdown, no free-games state, no RNG call log.
-  It is a foundation to build on, not a complete audit trail.
+ It is a foundation to build on, not a complete audit trail.
 
 The reusable recording API behind the command lives in `src/replay`:
 
@@ -2429,32 +2425,32 @@ custom recorder can be swapped in without touching `ReplayCommand`.
 Failure modes:
 
 - Missing `<packageRoot>`, a missing/non-positive `--round`, a missing `--seed` value, or an unknown option throw a
-  `Usage: pokie replay ...` error.
+ `Usage: pokie replay...` error.
 - An invalid `packageRoot` throws the same descriptive error `loadPokieGame` would throw directly — see
-  [Game Packages](game-packages.md).
+ [Game Packages](game-packages.md).
 
 ## `pokie validate <project>`
 
 Checks one supported POKIE project without running a game. `<project>` may be:
 
 - a [game package](game-packages.md) directory, checked through `package.json#pokie.entry` and its game
-  metadata (`id`, `name`, and `version`);
+ metadata (`id`, `name`, and `version`);
 - a Blueprint JSON file, checked for structural errors and math warnings; or
 - an [Outcome Library Bundle](outcome-library-bundle.md) directory, checked through its `manifest.json` and
-  per-mode indexes.
+ per-mode indexes.
 
 An existing directory without `package.json` is treated as an outcome-library candidate. This means an incomplete
 bundle gets the actionable `manifest.json` diagnostic instead of a package-loading error.
 
 ```
-pokie validate ./sample-slot
-pokie validate ./game.blueprint.json
-pokie validate ./outcomes --deep
+pokie validate./sample-slot
+pokie validate./game.blueprint.json
+pokie validate./outcomes --deep
 ```
 
 ```
 Validating "Sample Slot" (id: "sample-slot", v0.1.0) at "./sample-slot"
-  valid           yes
+ valid yes
 
 No issues found.
 ```
@@ -2462,12 +2458,12 @@ No issues found.
 Options:
 
 - `--deep` — for outcome-library inputs, additionally streams every outcome and rebuilds each mode's library to
-  catch corruption that a structural check cannot (for example, a tampered record or mismatched hash). It is off
-  by default so normal bundle validation reads only `manifest.json` and the small per-mode indexes. It does not
-  add checks to package or Blueprint inputs.
+ catch corruption that a structural check cannot (for example, a tampered record or mismatched hash). It is off
+ by default so normal bundle validation reads only `manifest.json` and the small per-mode indexes. It does not
+ add checks to package or Blueprint inputs.
 - `--format json` — print the JSON report to stdout instead of the default human-readable summary.
 - `--out <file>` — write the JSON report to `<file>`. Independent of `--format json`: combine both to see the
-  report and save it in the same run.
+ report and save it in the same run.
 
 The default summary names the project, says whether it is valid, then lists every error or warning as
 `[location] code: explanation` followed by a `Next:` remediation. It never relies on a stack trace or parser
@@ -2477,28 +2473,28 @@ message for normal validation failures.
 
 ```ts
 {
-    schemaVersion: 1;
-    project: {
-        path: string;
-        kind: "package" | "blueprint" | "outcome-library" | "unknown";
-    };
-    deep: boolean;
-    valid: boolean;
-    errors: ValidateDiagnostic[];
-    warnings: ValidateDiagnostic[];
-    suggestions: string[];  // deduplicated next actions from the diagnostics
-    packageRoot?: string;   // package inputs only
-    game?: {id: string; name: string; version: string} | null;
-    issues?: ValidateDiagnostic[];  // outcome-library inputs: errors and warnings together
+ schemaVersion: 1;
+ project: {
+ path: string;
+ kind: "package" | "blueprint" | "outcome-library" | "unknown";
+ };
+ deep: boolean;
+ valid: boolean;
+ errors: ValidateDiagnostic[];
+ warnings: ValidateDiagnostic[];
+ suggestions: string[]; // deduplicated next actions from the diagnostics
+ packageRoot?: string; // package inputs only
+ game?: {id: string; name: string; version: string} | null;
+ issues?: ValidateDiagnostic[]; // outcome-library inputs: errors and warnings together
 }
 
 type ValidateDiagnostic = {
-    code: string;
-    severity: "error" | "warning" | "info";
-    message: string;
-    path: string;
-    suggestion: string;
-    details?: unknown;
+ code: string;
+ severity: "error" | "warning" | "info";
+ message: string;
+ path: string;
+ suggestion: string;
+ details?: unknown;
 };
 ```
 
@@ -2508,7 +2504,7 @@ remain available for CI to make its decision without filtering by severity itsel
 
 Exit code is `0` when `valid` is `true` and `1` when it's `false` — no thrown/printed error on top of the report,
 so scripting against `pokie validate` doesn't have to parse stderr. Only usage mistakes (missing `<project>`,
-an unknown option, `--out`/`--format` without a value) throw the usual `Usage: pokie validate ...` error.
+an unknown option, `--out`/`--format` without a value) throw the usual `Usage: pokie validate...` error.
 
 ## `pokie inspect <packageRoot>`
 
@@ -2516,7 +2512,7 @@ Identifies a supported POKIE project (Blueprint, game package, Outcome Library, 
 or compatible WASM component), its purpose, prerequisites, and available next actions without running its game.
 
 ```
-pokie inspect ./sample-slot
+pokie inspect./sample-slot
 ```
 
 Inspection reads project descriptors; it does not attest to a package’s original Blueprint, hash, or build
@@ -2545,7 +2541,7 @@ requests get a bare `204`. This is what lets [`pokie client`](#pokie-client-pack
 different origin/port by design) talk to this server's API at all.
 
 ```
-pokie serve ./sample-slot --port 4000 --host 127.0.0.1
+pokie serve./sample-slot --port 4000 --host 127.0.0.1
 ```
 
 ```
@@ -2577,23 +2573,23 @@ depends on whether the loaded game implements the optional `PokieGame.getSession
 [Game Packages](game-packages.md#the-contract) and [Network Serialization](serialization.md)):
 
 - **No `getSessionSerializer()`** (the original, unchanged behavior for any existing game package):
-  ```ts
-  {
-      sessionId: string;
-      game: {id: string; name: string; version: string};
-      bet: number;
-      credits: number;
-      screen?: unknown[][]; // getSymbolsCombination().toMatrix() when the session exposes it, else omitted
-  }
-  ```
-- **`getSessionSerializer()` implemented**: `{sessionId, game, credits, ...serializer.getInitialData(session)}` —
-  `credits` is server settlement accounting, overriding serializer fields; completed retries retain the original balance and durable reads expose the last settled revision during external recovery. For a
-  game returning `new VideoSlotSessionSerializer()` (what `pokie build`/`pokie init` scaffold by default), that
-  means `bet`, `availableBets`, `reelsSymbols`, `availableSymbols`, `paytable`, `linesDefinitions`, and more — see
-  [Network Serialization](serialization.md) for the full shape, including the `MultiStageRoundSessionSerializer`/
-  `CascadeSessionSerializer` payload for multi-stage/cascade mechanics. This is `getInitialData()`'s output only —
-  any field a serializer produces *exclusively* from `getRoundData()` (see below) is absent here, since no round
-  has been played yet.
+ ```ts
+ {
+ sessionId: string;
+ game: {id: string; name: string; version: string};
+ bet: number;
+ credits: number;
+ screen?: unknown[][]; // getSymbolsCombination().toMatrix() when the session exposes it, else omitted
+ }
+ ```
+- **`getSessionSerializer()` implemented**: `{sessionId, game, credits,...serializer.getInitialData(session)}` —
+ `credits` is server settlement accounting, overriding serializer fields; completed retries retain the original balance and durable reads expose the last settled revision during external recovery. For a
+ game returning `new VideoSlotSessionSerializer()` (what `pokie build`/`pokie init` scaffold by default), that
+ means `bet`, `availableBets`, `reelsSymbols`, `availableSymbols`, `paytable`, `linesDefinitions`, and more — see
+ [Network Serialization](serialization.md) for the full shape, including the `MultiStageRoundSessionSerializer`/
+ `CascadeSessionSerializer` payload for multi-stage/cascade mechanics. This is `getInitialData()`'s output only —
+ any field a serializer produces *exclusively* from `getRoundData()` (see below) is absent here, since no round
+ has been played yet.
 
 An optional JSON body `{"seed": string | number}` is forwarded as `context.seed` — same best-effort caveat as
 [`pokie sim --seed`](#pokie-sim-packageroot): only game packages that actually thread `context.seed` into their own
@@ -2607,34 +2603,34 @@ calls `session.play()` on the (possibly just-reconstructed, see
 [Session storage & wallet](#session-storage--wallet)) session, returning its new state:
 
 - **No `getSessionSerializer()`**:
-  ```ts
-  {
-      sessionId: string;
-      game: {id: string; name: string; version: string};
-      bet: number;
-      win: number;
-      credits: number;
-      screen?: unknown[][]; // getSymbolsCombination().toMatrix() when the session exposes it, else omitted
-  }
-  ```
-- **`getSessionSerializer()` implemented**: `{sessionId, game, credits, ...serializer.getRoundData(session)}` —
-  the serializer's *round* output for the spin that just happened, not `getInitialData()`. Any field only present
-  in `getInitialData()`'s output (e.g. `availableSymbols`, `paytable` — descriptive data that doesn't change
-  between rounds) is **not** repeated here; a client that needs both keeps what `POST /sessions` gave it and
-  merges in each spin's response, or re-fetches everything at once via `GET /sessions/:sessionId` below.
+ ```ts
+ {
+ sessionId: string;
+ game: {id: string; name: string; version: string};
+ bet: number;
+ win: number;
+ credits: number;
+ screen?: unknown[][]; // getSymbolsCombination().toMatrix() when the session exposes it, else omitted
+ }
+ ```
+- **`getSessionSerializer()` implemented**: `{sessionId, game, credits,...serializer.getRoundData(session)}` —
+ the serializer's *round* output for the spin that just happened, not `getInitialData()`. Any field only present
+ in `getInitialData()`'s output (e.g. `availableSymbols`, `paytable` — descriptive data that doesn't change
+ between rounds) is **not** repeated here; a client that needs both keeps what `POST /sessions` gave it and
+ merges in each spin's response, or re-fetches everything at once via `GET /sessions/:sessionId` below.
 
 An optional JSON body `{"requestId"?: string, "expectedSessionVersion"?: number}`:
 
 - `requestId` makes the call idempotent: a repeated request with the same `sessionId`/`requestId` pair returns
-  the exact same response instead of spinning (and charging the wallet) again — see
-  [Spin orchestration & idempotency](#spin-orchestration--idempotency). Omit it (or send no body) to always spin
-  for real, the original behavior.
+ the exact same response instead of spinning (and charging the wallet) again — see
+ [Spin orchestration & idempotency](#spin-orchestration--idempotency). Omit it (or send no body) to always spin
+ for real, the original behavior.
 - `expectedSessionVersion`, when the configured `SessionRepository` supports
-  [optimistic locking](#optimistic-locking-session-versioning), lets a caller declare "I expect the session to
-  still be at version N" — a mismatch is rejected as a `409` immediately, before `canPlayNextGame()`/`play()`/any
-  wallet transaction, so there's nothing to compensate. This is a caller-declared precondition, distinct from (and
-  checked before) the repository's own storage-level conflict detection described below; omit it to skip this
-  check entirely. Ignored (never causes a conflict) when the configured repository isn't versioned.
+ [optimistic locking](#optimistic-locking-session-versioning), lets a caller declare "I expect the session to
+ still be at version N" — a mismatch is rejected as a `409` immediately, before `canPlayNextGame()`/`play()`/any
+ wallet transaction, so there's nothing to compensate. This is a caller-declared precondition, distinct from (and
+ checked before) the repository's own storage-level conflict detection described below; omit it to skip this
+ check entirely. Ignored (never causes a conflict) when the configured repository isn't versioned.
 
 `404 {"error": "..."}` for an unknown `sessionId`. `400 {"error": "..."}` if `canPlayNextGame()` returns `false`
 (e.g. insufficient credits for the current bet) — `play()` is never called in that case, and the session's
@@ -2657,29 +2653,28 @@ tracks it via `getWinAmount()`):
 
 ```ts
 {
-    sessionId: string;
-    game: {id: string; name: string; version: string};
-    bet: number;
-    win: number;      // session.getWinAmount() as it currently stands — 0 before the first spin
-    credits: number;
-    screen?: unknown[][]; // getSymbolsCombination().toMatrix() when the session exposes it, else omitted
+ sessionId: string;
+ game: {id: string; name: string; version: string};
+ bet: number;
+ win: number; // session.getWinAmount() as it currently stands — 0 before the first spin
+ credits: number;
+ screen?: unknown[][]; // getSymbolsCombination().toMatrix() when the session exposes it, else omitted
 }
 ```
 
 `404 {"error": "..."}` for an unknown `sessionId`.
 
 This is a **restore/reload** endpoint, not a new capability — it reads the persisted `SessionRepository` state
-`POST /sessions`/`POST .../spin` already write, it doesn't play a round or change any state. With the default
+`POST /sessions`/`POST.../spin` already write, it doesn't play a round or change any state. With the default
 `InMemorySessionRepository` (what the CLI always uses), that state doesn't survive a restart, so every stored
 `sessionId` 404s after one. With a `FileSessionRepository` (see below), it does.
 
-For a game implementing `getSessionSerializer()`, this returns `{sessionId, game, credits, ...initialPayload,
-...roundPayload}` — the session's `getInitialData()` output from creation (see `POST /sessions` above) **merged
+For a game implementing `getSessionSerializer()`, this returns `{sessionId, game, credits,...initialPayload,...roundPayload}` — the session's `getInitialData()` output from creation (see `POST /sessions` above) **merged
 with** its `getRoundData()` output from the last spin (see `POST /sessions/:sessionId/spin` above), round data
 winning on any overlapping key. This is the one endpoint that returns everything a client needs to fully rebuild
-its UI in a single call — neither `POST /sessions` nor `POST .../spin` alone does, by design (see
+its UI in a single call — neither `POST /sessions` nor `POST.../spin` alone does, by design (see
 [Session storage & wallet](#session-storage--wallet) below). Before any spin has happened, `roundPayload` isn't
-set yet, so the response is just `{sessionId, game, credits, ...initialPayload}`.
+set yet, so the response is just `{sessionId, game, credits,...initialPayload}`.
 
 This reads back exactly what was captured at session creation and after the last spin — **not** a freshly
 re-serialized session. A freshly reconstructed session only restores a game's own bespoke `featureState` (e.g.
@@ -2696,7 +2691,7 @@ lightweight restore step:
 2. On every reload, call `GET /sessions/:sessionId` with the stored id.
 3. If it responds `200`, use the returned state (bet/credits/screen/win) to resume where the client left off.
 4. If it responds `404` — the session's state is gone (process restarted with the in-memory default, or the
-   sessionId was never valid) — discard the stored id and fall back to step 1 (`POST /sessions` again).
+ sessionId was never valid) — discard the stored id and fall back to step 1 (`POST /sessions` again).
 
 ### Public vs. internal/debug responses
 
@@ -2715,15 +2710,15 @@ string at all all leave the response public-only — there is no fuzzy/truthy pa
 
 ```ts
 {
-    // ...the same public response documented above...
-    internal?: {
-        stateAfter: PokieSessionState;    // the session's raw, persisted state (see below)
-        stateBefore?: PokieSessionState;  // only present on a spin response — the state right before it
-        debugData?: Record<string, unknown>; // see below — only present if the serializer provides it
-        requestId?: string;               // only present on a spin response made with a requestId
-        sessionVersion?: number;          // see "Optimistic locking" below — only present when the
-                                           // configured SessionRepository supports it
-    };
+ //...the same public response documented above...
+ internal?: {
+ stateAfter: PokieSessionState; // the session's raw, persisted state (see below)
+ stateBefore?: PokieSessionState; // only present on a spin response — the state right before it
+ debugData?: Record<string, unknown>; // see below — only present if the serializer provides it
+ requestId?: string; // only present on a spin response made with a requestId
+ sessionVersion?: number; // see "Optimistic locking" below — only present when the
+ // configured SessionRepository supports it
+ };
 }
 ```
 
@@ -2737,12 +2732,12 @@ optional debug hooks on `GameSessionSerializing`:
 
 ```ts
 export interface GameSessionSerializing {
-    getInitialData(session): GameInitialNetworkData;
-    getRoundData(session): GameRoundNetworkData;
-    // Optional — implement to expose internal/debug-only data (RNG info, reel stops, evaluator
-    // traces, anything else worth inspecting locally) without ever putting it in the public response.
-    getInitialDebugData?(session): Record<string, unknown>;
-    getRoundDebugData?(session): Record<string, unknown>;
+ getInitialData(session): GameInitialNetworkData;
+ getRoundData(session): GameRoundNetworkData;
+ // Optional — implement to expose internal/debug-only data (RNG info, reel stops, evaluator
+ // traces, anything else worth inspecting locally) without ever putting it in the public response.
+ getInitialDebugData?(session): Record<string, unknown>;
+ getRoundDebugData?(session): Record<string, unknown>;
 }
 ```
 
@@ -2774,21 +2769,21 @@ call happened to include `?debug=1`.
 ### Session storage & wallet
 
 `PokieDevServer` never keeps game state only in a live session object — every `POST /sessions` and
-`POST .../spin` writes a serializable `PokieSessionState` (`{context?, bet, win, screen?, featureState?,
+`POST.../spin` writes a serializable `PokieSessionState` (`{context?, bet, win, screen?, featureState?,
 initialPayload?, roundPayload?}`, no credits) through a `SessionRepository`:
 
 ```ts
 export interface SessionRepository {
-    save(sessionId: string, state: PokieSessionState): Promise<void>;
-    load(sessionId: string): Promise<PokieSessionState | undefined>;
+ save(sessionId: string, state: PokieSessionState): Promise<void>;
+ load(sessionId: string): Promise<PokieSessionState | undefined>;
 }
 ```
 
 - `InMemorySessionRepository` — the default, a `Map` for the lifetime of the process (same behavior as before
-  storage became replaceable).
+ storage became replaceable).
 - `FileSessionRepository` — one JSON file per session under a directory you choose, so state survives a
-  `pokie serve` restart. A missing or corrupted file is treated as an unknown session (`404`), not a crash. Session
-  ids are hashed into filenames, so an untrusted `sessionId` can't be used for path traversal.
+ `pokie serve` restart. A missing or corrupted file is treated as an unknown session (`404`), not a crash. Session
+ ids are hashed into filenames, so an untrusted `sessionId` can't be used for path traversal.
 
 Both also implement an additive optimistic-locking API, `VersionedSessionRepository` — see
 [Optimistic locking (session versioning)](#optimistic-locking-session-versioning) below.
@@ -2799,11 +2794,11 @@ implementation can implement:
 
 ```ts
 export interface ConvertableToSessionState<T = unknown> {
-    toSessionState(): T;
+ toSessionState(): T;
 }
 
 export interface BuildableFromSessionState<T = unknown> {
-    fromSessionState(value: T): this;
+ fromSessionState(value: T): this;
 }
 ```
 
@@ -2815,8 +2810,7 @@ games and the standalone `VideoSlotSession` behave exactly as before whether or 
 
 `initialPayload`/`roundPayload` are the `getSessionSerializer()` counterparts — present only for a game
 implementing it. `initialPayload` holds `getInitialData(session)`'s output, captured exactly once, at session
-creation; it's never recomputed on a spin, since a session's own descriptive data (paytable, availableSymbols,
-...) doesn't change between rounds. `roundPayload` holds `getRoundData(session)`'s output, captured fresh after
+creation; it's never recomputed on a spin, since a session's own descriptive data (paytable, availableSymbols,...) doesn't change between rounds. `roundPayload` holds `getRoundData(session)`'s output, captured fresh after
 every spin and replaced each time — it's the actual outcome of the most recent round, not accumulated across
 spins. `GET /sessions/:sessionId` reads both straight back out of storage and merges them (see that endpoint's
 own note above) rather than re-serializing a reconstructed session, which would silently produce a wrong payload
@@ -2827,8 +2821,8 @@ a restart always resets balances even when a `FileSessionRepository` keeps the g
 
 ```ts
 export interface WalletPort {
-    getBalance(sessionId: string): Promise<number>;
-    setBalance(sessionId: string, balance: number): Promise<void>;
+ getBalance(sessionId: string): Promise<number>;
+ setBalance(sessionId: string, balance: number): Promise<void>;
 }
 ```
 
@@ -2849,14 +2843,14 @@ walletPortContractTests("MyWalletPort", () => new MyWalletPort());
 depending on whether you configured one:
 
 - **No `wallet` option passed** — `PokieDevServer` uses its own default `InMemoryWallet`, and seeds each new
-  session's balance from that session's own `getCreditsAmount()` at creation time. This preserves `pokie serve`'s
-  original out-of-box behavior: the balance you see is whatever the loaded game package's own config already
-  defaults to.
+ session's balance from that session's own `getCreditsAmount()` at creation time. This preserves `pokie serve`'s
+ original out-of-box behavior: the balance you see is whatever the loaded game package's own config already
+ defaults to.
 - **`wallet` passed explicitly** — that `WalletPort` (an `InMemoryWallet(initialBalance)` or your own
-  implementation) becomes the sole source of a new session's starting balance instead: `PokieDevServer` reads it
-  via `getBalance()` for the not-yet-seen `sessionId` and applies it onto the freshly created session, rather than
-  the other way around. A session's own default credits never get written back into an explicitly configured
-  wallet.
+ implementation) becomes the sole source of a new session's starting balance instead: `PokieDevServer` reads it
+ via `getBalance()` for the not-yet-seen `sessionId` and applies it onto the freshly created session, rather than
+ the other way around. A session's own default credits never get written back into an explicitly configured
+ wallet.
 
 Either way, a session's balance only changes from its starting value after an actual spin (`setBalance()` is
 always called after `play()`).
@@ -2869,10 +2863,10 @@ import {FileSessionRepository, InMemoryWallet, loadPokieGame, PokieDevServer} fr
 
 const game = await loadPokieGame("./sample-slot");
 const server = new PokieDevServer(game, {
-    host: "127.0.0.1",
-    port: 4000,
-    sessionRepository: new FileSessionRepository("./sessions"),
-    wallet: new InMemoryWallet(1000),
+ host: "127.0.0.1",
+ port: 4000,
+ sessionRepository: new FileSessionRepository("./sessions"),
+ wallet: new InMemoryWallet(1000),
 });
 ```
 
@@ -2905,8 +2899,8 @@ about it changed. Both built-in implementations, `InMemorySessionRepository` and
 
 ```ts
 export interface VersionedSessionRepository extends SessionRepository {
-    loadVersioned(sessionId: string): Promise<{state: PokieSessionState; version: number} | undefined>;
-    saveVersioned(sessionId: string, state: PokieSessionState, expectedVersion: number): Promise<number>;
+ loadVersioned(sessionId: string): Promise<{state: PokieSessionState; version: number} | undefined>;
+ saveVersioned(sessionId: string, state: PokieSessionState, expectedVersion: number): Promise<number>;
 }
 ```
 
@@ -2975,8 +2969,8 @@ reconstruct the session, gate on `canPlayNextGame()`, run `play()`, settle the w
 
 ```ts
 export interface SpinCommandHandling {
-    primeSession(sessionId: string, session: GameSessionHandling, committedVersion?: number): void;
-    handle(sessionId: string, requestId?: string, expectedVersion?: number, bet?: number, mode?: string): Promise<SpinCommandResult>;
+ primeSession(sessionId: string, session: GameSessionHandling, committedVersion?: number): void;
+ handle(sessionId: string, requestId?: string, expectedVersion?: number, bet?: number, mode?: string): Promise<SpinCommandResult>;
 }
 ```
 
@@ -2993,9 +2987,9 @@ separate, additive interface:
 
 ```ts
 export interface TransactionalWalletPort extends WalletPort {
-    debit(sessionId: string, transactionId: string, amount: number): Promise<number>;
-    credit(sessionId: string, transactionId: string, amount: number): Promise<number>;
-    reverse(sessionId: string, transactionId: string): Promise<number>;
+ debit(sessionId: string, transactionId: string, amount: number): Promise<number>;
+ credit(sessionId: string, transactionId: string, amount: number): Promise<number>;
+ reverse(sessionId: string, transactionId: string): Promise<number>;
 }
 ```
 
@@ -3027,18 +3021,18 @@ retried command that follows a reversed prior attempt always gets brand-new tran
 the reversed ones — the logical request id and the per-attempt transaction ids are deliberately different things:
 
 - **Stake**: `session.getBet()`, unless the session implements the optional `StakeAmountDetermining` contract
-  below, in which case `getStakeAmount()` decides instead. The wallet balance itself is never used to infer "this
-  must be a free spin" — a session's `canPlayNextGame()` can legitimately return `true` at any balance for reasons
-  that have nothing to do with a free round, so balance alone isn't a safe signal either way.
+ below, in which case `getStakeAmount()` decides instead. The wallet balance itself is never used to infer "this
+ must be a free spin" — a session's `canPlayNextGame()` can legitimately return `true` at any balance for reasons
+ that have nothing to do with a free round, so balance alone isn't a safe signal either way.
 - **Win**: whatever reconciles the wallet to the session's own final credits after `play()` — i.e.
-  `balanceBeforePlay - stakeDebited + winCredited` always equals `session.getCreditsAmount()` post-`play()`. This
-  is what keeps the numbers correct even when a session's own accounting doesn't match a naive bet/win split
-  (e.g. a free-games round that banks several spins' wins and only pays them out once the round finishes):
-  whatever the session's own credits moved by, beyond the stake actually charged, is exactly what gets credited.
+ `balanceBeforePlay - stakeDebited + winCredited` always equals `session.getCreditsAmount()` post-`play()`. This
+ is what keeps the numbers correct even when a session's own accounting doesn't match a naive bet/win split
+ (e.g. a free-games round that banks several spins' wins and only pays them out once the round finishes):
+ whatever the session's own credits moved by, beyond the stake actually charged, is exactly what gets credited.
 
 ```ts
 export interface StakeAmountDetermining {
-    getStakeAmount(): number;
+ getStakeAmount(): number;
 }
 ```
 
@@ -3062,20 +3056,20 @@ That's **best-effort, process-local compensation** — not a cross-store databas
 guarantee. Two concrete ways it can fall short:
 
 - **Process crash.** If the process dies (or is killed) between two of the awaited calls this handler makes — e.g.
-  right after debiting/crediting the wallet but before persisting the new session state, or right after
-  persisting the session state but before persisting the idempotency result — no catch block ever runs, so
-  nothing gets compensated. The wallet, `SessionRepository`, and `idempotencyRepository` can be left durably
-  diverged (e.g. a debited wallet whose session state was never updated) until something else reconciles them.
-  The built-in `InMemoryWallet` and `InMemoryIdempotencyRepository` lose everything on a crash anyway, so nothing
-  survives on their side to diverge — but `FileSessionRepository` writes to disk and *does* survive a crash, so
-  its persisted session state can easily end up ahead of (diverged from) an in-memory wallet/idempotency store
-  that reset to nothing on restart. A real durable/persistent `WalletPort` or `IdempotencyRepository` doesn't get
-  this protection for free just by being used with `SpinCommandHandler`, and pairing `FileSessionRepository` with
-  the in-memory wallet/idempotency defaults is exactly this scenario, not a hypothetical one.
+ right after debiting/crediting the wallet but before persisting the new session state, or right after
+ persisting the session state but before persisting the idempotency result — no catch block ever runs, so
+ nothing gets compensated. The wallet, `SessionRepository`, and `idempotencyRepository` can be left durably
+ diverged (e.g. a debited wallet whose session state was never updated) until something else reconciles them.
+ The built-in `InMemoryWallet` and `InMemoryIdempotencyRepository` lose everything on a crash anyway, so nothing
+ survives on their side to diverge — but `FileSessionRepository` writes to disk and *does* survive a crash, so
+ its persisted session state can easily end up ahead of (diverged from) an in-memory wallet/idempotency store
+ that reset to nothing on restart. A real durable/persistent `WalletPort` or `IdempotencyRepository` doesn't get
+ this protection for free just by being used with `SpinCommandHandler`, and pairing `FileSessionRepository` with
+ the in-memory wallet/idempotency defaults is exactly this scenario, not a hypothetical one.
 - **Compensation failure.** The reversal/restore calls themselves can fail (e.g. the same outage that made the
-  original call fail is still ongoing). That failure is swallowed, so it doesn't replace or hide the original
-  error `handle()` rejects with — but it also means the compensation silently didn't happen: the wallet and/or
-  `SessionRepository` can be left reflecting a partially-applied attempt.
+ original call fail is still ongoing). That failure is swallowed, so it doesn't replace or hide the original
+ error `handle()` rejects with — but it also means the compensation silently didn't happen: the wallet and/or
+ `SessionRepository` can be left reflecting a partially-applied attempt.
 
 For local reference atomicity, select the explicit `transactionalRoundStore` composition
 [documented below](#selecting-durable-reference-round-storage-from-a-library-server).
@@ -3104,8 +3098,8 @@ Idempotency is a separate, additive `IdempotencyRepository`, keyed by `(sessionI
 
 ```ts
 export interface IdempotencyRepository<T = unknown> {
-    load(sessionId: string, requestId: string): Promise<T | undefined>;
-    save(sessionId: string, requestId: string, result: T): Promise<void>;
+ load(sessionId: string, requestId: string): Promise<T | undefined>;
+ save(sessionId: string, requestId: string, result: T): Promise<void>;
 }
 ```
 
@@ -3131,15 +3125,15 @@ independently.
 ### Failure modes
 
 - Missing `<packageRoot>`, an unknown option, a non-numeric `--port`, or a missing `--host` value throw a
-  `Usage: pokie serve ...` error before the server starts (same as every other command).
+ `Usage: pokie serve...` error before the server starts (same as every other command).
 - An invalid or unavailable `packageRoot` prints a concise recovery diagnostic: run
-  `pokie validate <packageRoot>` to diagnose it, then retry. Resolver, materialization, and package-loader
-  details are intentionally not exposed.
+ `pokie validate <packageRoot>` to diagnose it, then retry. Resolver, materialization, and package-loader
+ details are intentionally not exposed.
 - If the port is already in use, stop the process using it or retry with `--port <number>` (or `--port 0` for an
-  available port). Any other listener-start failure tells you to check the configured host and port and retry.
+ available port). Any other listener-start failure tells you to check the configured host and port and retry.
 - Once the server is running, errors are JSON HTTP responses (`400`/`404`/`409`/`500` with `{"error": "..."}`),
-  not thrown/exit codes — `pokie serve` is a long-running process, not a one-shot command. `409` is specific to
-  a spin's session version going stale — see [Optimistic locking](#optimistic-locking-session-versioning) above.
+ not thrown/exit codes — `pokie serve` is a long-running process, not a one-shot command. `409` is specific to
+ a spin's session version going stale — see [Optimistic locking](#optimistic-locking-session-versioning) above.
 
 The reusable server sits behind `src/server` (`PokieDevServer`, implementing `PokieDevServerHandling`) — the same
 "thin CLI wrapper over a reusable class" shape as [`pokie replay`](#pokie-replay-packageroot):
@@ -3150,7 +3144,7 @@ import {loadPokieGame, PokieDevServer, PokieDevServerHandling} from "@fromstan/p
 const game = await loadPokieGame("./sample-slot");
 const server: PokieDevServerHandling = new PokieDevServer(game, {host: "127.0.0.1", port: 4000});
 const address = await server.start(); // {host, port} — port is the OS-assigned one if 0 was requested
-// ...
+//...
 await server.stop();
 ```
 
@@ -3166,8 +3160,8 @@ running `pokie serve` (default `http://127.0.0.1:3000`). Use [`pokie dev`](#poki
 to run both together with zero configuration.
 
 ```
-pokie serve ./sample-slot            # in one terminal
-pokie client ./sample-slot            # in another
+pokie serve./sample-slot # in one terminal
+pokie client./sample-slot # in another
 ```
 
 ```
@@ -3180,16 +3174,16 @@ Options:
 - `--port <number>` — port to listen on (default `3100`). Pass `0` to let the OS assign a free port.
 - `--host <string>` — host/interface to bind (default `127.0.0.1`).
 - `--api-host <string>` / `--api-port <number>` — where to expect the `pokie serve` API (default
-  `127.0.0.1:3000`).
+ `127.0.0.1:3000`).
 - `--no-open` — don't try to open a browser.
 
 Once listening, `pokie client` best-effort opens a browser pointed at the UI it just started — the same
 `open`/`start`/`xdg-open` mechanism, and the same `--no-open` escape hatch, `pokie dev` (below) uses. A two-step
-`pokie serve` + `pokie client` workflow ends up at the exact same canonical player, opened the exact same way, as
+`pokie serve` + `pokie client` workflow ends up at the exact same player, opened the exact same way, as
 running `pokie dev` directly.
 
 `<packageRoot>` is required — for signature symmetry with `pokie serve`/`pokie dev`, and because the scaffolded
-`"client": "pokie client ."` script always passes one — but it's **never loaded**: the browser UI is entirely
+`"client": "pokie client."` script always passes one — but it's **never loaded**: the browser UI is entirely
 game-agnostic, so `pokie client` doesn't call `loadPokieGame` at all.
 
 If the UI port is already in use, stop the process using it or retry with `--port <number>` (or `--port 0` for an
@@ -3207,12 +3201,12 @@ the same shape as `PokieDevServer`:
 import {PokieClientServer, PokieClientServerHandling} from "@fromstan/pokie";
 
 const server: PokieClientServerHandling = new PokieClientServer("./dist/cli/client", {
-    host: "127.0.0.1",
-    port: 3100,
-    apiAddress: {host: "127.0.0.1", port: 3000},
+ host: "127.0.0.1",
+ port: 3100,
+ apiAddress: {host: "127.0.0.1", port: 3000},
 });
 const address = await server.start();
-// ...
+//...
 await server.stop();
 ```
 
@@ -3224,7 +3218,7 @@ child processes — waits for the API's `GET /health` to actually respond, best-
 pointed at the client, and cleanly stops both servers on `Ctrl+C` (`SIGINT`/`SIGTERM`).
 
 ```
-pokie dev ./sample-slot
+pokie dev./sample-slot
 ```
 
 ```
@@ -3237,11 +3231,11 @@ Options:
 
 - `--port <number>` / `--host <string>` — the API server's port/host (same defaults as `pokie serve`).
 - `--client-port <number>` / `--client-host <string>` — the client server's port/host (same defaults as
-  `pokie client`).
+ `pokie client`).
 - `--no-open` — don't try to open a browser.
 
 Opening the browser is entirely best-effort: it shells out to `open` (macOS), `start` (Windows), or `xdg-open`
-(everything else), and a failure there (no display, sandboxed environment, missing binary, ...) is swallowed —
+(everything else), and a failure there (no display, sandboxed environment, missing binary,...) is swallowed —
 it never fails the command. Registering `SIGINT`/`SIGTERM` handlers to stop both servers means `pokie dev` also
 calls `process.exit()` itself once both `.stop()` calls settle (successfully or not) — Node won't exit
 automatically once a custom signal handler is registered.
@@ -3269,22 +3263,22 @@ behavior is exactly what's documented below, unchanged from the sections that fo
 Several invocations launch it, resolved by `resolveCliInvocation` (`cli/resolveCliInvocation.ts`):
 
 - `pokie` — global Home, independent of the working directory.
-- `pokie .` — Project mode for the current directory.
+- `pokie.` — Project mode for the current directory.
 - `pokie <projectRoot>` — Project mode for the supplied project root, as long as that path isn't itself one of the command
-  names below and actually exists (a typo'd command name is never silently treated as a path — see below).
+ names below and actually exists (a typo'd command name is never silently treated as a path — see below).
 
 Bare Studio flags discover a project from the working directory, so `pokie --no-open` inside a project opens that
 project rather than Home. This existing option-only discovery behavior is preserved; `pokie` with no arguments
 always opens global Home. Help/version flags never start Studio.
 
-"Is this a game package" is decided by the same `"pokie": {"entry": ...}` field in `package.json` that
+"Is this a game package" is decided by the same `"pokie": {"entry":...}` field in `package.json` that
 [`loadPokieGame`](game-packages.md) itself reads — the discovery walk reuses that one definition instead of a
 second one, and it stops there: whether the entry module actually loads stays the Project Dashboard's own
 question, so a project with a broken entry still opens its dashboard and reports the error there. Nothing is
 remembered between runs either — the target is always rediscovered from the current working directory, never
 restored from a "last opened project".
 
-Every other named POKIE invocation (`pokie sim ...`, `pokie serve ...`, etc.) is unaffected — a first
+Every other named POKIE invocation (`pokie sim...`, `pokie serve...`, etc.) is unaffected — a first
 argument that matches a known command name always dispatches to that command, never to Studio.
 
 Whichever mode the server starts in, the frontend opens directly on that mode's own screen: Project mode lands on
@@ -3293,7 +3287,7 @@ is never sent to the server), so `#/` asks `GET /api/context` once at startup an
 replacing the entry, so Back doesn't return to it.
 
 ```
-pokie .
+pokie.
 ```
 
 ```
@@ -3308,48 +3302,48 @@ Home offers one editable design path, including loading an existing Blueprint. P
 **Build/Export** section owns package builds and PAR exports.
 
 - **Design Game** is the guided happy path: start with a recommended starter, a blank design, a generated idea,
-  or an existing Blueprint file. Configure and save the draft, then build from its workspace —
-  editing the exact same DTO [`pokie build <project> --target tsPackage`](#pokie-build-project) accepts (no
-  separate Studio-only blueprint schema).
-  A **Form**/**JSON** toggle switches between the field-by-field editor (with add/remove/duplicate/reorder
-  controls for every collection: symbols, bets, paylines, paytable rows, reel-strip symbols, symbol-weight rows,
-  plus wild/scatter checkboxes and a reel-strips-vs-symbol-weights mode toggle) and a raw JSON textarea kept in
-  sync with it — a Form edit always re-derives the JSON text, a syntactically valid JSON edit always re-derives
-  the Form, and invalid JSON (or JSON that parses but isn't an object) leaves the last-known-good state untouched
-  rather than clearing the editor; any top-level field the Form doesn't know about survives every round trip
-  unchanged. Studio automatically validates the current revision with the same `GameBlueprintValidator`
-  used everywhere else, without touching disk.
-  Load/Save-by-path, the raw JSON view, and PAR import are tucked behind **Show advanced options (file
-  and JSON tools)**. PAR Apply updates the draft; it does not publish an artifact. **Create game** validates
-  the current revision, saves the design and opens its workspace. Build packages and export PAR workbooks
-  from that workspace’s **Build/Export**, which previews the actual destination and refuses occupied outputs.
-  Saving alone does not imply runtime preparation, project validation, or an artifact build succeeded. A **Reel Strip Modeler** mode
-  (alongside Default/Reel strips/Symbol weights) edits a
-  `GameBlueprint`'s per-reel [`reelStripGeneration`](#reelstripgeneration-build-time-reel-strip-generation)
-  array: each reel independently toggles between **Literal** (the same per-symbol strip editor as the Reel
-  strips mode) and **Generated** (that reel's own length, seed, max attempts, an exclusive counts-or-weights
-  table, a locked-positions table, and its `constraints` array edited as raw JSON — there are seven constraint
-  types with quite different fields, so this reuses the same JSON-editing affordance the whole-blueprint JSON
-  view already has instead of one bespoke widget per type). Switching a reel between Literal/Generated, or a
-  generated reel's own source between counts/weights, never discards what was already entered on the side being
-  left. A generated reel's own **Length** can be set automatically to the sum of its currently active
-  counts/weights (**Auto length**); its `constraints` can be started from a handful of built-in **presets**
-  (still just plain `ReelStripConstraintSpec` objects appended to the same JSON array); and a reel's own draft
-  can be replaced wholesale with another already-configured reel's own entry (**Copy from reel**). **Resolve
-  reels** calls `POST /api/home/blueprints/reel-strip-generation-preview` (see the API section), which runs the
-  exact same `resolveReelStripGeneration`/`ReelStripGenerator`/`ReelStripAnalyzer` `pokie build` itself uses —
-  never a reimplementation — and shows every reel's exact resulting symbol sequence, symbol-count analysis, and
-  (for a generated reel whose constraints can't be satisfied) every generation attempt's own diagnostics/
-  violations, without writing anything. **Save** always writes the *authored* `reelStripGeneration` array
-  (counts/weights/seed/constraints), never a resolved/materialized strip.
+ or an existing Blueprint file. Configure and save the draft, then build from its workspace —
+ editing the exact same DTO [`pokie build <project> --target tsPackage`](#pokie-build-project) accepts (no
+ separate Studio-only blueprint schema).
+ A **Form**/**JSON** toggle switches between the field-by-field editor (with add/remove/duplicate/reorder
+ controls for every collection: symbols, bets, paylines, paytable rows, reel-strip symbols, symbol-weight rows,
+ plus wild/scatter checkboxes and a reel-strips-vs-symbol-weights mode toggle) and a raw JSON textarea kept in
+ sync with it — a Form edit always re-derives the JSON text, a syntactically valid JSON edit always re-derives
+ the Form, and invalid JSON (or JSON that parses but isn't an object) leaves the last-known-good state untouched
+ rather than clearing the editor; any top-level field the Form doesn't know about survives every round trip
+ unchanged. Studio automatically validates the current revision with the same `GameBlueprintValidator`
+ used everywhere else, without touching disk.
+ Load/Save-by-path, the raw JSON view, and PAR import are tucked behind **Show advanced options (file
+ and JSON tools)**. PAR Apply updates the draft; it does not publish an artifact. **Create game** validates
+ the current revision, saves the design and opens its workspace. Build packages and export PAR workbooks
+ from that workspace’s **Build/Export**, which previews the actual destination and refuses occupied outputs.
+ Saving alone does not imply runtime preparation, project validation, or an artifact build succeeded. A **Reel Strip Modeler** mode
+ (alongside Default/Reel strips/Symbol weights) edits a
+ `GameBlueprint`'s per-reel [`reelStripGeneration`](#reelstripgeneration-build-time-reel-strip-generation)
+ array: each reel independently toggles between **Literal** (the same per-symbol strip editor as the Reel
+ strips mode) and **Generated** (that reel's own length, seed, max attempts, an exclusive counts-or-weights
+ table, a locked-positions table, and its `constraints` array edited as raw JSON — there are seven constraint
+ types with quite different fields, so this reuses the same JSON-editing affordance the whole-blueprint JSON
+ view already has instead of one bespoke widget per type). Switching a reel between Literal/Generated, or a
+ generated reel's own source between counts/weights, never discards what was already entered on the side being
+ left. A generated reel's own **Length** can be set automatically to the sum of its currently active
+ counts/weights (**Auto length**); its `constraints` can be started from a handful of built-in **presets**
+ (still just plain `ReelStripConstraintSpec` objects appended to the same JSON array); and a reel's own draft
+ can be replaced wholesale with another already-configured reel's own entry (**Copy from reel**). **Resolve
+ reels** calls `POST /api/home/blueprints/reel-strip-generation-preview` (see the API section), which runs the
+ exact same `resolveReelStripGeneration`/`ReelStripGenerator`/`ReelStripAnalyzer` `pokie build` itself uses —
+ never a reimplementation — and shows every reel's exact resulting symbol sequence, symbol-count analysis, and
+ (for a generated reel whose constraints can't be satisfied) every generation attempt's own diagnostics/
+ violations, without writing anything. **Save** always writes the *authored* `reelStripGeneration` array
+ (counts/weights/seed/constraints), never a resolved/materialized strip.
 - **Projects** lists managed designs created in Studio and external projects added from the computer,
-  persisted across restarts via `StudioProjectRegistrationService`, with name, path, and last-opened time.
-  Missing project locations remain visible with recovery guidance. **Open** resolves it through the shared project contract:
-  game packages use `loadPokieGame`, canonical WASM uses the portable integrity-checked runtime, and legacy
-  sidecar-only components retain their inspection view. **Import Project**
-  previews/validates a target path before registration. A PAR workbook can open its artifact workspace for
-  supported conversions, or import/apply its model into Design Game for editing. PAR export belongs in the
-  saved workspace’s Build/Export.
+ persisted across restarts via `StudioProjectRegistrationService`, with name, path, and last-opened time.
+ Missing project locations remain visible with recovery guidance. **Open** resolves it through the shared project contract:
+ game packages use `loadPokieGame`, WASM uses the portable integrity-checked runtime, and legacy
+ sidecar-only components retain their inspection view. **Import Project**
+ previews/validates a target path before registration. A PAR workbook can open its artifact workspace for
+ supported conversions, or import/apply its model into Design Game for editing. PAR export belongs in the
+ saved workspace’s Build/Export.
 
 None of these ever shell out to `pokie create`/`init`/`build` as a subprocess, or duplicate their logic — see
 `StudioBlueprintService` (`cli/studio/blueprint/StudioBlueprintService.ts`) for the Blueprint Editor and
@@ -3361,16 +3355,16 @@ A **Documentation** section links into this repository's docs.
 Options:
 
 - `--port <number>` / `--host <string>` — where Studio listens (default `127.0.0.1:3200`). Studio is a
-  single-user, process-local session, not a multi-user service: browser writes must be same-origin and a
-  loopback peer. A non-loopback bind is read-only unless an embedding host explicitly supplies Studio's
-  `trustedOrigins` allowlist; the CLI does not expose that embedding-only override. Studio emits no CORS
-  opt-in, and native file picker/reveal actions are available only to a loopback peer. Do not expose an
-  unauthenticated Studio listener to an untrusted network.
+ single-user, process-local session, not a multi-user service: browser writes must be same-origin and a
+ loopback peer. A non-loopback bind is read-only unless an embedding host explicitly supplies Studio's
+ `trustedOrigins` allowlist; the CLI does not expose that embedding-only override. Studio emits no CORS
+ opt-in, and native file picker/reveal actions are available only to a loopback peer. Do not expose an
+ unauthenticated Studio listener to an untrusted network.
 - `--no-open` — don't try to open a browser.
 
 ### Project Dashboard
 
-Opening or creating a project — or launching Studio directly with `pokie .`/`pokie [projectRoot]`
+Opening or creating a project — or launching Studio directly with `pokie.`/`pokie [projectRoot]`
 — switches Studio into the **Project** mode/route, identified by that project's `projectRoot`, and shows the
 **Project Dashboard**.
 
@@ -3388,28 +3382,28 @@ mount. Overview is informational diagnostics only — it surfaces validation sta
 alongside the rest of the project's state, with no wizard-like next-step recommendation or call to action:
 
 - **Overview** shows the game's name/id/version, the absolute `projectRoot`, its `package.json` identity (name,
-  version — the same data [`pokie inspect`](#pokie-inspect-packageroot) prints), and its validation report
-  (errors, warnings, suggestions), refreshed
-  automatically and re-runnable on demand. An **Inspect** quick action re-runs the inspection (handy after
-  rebuilding without restarting Studio).
+ version — the same data [`pokie inspect`](#pokie-inspect-packageroot) prints), and its validation report
+ (errors, warnings, suggestions), refreshed
+ automatically and re-runnable on demand. An **Inspect** quick action re-runs the inspection (handy after
+ rebuilding without restarting Studio).
 - **Game Model** is a read-only, resolved-project-type-aware projection of the game (manifest, reels/rows,
-  symbols, paylines, paytable, reel strips/symbol weights, available bets) via `GET /api/project/gameModel` — for
-  a project with an editable source blueprint, each section also offers **Edit** straight from this view (scoped
-  to one section at a time), reusing the exact same Blueprint Editor components Design Game's guided flow uses.
+ symbols, paylines, paytable, reel strips/symbol weights, available bets) via `GET /api/project/gameModel` — for
+ a project with an editable source blueprint, each section also offers **Edit** straight from this view (scoped
+ to one section at a time), reusing the exact same Blueprint Editor components Design Game's guided flow uses.
 - **Play** is Studio's own — and only — game mode: **New session**/**Reset** create a real session directly in
-  Studio's own backend (never a server, never a host/port a browser could be pointed at — to stand up an actual
-  HTTP server, use [`pokie serve`](#pokie-serve-packageroot)/[`pokie dev`](#pokie-dev-packageroot)
-  instead) and spin it for real, with every round rendering through the same `RoundRecordInspector` the Replay
-  tab uses. Also reachable for a resolved outcome-library project, sampled through its own outcome-source draw.
+ Studio's own backend (never a server, never a host/port a browser could be pointed at — to stand up an actual
+ HTTP server, use [`pokie serve`](#pokie-serve-packageroot)/[`pokie dev`](#pokie-dev-packageroot)
+ instead) and spin it for real, with every round rendering through the same `RoundRecordInspector` the Replay
+ tab uses. Also reachable for a resolved outcome-library project, sampled through its own outcome-source draw.
 - **Simulation** — see its own section below.
 - **Replay** — see its own section below.
 - **Build/Export** — see its own section below.
 - **Certification** and **Fairness** are thin GUI wrappers over the exact same backend building blocks their CLI
-  counterparts use — [`pokie certification`](#pokie-certification-build-bundledir-configjson) and
-  [`pokie fairness`](#pokie-fairness-seed-commit-serverseedtxt---out-file---overwrite) respectively — with no
-  dedicated walkthrough of their own in this file yet; see each linked CLI section (or
-  [`certification-evidence-bundle.md`](certification-evidence-bundle.md)/[`provably-fair.md`](provably-fair.md))
-  for the underlying workflow each tab drives through the Studio API.
+ counterparts use — [`pokie certification`](#pokie-certification-build-bundledir-configjson) and
+ [`pokie fairness`](#pokie-fairness-seed-commit-serverseedtxt---out-file---overwrite) respectively — with no
+ dedicated walkthrough of their own in this file yet; see each linked CLI section (or
+ [`certification-evidence-bundle.md`](certification-evidence-bundle.md)/[`provably-fair.md`](provably-fair.md))
+ for the underlying workflow each tab drives through the Studio API.
 
 Every quick action calls `GamePackageInspecting`/`PokieGamePackageValidating`/the simulation services directly (the
 same services `pokie inspect`/`pokie validate`/`pokie sim` use) — Studio never spawns a CLI command as a
@@ -3418,14 +3412,14 @@ subprocess, and never duplicates their logic.
 The Dashboard itself has four states, all handled explicitly by the frontend:
 
 - **empty** — Studio is in Home mode; there's no project to show a dashboard for.
-- **loading** — only right after Studio starts directly into Project mode (`pokie .`/`pokie [projectRoot]`); the entry
-  module hasn't finished loading yet. Design Game's Build and Projects' Open both already have the manifest in
-  hand by the time they switch Studio into Project mode, so they go straight to **loaded**.
+- **loading** — only right after Studio starts directly into Project mode (`pokie.`/`pokie [projectRoot]`); the entry
+ module hasn't finished loading yet. Design Game's Build and Projects' Open both already have the manifest in
+ hand by the time they switch Studio into Project mode, so they go straight to **loaded**.
 - **loaded** — the game's manifest (id/name/version) loaded successfully.
 - **error** — loading the entry module failed (missing build output, a package that doesn't satisfy the
-  `PokieGame` contract, a corrupt/missing `package.json`, an entry module that throws on import, ...). Overview
-  stays usable even here — Inspect only reads `package.json`/`build-info.json` (no entry module needed), and its
-  folded-in validation diagnostics are exactly how to see the concrete reason loading failed.
+ `PokieGame` contract, a corrupt/missing `package.json`, an entry module that throws on import,...). Overview
+ stays usable even here — Inspect only reads `package.json`/`build-info.json` (no entry module needed), and its
+ folded-in validation diagnostics are exactly how to see the concrete reason loading failed.
 
 #### Simulation
 
@@ -3489,7 +3483,7 @@ process-local, in-memory limit (same as the simulation jobs themselves): restart
 
 The **Replay** tab (also called Replay & Debug) runs a [`pokie replay`](#pokie-replay-packageroot)-equivalent
 replay against the active project — game packages reuse `loadPokieGame`/`GameSessionHandling.play()` directly (the
-same primitives `ReplayRecorder` itself uses), while canonical WASM uses its portable runtime contract. It never
+same primitives `ReplayRecorder` itself uses), while WASM uses its portable runtime contract. It never
 shells out to `pokie replay` or reimplements either runtime's logic.
 
 Replay has no single sequential order shared by every source — a live spin has nothing to reproduce, a pasted
@@ -3506,24 +3500,24 @@ picked one.
 The source choice offers four methods:
 
 - **Recreate from seed** — a **target round number in a new replay session** (required, a positive integer) and an
-  optional **seed**, same as `pokie replay --round/--seed`. Reproducing always creates a brand-new game session and
-  plays it forward from round 1 through the target round — it never looks up an existing session's recorded round,
-  even when the seed happens to match one that was recorded before (that's what **Session Spin**/**Replay Artifact**
-  are for). **Load** stages it as the round/seed to reproduce.
+ optional **seed**, same as `pokie replay --round/--seed`. Reproducing always creates a brand-new game session and
+ plays it forward from round 1 through the target round — it never looks up an existing session's recorded round,
+ even when the seed happens to match one that was recorded before (that's what **Session Spin**/**Replay Artifact**
+ are for). **Load** stages it as the round/seed to reproduce.
 - **Replay Artifact** — paste a replay artifact JSON (as produced by this same tab's own Export) into a textarea;
-  **Validate & load** posts it to `POST /api/project/replays/inspect-artifact` (see below), which applies the exact
-  same round/seed validation `POST /api/project/replays` itself would. A structurally invalid nested artifact is
-  reported back as non-fatal warnings rather than blocking outright — round/seed alone are enough to attempt a
-  reproduction. Or pick one directly from a **Recent Replays** list to both load it and mark it as the "expected"
-  side for comparison.
+ **Validate & load** posts it to `POST /api/project/replays/inspect-artifact` (see below), which applies the exact
+ same round/seed validation `POST /api/project/replays` itself would. A structurally invalid nested artifact is
+ reported back as non-fatal warnings rather than blocking outright — round/seed alone are enough to attempt a
+ reproduction. Or pick one directly from a **Recent Replays** list to both load it and mark it as the "expected"
+ side for comparison.
 - **Session Spin** — pick a round from a shared, project-scoped recent-spins list (`GET /api/project/rounds`
-  — see the API section below), optionally filtered down to one session; every real round played anywhere in
-  Studio (a Play tab spin/scenario search, an Outcome Source Analysis sample draw, a Replay tab "Recent Simulation"
-  reproduction) is recorded into this one list, most-recent-first, capped at the 20 most recent, cleared on project
-  switch. This is an already-recorded result, so there's nothing to reproduce — picking one loads straight into its
-  own inspect view, with no Reproduce action at all.
+ — see the API section below), optionally filtered down to one session; every real round played anywhere in
+ Studio (a Play tab spin/scenario search, an Outcome Source Analysis sample draw, a Replay tab "Recent Simulation"
+ reproduction) is recorded into this one list, most-recent-first, capped at the 20 most recent, cleared on project
+ switch. This is an already-recorded result, so there's nothing to reproduce — picking one loads straight into its
+ own inspect view, with no Reproduce action at all.
 - **Recent Simulation** — pick a completed simulation report, then a round number within it, and **Load** stages
-  that round to reproduce with the simulation's own seed.
+ that round to reproduce with the simulation's own seed.
 
 For a loaded **Replay Artifact** record, the loaded card first runs it through a reproducibility gate
 (`describeReplayReproducibility`): reproducing forward from round 1 is only a *verifiable* match of the original
@@ -3590,41 +3584,41 @@ select-existing/inspect/compare workspace is not a builder and has no equivalent
 grouped by kind (`ExportDeployTargets.ts`):
 
 - **Outcome libraries** — one configurable generator for runnable designs/packages, with exact, sampled, or
-  bounded coverage where supported. This advanced action is optional: the Stake Engine export card plans
-  compatible outcome-library reuse or generation automatically. Existing outcome artifacts instead offer
-  republishing through their Build artifact card; they do not promise reconstruction of a game model.
+ bounded coverage where supported. This advanced action is optional: the Stake Engine export card plans
+ compatible outcome-library reuse or generation automatically. Existing outcome artifacts instead offer
+ republishing through their Build artifact card; they do not promise reconstruction of a game model.
 - **Build artifact** — runs the project through `pokie`'s own `ArtifactBuilderRegistry`, the exact same
-  `pokie build <project> --target <target>` conversions the CLI itself offers, including Stake Engine export
-  and PAR workbook export. Current server plans determine availability; unsupported targets remain visible
-  with their reasons and recovery guidance. Preview checks the actual destination before publication.
-  Success identifies output type/location and offers applicable open, reveal, and registration follow-ups.
-  These artifacts are local outputs; building a Stake bundle is not remote delivery.
+ `pokie build <project> --target <target>` conversions the CLI itself offers, including Stake Engine export
+ and PAR workbook export. Current server plans determine availability; unsupported targets remain visible
+ with their reasons and recovery guidance. Preview checks the actual destination before publication.
+ Success identifies output type/location and offers applicable open, reveal, and registration follow-ups.
+ These artifacts are local outputs; building a Stake bundle is not remote delivery.
 - **Remote deployment** — a GUI over the `pokie` package's own [External Adapter SDK](external-adapter-sdk.md):
-  `StudioDeploymentService` (`cli/studio/deployment/StudioDeploymentService.ts`) never projects a `RoundRecord`,
-  generates an artifact, or validates compatibility/output itself; every one of those steps is delegated straight
-  to `ExternalDeploymentService.deploy()`, the SDK's own single orchestrator. Studio ships no private RGS
-  integration of its own — Publish is only ever offered once a project has registered a real
-  `ExternalDeploymentTarget` (see the SDK doc above); until then, this group shows only a placeholder card
-  explaining that nothing deployable is registered yet. Studio only owns two things on top of the SDK: which
-  real, registered target(s) are available for the active project to select as cards, and turning the card's own
-  form into the SDK's input shapes. Selecting a registered
-  target shows its `id`, `version`, `requirements` (`minPokieVersion`/`symbolAlphabet`/
-  `requiresHomogeneousProvenance`, whichever are set), and `capabilities`; the deploy form then asks for one or
-  more **modes**, each a **mode name** and a **library JSON path** (a `WeightedOutcomeLibrary` file, resolved
-  relative to the active project's own root — the same "a path, never an inline blob" convention every other
-  Project Dashboard feature follows; refused with `400` if it resolves outside the project root); **Add mode**
-  appends another mode row for a multi-mode deployment (only accepted by a target that declares the `multiMode`
-  capability). **Check & Preview** and **Publish** are not two different pipelines — both call the exact same
-  `ExternalDeploymentService.deploy()`, against the exact same target, differing in exactly one thing: Preview
-  strips the target's own `runtimeAdapter` first, so the SDK's own existing "only call `runtimeAdapter.deliver()`
-  when the target declares one" behavior means nothing is ever written anywhere; Publish keeps it (behind a
-  confirmation prompt, since it writes files). Either way, the response is rendered **stage by stage** — target
-  descriptor, compatibility, round projection, artifact generation, artifact validation, target diagnostic, and
-  delivery — each shown as ok/error/skipped, with every stage's own `ValidationIssue`s listed underneath it; a
-  stage is "skipped" exactly when `ExternalDeploymentService` itself never ran it (an earlier stage already
-  failed), never inferred any other way by the client. **Generated artifacts** lists every file the run produced;
-  clicking one shows its own textual content (already returned as part of the run's own response — no second
-  request) — so a preview's own output can be read in full *before* anything is ever published.
+ `StudioDeploymentService` (`cli/studio/deployment/StudioDeploymentService.ts`) never projects a `RoundRecord`,
+ generates an artifact, or validates compatibility/output itself; every one of those steps is delegated straight
+ to `ExternalDeploymentService.deploy()`, the SDK's own single orchestrator. Studio ships no private RGS
+ integration of its own — Publish is only ever offered once a project has registered a real
+ `ExternalDeploymentTarget` (see the SDK doc above); until then, this group shows only a placeholder card
+ explaining that nothing deployable is registered yet. Studio only owns two things on top of the SDK: which
+ real, registered target(s) are available for the active project to select as cards, and turning the card's own
+ form into the SDK's input shapes. Selecting a registered
+ target shows its `id`, `version`, `requirements` (`minPokieVersion`/`symbolAlphabet`/
+ `requiresHomogeneousProvenance`, whichever are set), and `capabilities`; the deploy form then asks for one or
+ more **modes**, each a **mode name** and a **library JSON path** (a `WeightedOutcomeLibrary` file, resolved
+ relative to the active project's own root — the same "a path, never an inline blob" convention every other
+ Project Dashboard feature follows; refused with `400` if it resolves outside the project root); **Add mode**
+ appends another mode row for a multi-mode deployment (only accepted by a target that declares the `multiMode`
+ capability). **Check & Preview** and **Publish** are not two different pipelines — both call the exact same
+ `ExternalDeploymentService.deploy()`, against the exact same target, differing in exactly one thing: Preview
+ strips the target's own `runtimeAdapter` first, so the SDK's own existing "only call `runtimeAdapter.deliver()`
+ when the target declares one" behavior means nothing is ever written anywhere; Publish keeps it (behind a
+ confirmation prompt, since it writes files). Either way, the response is rendered **stage by stage** — target
+ descriptor, compatibility, round projection, artifact generation, artifact validation, target diagnostic, and
+ delivery — each shown as ok/error/skipped, with every stage's own `ValidationIssue`s listed underneath it; a
+ stage is "skipped" exactly when `ExternalDeploymentService` itself never ran it (an earlier stage already
+ failed), never inferred any other way by the client. **Generated artifacts** lists every file the run produced;
+ clicking one shows its own textual content (already returned as part of the run's own response — no second
+ request) — so a preview's own output can be read in full *before* anything is ever published.
 
 Outcome generation defaults to the project’s current mode (or `"base"`) and exposes advanced generation
 options, coverage limits, and recovery. The retired Outcome Libraries select/compare workspace has no
@@ -3643,192 +3637,192 @@ client, even for a load/validation failure.
 - `GET /api/health` — `200 {"status": "ok"}`, always, once Studio is up.
 - `GET /api/context` — the current mode: `{"mode": "home"}` or `{"mode": "project", "projectRoot": "..."}`.
 - `GET /api/studio/diagnostics` — safe, plain diagnostic data, in either mode: `{"studioVersion", "nodeVersion",
-  "mode", "projectRoot"?, "activeSimulationCount", "activeReplayCount", "recentProjectStoragePath",
-  "uptimeSeconds"}`. Every field is a primitive already safe to expose — never a stack trace, an environment
-  variable, a token, or a service instance; `recentProjectStoragePath` is always the literal
-  `"in-memory (no persistent path)"`, since recent projects are never actually persisted to disk (see
-  **Recent Projects** above).
+ "mode", "projectRoot"?, "activeSimulationCount", "activeReplayCount", "recentProjectStoragePath",
+ "uptimeSeconds"}`. Every field is a primitive already safe to expose — never a stack trace, an environment
+ variable, a token, or a service instance; `recentProjectStoragePath` is always the literal
+ `"in-memory (no persistent path)"`, since recent projects are never actually persisted to disk (see
+ **Recent Projects** above).
 - `GET /api/home/recent-projects` — the in-memory recent-projects list: `{projectRoot, name, openedAt,
-  missing}[]`, most-recently-started first. `missing` is `true` when the project's directory/`package.json` can no
-  longer be found on disk — the entry itself is never dropped just because of that (see
-  `StudioHomeService.listRecentProjects()`).
+ missing}[]`, most-recently-started first. `missing` is `true` when the project's directory/`package.json` can no
+ longer be found on disk — the entry itself is never dropped just because of that (see
+ `StudioHomeService.listRecentProjects()`).
 - `GET /api/home/fs/browse?path=<optional>` — backs the "Browse" action on every filesystem-path input in Home
-  (e.g. Import Project, the New Blueprint dialog's Load-existing option). Lists `path`'s immediate children
-  (defaulting to the directory Studio itself was started in when `path` is omitted): always `200` with
-  `{"status": "ok", "resolvedPath", "displayPath", "parentPath"?, "entries": [{"name", "isDirectory"}]}`
-  (directories sorted before files, dotfiles hidden; `displayPath` is relative — `"./games/foo"` — when
-  `resolvedPath` falls strictly inside Studio's own working directory, and Studio's own absolute
-  working-directory path (never a bare `"."`) otherwise, including when `resolvedPath` *is* that root) or
-  `{"status": "error", "error": "...", "resolvedPath"}` for a nonexistent/unreadable/non-directory path — never a
-  4xx, same reasoning as `POST /api/home/projects/open` below.
+ (e.g. Import Project, the New Blueprint dialog's Load-existing option). Lists `path`'s immediate children
+ (defaulting to the directory Studio itself was started in when `path` is omitted): always `200` with
+ `{"status": "ok", "resolvedPath", "displayPath", "parentPath"?, "entries": [{"name", "isDirectory"}]}`
+ (directories sorted before files, dotfiles hidden; `displayPath` is relative — `"./games/foo"` — when
+ `resolvedPath` falls strictly inside Studio's own working directory, and Studio's own absolute
+ working-directory path (never a bare `"."`) otherwise, including when `resolvedPath` *is* that root) or
+ `{"status": "error", "error": "...", "resolvedPath"}` for a nonexistent/unreadable/non-directory path — never a
+ 4xx, same reasoning as `POST /api/home/projects/open` below.
 - `POST /api/home/blueprints/validate` `{"blueprint": <any JSON value>}` — runs `GameBlueprintValidator` against
-  `blueprint` as given (no file is read or written): `400 {"error": "..."}` only if `blueprint` itself is missing
-  from the request body; otherwise always `200` with `{"status": "ok", "warnings": [...]}` or `{"status": "invalid",
-  "errors": [...], "warnings": [...]}`.
+ `blueprint` as given (no file is read or written): `400 {"error": "..."}` only if `blueprint` itself is missing
+ from the request body; otherwise always `200` with `{"status": "ok", "warnings": [...]}` or `{"status": "invalid",
+ "errors": [...], "warnings": [...]}`.
 - `POST /api/home/blueprints/load` `{"path": string}` — reads and parses `path` as a `GameBlueprint` JSON file (the
-  same `loadGameBlueprint` `pokie build` itself uses): `200 {"status": "ok", "path": "<resolved path>", "blueprint":
-  <parsed value>}`, or `200 {"status": "load-error", "error": "..."}` for a missing file, invalid JSON, or a path
-  that resolves inside Studio's own internal asset directory. `400 {"error": "..."}` only for a missing/malformed
-  `path`.
+ same `loadGameBlueprint` `pokie build` itself uses): `200 {"status": "ok", "path": "<resolved path>", "blueprint":
+ <parsed value>}`, or `200 {"status": "load-error", "error": "..."}` for a missing file, invalid JSON, or a path
+ that resolves inside Studio's own internal asset directory. `400 {"error": "..."}` only for a missing/malformed
+ `path`.
 - `POST /api/home/blueprints/save` `{"path": string, "blueprint": <any JSON value>, "overwrite"?: boolean}` — writes
-  `blueprint` to `path` as formatted JSON (known `GameBlueprint` fields in a fixed order, any unrecognized top-level
-  fields preserved and appended after them, 4-space indent, trailing newline — deterministic: re-saving unchanged
-  content produces byte-identical output). If `path` already exists and `overwrite` isn't `true`, nothing is written
-  and the response is `409 {"status": "conflict", "path": "...", "error": "..."}` — resend with `"overwrite": true`
-  to replace it. `201 {"status": "ok", "path": "..."}` on a successful write; `200 {"status": "error", "error":
-  "..."}` for an fs failure or a path resolving inside Studio's own internal directory (safe message, never a stack
-  trace). `400 {"error": "..."}` only for a missing `path`/`blueprint`, or a non-boolean `overwrite`.
+ `blueprint` to `path` as formatted JSON (known `GameBlueprint` fields in a fixed order, any unrecognized top-level
+ fields preserved and appended after them, 4-space indent, trailing newline — deterministic: re-saving unchanged
+ content produces byte-identical output). If `path` already exists and `overwrite` isn't `true`, nothing is written
+ and the response is `409 {"status": "conflict", "path": "...", "error": "..."}` — resend with `"overwrite": true`
+ to replace it. `201 {"status": "ok", "path": "..."}` on a successful write; `200 {"status": "error", "error":
+ "..."}` for an fs failure or a path resolving inside Studio's own internal directory (safe message, never a stack
+ trace). `400 {"error": "..."}` only for a missing `path`/`blueprint`, or a non-boolean `overwrite`.
 - `POST /api/home/blueprints/reel-strip-generation-preview` `{"blueprint": <any JSON value>}` — same request shape
-  and shape-validation as `/validate` (`400 {"error": "..."}` only if `blueprint` itself is missing); resolves
-  `blueprint.reelStripGeneration` (if present) via the real `resolveReelStripGeneration`/`ReelStripGenerator` and
-  analyzes every reel's resulting strip via `ReelStripAnalyzer` — never writes anything. Always `200 {"status": "ok",
-  "errors": [...], "warnings": [...], "reels": [...]}`: `errors`/`warnings` are the same `GameBlueprintValidator`
-  issues `/validate` would report, but never block `reels` — a blueprint-level problem unrelated to
-  reelStripGeneration itself (a broken paytable, an invalid `availableBets`, ...) never hides every other,
-  resolvable reel's result. `reels` is empty when the blueprint has no `reelStripGeneration` at all; a
-  reelStripGeneration entry that isn't even a well-formed object (a hand-edited JSON blueprint) is simply left out
-  of `reels` rather than failing the request. Each remaining entry is either `{"reelIndex", "type": "literal",
-  "strip", "analysis"}` or, for a `"generated"` reel, `{"reelIndex", "type": "generated", "seed", "success",
-  "attemptsUsed", "diagnostics", "strip"?, "analysis"?}` — `strip`/`analysis` present if and only if `success` is
-  `true`; a failed reel's `diagnostics` carries every attempt made (not just the last one) with that attempt's own
-  violations, the same information a `pokie build` failure would print, without failing the request as a whole
-  (every other reel's result is still returned).
+ and shape-validation as `/validate` (`400 {"error": "..."}` only if `blueprint` itself is missing); resolves
+ `blueprint.reelStripGeneration` (if present) via the real `resolveReelStripGeneration`/`ReelStripGenerator` and
+ analyzes every reel's resulting strip via `ReelStripAnalyzer` — never writes anything. Always `200 {"status": "ok",
+ "errors": [...], "warnings": [...], "reels": [...]}`: `errors`/`warnings` are the same `GameBlueprintValidator`
+ issues `/validate` would report, but never block `reels` — a blueprint-level problem unrelated to
+ reelStripGeneration itself (a broken paytable, an invalid `availableBets`,...) never hides every other,
+ resolvable reel's result. `reels` is empty when the blueprint has no `reelStripGeneration` at all; a
+ reelStripGeneration entry that isn't even a well-formed object (a hand-edited JSON blueprint) is simply left out
+ of `reels` rather than failing the request. Each remaining entry is either `{"reelIndex", "type": "literal",
+ "strip", "analysis"}` or, for a `"generated"` reel, `{"reelIndex", "type": "generated", "seed", "success",
+ "attemptsUsed", "diagnostics", "strip"?, "analysis"?}` — `strip`/`analysis` present if and only if `success` is
+ `true`; a failed reel's `diagnostics` carries every attempt made (not just the last one) with that attempt's own
+ violations, the same information a `pokie build` failure would print, without failing the request as a whole
+ (every other reel's result is still returned).
 - `POST /api/home/blueprints/build-preview` `{"blueprint": <any JSON value>, "outDir"?: string, "sourcePath"?:
-  string}` — validates the blueprint and previews what a build would generate, without writing anything: `200
-  {"status": "invalid", "errors": [...], "warnings": [...]}` or `200 {"status": "ok", "warnings": [...],
-  "manifest", "reels", "rows", "symbolsCount", "blueprintHash", "expectedFiles"}`, same reasoning as
-  `GET /api/project/validate`.
+ string}` — validates the blueprint and previews what a build would generate, without writing anything: `200
+ {"status": "invalid", "errors": [...], "warnings": [...]}` or `200 {"status": "ok", "warnings": [...],
+ "manifest", "reels", "rows", "symbolsCount", "blueprintHash", "expectedFiles"}`, same reasoning as
+ `GET /api/project/validate`.
 - `POST /api/home/blueprints/build` — same request shape as the preview; on top of `invalid`, generates the package
-  via the exact same `tsPackage` `ArtifactBuilderRegistry` conversion `pokie build <project> --target tsPackage`
-  runs, including its missing-or-empty-directory check
-  (an `outDir` resolving inside Studio's own internal directory is also refused, the same way as `save` above):
-  `200 {"status": "error", "error": "..."}` or `201 {"status": "ok", "projectRoot", "manifest", "createdFiles",
-  "buildInfo", "warnings"}` on success — the built project is also recorded as a recent project, so its
-  **Open in Studio** button (`POST /api/home/projects/open` below) works exactly like every other Home flow's.
+ via the exact same `tsPackage` `ArtifactBuilderRegistry` conversion `pokie build <project> --target tsPackage`
+ runs, including its missing-or-empty-directory check
+ (an `outDir` resolving inside Studio's own internal directory is also refused, the same way as `save` above):
+ `200 {"status": "error", "error": "..."}` or `201 {"status": "ok", "projectRoot", "manifest", "createdFiles",
+ "buildInfo", "warnings"}` on success — the built project is also recorded as a recent project, so its
+ **Open in Studio** button (`POST /api/home/projects/open` below) works exactly like every other Home flow's.
 - `POST /api/home/projects/open` `{"projectRoot": string}` — resolves `projectRoot` through the shared project
-  contract and switches Studio to Project mode on success (`200 {"context": {...}, "manifest": {...}}`): game
-  packages load with `loadPokieGame`, canonical WASM opens through the portable integrity-checked runtime, and
-  legacy sidecar-only components remain inspectable. `400 {"error": "..."}` reports an invalid project. This is
-  the one explicit Home → Project Studio context
-  transition — it mutates the same running server's state in place, never starting a new HTTP server or Studio
-  process (see `StudioServer.handleHomeOpenProject`).
+ contract and switches Studio to Project mode on success (`200 {"context": {...}, "manifest": {...}}`): game
+ packages load with `loadPokieGame`, WASM opens through the portable integrity-checked runtime, and
+ legacy sidecar-only components remain inspectable. `400 {"error": "..."}` reports an invalid project. This is
+ the one explicit Home → Project Studio context
+ transition — it mutates the same running server's state in place, never starting a new HTTP server or Studio
+ process (see `StudioServer.handleHomeOpenProject`).
 - `POST /api/projects/close` — switches back to Home mode.
 - `GET /api/project/context` — the Project Dashboard's own read model, always one of the four states above:
-  `{"status": "empty"}` / `{"status": "loading", "projectRoot": "..."}` /
-  `{"status": "loaded", "projectRoot": "...", "game": {"id": "...", "name": "...", "version": "..."}}` /
-  `{"status": "error", "projectRoot": "...", "error": "..."}`.
+ `{"status": "empty"}` / `{"status": "loading", "projectRoot": "..."}` /
+ `{"status": "loaded", "projectRoot": "...", "game": {"id": "...", "name": "...", "version": "..."}}` /
+ `{"status": "error", "projectRoot": "...", "error": "..."}`.
 - `GET /api/project/inspect` — the active project's `GamePackageInspectionReport` (same shape as
-  [`pokie inspect`](#pokie-inspect-packageroot)'s JSON), or `409 {"error": "No active project."}` in Home mode.
+ [`pokie inspect`](#pokie-inspect-packageroot)'s JSON), or `409 {"error": "No active project."}` in Home mode.
 - `GET /api/project/validate` — the active project's Studio validation response (the package variant is a
-  `PokieGamePackageValidationReport`; the CLI adds its own schemaVersion 1 wrapper documented at
-  [`pokie validate`](#pokie-validate-project)), or `409 {"error": "No active project."}` in Home mode.
+ `PokieGamePackageValidationReport`; the CLI adds its own schemaVersion 1 wrapper documented at
+ [`pokie validate`](#pokie-validate-project)), or `409 {"error": "No active project."}` in Home mode.
 - `POST /api/project/simulations` `{"rounds": number, "seed"?: string, "workers"?: number}` — starts a simulation
-  for the active project and returns immediately (`202`) with the new job in `"queued"` status; the simulation
-  itself runs in the background, never blocking this request. `workers` defaults to `1` when omitted. `400
-  {"error": "..."}` for an invalid `rounds` (missing, not an integer, less than 1, or above the safe Studio
-  ceiling of 2,000,000 — see `MAX_STUDIO_SIMULATION_ROUNDS`), an invalid `seed` (present but empty/not a string),
-  or an invalid `workers` (present but not an integer between 1 and `MAX_SIMULATION_WORKERS`, currently 32); `409
-  {"error": "No active project."}` in Home mode; `409 {"error": "...", "activeJobId": "..."}` if a simulation is
-  already queued/running for this project — a retried/duplicated request can never spawn a competing job or
-  corrupt the one already in flight.
+ for the active project and returns immediately (`202`) with the new job in `"queued"` status; the simulation
+ itself runs in the background, never blocking this request. `workers` defaults to `1` when omitted. `400
+ {"error": "..."}` for an invalid `rounds` (missing, not an integer, less than 1, or above the safe Studio
+ ceiling of 2,000,000 — see `MAX_STUDIO_SIMULATION_ROUNDS`), an invalid `seed` (present but empty/not a string),
+ or an invalid `workers` (present but not an integer between 1 and `MAX_SIMULATION_WORKERS`, currently 32); `409
+ {"error": "No active project."}` in Home mode; `409 {"error": "...", "activeJobId": "..."}` if a simulation is
+ already queued/running for this project — a retried/duplicated request can never spawn a competing job or
+ corrupt the one already in flight.
 - `GET /api/project/simulations/:id` — that job's current state:
-  `{id, status, rounds, seed?, workers, startedAt, roundsCompleted, durationMs, report?, statistics?, error?}` — `status` is
-  `"queued"`/`"running"`/`"completed"`/`"failed"`/`"cancelled"`; `report` (a full `SimulationReport`, see
-  [`pokie sim`](#pokie-sim-packageroot)) and `statistics` (the extra volatility/standard-deviation/confidence-
-  interval fields `SimulationAccumulator` computes but `SimulationReport` itself doesn't carry) are only present
-  once `status` is `"completed"`; `error` (a safe message, never a stack trace) only once `status` is `"failed"`.
-  `404 {"error": "..."}` for an unknown id.
+ `{id, status, rounds, seed?, workers, startedAt, roundsCompleted, durationMs, report?, statistics?, error?}` — `status` is
+ `"queued"`/`"running"`/`"completed"`/`"failed"`/`"cancelled"`; `report` (a full `SimulationReport`, see
+ [`pokie sim`](#pokie-sim-packageroot)) and `statistics` (the extra volatility/standard-deviation/confidence-
+ interval fields `SimulationAccumulator` computes but `SimulationReport` itself doesn't carry) are only present
+ once `status` is `"completed"`; `error` (a safe message, never a stack trace) only once `status` is `"failed"`.
+ `404 {"error": "..."}` for an unknown id.
 - `DELETE /api/project/simulations/:id` — requests cancellation of a queued/running job (returns its current
-  view — the record only actually flips to `"cancelled"` once that's noticed, on the next `GET`/poll: at the next
-  chunk boundary for `workers === 1`, or as soon as its worker threads are terminated for `workers > 1`);
-  idempotent on an already-terminal job (just returns it unchanged, not an error). `404 {"error": "..."}` for an
-  unknown id.
+ view — the record only actually flips to `"cancelled"` once that's noticed, on the next `GET`/poll: at the next
+ chunk boundary for `workers === 1`, or as soon as its worker threads are terminated for `workers > 1`);
+ idempotent on an already-terminal job (just returns it unchanged, not an error). `404 {"error": "..."}` for an
+ unknown id.
 - `GET /api/project/reports` — the active project's completed simulations, most-recently-completed first:
-  `{id, status: "completed", game: {id, version}, requestedRounds, actualRounds, seed?, workers, rtp, hitFrequency,
-  maxWin, startedAt, completedAt, durationMs, hasWarnings}[]`. A failed/cancelled job never appears here (it has no report
-  to summarize). `409 {"error": "No active project."}` in Home mode.
+ `{id, status: "completed", game: {id, version}, requestedRounds, actualRounds, seed?, workers, rtp, hitFrequency,
+ maxWin, startedAt, completedAt, durationMs, hasWarnings}[]`. A failed/cancelled job never appears here (it has no report
+ to summarize). `409 {"error": "No active project."}` in Home mode.
 - `GET /api/project/reports/:id` — that simulation's full `SimulationReport` (same shape as
-  [`pokie sim`](#pokie-sim-packageroot)'s own JSON). `404 {"error": "..."}` for an unknown id **or** one that
-  belongs to a different project (deliberately indistinguishable from "unknown" — this can never be used to probe
-  whether some other project has a simulation with a given id). `409 {"error": "..."}` if the simulation hasn't
-  completed yet (still queued/running) or completed without a report (failed/cancelled) — the message names which.
+ [`pokie sim`](#pokie-sim-packageroot)'s own JSON). `404 {"error": "..."}` for an unknown id **or** one that
+ belongs to a different project (deliberately indistinguishable from "unknown" — this can never be used to probe
+ whether some other project has a simulation with a given id). `409 {"error": "..."}` if the simulation hasn't
+ completed yet (still queued/running) or completed without a report (failed/cancelled) — the message names which.
 - `GET /api/project/reports/:id/download?format=json|markdown|html` — the same report as a downloadable file:
-  correct `Content-Type` per format (`application/json`, `text/markdown`, `text/html`, each `charset=utf-8`) and
-  `Content-Disposition: attachment; filename="..."` with a filename built from the game id/version and simulation
-  id (sanitized — any character outside `[a-zA-Z0-9._-]` is replaced, so this is safe regardless of what a game's
-  id/version happen to contain). `400 {"error": "..."}` for a missing/invalid `format`; the same `404`/`409` cases
-  as the JSON endpoint above otherwise.
+ correct `Content-Type` per format (`application/json`, `text/markdown`, `text/html`, each `charset=utf-8`) and
+ `Content-Disposition: attachment; filename="..."` with a filename built from the game id/version and simulation
+ id (sanitized — any character outside `[a-zA-Z0-9._-]` is replaced, so this is safe regardless of what a game's
+ id/version happen to contain). `400 {"error": "..."}` for a missing/invalid `format`; the same `404`/`409` cases
+ as the JSON endpoint above otherwise.
 - `POST /api/project/replays` `{"round": number, "seed"?: string}` — starts a replay for the active project and
-  returns immediately (`202`) with the new job in `"queued"` status; the replay itself runs in the background,
-  never blocking this request. `400 {"error": "..."}` for an invalid `round` (missing, not an integer, less than 1,
-  or above the safe Studio ceiling of 100,000 — see `MAX_STUDIO_REPLAY_ROUND`) or an invalid `seed` (present but
-  empty/not a string); `409 {"error": "No active project."}` in Home mode; `409 {"error": "...", "activeJobId":
-  "..."}` if a replay is already queued/running for this project — a retried/duplicated request can never spawn a
-  competing job or corrupt the one already in flight.
+ returns immediately (`202`) with the new job in `"queued"` status; the replay itself runs in the background,
+ never blocking this request. `400 {"error": "..."}` for an invalid `round` (missing, not an integer, less than 1,
+ or above the safe Studio ceiling of 100,000 — see `MAX_STUDIO_REPLAY_ROUND`) or an invalid `seed` (present but
+ empty/not a string); `409 {"error": "No active project."}` in Home mode; `409 {"error": "...", "activeJobId":
+ "..."}` if a replay is already queued/running for this project — a retried/duplicated request can never spawn a
+ competing job or corrupt the one already in flight.
 - `GET /api/project/replays/:id` — that job's current state: `{id, status, round, seed?, startedAt,
-  completedRounds, durationMs, game?, descriptor?, error?}` — `status` is
-  `"queued"`/`"running"`/`"completed"`/`"failed"`/`"cancelled"`; `game` (id/name/version) is known as soon as the
-  package has loaded, before the round-playing loop even starts; `descriptor` (a `ReplayDescriptor`, same base
-  shape as [`pokie replay`](#pokie-replay-packageroot)'s own JSON — including `screen: null` for a session without
-  `getSymbolsCombination()` — but with three fields Studio's own execution path additionally populates that
-  `pokie replay` never does: an optional `artifact` (the full `RoundRecordJson` for the target round, only for a
-  video-slot session — `getSymbolsCombination()` + `getWinEvaluationResult()`), and optional `stateBefore`/
-  `stateAfter` (serialized session state immediately before/after the target round's `play()`, via the same
-  session-serialization mechanism `pokie serve`'s own internal/debug response uses — absent when the game/session
-  doesn't support it or capture failed, never a replay failure by itself)) is only present once `status` is
-  `"completed"`; `error` (a safe message, never a stack trace) only once `status` is `"failed"`. `404 {"error":
-  "..."}` for an unknown id **or** one that belongs to a different project (deliberately indistinguishable from
-  "unknown", same reasoning as Reports' detail endpoint above); `409 {"error": "No active project."}` in Home mode.
+ completedRounds, durationMs, game?, descriptor?, error?}` — `status` is
+ `"queued"`/`"running"`/`"completed"`/`"failed"`/`"cancelled"`; `game` (id/name/version) is known as soon as the
+ package has loaded, before the round-playing loop even starts; `descriptor` (a `ReplayDescriptor`, same base
+ shape as [`pokie replay`](#pokie-replay-packageroot)'s own JSON — including `screen: null` for a session without
+ `getSymbolsCombination()` — but with three fields Studio's own execution path additionally populates that
+ `pokie replay` never does: an optional `artifact` (the full `RoundRecordJson` for the target round, only for a
+ video-slot session — `getSymbolsCombination()` + `getWinEvaluationResult()`), and optional `stateBefore`/
+ `stateAfter` (serialized session state immediately before/after the target round's `play()`, via the same
+ session-serialization mechanism `pokie serve`'s own internal/debug response uses — absent when the game/session
+ doesn't support it or capture failed, never a replay failure by itself)) is only present once `status` is
+ `"completed"`; `error` (a safe message, never a stack trace) only once `status` is `"failed"`. `404 {"error":
+ "..."}` for an unknown id **or** one that belongs to a different project (deliberately indistinguishable from
+ "unknown", same reasoning as Reports' detail endpoint above); `409 {"error": "No active project."}` in Home mode.
 - `DELETE /api/project/replays/:id` — requests cancellation of a queued/running replay (returns its current view —
-  the record only actually flips to `"cancelled"` once the chunk loop notices, on the next `GET`/poll); idempotent
-  on an already-terminal job (just returns it unchanged, not an error). `404 {"error": "..."}` for an unknown id or
-  one belonging to a different project.
+ the record only actually flips to `"cancelled"` once the chunk loop notices, on the next `GET`/poll); idempotent
+ on an already-terminal job (just returns it unchanged, not an error). `404 {"error": "..."}` for an unknown id or
+ one belonging to a different project.
 - `GET /api/project/replays` — the active project's most recent replay jobs regardless of status, most-recently-
-  started first: `{id, status, game?, round, seed?, completedRounds, totalBet?, totalWin?, startedAt, completedAt?,
-  durationMs, error?}[]` (no `screen` — fetch the detail endpoint for that). `409 {"error": "No active project."}`
-  in Home mode.
+ started first: `{id, status, game?, round, seed?, completedRounds, totalBet?, totalWin?, startedAt, completedAt?,
+ durationMs, error?}[]` (no `screen` — fetch the detail endpoint for that). `409 {"error": "No active project."}`
+ in Home mode.
 - `GET /api/project/replays/:id/download` — the completed job's `ReplayDescriptor` as a downloadable JSON file:
-  `Content-Type: application/json; charset=utf-8` and `Content-Disposition: attachment; filename="..."` with a
-  filename built from the game id/version and replay id (sanitized the same way as Reports' download filenames).
-  `404 {"error": "..."}` for an unknown id or one belonging to a different project; `409 {"error": "..."}` if the
-  replay hasn't completed yet (still queued/running) or completed without a descriptor (failed/cancelled) — the
-  message names which.
+ `Content-Type: application/json; charset=utf-8` and `Content-Disposition: attachment; filename="..."` with a
+ filename built from the game id/version and replay id (sanitized the same way as Reports' download filenames).
+ `404 {"error": "..."}` for an unknown id or one belonging to a different project; `409 {"error": "..."}` if the
+ replay hasn't completed yet (still queued/running) or completed without a descriptor (failed/cancelled) — the
+ message names which.
 - `POST /api/project/replays/inspect-artifact` `{"round": number, "seed"?: string, "artifact"?: unknown}` — the
-  Replay tab's own "Replay Artifact" Find/Load steps validating a pasted artifact JSON before attempting a
-  reproduction: applies the exact same `round`/`seed` validation `POST /api/project/replays` itself applies (so
-  this can never accept something the real replay start would then reject), and, only if `artifact` is present,
-  runs it through `RoundRecordValidator`. `200 {"round": number, "seed"?: string, "artifactWarnings": string[]}`
-  — a structurally invalid `artifact` is reported back as non-fatal `artifactWarnings`, never a failure by itself,
-  since `round`/`seed` alone are enough to attempt a reproduction. `400 {"error": "..."}` for an invalid
-  `round`/`seed`; `409 {"error": "No active project."}` in Home mode.
+ Replay tab's own "Replay Artifact" Find/Load steps validating a pasted artifact JSON before attempting a
+ reproduction: applies the exact same `round`/`seed` validation `POST /api/project/replays` itself applies (so
+ this can never accept something the real replay start would then reject), and, only if `artifact` is present,
+ runs it through `RoundRecordValidator`. `200 {"round": number, "seed"?: string, "artifactWarnings": string[]}`
+ — a structurally invalid `artifact` is reported back as non-fatal `artifactWarnings`, never a failure by itself,
+ since `round`/`seed` alone are enough to attempt a reproduction. `400 {"error": "..."}` for an invalid
+ `round`/`seed`; `409 {"error": "No active project."}` in Home mode.
 - `GET /api/project/rounds` — the active project's shared, cross-tab recent-spins list (see
-  [Session Spin](#replay) above), most-recent-first: `StudioRuntimeSessionView[]`, each including `studioRound`
-  (session-local round index), `studioRequestId` (when the producer supplied one), `studioRecordedAt`,
-  `studioSource` (which tab/route produced it — `"play"`, `"play-outcome-source"`, `"outcome-source-sample"`, or
-  `"simulation-sample"`). Always `200`, possibly an empty array (nothing played yet, or the project was since
-  switched) — never an error for "nothing to show". `409 {"error": "No active project."}` in Home mode.
+ [Session Spin](#replay) above), most-recent-first: `StudioRuntimeSessionView[]`, each including `studioRound`
+ (session-local round index), `studioRequestId` (when the producer supplied one), `studioRecordedAt`,
+ `studioSource` (which tab/route produced it — `"play"`, `"play-outcome-source"`, `"outcome-source-sample"`, or
+ `"simulation-sample"`). Always `200`, possibly an empty array (nothing played yet, or the project was since
+ switched) — never an error for "nothing to show". `409 {"error": "No active project."}` in Home mode.
 - `GET /api/project/deployment/targets` — every registered [External Adapter SDK](external-adapter-sdk.md)
-  target's `{id, version, requirements, capabilities}` (empty until a project registers a real
-  `ExternalDeploymentTarget` — see Build/Export's own "Remote deployment" card above). `409 {"error": "No
-  active project."}` in Home mode.
+ target's `{id, version, requirements, capabilities}` (empty until a project registers a real
+ `ExternalDeploymentTarget` — see Build/Export's own "Remote deployment" card above). `409 {"error": "No
+ active project."}` in Home mode.
 - `POST /api/project/deployment/runs` `{"targetId": string, "modes"?: [{"modeName": string, "librarySelector":
-  {"kind": "json" | "bundle" | "stakeengine", ...}}], "publish"?: boolean}` — runs
-  `ExternalDeploymentService.deploy()` (the SDK's own single orchestrator) for `targetId`. Omitting `modes` asks
-  the canonical project planner to resolve compatible registered Outcome Libraries; supplied modes use the same
-  project-contained `librarySelector` contract as Studio Stake export: `json` selects a raw library file, `bundle`
-  selects a named mode from a canonical Outcome Library bundle, and `stakeengine` selects a named mode from a Stake
-  Engine export. `publish` defaults to `false` — a side-effect-free preview, since the target's own
-  `runtimeAdapter` is stripped before `deploy()` is called; `true` keeps it, so a successful run actually
-  publishes. `400 {"error": "..."}` for a structurally malformed request (`targetId`, an explicitly supplied
-  empty `modes` list, duplicate/missing mode names, malformed `librarySelector`, or non-boolean `publish`). The
-  service then reports selector containment, mode/provenance, source-read, compatibility and target failures in
-  the returned run view, with the matching repair/rebuild/reselect recovery. `404 {"error": "Unknown deployment
-  target \"...\"."}` for an unknown `targetId`. Otherwise always `200` with the SDK's own
-  `ExternalDeploymentResult`, mirrored field-for-field (every generated artifact's `content` decoded to a plain
-  string) — a domain-level pipeline failure (incompatible content, a failed projector, an unwritable output
-  directory, ...) is carried in that DTO's own stage-by-stage issue arrays, never a 4xx/5xx, the same "only a
-  malformed request throws" convention every other Project Dashboard route follows. `409 {"error": "No active
-  project."}` in Home mode.
+ {"kind": "json" | "bundle" | "stakeengine",...}}], "publish"?: boolean}` — runs
+ `ExternalDeploymentService.deploy()` (the SDK's own single orchestrator) for `targetId`. Omitting `modes` asks
+ the project planner to resolve compatible registered Outcome Libraries; supplied modes use the same
+ project-contained `librarySelector` contract as Studio Stake export: `json` selects a raw library file, `bundle`
+ selects a named mode from a Outcome Library bundle, and `stakeengine` selects a named mode from a Stake
+ Engine export. `publish` defaults to `false` — a side-effect-free preview, since the target's own
+ `runtimeAdapter` is stripped before `deploy()` is called; `true` keeps it, so a successful run actually
+ publishes. `400 {"error": "..."}` for a structurally malformed request (`targetId`, an explicitly supplied
+ empty `modes` list, duplicate/missing mode names, malformed `librarySelector`, or non-boolean `publish`). The
+ service then reports selector containment, mode/provenance, source-read, compatibility and target failures in
+ the returned run view, with the matching repair/rebuild/reselect recovery. `404 {"error": "Unknown deployment
+ target \"...\"."}` for an unknown `targetId`. Otherwise always `200` with the SDK's own
+ `ExternalDeploymentResult`, mirrored field-for-field (every generated artifact's `content` decoded to a plain
+ string) — a domain-level pipeline failure (incompatible content, a failed projector, an unwritable output
+ directory,...) is carried in that DTO's own stage-by-stage issue arrays, never a 4xx/5xx, the same "only a
+ malformed request throws" convention every other Project Dashboard route follows. `409 {"error": "No active
+ project."}` in Home mode.
 
 ## Workflow
 
@@ -3837,35 +3831,35 @@ A typical end-to-end loop, from a fresh directory to a running dev server, chain
 ```
 pokie init sample-slot
 
-pokie validate ./sample-slot
+pokie validate./sample-slot
 
-pokie sim ./sample-slot --rounds 100000 --seed before --out before.json
+pokie sim./sample-slot --rounds 100000 --seed before --out before.json
 pokie report before.json --format markdown --out before.md
 
-# ...tweak the game's paytable/config...
+#...tweak the game's paytable/config...
 
-pokie sim ./sample-slot --rounds 100000 --seed before --out after.json
+pokie sim./sample-slot --rounds 100000 --seed before --out after.json
 pokie diff before.json after.json
 
-pokie replay ./sample-slot --seed before --round 42 --out replay.json
+pokie replay./sample-slot --seed before --round 42 --out replay.json
 
-pokie dev ./sample-slot
+pokie dev./sample-slot
 ```
 
 Each step builds on the same `<packageRoot>`:
 
 - [`validate`](#pokie-validate-project) accepts Blueprint JSON directly for structural design checks, as well as
-  prepared packages and supported artifacts. The runtime commands in this package walkthrough use the built package.
+ prepared packages and supported artifacts. The runtime commands in this package walkthrough use the built package.
 - [`sim --out`](#pokie-sim-packageroot) produces the JSON report that
-  [`report`](#pokie-report-simulationreportjson) renders and [`diff`](#pokie-diff-leftprojectorreportjson-rightprojectorreportjson)
-  compares — run `sim` twice (before/after a config change, same `--seed`) to get two reports worth diffing.
+ [`report`](#pokie-report-simulationreportjson) renders and [`diff`](#pokie-diff-leftprojectorreportjson-rightprojectorreportjson)
+ compares — run `sim` twice (before/after a config change, same `--seed`) to get two reports worth diffing.
 - [`replay`](#pokie-replay-packageroot) is independent of `sim`'s output files, but reproducibility across all
-  three of `sim`/`diff`/`replay` depends on the same caveat: the game package must actually thread `context.seed`
-  into a deterministic RNG for `--seed` to mean anything (see [Limitations](#limitations) below).
+ three of `sim`/`diff`/`replay` depends on the same caveat: the game package must actually thread `context.seed`
+ into a deterministic RNG for `--seed` to mean anything (see [Limitations](#limitations) below).
 - [`dev`](#pokie-dev-packageroot) (or `serve`/`client` run separately) is normally the last,
-  interactive step, not part of a scripted pipeline — it only needs the same built package and runs until
-  stopped. `pokie build`/`pokie init` already scaffold `npm run start`/`server`/`client` scripts wrapping these
-  three commands.
+ interactive step, not part of a scripted pipeline — it only needs the same built package and runs until
+ stopped. `pokie build`/`pokie init` already scaffold `npm run start`/`server`/`client` scripts wrapping these
+ three commands.
 
 ## What's next
 
@@ -3893,11 +3887,11 @@ names the supported compositions and artifact targets; arbitrary callbacks and d
 custom-only, and lossy extraction is blocked. Blueprint `screenGeometry` distinguishes generated, visible
 and evaluated coordinates, including fractional visible windows with discrete evaluation cells;
 per-reel offsets and nonidentity ragged geometry are unsupported. See [modeling contracts](math-modeling.md)
-for those coordinate limits, read-only canonical definition comparison and bounded declared-model
+for those coordinate limits, read-only definition comparison and bounded declared-model
 reachability, all-path termination and invariant analysis. These analyses do not prove arbitrary custom-code
-behavior; exhausted budgets remain unknown. Simulation reports include canonical lifecycle/component
+behavior; exhausted budgets remain unknown. Simulation reports include lifecycle/component
 analytics when supplied by the runtime; amount-only or custom sources cannot supply missing attribution.
-Ordinary simulation reports support JSON, Markdown and HTML; canonical dossiers separately support console
+Ordinary simulation reports support JSON, Markdown and HTML; dossiers separately support console
 text and local selectable-text PDF as well. YAML remains unimplemented.
 
 The optional local transactional reference adapter is documented below; independent external stores remain
@@ -3912,7 +3906,7 @@ Session API failures carry `code` alongside `error`: invalid-command (400), inco
 ### Selecting durable reference round storage from a library server
 
 `pokie serve` and `pokie dev` keep their existing compensation defaults and expose no
-SQLite flag. Public library composition can select canonical transactional rounds:
+SQLite flag. Public library composition can select transactional rounds:
 
 ```ts
 import {SqliteTransactionalRoundStore, PokieDevServer} from "@fromstan/pokie";
@@ -4007,16 +4001,16 @@ for sheet columns, context versions and provenance.
 and selection denominators. `pokie diff` explains sequence order, weight, symbol-array
 and context/model changes independently of payout differences. Weighted outcome
 libraries retain their capability-directed report/diff routes; they are not reel
-variants or per-symbol weights. Canonical WASM preserves `reelSequences` and eligible selection counts.
+variants or per-symbol weights. WASM preserves `reelSequences` and eligible selection counts.
 
 
 ## Package extraction preview and save
 
-Use the canonical artifact route; there is no top-level `export` command:
+Use the artifact route; there is no top-level `export` command:
 
 ```sh
-pokie build ./custom-package --target blueprint --out ./editable.json --dry-run
-pokie build ./custom-package --target blueprint --out ./editable.json
+pokie build./custom-package --target blueprint --out./editable.json --dry-run
+pokie build./custom-package --target blueprint --out./editable.json
 ```
 
 The default output is `blueprint.json` beside the source package. Preview prints source identity,
@@ -4052,7 +4046,7 @@ Declared structural fidelity and bounded seeded comparisons do not prove arbitra
 behavioral equivalence. The extraction evidence is historical provenance; editing the saved Blueprint
 does not update its original extraction hash or rewrite the source package.
 
-Hold&Win, fixed/session-local accumulating jackpots and executable base/ante/free-game purchase modes use the existing authoring, `validate`, `build SOURCE --target tsPackage|blueprint|parWorkbook`, `par`, `sim --mode <id|all>`, `report` and `replay` commands. Extended mechanic configuration survives package extraction and XLSX conversion. Canonical WASM supports these declared feature histories; paid-grid outcome-library/Stake targets still fail with a support diagnostic for histories they cannot preserve. There is no top-level export command. See [authored mechanics](game-packages.md#authored-holdwin-jackpot-and-bet-modes).
+Hold&Win, fixed/session-local accumulating jackpots and executable base/ante/free-game purchase modes use the existing authoring, `validate`, `build SOURCE --target tsPackage|blueprint|parWorkbook`, `par`, `sim --mode <id|all>`, `report` and `replay` commands. Extended mechanic configuration survives package extraction and XLSX conversion. WASM supports these declared feature histories; paid-grid outcome-library/Stake targets still fail with a support diagnostic for histories they cannot preserve. There is no top-level export command. See [authored mechanics](game-packages.md#authored-holdwin-jackpot-and-bet-modes).
 
 ## Bounded authored mechanics
 
@@ -4075,7 +4069,7 @@ Simulation console output includes the saved report's sampling, empirical precis
 
 ```sh
 pokie diff old.blueprint.json new.blueprint.json
-pokie diff ./old-package ./new-package --comparison definition --format json
+pokie diff./old-package./new-package --comparison definition --format json
 pokie diff model.xlsx model.blueprint.json --comparison definition --ci
 pokie diff old.blueprint.json new.blueprint.json --format json --out new-diff.json
 ```
@@ -4191,11 +4185,11 @@ retain their separate documented domains). No UInt64 payout guarantee is implied
 
 New conversions use new/empty destinations, preserve source bytes and publish complete
 outputs. The ordinary direct Stake library exporter also permits a recognized prior
-export rebuild; canonical artifact operations reject occupied outputs and evidence
+export rebuild; artifact operations reject occupied outputs and evidence
 companions. Retired direct Studio Stake routes remain retired in favor of prepared
 artifact preview/build and pollable jobs.
 
 
-## Canonical dossier preparation
+## Dossier preparation
 
-Canonical assessment dossiers use `pokie certification build BUNDLE CONFIG.json --out NEW_OR_EMPTY_DIRECTORY`, with explicit `dossier` authorities and `output` template/formats. Verify with `--source BUNDLE --authorities authorities.json`; render a validated dossier through `pokie report DOSSIER/manifest.json --format json|console|markdown|html|pdf [--template presentation.json] [--out NEW_FILE]`. PDF requires `--out`. Simulation/outcome reporting keeps JSON/Markdown/HTML. See [the dossier contract](certification-evidence-bundle.md). Preparation only; successful verification is not regulatory or RNG certification.
+assessment dossiers use `pokie certification build BUNDLE CONFIG.json --out NEW_OR_EMPTY_DIRECTORY`, with explicit `dossier` authorities and `output` template/formats. Verify with `--source BUNDLE --authorities authorities.json`; render a validated dossier through `pokie report DOSSIER/manifest.json --format json|console|markdown|html|pdf [--template presentation.json] [--out NEW_FILE]`. PDF requires `--out`. Simulation/outcome reporting keeps JSON/Markdown/HTML. See [the dossier contract](certification-evidence-bundle.md). Preparation only; successful verification is not regulatory or RNG certification.

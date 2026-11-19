@@ -11,24 +11,24 @@ uses supported population adapters, a separately seeded fixed held-out assessmen
 confidence intervals. Simulation precision convergence is not optimization target attainment; neither a
 short zero-variance sample nor an empirical maximum supplies a mathematical support bound.
 
-[Feature analytics](#feature-analytics-aggregates) record canonical entries, retriggers,
+[Feature analytics](#feature-analytics-aggregates) record entries, retriggers,
 completions, duration/bonus-win distributions, component hits, weighted selections and payout attribution
 for supported authored mechanics. Reports label actual paid/logical/subround populations and denominators;
 overlapping lifecycle summaries are separate from the additive base/feature/jackpot/unavailable monetary
-partition. Canonical feature WASM supplies lifecycle/component evidence; ordinary amount-only WASM,
+partition. Feature WASM supplies lifecycle/component evidence; ordinary amount-only WASM,
 flattened outcome events and custom sessions cannot establish missing lifecycle attribution. Missing
 capabilities remain unavailable rather than observed zero. See the
 [launch support register](supported-mechanics.md) for composition and target limits.
 
-Ordinary simulation reports support JSON, Markdown and HTML. Canonical certification dossiers separately
+Ordinary simulation reports support JSON, Markdown and HTML. Certification dossiers separately
 support JSON, console text, Markdown, HTML and local selectable-text PDF through
 [`pokie report`](cli.md#pokie-report-simulationreportjson); this does not add PDF output to ordinary simulation
 or outcome-analysis reports. See [dossier preparation](certification-evidence-bundle.md). Dossier preparation
 does not establish regulatory certification. PAR workbook exchange is a separate model format.
 YAML authoring and dossier YAML output remain unimplemented.
 
-[Canonical definition comparison](math-modeling.md#canonical-definition-comparison) reads authoritative
-Blueprint, package descriptor, PAR and canonical WASM models through the shared CLI/Studio differ. Statistical
+[definition comparison](math-modeling.md#canonical-definition-comparison) reads authoritative
+Blueprint, package descriptor, PAR and WASM models through the shared CLI/Studio differ. Statistical
 report and Outcome Library/Stake aggregate comparisons remain separate workflows. Partial models retain
 limits; matching observed totals cannot prove definition equality or arbitrary custom-code behavior.
 Historical assessments are retained as engineering history, not current support guidance.
@@ -61,13 +61,13 @@ For variable bet sizes, RTP is computed from per-round return ratios (`payout / 
 static readonly DEFAULT_NUMBER_OF_ROUNDS = 1000;
 
 setNumberOfRounds(value: number): void
-getNumberOfRounds(): number                                              // default 1000
+getNumberOfRounds(): number // default 1000
 
 setPlayStrategy(playStrategy: NextSessionRoundPlayableDetermining): void
-getPlayStrategy(): NextSessionRoundPlayableDetermining                   // undefined until set
+getPlayStrategy(): NextSessionRoundPlayableDetermining // undefined until set
 
 setChangeBetStrategy(changeBetStrategy: BetForNextSimulationRoundSetting): void
-getChangeBetStrategy(): BetForNextSimulationRoundSetting | undefined      // undefined until set
+getChangeBetStrategy(): BetForNextSimulationRoundSetting | undefined // undefined until set
 ```
 
 ## `Simulation`
@@ -108,20 +108,20 @@ setOnFinishedCallback(callback: () => void): void / removeOnFinishedCallback(): 
 ### Reading results
 
 ```ts
-getLastRtp(): number                                       // RTP after the last round played
-getAverageRtp(): number                                     // average of the per-round cumulative RTP series
-getAllRtpValues(): number[]                                 // cumulative RTP after each round, in order
-getHitFrequency(): number                                   // numberOfWinningRounds / roundsPlayed
+getLastRtp(): number // RTP after the last round played
+getAverageRtp(): number // average of the per-round cumulative RTP series
+getAllRtpValues(): number[] // cumulative RTP after each round, in order
+getHitFrequency(): number // numberOfWinningRounds / roundsPlayed
 getPayoutsStandardDeviation(includeZeroPayouts = true): number
 getTotalBetAmount(): number
 getTotalPayoutAmount(): number
-getCurrentRoundNumber(): number                              // rounds actually played
-getAllBets(): number[]                                       // bet used per round, in order
+getCurrentRoundNumber(): number // rounds actually played
+getAllBets(): number[] // bet used per round, in order
 getAverageBet(): number
 getPayouts(includeZeroPayouts = true): number[]
 getAveragePayout(includeZeroPayouts = true): number
 getNumberOfWinningRounds(): number
-getTotalNumberOfRounds(): number                              // the configured target, not necessarily rounds played
+getTotalNumberOfRounds(): number // the configured target, not necessarily rounds played
 ```
 
 ```ts
@@ -148,7 +148,7 @@ simulation.getHitFrequency();
 
 ```ts
 interface NextSessionRoundPlayableDetermining {
-    canPlayNextSimulationRound(session: GameSessionHandling): boolean; // true = keep playing
+ canPlayNextSimulationRound(session: GameSessionHandling): boolean; // true = keep playing
 }
 ```
 
@@ -156,26 +156,26 @@ Set via `simulationConfig.setPlayStrategy(...)`; `Simulation` ANDs its result wi
 iteration.
 
 - **`PlayUntilAnyWinStrategy`** — keeps playing while `session.getWinAmount() === 0`; stops on the first win. Good
-  for capturing/demoing a win.
+ for capturing/demoing a win.
 - **`PlayUntilAnyLosingCombinationStrategy`** — the mirror image: keeps playing while rounds keep winning, stops on
-  the first zero-payout round.
+ the first zero-payout round.
 - **`PlayUntilSymbolWinStrategy(symbolId)`** — the most configurable: plays until a specific symbol wins, with
-  fine-grained conditions (fluent getters/setters, all mutable after construction):
-  ```ts
-  constructor(symbolId: string)
-  getMinLinesNumber() / setMinLinesNumber(n: number)                        // default 1
-  isOnlySameSymbolId() / setOnlySameSymbolId(b: boolean)                    // default false — all winning lines must share a symbol
-  isAllowWilds() / setAllowWilds(allow: boolean, wildSymbolId: string)      // default true — disallow wild-substituted wins if false
-  getMinNumberOfWinningSymbols() / setMinNumberOfWinningSymbols(n: number)  // at least n positions on a winning line/scatter
-  getExactNumberOfWinningSymbols() / setExactNumberOfWinningSymbols(n: number)
-  ```
-  Automatically distinguishes scatter symbols (`session.isSymbolScatter(symbolId)`) from line symbols and checks the
-  appropriate winning-lines/winning-scatters collection.
+ fine-grained conditions (fluent getters/setters, all mutable after construction):
+ ```ts
+ constructor(symbolId: string)
+ getMinLinesNumber() / setMinLinesNumber(n: number) // default 1
+ isOnlySameSymbolId() / setOnlySameSymbolId(b: boolean) // default false — all winning lines must share a symbol
+ isAllowWilds() / setAllowWilds(allow: boolean, wildSymbolId: string) // default true — disallow wild-substituted wins if false
+ getMinNumberOfWinningSymbols() / setMinNumberOfWinningSymbols(n: number) // at least n positions on a winning line/scatter
+ getExactNumberOfWinningSymbols() / setExactNumberOfWinningSymbols(n: number)
+ ```
+ Automatically distinguishes scatter symbols (`session.isSymbolScatter(symbolId)`) from line symbols and checks the
+ appropriate winning-lines/winning-scatters collection.
 - **`PlayFreeGamesStrategy`** — drives a `VideoSlotWithFreeGamesSessionHandling` through an entire free-games
-  feature. By default (`lastFreeGame = false`) it plays base-game rounds until free games are triggered
-  (`getWonFreeGamesNumber() > 0`, or exactly `getExactNumberOfFreeGames()` if set), then stops. Set
-  `setLastFreeGame(true)` to instead simulate through an *already-triggered* feature until all free games are used,
-  optionally requiring the free-games bank to be empty/non-empty at the end via `setShouldHaveFreeBankAtEnd(bool)`.
+ feature. By default (`lastFreeGame = false`) it plays base-game rounds until free games are triggered
+ (`getWonFreeGamesNumber() > 0`, or exactly `getExactNumberOfFreeGames()` if set), then stops. Set
+ `setLastFreeGame(true)` to instead simulate through an *already-triggered* feature until all free games are used,
+ optionally requiring the free-games bank to be empty/non-empty at the end via `setShouldHaveFreeBankAtEnd(bool)`.
 
 ```ts
 import {Simulation, SimulationConfig, PlayUntilSymbolWinStrategy} from "@fromstan/pokie";
@@ -192,7 +192,7 @@ simulation.run(); // stops as soon as symbol "A" wins
 
 ```ts
 interface BetForNextSimulationRoundSetting {
-    setBetForNextRound(session: GameSessionHandling): void;
+ setBetForNextRound(session: GameSessionHandling): void;
 }
 ```
 
@@ -204,7 +204,7 @@ stake level, not just the default bet.
 ## Async example
 
 ```ts
-await simulation.runAsync();       // default chunkSize=1000, delayBetweenChunks=0
+await simulation.runAsync(); // default chunkSize=1000, delayBetweenChunks=0
 await simulation.runAsync(500, 0); // smaller chunks, yields more often
 ```
 
@@ -238,8 +238,8 @@ class — neither has (or needs) its own worker-thread implementation.
 import {ParallelSimulationRunner} from "@fromstan/pokie";
 
 const runner = new ParallelSimulationRunner("./sample-slot", 1_000_000, {
-    seed: "demo",
-    workers: 4, // omit (or pass 1) to run in-process, exactly like the pre-`--workers` sequential path
+ seed: "demo",
+ workers: 4, // omit (or pass 1) to run in-process, exactly like the pre-`--workers` sequential path
 });
 
 const result = await runner.run();
@@ -257,14 +257,14 @@ Everything `pokie sim --workers`/Studio's Simulation tab support is available th
 const controller = new AbortController();
 
 const runner = new ParallelSimulationRunner("./sample-slot", 5_000_000, {
-    seed: "demo",
-    workers: 8, // custom worker count, up to MAX_SIMULATION_WORKERS
-    signal: controller.signal, // cancel a run in progress — see Cancellation below
-    onProgress: (roundsCompleted) => console.log(`${roundsCompleted} rounds so far`),
+ seed: "demo",
+ workers: 8, // custom worker count, up to MAX_SIMULATION_WORKERS
+ signal: controller.signal, // cancel a run in progress — see Cancellation below
+ onProgress: (roundsCompleted) => console.log(`${roundsCompleted} rounds so far`),
 });
 
 const resultPromise = runner.run();
-// ... later, e.g. in response to a user action ...
+//... later, e.g. in response to a user action...
 controller.abort(); // stops every worker thread; resultPromise rejects with SimulationCancelledError
 ```
 
@@ -274,61 +274,61 @@ that wants to clamp/validate a user-supplied worker count itself before construc
 ### The pieces
 
 - **`ParallelSimulationRunner`** — the one entry point both `pokie sim` and Studio call, for any `workers >= 1`.
-  `workers === 1` runs in-process (no thread spawned at all — see below); `workers > 1` splits the rounds and
-  drives real worker threads.
+ `workers === 1` runs in-process (no thread spawned at all — see below); `workers > 1` splits the rounds and
+ drives real worker threads.
 - **`splitRoundsAcrossWorkers(rounds, workers)`** — divides `rounds` as evenly as possible; the first
-  `rounds % workers` workers get one extra round, so the shares always sum to exactly `rounds`. If `rounds <
-  workers`, the first `rounds` workers get exactly 1 round each and the rest get 0 — a worker with a 0-round share
-  is never spawned.
+ `rounds % workers` workers get one extra round, so the shares always sum to exactly `rounds`. If `rounds <
+ workers`, the first `rounds` workers get exactly 1 round each and the rest get 0 — a worker with a 0-round share
+ is never spawned.
 - **`WorkerSeedStrategy`** — derives each worker's own seed from the top-level `--seed`, deterministically:
-  - `workers === 1`: the identity case — the single worker gets the original seed **unchanged**. This is what
-    makes a `--workers 1` run's statistics match the pre-`--workers` sequential path exactly, for the same seed.
-  - `workers > 1`: worker *i* (of *N*) gets a distinct derived seed (`"<seed>::worker<i>/<N>"`), so no two workers
-    draw from the same/correlated RNG stream. An unseeded run (`--seed` omitted) simply leaves every worker
-    unseeded too — each draws its own non-deterministic randomness.
+ - `workers === 1`: the identity case — the single worker gets the original seed **unchanged**. This is what
+ makes a `--workers 1` run's statistics match the pre-`--workers` sequential path exactly, for the same seed.
+ - `workers > 1`: worker *i* (of *N*) gets a distinct derived seed (`"<seed>::worker<i>/<N>"`), so no two workers
+ draw from the same/correlated RNG stream. An unseeded run (`--seed` omitted) simply leaves every worker
+ unseeded too — each draws its own non-deterministic randomness.
 - **`SimulationWorkerCoordinator`** — spawns one real `Worker` per non-zero round share, sends it a plain-data
-  `SimulationWorkerRequest` (`{packageRoot, rounds, seed, workerIndex, totalWorkers, progressChunkSize}`) via
-  `workerData`, and collects each one's `SimulationWorkerResult` back via `postMessage`. **No class instances,
-  live sessions, or functions ever cross the worker boundary** — only plain, structured-cloneable data. This is
-  also why `--workers > 1` requires a real on-disk game package: each worker independently calls `loadPokieGame`
-  on `packageRoot` itself, from scratch, inside its own thread — there is no way to hand a worker an
-  already-constructed `PokieGame`/session. `SimulationWorkerCoordinator` is itself part of the public API too (a
-  lower-level building block than `ParallelSimulationRunner`, for a caller that wants direct control over worker
-  spawning), but the *transport* it speaks internally — the tagged-union postMessage protocol and the worker
-  entry script that receives it — is not: those live under `simulation/parallel/internal/` in the source tree and
-  are deliberately not exported, so they can change shape freely without it being a breaking change.
+ `SimulationWorkerRequest` (`{packageRoot, rounds, seed, workerIndex, totalWorkers, progressChunkSize}`) via
+ `workerData`, and collects each one's `SimulationWorkerResult` back via `postMessage`. **No class instances,
+ live sessions, or functions ever cross the worker boundary** — only plain, structured-cloneable data. This is
+ also why `--workers > 1` requires a real on-disk game package: each worker independently calls `loadPokieGame`
+ on `packageRoot` itself, from scratch, inside its own thread — there is no way to hand a worker an
+ already-constructed `PokieGame`/session. `SimulationWorkerCoordinator` is itself part of the public API too (a
+ lower-level building block than `ParallelSimulationRunner`, for a caller that wants direct control over worker
+ spawning), but the *transport* it speaks internally — the tagged-union postMessage protocol and the worker
+ entry script that receives it — is not: those live under `simulation/parallel/internal/` in the source tree and
+ are deliberately not exported, so they can change shape freely without it being a breaking change.
 - **`SimulationStatisticsMerger`** — combines every worker's result back into one `SimulationStatistics`, reusing
-  `SimulationAccumulator.merge()` (the same online mean/variance combination `AggregateSimulationRunner`'s own
-  chunking already relies on) — variance is never approximated by averaging each worker's own variance, it's
-  recombined correctly from each worker's raw running totals. Category breakdowns are merged the same way.
+ `SimulationAccumulator.merge()` (the same online mean/variance combination `AggregateSimulationRunner`'s own
+ chunking already relies on) — variance is never approximated by averaging each worker's own variance, it's
+ recombined correctly from each worker's raw running totals. Category breakdowns are merged the same way.
 - **`SimulationCancelledError`** / **`SimulationWorkerFailureError`** — thrown by `run()` for, respectively, a
-  cancelled run (via `signal`) and any worker failure (a thrown error, a crash, a malformed message, or a
-  premature exit) — see Cancellation and error handling below.
+ cancelled run (via `signal`) and any worker failure (a thrown error, a crash, a malformed message, or a
+ premature exit) — see Cancellation and error handling below.
 
 ### Cancellation and error handling
 
 - Passing an already-aborted `signal` (or aborting it before/during a run) rejects `run()` with a
-  `SimulationCancelledError` and terminates every worker thread that run had spawned — `run()` never resolves
-  with a partial `ParallelSimulationResult` in that case, cancelled or not.
+ `SimulationCancelledError` and terminates every worker thread that run had spawned — `run()` never resolves
+ with a partial `ParallelSimulationResult` in that case, cancelled or not.
 - Any single worker failing — an uncaught exception, a malformed message, or exiting prematurely — immediately
-  stops the *whole* run: every other worker is terminated too, and `run()` rejects with a
-  `SimulationWorkerFailureError` (`.workerIndex` names which worker failed; `.message` is always a safe,
-  stack-trace-free description, never the worker's raw `Error.stack`).
+ stops the *whole* run: every other worker is terminated too, and `run()` rejects with a
+ `SimulationWorkerFailureError` (`.workerIndex` names which worker failed; `.message` is always a safe,
+ stack-trace-free description, never the worker's raw `Error.stack`).
 - Either way, by the time `run()`'s returned promise settles, no worker thread that call spawned is still running
-  — nothing is left behind for the caller to clean up.
+ — nothing is left behind for the caller to clean up.
 
 ### Reproducibility guarantees
 
 - The same `(packageRoot, rounds, seed, workers)` always produces the same `SimulationStatistics` — for a fixed
-  `workers` count. This holds for both `workers === 1` and any `workers > 1`.
+ `workers` count. This holds for both `workers === 1` and any `workers > 1`.
 - **`--workers 1` and `--workers N > 1` are each internally reproducible, but are *not* expected to produce
-  identical statistics to each other.** Splitting the same rounds across a different number of independent RNG
-  streams is a genuinely different execution, not just a faster version of the same one — don't diff a
-  `--workers 1` report against a `--workers 4` report (of the same seed) expecting them to match; diff two
-  `--workers 4` runs, or two `--workers 1` runs, instead.
+ identical statistics to each other.** Splitting the same rounds across a different number of independent RNG
+ streams is a genuinely different execution, not just a faster version of the same one — don't diff a
+ `--workers 1` report against a `--workers 4` report (of the same seed) expecting them to match; diff two
+ `--workers 4` runs, or two `--workers 1` runs, instead.
 - The report's `workers` field and `reproducibility.workerSeedStrategy` (a human-readable description of the
-  derivation above) are included specifically so a report is self-describing about which of the two situations
-  above applies, without having to know what `--workers` value produced it.
+ derivation above) are included specifically so a report is self-describing about which of the two situations
+ above applies, without having to know what `--workers` value produced it.
 - An unseeded run (no `--seed`) is never reproducible, with or without `--workers` — same as before this feature.
 
 ### workers=1 vs. workers>1
@@ -343,30 +343,30 @@ that wants to clamp/validate a user-supplied worker count itself before construc
 ### Memory/CPU considerations
 
 - Each worker thread is a full, independent V8 isolate: it re-loads the game package, re-JITs its code, and holds
-  its own copy of any static tables (paytables, reel strips, etc.) the game builds at load time. Memory usage
-  scales roughly linearly with `--workers`, not just with `--rounds`.
+ its own copy of any static tables (paytables, reel strips, etc.) the game builds at load time. Memory usage
+ scales roughly linearly with `--workers`, not just with `--rounds`.
 - Thread creation/module loading has fixed overhead per worker, independent of `--rounds` — `--workers` only pays
-  off once that fixed cost is small relative to the total simulation time (a `--rounds 1000 --workers 8` run will
-  likely be *slower* than `--workers 1`, purely from spin-up overhead across 8 isolates for very little actual
-  work per isolate). As a rule of thumb, don't reach for `--workers` below tens of thousands of rounds.
+ off once that fixed cost is small relative to the total simulation time (a `--rounds 1000 --workers 8` run will
+ likely be *slower* than `--workers 1`, purely from spin-up overhead across 8 isolates for very little actual
+ work per isolate). As a rule of thumb, don't reach for `--workers` below tens of thousands of rounds.
 - `--workers` doesn't change how much CPU the simulation *needs* — it changes how many CPU cores it can use at
-  once. On a single-core machine (or one already saturated by other work), `--workers > 1` won't be faster and
-  may be slower; it helps when idle cores are actually available.
+ once. On a single-core machine (or one already saturated by other work), `--workers > 1` won't be faster and
+ may be slower; it helps when idle cores are actually available.
 - `MAX_SIMULATION_WORKERS` (32) is a safety ceiling against a typo'd `--workers 100000` spawning far more OS
-  threads than any real machine benefits from — it isn't a recommendation to actually use that many; matching
-  `--workers` to the number of idle CPU cores is usually the better default.
+ threads than any real machine benefits from — it isn't a recommendation to actually use that many; matching
+ `--workers` to the number of idle CPU cores is usually the better default.
 
 ### Worker package-loading limitations
 
 - `--workers > 1` requires `<packageRoot>` to be a real, on-disk directory `loadPokieGame` can resolve — the same
-  requirement `pokie sim`/`pokie serve`/Studio already have for a real project, just enforced per-worker instead
-  of once.
+ requirement `pokie sim`/`pokie serve`/Studio already have for a real project, just enforced per-worker instead
+ of once.
 - Programmatic callers that inject a custom/in-memory `loadGame` only get that behavior for `workers === 1` —
-  the in-process path. `workers > 1` always uses the real `loadPokieGame` inside
-  each worker thread and has no injection point for a substitute loader, by design (there is no way to hand a
-  worker thread a live object graph to use instead).
+ the in-process path. `workers > 1` always uses the real `loadPokieGame` inside
+ each worker thread and has no injection point for a substitute loader, by design (there is no way to hand a
+ worker thread a live object graph to use instead).
 - Studio's simulation service behaves the same way: a project must be a real on-disk package (which every open
-  Studio project already is) for its "Workers" field to be anything other than 1.
+ Studio project already is) for its "Workers" field to be anything other than 1.
 
 ## Adaptive early stop (`SimulationConvergenceOptions`)
 
@@ -379,13 +379,13 @@ is always played in full unless `ParallelSimulationRunOptions.convergence` is ex
 import {ParallelSimulationRunner} from "@fromstan/pokie";
 
 const runner = new ParallelSimulationRunner("./sample-slot", 5_000_000, {
-    seed: "demo",
-    convergence: {
-        minRounds: 100_000, // no stop before this many rounds, however stable the estimate looks early
-        rtpTolerance: 0.002, // stop once the RTP's 95% CI half-width is within +/-0.2 percentage points
-        checkIntervalRounds: 25_000, // how often to check -- also becomes the run's effective chunk size
-        stableChecks: 3, // consecutive satisfying checks required before actually stopping (default 3)
-    },
+ seed: "demo",
+ convergence: {
+ minRounds: 100_000, // no stop before this many rounds, however stable the estimate looks early
+ rtpTolerance: 0.002, // stop once the RTP's 95% CI half-width is within +/-0.2 percentage points
+ checkIntervalRounds: 25_000, // how often to check -- also becomes the run's effective chunk size
+ stableChecks: 3, // consecutive satisfying checks required before actually stopping (default 3)
+ },
 });
 
 const result = await runner.run();
@@ -433,8 +433,8 @@ flags](cli.md#adaptive-early-stop-convergence) for the CLI surface of this same 
 
 ```ts
 interface SimulationRoundCategoryDetermining {
-    supportsRoundCategorization(session: GameSessionHandling): boolean; // can this round be categorized at all?
-    categorizeRound(session: GameSessionHandling): string;              // the category, only called if supported
+ supportsRoundCategorization(session: GameSessionHandling): boolean; // can this round be categorized at all?
+ categorizeRound(session: GameSessionHandling): string; // the category, only called if supported
 }
 ```
 
@@ -442,8 +442,8 @@ interface SimulationRoundCategoryDetermining {
 
 ```ts
 new FallbackSimulationRoundCategoryDeterminer([
-    new ExplicitSimulationRoundCategoryDeterminer(),        // 1st: ask the session directly
-    new StakeBasedSimulationRoundCategoryDeterminer(),      // 2nd: infer base/freeGames from StakeAmountDetermining
+ new ExplicitSimulationRoundCategoryDeterminer(), // 1st: ask the session directly
+ new StakeBasedSimulationRoundCategoryDeterminer(), // 2nd: infer base/freeGames from StakeAmountDetermining
 ])
 ```
 
@@ -451,13 +451,13 @@ new FallbackSimulationRoundCategoryDeterminer([
 the round. Concretely, for each round about to be played, the default chain resolves in this order:
 
 1. **Explicit** — does the session implement `SimulationCategoryDetermining`, and does
-   `getSimulationCategory()` return a valid category (see [Category name rules](#category-name-rules-simulationcategorynamenormalizer)
-   below) for *this* round? If so, that's the category, full stop — nothing else is consulted.
+ `getSimulationCategory()` return a valid category (see [Category name rules](#category-name-rules-simulationcategorynamenormalizer)
+ below) for *this* round? If so, that's the category, full stop — nothing else is consulted.
 2. **Stake-based** — otherwise, does the session implement `StakeAmountDetermining`? If so, the round is
-   `"freeGames"` when `getStakeAmount() === 0`, `"base"` otherwise.
+ `"freeGames"` when `getStakeAmount() === 0`, `"base"` otherwise.
 3. **No breakdown** — otherwise (or if neither contract is implemented at all), this round isn't attributed to
-   any category. It still plays and counts toward the overall totals; `getBreakdownStatistics()` only ends up
-   `undefined` for the whole run if *no* round, ever, was categorized by *any* step above.
+ any category. It still plays and counts toward the overall totals; `getBreakdownStatistics()` only ends up
+ `undefined` for the whole run if *no* round, ever, was categorized by *any* step above.
 
 A session implementing neither contract is completely unaffected by any of this — same as before this feature
 existed. A session implementing only `StakeAmountDetermining` gets exactly the base/freeGames split it always
@@ -472,7 +472,7 @@ implementing one optional method — the same feature-detected-interface pattern
 
 ```ts
 interface SimulationCategoryDetermining {
-    getSimulationCategory(): string;
+ getSimulationCategory(): string;
 }
 ```
 
@@ -480,13 +480,13 @@ interface SimulationCategoryDetermining {
 import type {GameSessionHandling, SimulationCategoryDetermining} from "@fromstan/pokie";
 
 class MySession implements GameSessionHandling, SimulationCategoryDetermining {
-    private inBonusRound = false;
+ private inBonusRound = false;
 
-    // ...
+ //...
 
-    getSimulationCategory(): string {
-        return this.inBonusRound ? "bonus" : "base";
-    }
+ getSimulationCategory(): string {
+ return this.inBonusRound ? "bonus": "base";
+ }
 }
 ```
 
@@ -505,20 +505,20 @@ validated/normalized before use, not accepted as-is:
 - Must be non-empty after trimming.
 - Must be at most `SimulationCategoryNameNormalizer.MAX_LENGTH` (64) characters.
 - Must match `/^[A-Za-z][A-Za-z0-9_-]*$/` — starts with a letter, then letters/digits/hyphens/underscores (so
-  `"bonus"`, `"freeGames"`, `"hold-and-win"`, `"bonus_buy2"` are all fine; `"2bonus"`, `"bonus round"`, `""` are
-  not).
+ `"bonus"`, `"freeGames"`, `"hold-and-win"`, `"bonus_buy2"` are all fine; `"2bonus"`, `"bonus round"`, `""` are
+ not).
 
 An invalid or empty category is never used and never throws. This is enforced in two places, so it holds no
 matter how a category was produced:
 
 - `ExplicitSimulationRoundCategoryDeterminer` normalizes whatever `getSimulationCategory()` returns before
-  deciding whether it supports the round at all — an invalid answer just means "doesn't support this round," so
-  `FallbackSimulationRoundCategoryDeterminer` moves on to the next determiner.
+ deciding whether it supports the round at all — an invalid answer just means "doesn't support this round," so
+ `FallbackSimulationRoundCategoryDeterminer` moves on to the next determiner.
 - `AggregateSimulationRunner` *itself* normalizes whatever category any `SimulationRoundCategoryDetermining` —
-  built-in or a hand-written custom one (see [Custom categorization strategies](#custom-categorization-strategies)
-  below) — hands back, before ever using it as a `breakdown` key. A custom determiner has no reason to know about
-  `SimulationCategoryNameNormalizer`; the runner guards against it regardless, so a badly-written determiner can't
-  put an empty/oversized/unsafe string directly into a JSON report.
+ built-in or a hand-written custom one (see [Custom categorization strategies](#custom-categorization-strategies)
+ below) — hands back, before ever using it as a `breakdown` key. A custom determiner has no reason to know about
+ `SimulationCategoryNameNormalizer`; the runner guards against it regardless, so a badly-written determiner can't
+ put an empty/oversized/unsafe string directly into a JSON report.
 
 A misbehaving session or determiner can't crash a long simulation run over a bad category string; at worst, that
 round ends up in `"base"` (via stake-based inference) or outside the breakdown entirely (if nothing else supports
@@ -546,19 +546,19 @@ same as a custom `NextSessionRoundPlayableDetermining` play strategy is its 3rd:
 import {AggregateSimulationRunner, FallbackSimulationRoundCategoryDeterminer, StakeBasedSimulationRoundCategoryDeterminer} from "@fromstan/pokie";
 
 class MyJackpotAwareDeterminer implements SimulationRoundCategoryDetermining {
-    supportsRoundCategorization(session: GameSessionHandling): boolean {
-        /* ... */
-    }
-    categorizeRound(session: GameSessionHandling): string {
-        return "jackpot";
-    }
+ supportsRoundCategorization(session: GameSessionHandling): boolean {
+ /*... */
+ }
+ categorizeRound(session: GameSessionHandling): string {
+ return "jackpot";
+ }
 }
 
 const runner = new AggregateSimulationRunner(
-    session,
-    1_000_000,
-    undefined, // no play strategy
-    new FallbackSimulationRoundCategoryDeterminer([new MyJackpotAwareDeterminer(), new StakeBasedSimulationRoundCategoryDeterminer()]),
+ session,
+ 1_000_000,
+ undefined, // no play strategy
+ new FallbackSimulationRoundCategoryDeterminer([new MyJackpotAwareDeterminer(), new StakeBasedSimulationRoundCategoryDeterminer()]),
 );
 ```
 
@@ -688,44 +688,44 @@ sample core report metrics can therefore have a different population from the
 observed monetary totals and the analytics subround metrics.
 
 - Entry frequency = feature entries / paid entries, or / logical entries, with
-  both alternatives labeled. Retrigger frequency = extension events / feature
-  entries; grants separately count the number of granted games/respins, including
-  unused grants when Hold&Win completes on its triggering entry. Weighted bonus
-  respin grants use the selected duration; they are not extra entry events.
+ both alternatives labeled. Retrigger frequency = extension events / feature
+ entries; grants separately count the number of granted games/respins, including
+ unused grants when Hold&Win completes on its triggering entry. Weighted bonus
+ respin grants use the selected duration; they are not extra entry events.
 - Duration = executed feature subrounds / completed feature instances. A natural
-  base trigger does not execute a free spin. A purchase executes its first free
-  spin on entry, which is included in duration and separately counted as
-  `entrySubrounds`. Cascades are mathematical stages, not extra feature plays.
+ base trigger does not execute a free spin. A purchase executes its first free
+ spin on entry, which is included in duration and separately counted as
+ `entrySubrounds`. Cascades are mathematical stages, not extra feature plays.
 - Average bonus win = completed feature win sum / completions. Zero-duration and
-  zero-win completions enter their distributions. Both duration and win use four
-  fixed buckets: `0`, `(0,10)`, `[10,100)`, `100+`. Duration is integral. A parent
-  and a child may both observe the same feature play; lifecycle win summaries
-  overlap and are **not** an additive payout partition.
-- The additive partition reads the session evaluation's canonical components
-  once: jackpot components first, then feature continuations/explicit feature
-  awards, then base components. A purchase's executed free spin is feature win.
-  Collection and weighted awards and released free-game banks are never added a
-  second time. Components retain identity, occurrences, samples and amount;
-  source artifacts retain their original components and metadata unchanged.
-  Bet mode is a separate dimension. Each dimension reports RTP contribution
-  (amount / actual charged stake) and payout share (amount / total observed win).
-- Symbol, line and scatter hits are canonical component presence per accepted
-  subround, deduplicated by symbol/line/scatter ID within that subround. Component
-  occurrence totals remain separate. A zero-valued canonical component counts
-  as component presence; landed display symbols alone never count as paid wins.
+ zero-win completions enter their distributions. Both duration and win use four
+ fixed buckets: `0`, `(0,10)`, `[10,100)`, `100+`. Duration is integral. A parent
+ and a child may both observe the same feature play; lifecycle win summaries
+ overlap and are **not** an additive payout partition.
+- The additive partition reads the session evaluation's components
+ once: jackpot components first, then feature continuations/explicit feature
+ awards, then base components. A purchase's executed free spin is feature win.
+ Collection and weighted awards and released free-game banks are never added a
+ second time. Components retain identity, occurrences, samples and amount;
+ source artifacts retain their original components and metadata unchanged.
+ Bet mode is a separate dimension. Each dimension reports RTP contribution
+ (amount / actual charged stake) and payout share (amount / total observed win).
+- Symbol, line and scatter hits are component presence per accepted
+ subround, deduplicated by symbol/line/scatter ID within that subround. Component
+ occurrence totals remain separate. A zero-valued component counts
+ as component presence; landed display symbols alone never count as paid wins.
 - Dead spins = zero-win accepted subrounds / all accepted subrounds. Maximum-win
-  frequency counts the exact maximum, including zero in an all-zero run; empty
-  runs have zero occurrences. Maximum contribution = maximum * occurrences /
-  total win. Top wins retain exactly the largest ten positive subround payouts
-  (or all when fewer): descending order, repeated equal values occupy slots,
-  equal-value identity is immaterial. Contribution uses their sum / total win.
+ frequency counts the exact maximum, including zero in an all-zero run; empty
+ runs have zero occurrences. Maximum contribution = maximum * occurrences /
+ total win. Top wins retain exactly the largest ten positive subround payouts
+ (or all when fewer): descending order, repeated equal values occupy slots,
+ equal-value identity is immaterial. Contribution uses their sum / total win.
 
 All zero-denominator ratios return numeric zero, and raw counts distinguish an
 observed zero from unavailable lifecycle/components or an unconfigured feature.
-Native outcome libraries use their flattened canonical wins once, supporting
+Native outcome libraries use their flattened wins once, supporting
 component hits and jackpot attribution. Their other component amounts are marked
 unattributed (`partition.unavailable`): event presence does not establish a
-feature lifecycle. Canonical feature WASM rounds expose accepted mathematical lifecycle/component observations and weighted counters. Ordinary amount-only artifacts keep those metrics explicitly unavailable.
+feature lifecycle. Feature WASM rounds expose accepted mathematical lifecycle/component observations and weighted counters. Ordinary amount-only artifacts keep those metrics explicitly unavailable.
 
 Built-in free games, Hold&Win, bounded respins, collection, cascades, weighted
 bonuses, modifiers and their already-supported jackpot/bet-mode compositions use
@@ -772,7 +772,7 @@ random-source contract rather than a fabricated seeded replay guarantee.
 
 Current reports persist `diagnostics` beside the V2 feature aggregates. The saved report is authoritative in Studio, including after reopening history; supplementary compatibility statistics fill only legacy missing fields. JSON, console, Markdown, HTML and Studio share the same diagnostic projection. An absent analytics block means unavailable legacy support, not observed zero.
 
-The requested budget counts accepted plays. When canonical logical-round observations exist, hit frequency, means, payout histogram, volatility, maximum and confidence intervals use **completed logical rounds**. Monetary totals and monetary RTP include every accepted play, including unfinished tails. The interval's centre can therefore differ from monetary RTP. Reports show accepted plays, completed samples, carried observations and excluded unfinished/restored tails separately. Each worker owns an independent session trajectory.
+The requested budget counts accepted plays. When logical-round observations exist, hit frequency, means, payout histogram, volatility, maximum and confidence intervals use **completed logical rounds**. Monetary totals and monetary RTP include every accepted play, including unfinished tails. The interval's centre can therefore differ from monetary RTP. Reports show accepted plays, completed samples, carried observations and excluded unfinished/restored tails separately. Each worker owns an independent session trajectory.
 
 Feature entries use paid entries or logical entries as labelled; retriggers use feature entries. Duration and bonus-win distributions use completed features only, with bins `0`, `(0,10)`, `[10,100)`, `[100,infinity)`. Duration is executed feature plays and bonus win is currency. The payout histogram uses the same currency boundaries despite its historical `1-9`/`10-99` keys. Accepted-play dead spins, maximum occurrence/share and top ten wins are separate from the completed-logical-round maximum. “Exact maximum observed win” means the observed sample maximum, never a theoretical game maximum. Overlapping lifecycle wins must not be added; base/feature/jackpot/unavailable monetary partitions are additive. Bet mode is a separate attribution dimension.
 
@@ -781,6 +781,6 @@ A normal-approximation 95% interval is an empirical estimate. Adaptive precision
 Native sampled outcome-library outputs retain their library provenance and statistics and now also project the ordinary saved simulation report. `pokie report` accepts both that projection and the older sampled shape. These sampled estimates are separate from static outcome-source analysis. Flattened artifact events cannot prove lifecycle; ordinary amount-only WASM artifacts supply amount-only observations, and custom sessions may lack lifecycle/component capabilities. Unassignable money stays in `unavailable` without losing total-win accounting.
 
 
-## Canonical dossier preparation
+## Dossier preparation
 
 Assessment dossiers attach canonical schema-1 simulation reports and reproduce seeded mathematics through the same runner, preserving CI availability, worker seed strategy, feature attribution, logical/subround populations and per-mode denominators. Outcome-source projections label `reproducibility.libraryHash` separately from runtime `configHash`. Exact library distributions do not create sampled CIs or prove full model coverage. See [dossier reproduction](certification-evidence-bundle.md).

@@ -100,7 +100,7 @@ describe("InitCommand", () => {
         const {command} = createCommand();
 
         expect(command.getDescription().toLowerCase()).not.toContain("wizard");
-        expect(command.getDescription().toLowerCase()).toContain("never asks reel/paytable/mechanics questions");
+        expect(command.getDescription().toLowerCase()).toContain("never asks game-design questions");
     });
 
     describe("default directory", () => {

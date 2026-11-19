@@ -90,13 +90,11 @@ export class InitCommand implements CliCommandHandling {
 
     public getDescription(): string {
         return (
-            "Turn the current or given [directory] into a prepared, immediately valid POKIE game package in " +
-            "place, with no game-id subdirectory: merges/patches package.json, and writes tsconfig.json, " +
-            "README.md and a real, hand-editable src/index.ts wherever they're missing, then (unless " +
-            "--no-prepare) installs dependencies and builds and verifies dist/index.js -- entirely " +
-            "non-interactively, with --package-name/--game-id/--game-name/--version to override its " +
-            "directory-derived defaults. Never asks reel/paytable/mechanics questions; for those, design a " +
-            'Blueprint Project with "pokie create" and build it with "pokie build" instead.'
+            "Turn the current or given [directory] into a ready-to-run POKIE game package in place: patch " +
+            "package.json, add the TypeScript config, README and editable source entry where missing, then " +
+            "install dependencies, build and verify. Use --package-name/--game-id/--game-name/--version to " +
+            "override the directory-derived defaults. It never asks game-design questions; use \"pokie create\" " +
+            "and \"pokie build\" for those."
         );
     }
 

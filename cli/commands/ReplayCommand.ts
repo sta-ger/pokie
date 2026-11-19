@@ -87,7 +87,7 @@ export class ReplayCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Replay one round: deterministic canonical WASM replay, exact native outcome-library reconstruction with seed, round and mode, or best-effort game-package/Blueprint replay.";
+        return "Replay one round from a WASM build, an outcome library, a game package or a game design.";
     }
 
     public getCommanderCommand(): Command {
@@ -231,7 +231,7 @@ export class ReplayCommand implements CliCommandHandling {
     private buildCommand(resultRef: {value?: ReplayOptions} = {}): Command {
         return createCommanderCliCommand("replay")
             .description(this.getDescription())
-            .argument("<packageRoot>", "a POKIE game package, Blueprint, canonical WASM artifact, or native outcome-library bundle (with --mode)")
+            .argument("<packageRoot>", "a POKIE game package, game design, WASM build, or outcome-library folder (with --mode)")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
             .option("--recording <file>", "verify recorded audit evidence against this compatible package; no wallet or live session required")
             .option("--seed <string>", "seed to replay against (WASM default: pokie-wasm-replay; required for a native outcome-library bundle)")
@@ -255,7 +255,7 @@ export class ReplayCommand implements CliCommandHandling {
             })
             .option("--mode <modeName>", "package bet mode to select repeatedly at available entries (step replay only); required for native outcome-library replay")
             .addHelpText("after", "\nPackage --mode uses the shared simulation policy: repeat selection at available entries, leaving zero-stake purchase continuations uncharged. The descriptor retains modePolicy and executed commands. It cannot be combined with --unit logical-round or --recording.\n")
-            .addHelpText("after", "\nCanonical WASM: --round N replays N rounds and reports cumulative totalBet/totalWin.\nUse the same explicit --seed as run/sim; declared features support --mode and --unit logical-round.\nExample: pokie sim game.wasm --rounds 6 --workers 1 --seed demo --format json\n         pokie replay game.wasm --round 6 --seed demo\n")
+            .addHelpText("after", "\nWASM: --round N replays N rounds and reports cumulative totalBet/totalWin.\nUse the same explicit --seed as run/sim; declared features support --mode and --unit logical-round.\nExample: pokie sim game.wasm --rounds 6 --workers 1 --seed demo --format json\n         pokie replay game.wasm --round 6 --seed demo\n")
             .action(
                 (packageRoot: string, excess: string[], options: {seed?: string; round?: number; out?: string; format?: string; mode?: string; unit?: "step" | "logical-round"; recording?: string}) => {
                     if (excess.length > 0) {

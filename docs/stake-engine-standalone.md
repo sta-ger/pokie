@@ -17,24 +17,24 @@ per-step win breakdown, `betMode`, `stake`, provenance. Building any of that req
 genuinely foreign export never carries: a fixed `reveal`/`win`/`finalWin` event vocabulary (see
 [Stake Engine Export](stake-engine-export.md#events-a-generic-mechanic-agnostic-mapping)), a per-round win
 breakdown, and a manifest to recover `betMode`/`stake` (Stake's own `index.json`/CSV/books never store either).
-Standalone never attempts any of that. It normalizes into a much smaller canonical DTO and computes statistics
+Standalone never attempts any of that. It normalizes into a much smaller DTO and computes statistics
 directly over it — no `RoundRecord`/`WeightedOutcomeLibrary` is ever built.
 
 ## Data shapes
 
 ```ts
 type StakeEngineOutcomeRecord = {
-    readonly id: number;
-    readonly weight: bigint | number; // CSV weights are uint64; the reader always supplies bigint (see below)
-    readonly payoutMultiplier: number; // Stake's own raw integer unit
-    readonly ratio: number | undefined; // payoutMultiplier reversed to a stake-normalized ratio, at this mode's cost
-    readonly events: readonly StakeEngineEvent[]; // normalized verbatim, no POKIE step model reconstructed
+ readonly id: number;
+ readonly weight: bigint | number; // CSV weights are uint64; the reader always supplies bigint (see below)
+ readonly payoutMultiplier: number; // Stake's own raw integer unit
+ readonly ratio: number | undefined; // payoutMultiplier reversed to a stake-normalized ratio, at this mode's cost
+ readonly events: readonly StakeEngineEvent[]; // normalized verbatim, no POKIE step model reconstructed
 };
 
 type StakeEngineStandaloneMode = {
-    readonly modeName: string;
-    readonly cost: number; // read straight off index.json -- the one place a manifest-less directory ever records it
-    readonly outcomes: readonly StakeEngineOutcomeRecord[];
+ readonly modeName: string;
+ readonly cost: number; // read straight off index.json -- the one place a manifest-less directory ever records it
+ readonly outcomes: readonly StakeEngineOutcomeRecord[];
 };
 ```
 
@@ -85,21 +85,21 @@ stake-normalized `ratio`, the same normalize-before-multiply overflow-avoidance 
 type StakeEngineStandaloneExactDecimal = number | string;
 
 type StakeEngineStandaloneModeAnalysis = {
-    readonly modeName: string;
-    readonly cost: number;
-    readonly outcomeCount: number;
-    readonly totalWeight: StakeEngineStandaloneExactDecimal;
-    readonly rtp: number;
-    readonly hitFrequency: number;
-    readonly zeroWinFrequency: number;
-    readonly variance: number;
-    readonly standardDeviation: number;
-    readonly maxPayoutMultiplier: number;
-    readonly maxRatio: number;
-    readonly maxWinProbability: number;
-    readonly nonInvertibleRatioCount: number;
-    readonly payoutDistribution: readonly {payoutMultiplier: number; weight: StakeEngineStandaloneExactDecimal; ratio: number | undefined; probability: StakeEngineStandaloneExactDecimal}[];
-    readonly eventClassificationBreakdown: readonly {category: string; occurrenceFrequency: StakeEngineStandaloneExactDecimal; averageOccurrencesPerOutcome: StakeEngineStandaloneExactDecimal}[];
+ readonly modeName: string;
+ readonly cost: number;
+ readonly outcomeCount: number;
+ readonly totalWeight: StakeEngineStandaloneExactDecimal;
+ readonly rtp: number;
+ readonly hitFrequency: number;
+ readonly zeroWinFrequency: number;
+ readonly variance: number;
+ readonly standardDeviation: number;
+ readonly maxPayoutMultiplier: number;
+ readonly maxRatio: number;
+ readonly maxWinProbability: number;
+ readonly nonInvertibleRatioCount: number;
+ readonly payoutDistribution: readonly {payoutMultiplier: number; weight: StakeEngineStandaloneExactDecimal; ratio: number | undefined; probability: StakeEngineStandaloneExactDecimal}[];
+ readonly eventClassificationBreakdown: readonly {category: string; occurrenceFrequency: StakeEngineStandaloneExactDecimal; averageOccurrencesPerOutcome: StakeEngineStandaloneExactDecimal}[];
 };
 ```
 
@@ -111,10 +111,10 @@ from a uint64 weight total that can exceed what a JS `number` represents exactly
 leaving it to the caller:
 
 - **`number`** for safe integer totals/weights, or approximate binary64 fractions when numerator and denominator
-  are both safe integers. Even a small repeating fraction such as 1/3 is approximate.
+ are both safe integers. Even a small repeating fraction such as 1/3 is approximate.
 - **decimal `string`** otherwise. Integer totals and bucket weights remain exact. Fraction strings use long
-  division capped at **40 fractional digits**, truncating even terminating fractions that need more digits.
-  They never contain BigInt and can be serialized through CLI JSON stdout and persisted reports.
+ division capped at **40 fractional digits**, truncating even terminating fractions that need more digits.
+ They never contain BigInt and can be serialized through CLI JSON stdout and persisted reports.
 
 Numeric RTP, frequencies and centered moments are binary64 approximations. Ratio conversion retains significant
 rather than a fixed number of fractional digits, preserving positive representable probabilities below 1e-18.
@@ -145,7 +145,7 @@ defines its own mechanic-specific one. `eventClassificationBreakdown` is driven 
 type StakeEngineEventClassification = {readonly category: string};
 
 interface StakeEngineEventClassifying {
-    classify(event: StakeEngineEvent): StakeEngineEventClassification;
+ classify(event: StakeEngineEvent): StakeEngineEventClassification;
 }
 ```
 
@@ -170,10 +170,10 @@ import {StakeEngineOutcomeSourceReader, StakeEngineStandaloneAnalyzer} from "@fr
 const readResult = await new StakeEngineOutcomeSourceReader().readFromDirectory("./some-stake-dir");
 
 if (readResult.issues.some((issue) => issue.severity === "error")) {
-    // nothing was normalized -- inspect readResult.issues
+ // nothing was normalized -- inspect readResult.issues
 } else {
-    const analysis = new StakeEngineStandaloneAnalyzer().analyze(readResult);
-    console.log(analysis.modes[0].rtp);
+ const analysis = new StakeEngineStandaloneAnalyzer().analyze(readResult);
+ console.log(analysis.modes[0].rtp);
 }
 ```
 
@@ -187,10 +187,10 @@ vs. after a math-model change) mode-by-mode, matched by `modeName`:
 type StakeEngineStandaloneAnalysisMetricDiff = {left: number; right: number; delta: number; percentDelta: number | null};
 
 type StakeEngineStandaloneAnalysisDiff = {
-    stakeDir: {left: string; right: string};
-    perMode: Record<string, StakeEngineStandaloneModeAnalysisDiff>; // one entry per mode name present in *both* inputs
-    onlyInLeft: string[]; // mode names present only in the left analysis
-    onlyInRight: string[]; // mode names present only in the right analysis
+ stakeDir: {left: string; right: string};
+ perMode: Record<string, StakeEngineStandaloneModeAnalysisDiff>; // one entry per mode name present in *both* inputs
+ onlyInLeft: string[]; // mode names present only in the left analysis
+ onlyInRight: string[]; // mode names present only in the right analysis
 };
 ```
 

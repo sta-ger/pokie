@@ -11,7 +11,7 @@ setAvailableBets(availableBets: number[]): void
 getAvailableBets(): number[]
 setCreditsAmount(creditsAmount: number): void
 getCreditsAmount(): number
-setBet(bet: number): void          // no validation — see note below
+setBet(bet: number): void // no validation — see note below
 getBet(): number
 isBetAvailable(bet: number): boolean
 ```
@@ -28,12 +28,12 @@ Defaults (no-arg constructor): `availableBets = [1, 2, 3, 4, 5, 10, 20, 30, 40, 
 constructor(config: GameSessionConfigRepresenting = new GameSessionConfig(), winAmountCalculator: WinAmountDetermining = new NoWinAmount())
 getCreditsAmount(): number
 setCreditsAmount(creditsAmount: number): void
-getWinAmount(): number              // delegates to the injected WinAmountDetermining
+getWinAmount(): number // delegates to the injected WinAmountDetermining
 getAvailableBets(): number[]
 getBet(): number
-setBet(bet: number): void           // rejects unavailable bets, falls back to getAvailableBets()[0]
-canPlayNextGame(): boolean          // credits >= bet
-play(): void                        // if canPlayNextGame(), credits -= bet
+setBet(bet: number): void // rejects unavailable bets, falls back to getAvailableBets()[0]
+canPlayNextGame(): boolean // credits >= bet
+play(): void // if canPlayNextGame(), credits -= bet
 ```
 
 `GameSessionHandling` intentionally excludes bet-list mutation (`setAvailableBets`) — a running session can read
@@ -46,13 +46,13 @@ around a `VideoSlotConfigRepresenting`:
 
 ```ts
 constructor(
-    config: VideoSlotConfigRepresenting = new VideoSlotConfig(),
-    combinationsGenerator: SymbolsCombinationsGenerating = new SymbolsCombinationsGenerator(config),
-    winCalculator: VideoSlotWinCalculating = new VideoSlotWinCalculator(config),
-    baseSession: GameSessionHandling = new GameSession(config),
+ config: VideoSlotConfigRepresenting = new VideoSlotConfig(),
+ combinationsGenerator: SymbolsCombinationsGenerating = new SymbolsCombinationsGenerator(config),
+ winCalculator: VideoSlotWinCalculating = new VideoSlotWinCalculator(config),
+ baseSession: GameSessionHandling = new GameSession(config),
 )
 
-play(): void  // places the bet, generates a new combination, calculates win, adds win to credits
+play(): void // places the bet, generates a new combination, calculates win, adds win to credits
 getSymbolsCombination(): SymbolsCombinationDescribing
 getWinEvaluationResult(): WinEvaluationResult
 getWinningLines(): Record<string, WinningLineDescribing>
@@ -74,7 +74,7 @@ getLinesPatterns(): LinesPatternsDescribing
 // plus the base session surface: getCreditsAmount/setCreditsAmount, getBet/setBet, getAvailableBets, canPlayNextGame
 ```
 
-`VideoSlotSession.getWinEvaluationResult()` is now the canonical per-round breakdown. The old
+`VideoSlotSession.getWinEvaluationResult()` is now the per-round breakdown. The old
 `getWinningLines()` / `getWinningScatters()` methods remain as compatibility views derived from that object. For
 legacy cluster/value/ways record getters, keep using the underlying `VideoSlotWinCalculator` when needed.
 
@@ -88,10 +88,10 @@ the legacy calculator amount instead of treating the win as zero.
 constructor(baseConfig = new GameSessionConfig(), sequencesGenerator: ReelsSymbolsSequencesGenerating = new ReelsSymbolsSequencesGenerator())
 
 getReelsNumber(): number / setReelsNumber(n: number): void
-getReelsSymbolsNumber(): number / setReelsSymbolsNumber(n: number): void   // visible rows per reel
+getReelsSymbolsNumber(): number / setReelsSymbolsNumber(n: number): void // visible rows per reel
 getAvailableSymbols(): string[] / setAvailableSymbols(symbols: string[]): void
 getWildSymbols(): string[] / setWildSymbols(symbols: string[]): void
-getWildSubstitutions(): Partial<Record<string, string[]>> / setWildSubstitutions(v): void  // see paytable-and-wins.md
+getWildSubstitutions(): Partial<Record<string, string[]>> / setWildSubstitutions(v): void // see paytable-and-wins.md
 getScatterSymbols(): string[] / setScatterSymbols(symbols: string[]): void
 isSymbolWild(symbolId: string): boolean
 isSymbolScatter(symbolId: string): boolean
@@ -129,9 +129,9 @@ argument instead of replacing the generated sequences after the fact:
 import {ReelsSymbolsSequencesGenerating, SymbolsSequenceDescribing, VideoSlotConfig} from "@fromstan/pokie";
 
 class WeightedReelsGenerator implements ReelsSymbolsSequencesGenerating {
-    public generate(reelsNumber: number, availableSymbols: string[], wildSymbols: string[], scatterSymbols: string[]): SymbolsSequenceDescribing[] {
-        // your own strip-generation logic
-    }
+ public generate(reelsNumber: number, availableSymbols: string[], wildSymbols: string[], scatterSymbols: string[]): SymbolsSequenceDescribing[] {
+ // your own strip-generation logic
+ }
 }
 
 const config = new VideoSlotConfig(new GameSessionConfig(), new WeightedReelsGenerator());
@@ -141,8 +141,8 @@ const config = new VideoSlotConfig(new GameSessionConfig(), new WeightedReelsGen
 
 ```ts
 import {
-    VideoSlotConfig, VideoSlotSession, SymbolsSequence,
-    LinesDefinitionsFor5x3, LeftToRightLinesPatterns, Paytable,
+ VideoSlotConfig, VideoSlotSession, SymbolsSequence,
+ LinesDefinitionsFor5x3, LeftToRightLinesPatterns, Paytable,
 } from "@fromstan/pokie";
 
 const config = new VideoSlotConfig();
@@ -153,7 +153,7 @@ config.setLinesDefinitions(new LinesDefinitionsFor5x3());
 config.setLinesPatterns(new LeftToRightLinesPatterns(5, 2)); // min. 2 symbols from the left to win
 
 const paytable = new Paytable(config.getAvailableBets(), ["A", "K", "Q", "J", "10"], ["W"], 5);
-paytable.setPayoutForSymbol("A", 3, 5);  // 3-of-a-kind pays 5x bet, across every available bet
+paytable.setPayoutForSymbol("A", 3, 5); // 3-of-a-kind pays 5x bet, across every available bet
 config.setPaytable(paytable);
 
 const session = new VideoSlotSession(config);
@@ -179,9 +179,7 @@ config.setAvailableSymbols([1, 2, 3, 4, 100, 200]); // 100 = wild, 200 = scatter
 config.setWildSymbols([100]);
 config.setScatterSymbols([200]);
 config.setSymbolsSequences(
-    new Array(config.getReelsNumber())
-        .fill(0)
-        .map(() => new SymbolsSequence<number>().fromNumberOfEachSymbol([1, 2, 3, 4, 100, 200], 15)),
+ new Array(config.getReelsNumber()).fill(0).map(() => new SymbolsSequence<number>().fromNumberOfEachSymbol([1, 2, 3, 4, 100, 200], 15)),
 );
 
 const session = new VideoSlotSession<number>(config);
@@ -247,8 +245,8 @@ original settled result even when the caller repeats its original revision.
 
 ```ts
 import {
-  SpinCommandHandler, captureInitialPokieSessionState,
-  InMemorySessionRepository, InMemoryWallet,
+ SpinCommandHandler, captureInitialPokieSessionState,
+ InMemorySessionRepository, InMemoryWallet,
 } from "@fromstan/pokie";
 
 // game implements PokieGame, and may have been loaded with loadPokieGameRuntime().
@@ -259,17 +257,17 @@ const wallet = new InMemoryWallet();
 const id = "demo-session";
 await wallet.setBalance(id, session.getCreditsAmount());
 await repository.save(id, captureInitialPokieSessionState(
-  context, session, game.getSessionSerializer?.(), false, game,
+ context, session, game.getSessionSerializer?.(), false, game,
 ));
 // A fresh handler needs no retained session or priming.
 const runtime = new SpinCommandHandler(game, repository, wallet);
 const result = await runtime.execute({kind: "spin", sessionId: id, expectedVersion: 1});
 if (result.status === "played") {
-  console.log(result.win, result.credits, result.stake, result.state);
+ console.log(result.win, result.credits, result.stake, result.state);
 } else if (result.status === "not-found") {
-  console.log("Session is absent; explicitly choose whether to create another.");
+ console.log("Session is absent; explicitly choose whether to create another.");
 } else {
-  console.log(result.status, result.reason);
+ console.log(result.status, result.reason);
 }
 ```
 
@@ -304,19 +302,19 @@ fails with an upgrade/configuration error and never falls back to memory.
 
 ```ts
 import {
-    SqliteTransactionalRoundStore, SpinCommandHandler,
-    captureInitialPokieSessionState,
+ SqliteTransactionalRoundStore, SpinCommandHandler,
+ captureInitialPokieSessionState,
 } from "@fromstan/pokie";
 
 const store = await SqliteTransactionalRoundStore.open("./rounds.sqlite", {lockWaitMs: 5000});
 const context = {seed: "reference-seed"};
 const session = game.createSession(context);
 await store.initialize("session-1", captureInitialPokieSessionState(
-    context, session, game.getSessionSerializer?.(), true, game,
+ context, session, game.getSessionSerializer?.(), true, game,
 ), game);
 const handler = new SpinCommandHandler(game, store);
 const result = await handler.execute({kind: "spin", sessionId: "session-1",
-    requestId: "caller-stable-key", expectedVersion: 1, bet: 0.05});
+ requestId: "caller-stable-key", expectedVersion: 1, bet: 0.05});
 await store.close();
 // A new process opens the same file and retrieves the detached historical response,
 // without constructing a session or executing the domain engine:
@@ -392,15 +390,15 @@ Never mix either composition with separately supplied repositories or wallets.
 
 ```ts
 const intents = await SqliteExternalRoundStore.open("./external-rounds.sqlite", provider, {
-    callTimeoutMs: 2000, recoveryWaitMs: 5000,
+ callTimeoutMs: 2000, recoveryWaitMs: 5000,
 });
 const server = new PokieDevServer(game, {
-    externalRoundStore: intents, settlementGuarantee: "external-reconciliation",
+ externalRoundStore: intents, settlementGuarantee: "external-reconciliation",
 });
 // Or initialize a captured durably-restorable session and use:
 const handler = new SpinCommandHandler(game, intents);
 await handler.execute({kind: "spin", sessionId, requestId: "stable-logical-round",
-    expectedVersion: 1, bet: 0.05, mode: "base"});
+ expectedVersion: 1, bet: 0.05, mode: "base"});
 ```
 
 A provider explicitly declares durable idempotency, authoritative inspection and permanent
@@ -417,8 +415,8 @@ Unsupported selections never fall back to memory. Existing root exports include
 both composition and capability contracts; browser/WASM entries remain portable.
 
 The external store first reserves the session and freezes the command envelope. It restores
-and calculates through the canonical handler using a private local ledger, then persists
-both permanent wallet IDs and exact canonical leg kinds/amounts (captured from ledger calls,
+and calculates through the handler using a private local ledger, then persists
+both permanent wallet IDs and exact leg kinds/amounts (captured from ledger calls,
 never reconstructed from balances), complete executable/RNG continuation and detached
 response **before the first effective remote action**. No real wallet calls run inside the
 reference store transaction. Each remote phase has committed local intent before dispatch.
@@ -482,12 +480,12 @@ counters exercise the lifecycle without substituting the local reference ledger.
 
 ```ts
 const first = runtime.execute({
-    kind: "spin", roundId: "round-1", delivery: "stepwise", bet: 0.05,
+ kind: "spin", roundId: "round-1", delivery: "stepwise", bet: 0.05,
 });
 // Use the returned delivery cursor; never select another bet or mode here.
 const next = runtime.execute({
-    kind: "spin", delivery: "composite",
-    continuation: {roundId: "round-1", cursor: first.logicalRound.deliveryCursor},
+ kind: "spin", delivery: "composite",
+ continuation: {roundId: "round-1", cursor: first.logicalRound.deliveryCursor},
 });
 ```
 

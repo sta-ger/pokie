@@ -97,7 +97,7 @@ export class DiffCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Compare mathematical definitions, simulation statistics or exact outcome aggregate analyses.";
+        return "Compare game definitions, simulation statistics or outcome analyses.";
     }
 
     public getCommanderCommand(): Command {

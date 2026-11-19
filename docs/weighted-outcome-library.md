@@ -4,7 +4,7 @@
 
 `weightedoutcome/` is the "no Monte Carlo" counterpart to [Simulation](simulation.md): instead of sampling
 rounds and estimating RTP/volatility with a confidence interval, a `WeightedOutcomeLibrary` enumerates every
-distinct possible round outcome a math model can produce — each one a canonical [`RoundRecord`](round-records.md)
+distinct possible round outcome a math model can produce — each one a [`RoundRecord`](round-records.md)
 plus its exact probability weight — and `WeightedOutcomeLibraryAnalyzer` computes exact statistics directly from
 that enumeration. There's no sampling error and no confidence interval to report, because the library already
 accounts for every outcome.
@@ -18,15 +18,15 @@ or multi-step) via `RoundRecord` rather than just raw symbol combinations.
 
 ```ts
 type WeightedOutcome<T = string> = {
-    readonly id: string;
-    readonly weight: number;
-    readonly artifact: RoundRecord<T>;
+ readonly id: string;
+ readonly weight: number;
+ readonly artifact: RoundRecord<T>;
 };
 
 type WeightedOutcomeLibrary<T = string> = {
-    readonly schemaVersion: number;
-    readonly libraryId: string;
-    readonly outcomes: readonly WeightedOutcome<T>[];
+ readonly schemaVersion: number;
+ readonly libraryId: string;
+ readonly outcomes: readonly WeightedOutcome<T>[];
 };
 ```
 
@@ -59,10 +59,10 @@ rejects it outright.
 
 ```ts
 function buildWeightedOutcomeLibrary<T = string>(options: {
-    libraryId: string;
-    outcomes: readonly {id: string; weight: number; artifact: RoundRecord<T>}[];
-    schemaVersion?: number;
-    artifactValidator?: ValidationRule<RoundRecord<T>>; // an *additional* check, never a replacement — see below
+ libraryId: string;
+ outcomes: readonly {id: string; weight: number; artifact: RoundRecord<T>}[];
+ schemaVersion?: number;
+ artifactValidator?: ValidationRule<RoundRecord<T>>; // an *additional* check, never a replacement — see below
 }): WeightedOutcomeLibrary<T>;
 ```
 
@@ -80,7 +80,7 @@ isn't JSON-safe.
 A real `RoundRecordValidator` always validates every outcome's artifact, whether or not `artifactValidator` is
 given — that option can only ever add *further* checks on top of it, never replace it. A permissive custom
 validator (e.g. one that always reports no issues) can therefore never let a malformed `RoundRecord` — a
-mismatched screen, an inconsistent `totalWin`, ... — through: it's rejected as `weighted-outcome-artifact-invalid`
+mismatched screen, an inconsistent `totalWin`,... — through: it's rejected as `weighted-outcome-artifact-invalid`
 either way. Use `artifactValidator` to layer on extra, library- or game-specific invariants beyond what
 `RoundRecordValidator` already covers, not to loosen its own checks.
 
@@ -95,12 +95,12 @@ gotten that way by bypassing `buildWeightedOutcomeLibrary`.
 import {buildWeightedOutcomeLibrary} from "@fromstan/pokie";
 
 const library = buildWeightedOutcomeLibrary({
-    libraryId: "sample-slot-base-game-v1",
-    outcomes: [
-        {id: "no-win", weight: 70, artifact: losingArtifact},
-        {id: "small-win", weight: 25, artifact: smallWinArtifact},
-        {id: "jackpot", weight: 5, artifact: jackpotArtifact},
-    ],
+ libraryId: "sample-slot-base-game-v1",
+ outcomes: [
+ {id: "no-win", weight: 70, artifact: losingArtifact},
+ {id: "small-win", weight: 25, artifact: smallWinArtifact},
+ {id: "jackpot", weight: 5, artifact: jackpotArtifact},
+ ],
 });
 ```
 
@@ -108,8 +108,8 @@ const library = buildWeightedOutcomeLibrary({
 
 ```ts
 class PokieJsonWeightedOutcomeLibraryProjector<T = string>
-    implements WeightedOutcomeLibraryProjector<T, WeightedOutcomeLibraryJson<T>> {
-    project(library: WeightedOutcomeLibrary<T>): WeightedOutcomeLibraryJson<T>;
+ implements WeightedOutcomeLibraryProjector<T, WeightedOutcomeLibraryJson<T>> {
+ project(library: WeightedOutcomeLibrary<T>): WeightedOutcomeLibraryJson<T>;
 }
 
 function computeWeightedOutcomeLibraryHash<T = string>(library: WeightedOutcomeLibrary<T>): string; // "sha256:<hex>"
@@ -124,19 +124,19 @@ Both share the exact same canonical serializer (`toCanonicalJson`, see [Round Re
 type WeightedOutcomePayoutBucket = {readonly payoutMultiplier: number; readonly probability: number};
 
 type WeightedOutcomeLibraryAnalysis = {
-    readonly totalWeight: number;
-    readonly rtp: number;
-    readonly hitFrequency: number;
-    readonly zeroWinFrequency: number;
-    readonly variance: number;
-    readonly standardDeviation: number;
-    readonly maxWin: number;
-    readonly maxWinProbability: number;
-    readonly payoutDistribution: readonly WeightedOutcomePayoutBucket[];
+ readonly totalWeight: number;
+ readonly rtp: number;
+ readonly hitFrequency: number;
+ readonly zeroWinFrequency: number;
+ readonly variance: number;
+ readonly standardDeviation: number;
+ readonly maxWin: number;
+ readonly maxWinProbability: number;
+ readonly payoutDistribution: readonly WeightedOutcomePayoutBucket[];
 };
 
 class WeightedOutcomeLibraryAnalyzer<T = string> {
-    analyze(library: WeightedOutcomeLibrary<T>): WeightedOutcomeLibraryAnalysis;
+ analyze(library: WeightedOutcomeLibrary<T>): WeightedOutcomeLibraryAnalysis;
 }
 ```
 
@@ -170,16 +170,16 @@ guarantees) and does not re-validate; validate a library from an untrusted sourc
 
 ```ts
 class WeightedOutcomeLibraryValidator<T = string> implements ValidationRule<WeightedOutcomeLibrary<T>> {
-    // extraArtifactValidator is additive — RoundRecordValidator always runs regardless, same as
-    // buildWeightedOutcomeLibrary's own artifactValidator option.
-    constructor(extraArtifactValidator?: ValidationRule<RoundRecord<T>>);
-    validate(library: WeightedOutcomeLibrary<T>): ValidationIssue[];
+ // extraArtifactValidator is additive — RoundRecordValidator always runs regardless, same as
+ // buildWeightedOutcomeLibrary's own artifactValidator option.
+ constructor(extraArtifactValidator?: ValidationRule<RoundRecord<T>>);
+ validate(library: WeightedOutcomeLibrary<T>): ValidationIssue[];
 }
 ```
 
 Reuses the existing generic `ValidationRule<T>` contract. Never throws, even for a malformed or hand-crafted
 library. Checks `libraryId`/`schemaVersion` (including that it's the currently supported version), that
-`outcomes` is non-empty with unique, non-empty `id`s **already in canonical ascending order**
+`outcomes` is non-empty with unique, non-empty `id`s **already in ascending order**
 (`weighted-outcome-library-outcomes-not-sorted` otherwise) and finite `weight`s that are each strictly greater
 than zero, summing to a finite number greater than zero (flagging the same
 `weighted-outcome-library-total-weight-invalid` issue whether the weights sum to zero *or* overflow to
@@ -194,7 +194,7 @@ always runs" above): it can only ever report *further* issues, never suppress `R
 ```ts
 const issues = new WeightedOutcomeLibraryValidator().validate(library);
 if (issues.some((issue) => issue.severity === "error")) {
-    // ...
+ //...
 }
 ```
 
@@ -210,8 +210,8 @@ generated outcome is produced by driving the exact same session/win-calculation 
 
 ```ts
 interface PokieGame {
-    // ...
-    createExactEnumerationSession?(combinationsGenerator: SymbolsCombinationsGenerating): VideoSlotSessionHandling;
+ //...
+ createExactEnumerationSession?(combinationsGenerator: SymbolsCombinationsGenerating): VideoSlotSessionHandling;
 }
 ```
 
@@ -221,7 +221,7 @@ implement this: the returned session must be the same concrete `VideoSlotSession
 builds, just constructed with the caller-supplied `combinationsGenerator` swapped in for the game's own
 randomness-backed one — the DI seam `VideoSlotSession`'s own constructor already exposes. A paid spin that triggers
 free games remains exactly enumerable: its artifact carries the real `freeGamesTriggered` event from that entry
-spin. A game with no finite paid-spin enumeration (cascades, hold-and-win, a resizable grid, ...) simply has no
+spin. A game with no finite paid-spin enumeration (cascades, hold-and-win, a resizable grid,...) simply has no
 exact strategy: generation fails closed with a
 `WeightedOutcomeLibraryGenerationError` (`weighted-outcome-library-generation-unsupported`) rather than guessing
 at one.
@@ -241,14 +241,14 @@ tuples routinely render the same visible grid).
 
 ```ts
 function generateExactWeightedOutcomeLibrary(options: GenerateExactWeightedOutcomeLibraryOptions): Promise<{
-    library: WeightedOutcomeLibrary;
-    diagnostics: OutcomeLibraryGeneratorDiagnostics;
+ library: WeightedOutcomeLibrary;
+ diagnostics: OutcomeLibraryGeneratorDiagnostics;
 }>;
 
 function streamExactWeightedOutcomes(options: GenerateExactWeightedOutcomeLibraryOptions): AsyncGenerator<WeightedOutcomeInput, OutcomeLibraryGeneratorDiagnostics>;
 
 function generateSampledWeightedOutcomeLibrary(options: Omit<GenerateExactWeightedOutcomeLibraryOptions, "bounded" | "sampled"> & {
-    sampled: {sampleSize: bigint; seed: string};
+ sampled: {sampleSize: bigint; seed: string};
 }): Promise<{library: WeightedOutcomeLibrary; diagnostics: OutcomeLibraryGeneratorDiagnostics}>;
 ```
 
@@ -259,8 +259,7 @@ bounded by the number of *distinct* grids actually reachable, not the raw combin
 its visible grid, and accumulates an exact `bigint` weight per distinct grid — the same "dedupe identical grids
 before the expensive win-calculation step" optimization `math-modeling.md`'s own ad hoc `SymbolsCombinationsAnalyzer`
 walkthrough already uses, just streamed and bigint-safe. Only then, for each *unique* grid, does it build a real
-session via `createExactEnumerationSession`, force that grid in, call `play()` for real, and build a canonical
-`RoundRecord` via `buildRoundRecordFromSession` — no second calculation path anywhere. A count that would lose
+session via `createExactEnumerationSession`, force that grid in, call `play()` for real, and build a `RoundRecord` via `buildRoundRecordFromSession` — no second calculation path anywhere. A count that would lose
 precision crossing into `WeightedOutcome.weight`'s own `number` type fails fast
 (`weighted-outcome-library-generation-weight-not-representable`) instead of silently rounding. The resulting
 outcomes are handed to `buildWeightedOutcomeLibrary` unchanged, so homogeneous provenance/`betMode`/`stake`,
@@ -302,14 +301,14 @@ incompatible grid weights into a falsely "exact" result. `options.onProgress` is
 
 ```
 pokie generate <packageRoot> [--mode <betModeId>] [--stake <number>]
-    [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>]
-    [--exact | --sample <n> --seed <string>] [--estimate | --dry-run] [--out <file>]
-    [--resume <file>] [--progress] [--format json]
+ [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>]
+ [--exact | --sample <n> --seed <string>] [--estimate | --dry-run] [--out <file>]
+ [--resume <file>] [--progress] [--format json]
 ```
 
 ```
 pokie build <project> --target outcomeLibrary
-    [--exact | --sample <n> --seed <string>] [--out <dir>]
+ [--exact | --sample <n> --seed <string>] [--out <dir>]
 ```
 
 `generate` is the CLI entry point for everything above: it loads `<packageRoot>` — a package built by
@@ -327,48 +326,48 @@ Outcome Library bundle; it can then be used with `pokie validate`, `pokie sim`, 
 `pokie serve` just like an exact bundle.
 
 - `<packageRoot>` — required. The game must opt into exact enumeration via
-  `PokieGame.createExactEnumerationSession` (see "Opting a game into exact enumeration" above); a game that
-  doesn't — one with no finite paid-spin reel enumeration, such as cascades or hold-and-win — has no exact
-  strategy, and `generate` fails closed with exit code `1` and the `WeightedOutcomeLibraryGenerationError`'s
-  `weighted-outcome-library-generation-unsupported` code rather than guessing at one.
+ `PokieGame.createExactEnumerationSession` (see "Opting a game into exact enumeration" above); a game that
+ doesn't — one with no finite paid-spin reel enumeration, such as cascades or hold-and-win — has no exact
+ strategy, and `generate` fails closed with exit code `1` and the `WeightedOutcomeLibraryGenerationError`'s
+ `weighted-outcome-library-generation-unsupported` code rather than guessing at one.
 - `--mode <betModeId>` — the `betMode` threaded onto every generated outcome's artifact; also folds into the
-  default `--library-id` (`<manifest.id>-<mode>` when `--library-id` isn't given). For an explicit runtime
-  bet-mode contract, omitting `--mode` resolves its declared `Is Default` mode first: that resolved mode is
-  selected on the enumeration session and is used consistently for the artifact, library id, and bundle mode
-  name. It is not an implicit `base` label. Legacy metadata-only `BetModes` remain labels only; omitting the
-  flag preserves their historical unlabeled/base-compatible library identity.
+ default `--library-id` (`<manifest.id>-<mode>` when `--library-id` isn't given). For an explicit runtime
+ bet-mode contract, omitting `--mode` resolves its declared `Is Default` mode first: that resolved mode is
+ selected on the enumeration session and is used consistently for the artifact, library id, and bundle mode
+ name. It is not an implicit `base` label. Legacy metadata-only `BetModes` remain labels only; omitting the
+ flag preserves their historical unlabeled/base-compatible library identity.
 - `--stake <number>` — the stake threaded onto every generated artifact; must be a positive number (see "library
-  homogeneity" above — a library can only ever describe one stake).
+ homogeneity" above — a library can only ever describe one stake).
 - `--config-hash <hash>` — the `provenance.configHash` threaded onto every generated artifact.
 - `--library-id <id>` — overrides the default `<manifest.id>[-<mode>]` library id.
 - `--max-outcome-space-size <n>` — overrides the default 20,000,000-raw-combination bound above which `generate`
-  refuses to sweep exhaustively (accepts an arbitrarily large decimal string, parsed straight to `bigint`, since a
-  raw combination count routinely exceeds `Number.MAX_SAFE_INTEGER`).
+ refuses to sweep exhaustively (accepts an arbitrarily large decimal string, parsed straight to `bigint`, since a
+ raw combination count routinely exceeds `Number.MAX_SAFE_INTEGER`).
 - `--exact` — makes the default exact-only choice explicit. It is mutually exclusive with every sampled-generation
-  option, so an invocation can never silently change from an exact sweep into a sample.
+ option, so an invocation can never silently change from an exact sweep into a sample.
 - `--sample <n> --seed <string>` — directly performs exactly `n` deterministic reel-stop draws through the same
-  runtime calculation path, without first sweeping the full outcome space. The resulting library is honestly
-  labelled `"bounded-coverage"` and records both its sampled raw count and seed, so the same game/count/seed is
-  reproducible. This is useful even for a small game when a deliberately bounded Monte-Carlo library is wanted.
+ runtime calculation path, without first sweeping the full outcome space. The resulting library is honestly
+ labelled `"bounded-coverage"` and records both its sampled raw count and seed, so the same game/count/seed is
+ reproducible. This is useful even for a small game when a deliberately bounded Monte-Carlo library is wanted.
 - `--bounded --sample-size <n> --seed <string>` — opts into the honestly-labelled `"bounded-coverage"` strategy
-  once the raw space exceeds `--max-outcome-space-size`; all three must be given together — `--sample-size`/`--seed`
-  without `--bounded`, or `--bounded` without both of the other two, are rejected rather than silently ignored. A
-  space within `--max-outcome-space-size` is always swept exactly regardless of whether `--bounded` was also given.
+ once the raw space exceeds `--max-outcome-space-size`; all three must be given together — `--sample-size`/`--seed`
+ without `--bounded`, or `--bounded` without both of the other two, are rejected rather than silently ignored. A
+ space within `--max-outcome-space-size` is always swept exactly regardless of whether `--bounded` was also given.
 - `--estimate` / `--dry-run` — run only the cheap, non-enumerating `estimateExactOutcomeSpaceSize` probe and print
-  the raw space size plus which strategy (`"exact"` or `"bounded-coverage"`) a real run would resolve to, without
-  sweeping a single reel-stop tuple or playing a round.
+ the raw space size plus which strategy (`"exact"` or `"bounded-coverage"`) a real run would resolve to, without
+ sweeping a single reel-stop tuple or playing a round.
 - `--out <file>` — write the generated `WeightedOutcomeLibrary` JSON to `<file>` in addition to the summary/JSON
-  printed to stdout.
+ printed to stdout.
 - `--resume <file>` — on a run cancelled by `Ctrl-C` (`SIGINT`), `generate` writes a resumable checkpoint to
-  `<file>` and exits with code `130`, printing the exact command to rerun; passing the same `--resume <file>` on
-  the next invocation reads that checkpoint back and continues the sweep from where it left off (see "Large
-  spaces: bounds, bounded-coverage, cancel/resume/progress" above — only ever valid for a run that itself resolves
-  to `"exact"`). `Ctrl-C` without `--resume` still cancels (also exit code `130`) but loses all progress, since
-  there's nowhere to persist the checkpoint to. On a run that completes normally, a stale checkpoint left over at
-  `--resume <file>` from an earlier cancelled attempt is deleted, never silently reused by a later run.
+ `<file>` and exits with code `130`, printing the exact command to rerun; passing the same `--resume <file>` on
+ the next invocation reads that checkpoint back and continues the sweep from where it left off (see "Large
+ spaces: bounds, bounded-coverage, cancel/resume/progress" above — only ever valid for a run that itself resolves
+ to `"exact"`). `Ctrl-C` without `--resume` still cancels (also exit code `130`) but loses all progress, since
+ there's nowhere to persist the checkpoint to. On a run that completes normally, a stale checkpoint left over at
+ `--resume <file>` from an earlier cancelled attempt is deleted, never silently reused by a later run.
 - `--progress` — print periodic `processedRawIndex / progressTotal` lines to stderr while sweeping.
 - `--format json` — print the full `{library, diagnostics}` result (or, with `--estimate`/`--dry-run`, the
-  estimate report) as JSON to stdout instead of the default human-readable summary.
+ estimate report) as JSON to stdout instead of the default human-readable summary.
 
 ### Generator diagnostics on a bundle
 
@@ -381,7 +380,7 @@ actually built by this generator, absent for one built from an already-computed 
 
 ## Whole-sequence variants in generation
 
-Exact generation supports canonical weighted sequence definitions. The raw space is
+Exact generation supports weighted sequence definitions. The raw space is
 the product of each reel's positive-weight variant/stop event count, so caps and
 progress reflect the joint space rather than one default strip. Zero-weight
 alternatives stay in configuration/coverage metadata but produce no outcomes.
