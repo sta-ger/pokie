@@ -300,6 +300,7 @@ describe("ParallelSimulationRunner (workers>1, via injected coordinator)", () =>
                             manifest,
                             accumulator: makeAccumulatorSnapshot(request.rounds),
                             roundsCompleted: request.rounds,
+                            stopReason: "maxRounds" as const,
                         })),
                     ),
                 );
@@ -325,6 +326,7 @@ describe("ParallelSimulationRunner (workers>1, via injected coordinator)", () =>
                             manifest,
                             accumulator: makeAccumulatorSnapshot(request.rounds),
                             roundsCompleted: request.rounds,
+                            stopReason: "maxRounds" as const,
                         })),
                     );
                 }),
@@ -353,6 +355,7 @@ describe("ParallelSimulationRunner (workers>1, via injected coordinator)", () =>
                             manifest,
                             accumulator: makeAccumulatorSnapshot(request.rounds),
                             roundsCompleted: request.rounds,
+                            stopReason: "maxRounds" as const,
                         })),
                     );
                 }),
@@ -389,6 +392,7 @@ describe("ParallelSimulationRunner (workers>1, via injected coordinator)", () =>
                             manifest,
                             accumulator: makeAccumulatorSnapshot(request.rounds),
                             roundsCompleted: request.rounds,
+                            stopReason: "maxRounds" as const,
                         })),
                     );
                 }),
@@ -415,6 +419,7 @@ describe("ParallelSimulationRunner (workers>1, via injected coordinator)", () =>
                             manifest,
                             accumulator: makeAccumulatorSnapshot(request.rounds),
                             roundsCompleted: request.rounds,
+                            stopReason: "maxRounds" as const,
                         })),
                     );
                 }),
@@ -707,27 +712,6 @@ describe("ParallelSimulationRunner convergence (workers>1, via injected coordina
         // sessionStopped always wins, even alongside a converged worker or a maxRounds worker.
         expect((await makeRunner(["converged", "sessionStopped", "maxRounds"]).run()).stopReason).toBe("sessionStopped");
         expect((await makeRunner(["converged", "converged", "sessionStopped"]).run()).stopReason).toBe("sessionStopped");
-    });
-
-    test("treats a worker result without stopReason as 'maxRounds' (backward compatible with an older SimulationWorkerResult)", async () => {
-        const runner = new ParallelSimulationRunner("/fake/root", 10, {
-            workers: 2,
-            createWorkerCoordinator: () =>
-                makeFakeCoordinator((requests) =>
-                    Promise.resolve(
-                        requests.map((request) => ({
-                            workerIndex: request.workerIndex,
-                            manifest,
-                            accumulator: makeAccumulatorSnapshot(request.rounds),
-                            roundsCompleted: request.rounds,
-                        })),
-                    ),
-                ),
-        });
-
-        const result = await runner.run();
-
-        expect(result.stopReason).toBe("maxRounds");
     });
 
     test("aggregates convergence outcomes: checksPerformed sums, consecutiveStableChecks takes the min, achievedRtpHalfWidth takes the max", async () => {

@@ -16,6 +16,7 @@ import {
     type PackageBlueprintExtractionResult,
     ProjectResolving,
     ProjectTargetResolver,
+    requireManagedOutcomeProjectOwnership,
     assertArtifactBuildNotCancelled,
     describeWasmLifecycleBoundary,
     describeUnsupportedProjectOperation,
@@ -372,7 +373,7 @@ export class StudioArtifactBuildService {
             // the registry generated or reopened. Register it with Studio before reporting success; no
             // Studio-only outcome-path index is maintained here.
             const managedProjectRoots = new Set([
-                ...this.durableManagedRoots(result, plan),
+                ...this.durableManagedRoots(result),
                 // A PAR import's Blueprint is itself a durable Studio project,
                 // not merely a transient prerequisite like an Outcome bundle.
                 ...(target === "blueprint" || project.type === "parWorkbook" || plan.packageExtraction ? [result.outputPath] : []),
@@ -778,7 +779,7 @@ export class StudioArtifactBuildService {
         result: import("@fromstan/pokie").ArtifactBuildResult,
     ): NonNullable<Extract<StudioArtifactBuildView, {readonly status: "ok"}>["stakePrerequisiteProvenance"]> {
         const source = operation.plan.source.configurationProvenance;
-        const ownership = this.managedOutcomeOwnership(result, operation.plan)[0];
+        const ownership = requireManagedOutcomeProjectOwnership(result)[0];
         let disposition: "borrowed" | "owned" | "transient" | "none" = "none";
         if (operation.preflight.route === "reuse") disposition = "borrowed";
         else if (operation.preflight.route === "generate") disposition = "owned";
@@ -840,7 +841,7 @@ export class StudioArtifactBuildService {
         registeredRoots: readonly string[],
         outputDestinationExisted: boolean,
     ): Promise<void> {
-        const managedOwnership = this.managedOutcomeOwnership(result, plan);
+        const managedOwnership = requireManagedOutcomeProjectOwnership(result);
         const ownedManagedRoots = managedOwnership
             .filter((entry) => entry.disposition === "owned")
             .map((entry) => entry.rootPath);
@@ -916,26 +917,11 @@ export class StudioArtifactBuildService {
         assertRegistrationCleanup();
     }
 
-    private durableManagedRoots(result: import("@fromstan/pokie").ArtifactBuildResult, plan: ArtifactConversionPlan): readonly string[] {
-        const ownership = this.managedOutcomeOwnership(result, plan);
+    private durableManagedRoots(result: import("@fromstan/pokie").ArtifactBuildResult): readonly string[] {
+        const ownership = requireManagedOutcomeProjectOwnership(result);
         const transient = new Set(ownership.filter((entry) => entry.disposition === "transient").map((entry) => entry.rootPath));
         return Array.from(new Set([...(result.prerequisiteProjectRoots ?? []), ...(result.managedProjectRoots ?? [])]))
             .filter((root) => !transient.has(root));
-    }
-
-    private managedOutcomeOwnership(
-        result: import("@fromstan/pokie").ArtifactBuildResult,
-        plan: ArtifactConversionPlan,
-    ): readonly import("@fromstan/pokie").ManagedOutcomeProjectOwnership[] {
-        if (result.managedOutcomeProjectOwnership !== undefined) return result.managedOutcomeProjectOwnership;
-        // Kept only for injected compatibility registries used by extensions.
-        const borrowed = plan.steps.some((step) => step.kind === "reuseManagedOutcomeLibrary");
-        const sourceRootPath = plan.source?.canonicalLocation ?? "";
-        return Array.from(new Set([...(result.prerequisiteProjectRoots ?? []), ...(result.managedProjectRoots ?? [])])).map((rootPath) => ({
-            rootPath,
-            sourceRootPath,
-            disposition: borrowed ? "borrowed" : "owned",
-        }));
     }
 
     private async parImportRegistrationProvenance(conversionEvidencePath: string | undefined): Promise<{readonly sourceWorkbookPath?: string; readonly conversionEvidencePath?: string} | undefined> {

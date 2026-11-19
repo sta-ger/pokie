@@ -25,10 +25,8 @@ export type SimulationWorkerResult = {
     // requested" behavior `pokie sim` already has for the single-threaded path.
     roundsCompleted: number;
     // Why this worker stopped — "maxRounds" whenever it played its whole share, "sessionStopped"/
-    // "converged" otherwise (see SimulationStopReason). Optional only for backward compatibility with
-    // a hand-built SimulationWorkerResult that predates this field (e.g. an older test fixture);
-    // ParallelSimulationRunner treats an absent value as "maxRounds" when aggregating across workers.
-    stopReason?: SimulationStopReason;
+    // "converged" otherwise (see SimulationStopReason).
+    stopReason: SimulationStopReason;
     // Present only when this worker's request carried SimulationWorkerRequest.convergence — see
     // SimulationConvergenceChecker.buildOutcome().
     convergence?: SimulationConvergenceOutcome;

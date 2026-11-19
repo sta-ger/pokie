@@ -7,7 +7,7 @@ import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import fs from "fs";
 import path from "path";
 import {ArtifactBuildConflictError} from "./ArtifactBuildConflictError.js";
-import type {ArtifactBuildResult, ManagedOutcomeProjectOwnership} from "./ArtifactBuildResult.js";
+import {requireManagedOutcomeProjectOwnership, type ArtifactBuildResult} from "./ArtifactBuildResult.js";
 import type {ArtifactBuildTargetDescriptor} from "./ArtifactBuildTargetDescriptor.js";
 import type {ArtifactDestinationCheck} from "./ArtifactDestinationCheck.js";
 import type {ArtifactTargetType} from "./ArtifactTargetType.js";
@@ -709,7 +709,7 @@ export class ArtifactBuilderRegistry {
     }
 
     private async rollbackParDerivedPublication(result: ArtifactBuildResult, imported: PokieProject, plan: ArtifactConversionPlan, preserveDestinationDirectory = false): Promise<void> {
-        const ownership = this.managedOutcomeOwnership(result, plan, imported.rootPath);
+        const ownership = requireManagedOutcomeProjectOwnership(result);
         for (const entry of ownership) {
             if (entry.disposition !== "owned") continue;
             await this.managedOutcomeProjects.release(entry.sourceRootPath, entry.rootPath).catch(() => undefined);
@@ -736,7 +736,7 @@ export class ArtifactBuilderRegistry {
         terminalPath: string,
         options?: ArtifactBuildOptions,
     ): Promise<ArtifactBuildResult> {
-        const ownership = this.managedOutcomeOwnership(result, plan, imported.rootPath);
+        const ownership = requireManagedOutcomeProjectOwnership(result);
         const owned = ownership.filter((entry) => entry.disposition === "owned");
         if (owned.length === 0) return result;
 
@@ -966,22 +966,6 @@ export class ArtifactBuilderRegistry {
                 disposition: "owned",
             }],
         };
-    }
-
-    private managedOutcomeOwnership(
-        result: ArtifactBuildResult,
-        plan: ArtifactConversionPlan,
-        fallbackSourceRootPath: string,
-    ): readonly ManagedOutcomeProjectOwnership[] {
-        if (result.managedOutcomeProjectOwnership !== undefined) return result.managedOutcomeProjectOwnership;
-        // Compatibility for injected legacy registries in extension tests.
-        // Production results always carry per-root ownership.
-        const reuses = plan.steps.some((step) => step.kind === "reuseManagedOutcomeLibrary");
-        return Array.from(new Set([...(result.prerequisiteProjectRoots ?? []), ...(result.managedProjectRoots ?? [])])).map((rootPath) => ({
-            rootPath,
-            sourceRootPath: fallbackSourceRootPath,
-            disposition: reuses ? "borrowed" : "owned",
-        }));
     }
 
     private async generatePlannedManagedOutcome(

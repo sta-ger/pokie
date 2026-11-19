@@ -14,6 +14,12 @@ export type ManagedOutcomeProjectOwnership = {
     readonly disposition: "owned" | "borrowed" | "transient";
 };
 
+export function requireManagedOutcomeProjectOwnership(result: ArtifactBuildResult): readonly ManagedOutcomeProjectOwnership[] {
+    if (result.managedOutcomeProjectOwnership !== undefined) return result.managedOutcomeProjectOwnership;
+    if ((result.prerequisiteProjectRoots?.length ?? 0) === 0 && (result.managedProjectRoots?.length ?? 0) === 0) return [];
+    throw new Error("Artifact build result reports managed Outcome roots without per-root managedOutcomeProjectOwnership.");
+}
+
 export type ArtifactBuildResult = {
     readonly outputPath: string;
     /** Atomic Stake publisher identity; pathname-only cleanup is never authorized. */
