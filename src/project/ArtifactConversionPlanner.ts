@@ -84,7 +84,9 @@ export function computeArtifactConfigurationHash(contents: string | Buffer): str
  * descriptor is only a trustworthy prepared source while its referenced
  * libraries, streams, and bundle inputs remain unchanged too.  Missing and
  * symlinked inputs are represented explicitly so replacing either state is
- * detected by the operation's final source rebind.
+ * detected by the operation's final source rebind. Node_modules cache
+ * directories are not product inputs and are skipped; executable dependency
+ * files remain part of the binding.
  */
 export function computeArtifactInputBindingHash(
     inputPaths: readonly string[],
@@ -129,6 +131,10 @@ export function computeArtifactInputBindingHash(
                 for (const entry of fs.readdirSync(resolved).sort()) {
                     if (ignoredDirectoryNames.has(entry)) {
                         hash.update(`ignored-directory:${entry}\0`);
+                        continue;
+                    }
+                    if (entry === ".cache" && path.basename(resolved) === "node_modules") {
+                        hash.update("ignored-node-modules-cache\0");
                         continue;
                     }
                     visit(path.join(resolved, entry));

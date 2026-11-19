@@ -648,12 +648,10 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     ) {
         const sourcePaths = [packageRoot, ...(options.resume === undefined ? [] : [options.resume])];
         // A generated package receives a local node_modules/@fromstan/pokie symlink so
-        // it can run before npm install.  That linked runtime's Jest cache is
-        // non-product activity, but the package and every other dependency
-        // remain executable inputs and must stay bound to the preflight.
-        const sourceBindingHash = () => computeArtifactInputBindingHash(sourcePaths, {
-            ignoredDirectoryPaths: [path.join(packageRoot, "node_modules", "@fromstan", "pokie", "node_modules", ".cache")],
-        });
+        // it can run before npm install. The package and its executable dependencies
+        // remain bound; node_modules caches are not product inputs and are skipped by
+        // the shared binding hash itself.
+        const sourceBindingHash = () => computeArtifactInputBindingHash(sourcePaths);
         const currentSource = () => ({
             kind: "tsPackage" as const,
             canonicalLocation: path.resolve(packageRoot),

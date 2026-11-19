@@ -41,27 +41,30 @@ describe("ArtifactConversionPlanner", () => {
         }
     });
 
-    it("can exclude one concrete runtime cache without excluding executable dependencies", () => {
+    it("skips node_modules caches without excluding executable dependencies", () => {
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-artifact-binding-cache-"));
         const runtime = path.join(directory, "runtime");
         const packageRoot = path.join(directory, "package");
-        const cache = path.join(runtime, "node_modules", ".cache");
+        const runtimeCache = path.join(runtime, "node_modules", ".cache");
+        const packageCache = path.join(packageRoot, "node_modules", ".cache");
         const executableDependency = path.join(runtime, "node_modules", "dependency", "index.js");
         try {
-            fs.mkdirSync(cache, {recursive: true});
+            fs.mkdirSync(runtimeCache, {recursive: true});
+            fs.mkdirSync(packageCache, {recursive: true});
             fs.mkdirSync(path.dirname(executableDependency), {recursive: true});
             fs.mkdirSync(path.join(packageRoot, "node_modules", "@fromstan"), {recursive: true});
             fs.writeFileSync(path.join(packageRoot, "index.js"), "export default 1;");
             fs.writeFileSync(executableDependency, "module.exports = 1;");
-            fs.writeFileSync(path.join(cache, "jest"), "first");
+            fs.writeFileSync(path.join(runtimeCache, "jest"), "first");
+            fs.writeFileSync(path.join(packageCache, "jest"), "first");
             fs.symlinkSync(runtime, path.join(packageRoot, "node_modules", "@fromstan", "pokie"), "dir");
-            const options = {ignoredDirectoryPaths: [path.join(packageRoot, "node_modules", "@fromstan", "pokie", "node_modules", ".cache")]};
-            const prepared = computeArtifactInputBindingHash([packageRoot], options);
+            const prepared = computeArtifactInputBindingHash([packageRoot]);
 
-            fs.writeFileSync(path.join(cache, "jest"), "second");
-            expect(computeArtifactInputBindingHash([packageRoot], options)).toBe(prepared);
+            fs.writeFileSync(path.join(runtimeCache, "jest"), "second");
+            fs.writeFileSync(path.join(packageCache, "jest"), "second");
+            expect(computeArtifactInputBindingHash([packageRoot])).toBe(prepared);
             fs.writeFileSync(executableDependency, "module.exports = 2;");
-            expect(computeArtifactInputBindingHash([packageRoot], options)).not.toBe(prepared);
+            expect(computeArtifactInputBindingHash([packageRoot])).not.toBe(prepared);
         } finally {
             fs.rmSync(directory, {recursive: true, force: true});
         }
