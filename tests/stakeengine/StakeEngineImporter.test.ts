@@ -80,12 +80,12 @@ describe("StakeEngineImporter", () => {
                 expect(importedOutcome.artifact.totalWin).toBe(originalOutcome.artifact.totalWin);
                 expect(importedOutcome.artifact.betMode).toBe(originalOutcome.artifact.betMode);
                 expect(importedOutcome.artifact.stake).toBe(originalOutcome.artifact.stake);
-                expect(importedOutcome.artifact.provenance.game).toEqual(originalOutcome.artifact.provenance.game);
-                expect(importedOutcome.artifact.provenance.configHash).toEqual(originalOutcome.artifact.provenance.configHash);
+                expect(importedOutcome.artifact.origin.game).toEqual(originalOutcome.artifact.origin.game);
+                expect(importedOutcome.artifact.origin.configHash).toEqual(originalOutcome.artifact.origin.configHash);
                 // provenance.pokieVersion is substituted with the manifest's own pokieVersion (the tool that ran
                 // the export), not asserted equal to the original artifact's own recorded pokieVersion — see
                 // docs/stake-engine-import.md's "lossy vs lossless" section.
-                expect(importedOutcome.artifact.provenance.pokieVersion).toBe(importResult.manifest?.pokieVersion);
+                expect(importedOutcome.artifact.origin.pokieVersion).toBe(importResult.manifest?.pokieVersion);
 
                 // roundId and wins are NOT expected to match — genuinely unrecoverable, disclosed substitutes.
                 expect(importedOutcome.id).not.toBe(originalOutcome.artifact.roundId);

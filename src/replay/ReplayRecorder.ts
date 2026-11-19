@@ -249,11 +249,11 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
         // The live session now describes the next play; only the accepted result owns this step's charge.
         let artifact = finalResult && slot.getSymbolsCombination && slot.getWinEvaluationResult
             ? new PokieJsonRoundRecordProjector().project(buildRoundRecordFromSession(slot as VideoSlotSessionHandling, {
-                roundId: logicalRound?.id ?? `replay:${seed ?? "no-seed"}:${round}`, stake: finalResult.stake, betMode: finalResult.mode, provenance: {game: manifest, pokieVersion: POKIE_VERSION, ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})},
+                roundId: logicalRound?.id ?? `replay:${seed ?? "no-seed"}:${round}`, stake: finalResult.stake, betMode: finalResult.mode, origin: {game: manifest, pokieVersion: POKIE_VERSION, ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})},
             })) : undefined;
 
         if (logicalRound && slot.getWinEvaluationResult) artifact = new PokieJsonRoundRecordProjector().project(buildLogicalRoundRecord(logicalRound,
-            buildRoundRecordFromSession(slot as VideoSlotSessionHandling, {roundId: logicalRound.id, stake: logicalRound.totalStake, provenance: {game: manifest, pokieVersion: POKIE_VERSION, ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})}})));
+            buildRoundRecordFromSession(slot as VideoSlotSessionHandling, {roundId: logicalRound.id, stake: logicalRound.totalStake, origin: {game: manifest, pokieVersion: POKIE_VERSION, ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})}})));
         const unit = selector ? "step" : options.unit;
         const commands = selector ? executedCommands : options.entryCommands;
         return {

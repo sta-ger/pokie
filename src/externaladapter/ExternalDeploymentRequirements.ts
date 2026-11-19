@@ -4,7 +4,7 @@
 // cross-mode homogeneity requirement) when omitted, the same "opt-in, permissive by default" convention as
 // ExternalDeploymentTarget's own optional collaborators.
 export type ExternalDeploymentRequirements = {
-    // Lowest RoundRecordProvenance.pokieVersion this target's own format/generator is known to understand,
+    // Lowest RoundRecordOrigin.pokieVersion this target's own format/generator is known to understand,
     // compared against every deployed mode's own provenance.pokieVersion (major.minor.patch only — see
     // internal/compareSemverLite). Omit when the target has no known minimum.
     readonly minPokieVersion?: string;

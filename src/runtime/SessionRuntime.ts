@@ -328,7 +328,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
         const index = previous?.cursor ?? 0;
         const slot = session as Partial<VideoSlotSessionHandling>;
         const artifacts = typeof slot.getWinEvaluationResult === "function" && typeof slot.getSymbolsCombination === "function"
-            ? buildRoundRecordFromSession(slot as VideoSlotSessionHandling, {roundId: id, stake, betMode: mode, provenance: {game: {id: "runtime", name: "Runtime", version: "1"}, pokieVersion: "unknown"}}).steps : undefined;
+            ? buildRoundRecordFromSession(slot as VideoSlotSessionHandling, {roundId: id, stake, betMode: mode, origin: {game: {id: "runtime", name: "Runtime", version: "1"}, pokieVersion: "unknown"}}).steps : undefined;
         const screen = artifacts?.[artifacts.length - 1]?.screen;
         const stageCursor = artifacts?.length ? 1 : 0;
         const exhausted = (session as Partial<CascadeResultProviding>).getCascadeResult?.().getMetadata().maxCascadeStepsExceeded === true;

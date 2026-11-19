@@ -8,9 +8,9 @@ import type {RoundRecordWin} from "./RoundRecordWin.js";
 // mechanic (cascades, multi-pick bonuses, ...) has one per stage — mirrors the same "one round is a sequence
 // of stages" shape as MultiStageRoundNetworkData, but as a canonical/hashable record rather than a client
 // transport payload. Deeply readonly, and always deeply copied/frozen at build time (see
-// buildRoundStepArtifact) — a caller can never observe a step artifact change after the fact, whether by
+// buildRoundStepRecord) — a caller can never observe a step artifact change after the fact, whether by
 // mutating their own original input or by holding a reference to the artifact itself.
-export type RoundStepArtifact<T extends string | number = string> = {
+export type RoundStepRecord<T extends string | number = string> = {
     readonly index: number;
     readonly geometry?: ScreenGeometry;
     readonly generatedScreen?: readonly (readonly T[])[];

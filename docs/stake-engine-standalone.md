@@ -12,13 +12,13 @@ Engine math-sdk output, or POKIE's own export with the manifest stripped.
 
 ## Why not just reuse the importer?
 
-`StakeEngineImporter` reconstructs a full `WeightedOutcomeLibrary` — every outcome as a `RoundArtifact` with a
+`StakeEngineImporter` reconstructs a full `WeightedOutcomeLibrary` — every outcome as a `RoundRecord` with a
 per-step win breakdown, `betMode`, `stake`, provenance. Building any of that requires POKIE-specific knowledge a
 genuinely foreign export never carries: a fixed `reveal`/`win`/`finalWin` event vocabulary (see
 [Stake Engine Export](stake-engine-export.md#events-a-generic-mechanic-agnostic-mapping)), a per-round win
 breakdown, and a manifest to recover `betMode`/`stake` (Stake's own `index.json`/CSV/books never store either).
 Standalone never attempts any of that. It normalizes into a much smaller canonical DTO and computes statistics
-directly over it — no `RoundArtifact`/`WeightedOutcomeLibrary` is ever built.
+directly over it — no `RoundRecord`/`WeightedOutcomeLibrary` is ever built.
 
 ## Data shapes
 

@@ -27,10 +27,10 @@ function isNonEmptyString(value: unknown): value is string {
 
 function homogeneityKeyOf<T extends string | number>(outcome: WeightedOutcomeInput<T>): OutcomeHomogeneityKey {
     return {
-        gameId: outcome.artifact.provenance.game.id,
-        gameVersion: outcome.artifact.provenance.game.version,
-        configHash: outcome.artifact.provenance.configHash,
-        pokieVersion: outcome.artifact.provenance.pokieVersion,
+        gameId: outcome.artifact.origin.game.id,
+        gameVersion: outcome.artifact.origin.game.version,
+        configHash: outcome.artifact.origin.configHash,
+        pokieVersion: outcome.artifact.origin.pokieVersion,
         betMode: outcome.artifact.betMode,
         stake: outcome.artifact.stake,
     };

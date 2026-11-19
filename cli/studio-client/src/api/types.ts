@@ -838,7 +838,7 @@ export type RoundRecordFeatureEvent = {
     readonly data?: Record<string, unknown>;
 };
 
-export type RoundStepArtifact = {
+export type RoundStepRecord = {
     readonly geometry?: ScreenGeometry;
     readonly generatedScreen?: readonly (readonly (string | number)[])[];
     readonly index: number;
@@ -862,7 +862,7 @@ export type RoundRecord = {
     readonly payoutMultiplier: number;
     readonly sequenceSelections?: readonly ReelSequenceSelection[];
     readonly screen: readonly (readonly (string | number)[])[];
-    readonly steps: readonly RoundStepArtifact[];
+    readonly steps: readonly RoundStepRecord[];
     readonly wins: readonly RoundRecordWin[];
     readonly featureEvents?: readonly RoundRecordFeatureEvent[];
     readonly debug?: Record<string, unknown>;

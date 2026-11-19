@@ -39,7 +39,7 @@ export async function verifyFinalDelivery(api: Api, makeGame: MakeGame, database
             amount(result.payout!, stake * (payout ?? 0));
             assert.equal(result.stake, stake);
             assert.equal(result.logicalRound?.totalPayout, result.payout);
-            const artifact = api.buildRoundRecordFromSession(session as API.VideoSlotSessionHandling, {roundId: "money", provenance: {game: model.manifest, pokieVersion: "2.0.0"}});
+            const artifact = api.buildRoundRecordFromSession(session as API.VideoSlotSessionHandling, {roundId: "money", origin: {game: model.manifest, pokieVersion: "2.0.0"}});
             amount(artifact.totalWin, stake * (payout ?? 0));
             assert.equal(artifact.stake, stake);
         }

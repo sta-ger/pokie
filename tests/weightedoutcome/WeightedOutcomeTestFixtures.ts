@@ -1,13 +1,13 @@
 import {
     RoundRecord,
-    RoundRecordProvenance,
+    RoundRecordOrigin,
     ValueWinComponent,
     WinEvaluationResult,
     WinningValue,
     buildRoundRecord,
 } from "@fromstan/pokie";
 
-export const testProvenance: RoundRecordProvenance = {
+export const testProvenance: RoundRecordOrigin = {
     game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     pokieVersion: "1.3.0",
 };
@@ -28,11 +28,11 @@ export function artifactWith(options: {
     totalWin: number;
     stake?: number;
     betMode?: string;
-    provenance?: RoundRecordProvenance;
+    origin?: RoundRecordOrigin;
 }): RoundRecord<string> {
     return buildRoundRecord({
         roundId: options.roundId,
-        provenance: options.provenance ?? testProvenance,
+        origin: options.origin ?? testProvenance,
         betMode: options.betMode,
         stake: options.stake ?? 1,
         steps: [{screen: [["A"]], winEvaluationResult: winEvaluationResultFor(options.totalWin)}],

@@ -286,7 +286,7 @@ describe("StakeEngineExporter", () => {
                     weight: 1,
                     artifact: buildRoundRecord({
                         roundId: "reserved-type-round",
-                        provenance: stakeEngineTestProvenance,
+                        origin: stakeEngineTestProvenance,
                         betMode: "base",
                         stake: 1,
                         steps: [

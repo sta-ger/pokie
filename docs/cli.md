@@ -1295,7 +1295,7 @@ These differ from historical artifact-command defaults (`outcomelibrary`, `stake
 Exports one or more canonical [`WeightedOutcomeLibrary`](weighted-outcome-library.md) JSON files (one per bet
 mode) to the real [Stake Engine math-sdk static file format](https://stakeengine.github.io/math-sdk/rgs_docs/data_format/)
 — see [Stake Engine Export](stake-engine-export.md) for the full output layout, validation rules, and the
-`RoundArtifact` → Stake "events" mapping.
+`RoundRecord` → Stake "events" mapping.
 
 ```
 pokie build stake-config.json --target stakeAdapter --out stakeengine [--dry-run]
@@ -1512,7 +1512,7 @@ already expose a canonical reader's own exact analysis.
 Builds a canonical [Certification/Evidence Bundle](certification-evidence-bundle.md) on top of an already-built
 [Outcome Library Bundle](outcome-library-bundle.md) — a deterministic manifest (game/library hashes, provenance,
 per-mode exact weighted metrics, the source bundle's own deep-validation diagnostics) plus one JSONL file per
-mode of deterministically sampled, independently verifiable `RoundArtifact` records. Never a second calculation
+mode of deterministically sampled, independently verifiable `RoundRecord` records. Never a second calculation
 path: every hash/metric is read verbatim off the source bundle's own `manifest.json`, and every sample is drawn
 via the same weighted-draw algorithm the pre-generated runtime itself uses.
 
@@ -1547,7 +1547,7 @@ nothing is written.
 ## `pokie certification verify <certDir> --source <bundleDir>`
 
 Verifies a certification/evidence bundle: first its own internal self-consistency (does every mode's samples
-file still hash to what its manifest recorded, does every embedded `RoundArtifact` still hash to its own
+file still hash to what its manifest recorded, does every embedded `RoundRecord` still hash to its own
 recorded `artifactHash`), then cross-checks it against the *live* source Outcome Library Bundle it was built
 from, detecting drift in four places: the evidence bundle's own manifest fields, the source bundle's own on-disk
 files, its recorded metrics, and each individually sampled outcome. See
@@ -3399,7 +3399,7 @@ alongside the rest of the project's state, with no wizard-like next-step recomme
 - **Play** is Studio's own — and only — game mode: **New session**/**Reset** create a real session directly in
   Studio's own backend (never a server, never a host/port a browser could be pointed at — to stand up an actual
   HTTP server, use [`pokie serve`](#pokie-serve-packageroot)/[`pokie dev`](#pokie-dev-packageroot)
-  instead) and spin it for real, with every round rendering through the same `RoundArtifactInspector` the Replay
+  instead) and spin it for real, with every round rendering through the same `RoundRecordInspector` the Replay
   tab uses. Also reachable for a resolved outcome-library project, sampled through its own outcome-source draw.
 - **Simulation** — see its own section below.
 - **Replay** — see its own section below.
@@ -3528,7 +3528,7 @@ The source choice offers four methods:
 For a loaded **Replay Artifact** record, the loaded card first runs it through a reproducibility gate
 (`describeReplayReproducibility`): reproducing forward from round 1 is only a *verifiable* match of the original
 result when the record's seed and game id/version provenance are known and match the currently loaded project, and
-— whenever the record carries a round artifact at all — its `stateBefore`/`stateAfter` and a `debug.reelStops` RNG
+— whenever the record carries a round record at all — its `stateBefore`/`stateAfter` and a `debug.reelStops` RNG
 trace are present to check a fresh reproduction against. An artifact missing any of these (e.g. an import that only
 kept the round-level result, or a hand-trimmed record) disables **Reproduce** with a specific reason and
 remediation (add the missing field) rather than silently running an unverifiable replay.
@@ -3554,8 +3554,8 @@ The result view shows, for **Session Spin**: a read-only table (game, session id
 request id, recorded-at timestamp, source — Play tab spin vs. an outcome-library draw vs. an Outcome Source
 Analysis sample vs. a Recent Simulation reproduction — credits, bet, win), the spin's own **screen** grid, and an
 Advanced disclosure with debug data/raw before-after state/the full session JSON.
-For every other method, once a round has actually been reproduced, a video-slot round's full `RoundArtifactJson`
-(see [Round Artifacts](round-artifacts.md)) renders through the same `RoundArtifactInspector` component every
+For every other method, once a round has actually been reproduced, a video-slot round's full `RoundRecordJson`
+(see [Round Records](round-records.md)) renders through the same `RoundRecordInspector` component every
 other artifact-viewing tab uses, plus — whenever an "expected" artifact is loaded (a pasted/picked Replay Artifact)
 — a match/mismatch comparison banner covering **screen**, **wins**, **totalPayout**, **steps**, **featureEvents**,
 **state** (the before/after transition), and **rngReelStops** (an explicit `debug.reelStops` field only) as
@@ -3600,7 +3600,7 @@ grouped by kind (`ExportDeployTargets.ts`):
   Success identifies output type/location and offers applicable open, reveal, and registration follow-ups.
   These artifacts are local outputs; building a Stake bundle is not remote delivery.
 - **Remote deployment** — a GUI over the `pokie` package's own [External Adapter SDK](external-adapter-sdk.md):
-  `StudioDeploymentService` (`cli/studio/deployment/StudioDeploymentService.ts`) never projects a `RoundArtifact`,
+  `StudioDeploymentService` (`cli/studio/deployment/StudioDeploymentService.ts`) never projects a `RoundRecord`,
   generates an artifact, or validates compatibility/output itself; every one of those steps is delegated straight
   to `ExternalDeploymentService.deploy()`, the SDK's own single orchestrator. Studio ships no private RGS
   integration of its own — Publish is only ever offered once a project has registered a real
@@ -3771,7 +3771,7 @@ client, even for a load/validation failure.
   package has loaded, before the round-playing loop even starts; `descriptor` (a `ReplayDescriptor`, same base
   shape as [`pokie replay`](#pokie-replay-packageroot)'s own JSON — including `screen: null` for a session without
   `getSymbolsCombination()` — but with three fields Studio's own execution path additionally populates that
-  `pokie replay` never does: an optional `artifact` (the full `RoundArtifactJson` for the target round, only for a
+  `pokie replay` never does: an optional `artifact` (the full `RoundRecordJson` for the target round, only for a
   video-slot session — `getSymbolsCombination()` + `getWinEvaluationResult()`), and optional `stateBefore`/
   `stateAfter` (serialized session state immediately before/after the target round's `play()`, via the same
   session-serialization mechanism `pokie serve`'s own internal/debug response uses — absent when the game/session
@@ -3797,7 +3797,7 @@ client, even for a load/validation failure.
   Replay tab's own "Replay Artifact" Find/Load steps validating a pasted artifact JSON before attempting a
   reproduction: applies the exact same `round`/`seed` validation `POST /api/project/replays` itself applies (so
   this can never accept something the real replay start would then reject), and, only if `artifact` is present,
-  runs it through `RoundArtifactValidator`. `200 {"round": number, "seed"?: string, "artifactWarnings": string[]}`
+  runs it through `RoundRecordValidator`. `200 {"round": number, "seed"?: string, "artifactWarnings": string[]}`
   — a structurally invalid `artifact` is reported back as non-fatal `artifactWarnings`, never a failure by itself,
   since `round`/`seed` alone are enough to attempt a reproduction. `400 {"error": "..."}` for an invalid
   `round`/`seed`; `409 {"error": "No active project."}` in Home mode.

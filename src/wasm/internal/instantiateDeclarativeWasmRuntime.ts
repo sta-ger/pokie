@@ -403,7 +403,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                         ? {finalScreen: (native as NativeSession & import("../../session/videoslot/cascade/CascadeResultProviding.js").CascadeResultProviding).getCascadeResult().getFinalScreen()} : {}),
                     artifact: buildRoundRecordFromSession(native!, {
                         roundId: plainRoundId(command, round.sequence, round.sequenceSelections), stake: result.stake, betMode: result.mode,
-                        provenance: {game: {id: "runtime", name: "Runtime", version: "1"}, pokieVersion: "unknown"},
+                        origin: {game: {id: "runtime", name: "Runtime", version: "1"}, pokieVersion: "unknown"},
                     }), payout, credits: round.credits};
             }
             before = observer.beforePlay();

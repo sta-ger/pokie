@@ -1,6 +1,6 @@
 import {
     RoundRecord,
-    RoundRecordProvenance,
+    RoundRecordOrigin,
     ValueWinComponent,
     WeightedOutcomeLibrary,
     WinEvaluationResult,
@@ -9,7 +9,7 @@ import {
     buildWeightedOutcomeLibrary,
 } from "@fromstan/pokie";
 
-export const externalAdapterTestProvenance: RoundRecordProvenance = {
+export const externalAdapterTestProvenance: RoundRecordOrigin = {
     game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     pokieVersion: "1.3.0",
 };
@@ -31,7 +31,7 @@ function numericWinEvaluationResultFor(totalWin: number): WinEvaluationResult<nu
 export function externalAdapterArtifact(options: {roundId: string; totalWin: number; stake: number; betMode?: string; pokieVersion?: string}): RoundRecord<string> {
     return buildRoundRecord({
         roundId: options.roundId,
-        provenance: options.pokieVersion !== undefined ? {...externalAdapterTestProvenance, pokieVersion: options.pokieVersion} : externalAdapterTestProvenance,
+        origin: options.pokieVersion !== undefined ? {...externalAdapterTestProvenance, pokieVersion: options.pokieVersion} : externalAdapterTestProvenance,
         betMode: options.betMode ?? "base",
         stake: options.stake,
         steps: [{screen: [["A"]], winEvaluationResult: winEvaluationResultFor(options.totalWin)}],
@@ -43,7 +43,7 @@ export function externalAdapterArtifact(options: {roundId: string; totalWin: num
 export function externalAdapterArtifactWithFeatureEvent(options: {roundId: string; totalWin: number; stake: number}): RoundRecord<string> {
     return buildRoundRecord({
         roundId: options.roundId,
-        provenance: externalAdapterTestProvenance,
+        origin: externalAdapterTestProvenance,
         betMode: "base",
         stake: options.stake,
         steps: [{screen: [["A"]], winEvaluationResult: winEvaluationResultFor(options.totalWin)}],
@@ -56,7 +56,7 @@ export function externalAdapterArtifactWithFeatureEvent(options: {roundId: strin
 export function externalAdapterArtifactWithDebug(options: {roundId: string; totalWin: number; stake: number}): RoundRecord<string> {
     return buildRoundRecord({
         roundId: options.roundId,
-        provenance: externalAdapterTestProvenance,
+        origin: externalAdapterTestProvenance,
         betMode: "base",
         stake: options.stake,
         steps: [{screen: [["A"]], winEvaluationResult: winEvaluationResultFor(options.totalWin)}],
@@ -68,7 +68,7 @@ export function externalAdapterArtifactWithDebug(options: {roundId: string; tota
 export function numericExternalAdapterArtifact(options: {roundId: string; totalWin: number; stake: number}): RoundRecord<number> {
     return buildRoundRecord<number>({
         roundId: options.roundId,
-        provenance: externalAdapterTestProvenance,
+        origin: externalAdapterTestProvenance,
         betMode: "base",
         stake: options.stake,
         steps: [{screen: [[1]], winEvaluationResult: numericWinEvaluationResultFor(options.totalWin)}],

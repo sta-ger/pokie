@@ -242,7 +242,7 @@ implements ValidationRule<WeightedOutcomeLibrary<T>> {
             },
         );
 
-        const provenance = a.provenance as Loose<RoundRecord<T>["provenance"]> | undefined;
+        const provenance = a.origin as Loose<RoundRecord<T>["origin"]> | undefined;
         const game = provenance?.game as Loose<{id: unknown; version: unknown}> | undefined;
         const current: OutcomeHomogeneityKey = {
             gameId: game?.id,

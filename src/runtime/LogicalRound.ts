@@ -1,7 +1,7 @@
 import {RoundRecordValidator} from "../artifact/RoundRecordValidator.js";
 import {validateRepositoryCommand} from "./RepositoryCommand.js";
 import {validateSessionCommand, type SessionCommand} from "./SessionCommand.js";
-import type {RoundStepArtifact} from "../artifact/RoundStepArtifact.js";
+import type {RoundStepRecord} from "../artifact/RoundStepRecord.js";
 
 export type RoundDeliveryPolicy = "stepwise" | "composite";
 export type RoundContinuation = {readonly roundId: string; readonly cursor: number};
@@ -20,7 +20,7 @@ export type LogicalSubround = {
     readonly screen?: unknown[][];
     /** Final unevaluated refill when a cascade stopped at its bound. */
     readonly finalScreen?: unknown[][];
-    readonly artifacts?: readonly RoundStepArtifact[];
+    readonly artifacts?: readonly RoundStepRecord[];
 };
 
 /** Required continuation data, independent of optional debug capture and transport projection. */
@@ -80,12 +80,12 @@ function validateLogicalRoundStructure(value: unknown): string | undefined {
         if (step.finalScreen !== undefined && (!validScreen(step.finalScreen) || index !== round.cursor - 1 || round.mathematicalStatus !== "exhausted")) return "Invalid exhausted final screen.";
         if (step.screen !== undefined && !validScreen(step.screen)) return "Invalid retained subround screen.";
         if (step.artifacts !== undefined) {
-            if (!Array.isArray(step.artifacts) || step.artifacts.length === 0 || !step.artifacts.every((artifact: RoundStepArtifact) => artifact && validScreen(artifact.screen) && Array.isArray(artifact.wins) && artifact.wins.every(validWin))) return "Invalid retained mathematical steps.";
+            if (!Array.isArray(step.artifacts) || step.artifacts.length === 0 || !step.artifacts.every((artifact: RoundStepRecord) => artifact && validScreen(artifact.screen) && Array.isArray(artifact.wins) && artifact.wins.every(validWin))) return "Invalid retained mathematical steps.";
             const last = step.artifacts[step.artifacts.length - 1];
-            const totalWin = step.artifacts.reduce((sum: number, artifact: RoundStepArtifact) => sum + artifact.totalWin, 0);
-            const artifact = {schemaVersion: 1, roundId: round.id, provenance: {game: {id: "retained", name: "Retained", version: "1"}, pokieVersion: "unknown"}, betMode: round.mode ?? "base", stake: step.stake,
+            const totalWin = step.artifacts.reduce((sum: number, artifact: RoundStepRecord) => sum + artifact.totalWin, 0);
+            const artifact = {schemaVersion: 1, roundId: round.id, origin: {game: {id: "retained", name: "Retained", version: "1"}, pokieVersion: "unknown"}, betMode: round.mode ?? "base", stake: step.stake,
                 totalWin, payoutMultiplier: step.stake > 0 ? totalWin / step.stake : 0, screen: last.screen, ...(last.sequenceSelections ? {sequenceSelections: last.sequenceSelections} : {}),
-                ...(last.geometry ? {geometry: last.geometry, generatedScreen: last.generatedScreen} : {}), steps: step.artifacts, wins: step.artifacts.flatMap((item: RoundStepArtifact) => item.wins)};
+                ...(last.geometry ? {geometry: last.geometry, generatedScreen: last.generatedScreen} : {}), steps: step.artifacts, wins: step.artifacts.flatMap((item: RoundStepRecord) => item.wins)};
             if (new RoundRecordValidator().validate(artifact).length || Math.abs(totalWin - step.win) > 1e-9 || JSON.stringify(last.screen) !== JSON.stringify(step.screen)) return "Invalid retained mathematical artifact/accounting.";
         }
         priorCursor += Math.max(1, step.artifacts?.length ?? 0);

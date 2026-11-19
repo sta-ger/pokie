@@ -1,7 +1,7 @@
 import {validateArtifactCoordinates} from "../artifact/validateArtifactCoordinates.js";
 import type {RoundRecord} from "../artifact/RoundRecord.js";
 import type {RoundRecordFeatureEvent} from "../artifact/RoundRecordFeatureEvent.js";
-import type {RoundStepArtifact} from "../artifact/RoundStepArtifact.js";
+import type {RoundStepRecord} from "../artifact/RoundStepRecord.js";
 import type {JsonObject} from "../json/JsonValue.js";
 import {convertRatioToStakeUnits} from "./internal/convertRatioToStakeUnits.js";
 import type {StakeEngineEvent} from "./StakeEngineEvent.js";
@@ -65,7 +65,7 @@ export class StakeEngineRoundEventsProjector<T extends string | number = string>
         const events: PendingStakeEngineEvent[] = [];
         let stepFeatureEventCount = 0;
 
-        artifact.steps.forEach((step: RoundStepArtifact<T>) => {
+        artifact.steps.forEach((step: RoundStepRecord<T>) => {
             validateArtifactCoordinates(step);
             events.push({type: "reveal", board: step.screen});
             (step.featureEvents ?? []).forEach((featureEvent) => {

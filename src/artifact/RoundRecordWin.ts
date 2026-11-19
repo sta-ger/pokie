@@ -1,7 +1,7 @@
 import type {JsonObject} from "../json/JsonValue.js";
 
 // A deeply-readonly, JSON-safe mirror of one WinMultiplierBreakdown (see WinComponent.getMultiplierBreakdown())
-// — positions/values are deep-copied at build time (see buildRoundStepArtifact), never shared with the
+// — positions/values are deep-copied at build time (see buildRoundStepRecord), never shared with the
 // win evaluation pipeline's own mutable state.
 export type RoundRecordMultiplierBreakdown = {
     readonly source: string;

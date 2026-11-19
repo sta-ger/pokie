@@ -40,10 +40,10 @@ type OutcomeHomogeneityKey = {
 
 function homogeneityKeyOf<T extends string | number>(artifact: RoundRecord<T>): OutcomeHomogeneityKey {
     return {
-        gameId: artifact.provenance.game.id,
-        gameVersion: artifact.provenance.game.version,
-        configHash: artifact.provenance.configHash,
-        pokieVersion: artifact.provenance.pokieVersion,
+        gameId: artifact.origin.game.id,
+        gameVersion: artifact.origin.game.version,
+        configHash: artifact.origin.configHash,
+        pokieVersion: artifact.origin.pokieVersion,
         betMode: artifact.betMode,
         stake: artifact.stake,
     };

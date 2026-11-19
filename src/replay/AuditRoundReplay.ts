@@ -72,7 +72,7 @@ export function captureAuditDelivery(game: PokieGame, session: GameSessionHandli
     let artifact: AuditDelivery["artifact"];
     if (!result.deliveryOnly && typeof slot.getWinEvaluationResult === "function" && typeof slot.getSymbolsCombination === "function") {
         const built = buildRoundRecordFromSession(slot as VideoSlotSessionHandling, {roundId: result.logicalRound?.id ?? command.roundId ?? disposition.requestId ?? disposition.sessionId,
-            stake: result.stake, betMode: result.mode, provenance: {game: game.getManifest(), pokieVersion: POKIE_VERSION, ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})}});
+            stake: result.stake, betMode: result.mode, origin: {game: game.getManifest(), pokieVersion: POKIE_VERSION, ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})}});
         artifact = new PokieJsonRoundRecordProjector().project(result.logicalRound ? buildLogicalRoundRecord(result.logicalRound, built) : built);
     }
     return dto({execution, command, before, after: captureAuditBoundary(session), result, ...(artifact ? {artifact} : {}), disposition});
@@ -193,7 +193,7 @@ function validateAuditStructure(value: unknown, game?: PokieGame): void {
             if (artifactHash !== computeRoundRecordHash(artifact)) throw new AuditReplayError("audit-artifact", `${path}.artifact.hash`, "Invalid artifact digest.");
             const issue = new RoundRecordValidator().validate(artifact)[0];
             if (issue) throw new AuditReplayError("audit-artifact", `${path}.artifact${issue.path ? `.${issue.path}` : ""}`, issue.message);
-            if (artifact.provenance.game.id !== r.game.id || artifact.provenance.configHash !== r.identity.modelHash) throw new AuditReplayError("audit-identity", `${path}.artifact.provenance`, "Artifact model differs from audit model.");
+            if (artifact.origin.game.id !== r.game.id || artifact.origin.configHash !== r.identity.modelHash) throw new AuditReplayError("audit-identity", `${path}.artifact.origin`, "Artifact model differs from audit model.");
         }
         if (delivery.result.credits !== delivery.after.credits || (delivery.result.logicalRound && canonical(delivery.result.logicalRound) !== canonical(delivery.after.logicalRound))) throw new AuditReplayError("audit-state", `${path}.result`, "Result and executable boundary disagree.");
         if (delivery.disposition.walletPayout !== undefined) {

@@ -23,7 +23,7 @@ type ModeProvenanceKey = {
 };
 
 function provenanceKeyOf<T extends string | number>(mode: ExternalDeploymentModeInput<T>): ModeProvenanceKey | undefined {
-    const provenance = mode.library.outcomes[0]?.artifact?.provenance;
+    const provenance = mode.library.outcomes[0]?.artifact?.origin;
     if (provenance === undefined) {
         return undefined;
     }
@@ -181,7 +181,7 @@ export class ExternalDeploymentCompatibilityValidator<T extends string | number 
             return;
         }
 
-        const seenVersions = new Set(artifacts.map((artifact) => artifact.provenance.pokieVersion));
+        const seenVersions = new Set(artifacts.map((artifact) => artifact.origin.pokieVersion));
         seenVersions.forEach((actualVersion) => {
             const comparison = compareSemverLite(actualVersion, minVersion);
             if (comparison === undefined) {

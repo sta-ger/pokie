@@ -1,6 +1,6 @@
 import {
     RoundRecord,
-    RoundRecordProvenance,
+    RoundRecordOrigin,
     ValueWinComponent,
     WeightedOutcomeLibrary,
     WinEvaluationResult,
@@ -9,7 +9,7 @@ import {
     buildWeightedOutcomeLibrary,
 } from "@fromstan/pokie";
 
-export const stakeEngineTestProvenance: RoundRecordProvenance = {
+export const stakeEngineTestProvenance: RoundRecordOrigin = {
     game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     pokieVersion: "1.3.0",
 };
@@ -26,7 +26,7 @@ function winEvaluationResultFor(totalWin: number): WinEvaluationResult<string> {
 function stakeEngineArtifact(options: {roundId: string; totalWin: number; stake: number; betMode: string}): RoundRecord<string> {
     return buildRoundRecord({
         roundId: options.roundId,
-        provenance: stakeEngineTestProvenance,
+        origin: stakeEngineTestProvenance,
         betMode: options.betMode,
         stake: options.stake,
         steps: [{screen: [["A"]], winEvaluationResult: winEvaluationResultFor(options.totalWin)}],
@@ -38,7 +38,7 @@ function stakeEngineArtifact(options: {roundId: string; totalWin: number; stake:
 function stakeEngineMultiStepArtifact(options: {roundId: string; stake: number; betMode: string; stepTotalWins: readonly [number, number]}): RoundRecord<string> {
     return buildRoundRecord({
         roundId: options.roundId,
-        provenance: stakeEngineTestProvenance,
+        origin: stakeEngineTestProvenance,
         betMode: options.betMode,
         stake: options.stake,
         steps: [

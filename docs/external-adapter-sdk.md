@@ -64,7 +64,7 @@ invariants below actually hold, rather than leaving it to every caller to reimpl
   therefore never make a genuinely broken target/deployment/artifact set look clean.
 - **Projection happens exactly once, inside `deploy()` itself, and nowhere else.** The service calls
   `target.roundProjector.project(...)` for every outcome in every mode — never the generator — and hands the
-  generator only the resulting, already-projected input. A generator has no `RoundArtifact`, no
+  generator only the resulting, already-projected input. A generator has no `RoundRecord`, no
   `ExternalRoundProjector` reference, and nothing generic over the symbol-alphabet type parameter to project
   through, so it has no way to select, ignore, or diverge from the target's own declared projector.
 - **A thrown exception from descriptor validation, compatibility validation, projection, generation, or
@@ -104,8 +104,8 @@ result.delivery;   // ExternalDeploymentDeliveryResult | undefined
 | `ExternalDeploymentTargetRegistry<T>` | class | A stateful catalog of targets, keyed by `id`. Runs `ExternalDeploymentTargetDescriptorValidator` and refuses a malformed target (`ExternalDeploymentInvalidTargetError`) or a duplicate/case-colliding id (`ExternalDeploymentDuplicateTargetError`). Freezes a successfully registered target (and its `capabilities`/`requirements`) so its identity can never drift after the fact. |
 | `ExternalDeploymentTargetDescriptorValidator<T>` | class | Checks a target's own descriptor is well-formed — independent of any content — non-empty `id`/`version`, well-shaped `requirements`, a unique `capabilities` list, and every required/optional collaborator implementing its own contract's method. Run by both the registry and `ExternalDeploymentService` (always, in full — see above). |
 | `ExternalDeploymentCompatibilityValidator<T>` | class | Checks one target's `requirements`/`capabilities` against a specific deployment's content, before projection/generation. Always runs via `ExternalDeploymentService`. |
-| `ExternalRoundProjector<T>` | interface | One target's own `RoundArtifact<T>` → `JsonObject` projection. Called only by `ExternalDeploymentService`, once per outcome, never by the generator. |
-| `ExternalArtifactGenerator` | interface | One target's own already-projected content → files/payloads generation step. Fully in-memory and synchronous — no disk/network I/O. Deliberately *not* generic over `T` and takes `ExternalDeploymentProjectedModeInput[]` — plain JSON, never a `RoundArtifact<T>` or a projector. |
+| `ExternalRoundProjector<T>` | interface | One target's own `RoundRecord<T>` → `JsonObject` projection. Called only by `ExternalDeploymentService`, once per outcome, never by the generator. |
+| `ExternalArtifactGenerator` | interface | One target's own already-projected content → files/payloads generation step. Fully in-memory and synchronous — no disk/network I/O. Deliberately *not* generic over `T` and takes `ExternalDeploymentProjectedModeInput[]` — plain JSON, never a `RoundRecord<T>` or a projector. |
 | `ExternalArtifactValidator` | interface | Validates an already-generated `ExternalArtifactGenerationResult`'s own structure. `StandardExternalArtifactValidator` is the SDK's generic, format-agnostic default, and always runs via `ExternalDeploymentService`. |
 | `ExternalDeploymentDiagnostic` | interface | Optional self-check of a target's own operational readiness (e.g. "is the output directory writable"), independent of any specific content. |
 | `ExternalDeploymentRuntimeAdapter` | interface | Optional transport contract: how an already-generated, already-validated result actually reaches the target (local disk, HTTP push, a queue, ...). Deliberately separate from `ExternalArtifactGenerator` so the same generator is reusable across targets that differ only in how they publish. |
@@ -143,17 +143,17 @@ issues as `result.descriptorIssues` and stops before compatibility validation ev
 | Field | Meaning |
 |---|---|
 | `minPokieVersion?` | Lowest `provenance.pokieVersion` this target's format is known to understand (major.minor.patch only — see `internal/compareSemverLite`, a deliberately minimal comparator since POKIE has no semver dependency). |
-| `symbolAlphabet?` | `"numeric"` requires every screen/step symbol (`T` in `RoundArtifact<T>`) across every deployed outcome to be a `number`. `"any"` (default) places no constraint. |
+| `symbolAlphabet?` | `"numeric"` requires every screen/step symbol (`T` in `RoundRecord<T>`) across every deployed outcome to be a `number`. `"any"` (default) places no constraint. |
 | `requiresHomogeneousProvenance?` | When true (the default), every mode in one deployment must share the same game id/version, `configHash`, and `pokieVersion` — the same cross-mode check `StakeEngineExportValidator` runs. |
 
-`ExternalDeploymentCapability` is an open string (mirrors `RoundArtifact`'s own `betMode` convention — see that
+`ExternalDeploymentCapability` is an open string (mirrors `RoundRecord`'s own `betMode` convention — see that
 type's own doc comment) rather than a closed union, so a target can declare its own vocabulary beyond what this
 SDK checks. Three well-known ids are understood by `ExternalDeploymentCompatibilityValidator` itself:
 
 | Constant | Checked when... |
 |---|---|
-| `ROUND_ARTIFACT_FEATURE_EVENTS_CAPABILITY` | any deployed `RoundArtifact`/`RoundStepArtifact` has non-empty `featureEvents` |
-| `ROUND_ARTIFACT_DEBUG_METADATA_CAPABILITY` | any deployed `RoundArtifact`/`RoundStepArtifact` has a `debug` field |
+| `ROUND_ARTIFACT_FEATURE_EVENTS_CAPABILITY` | any deployed `RoundRecord`/`RoundStepRecord` has non-empty `featureEvents` |
+| `ROUND_ARTIFACT_DEBUG_METADATA_CAPABILITY` | any deployed `RoundRecord`/`RoundStepRecord` has a `debug` field |
 | `MULTI_MODE_DEPLOYMENT_CAPABILITY` | more than one `ExternalDeploymentModeInput` is given in one deployment |
 
 A target that doesn't declare one of these gets an error-severity `ValidationIssue` if the deployed content
@@ -202,8 +202,8 @@ type ExternalDeploymentProjectedModeInput = {
 ```
 
 `target.artifactGenerator.generate(projectedModes)` receives only this — never the original library, a
-`RoundArtifact`, or the projector itself. That's not just documentation: `ExternalArtifactGenerator` isn't even
-generic over `T`, so nothing in its own type signature could reference a `RoundArtifact<T>` even if an
+`RoundRecord`, or the projector itself. That's not just documentation: `ExternalArtifactGenerator` isn't even
+generic over `T`, so nothing in its own type signature could reference a `RoundRecord<T>` even if an
 implementation tried to reach for one.
 
 | Code | Meaning |
@@ -266,7 +266,7 @@ already passed cleanly (see above) — there's nothing well-formed to hand it be
 ## The local example target
 
 `createLocalJsonExternalDeploymentTarget({id?, version?, outDir})` builds a fully working target that writes one
-pretty-printed JSON file per outcome (via the standard `PokieJsonRoundArtifactProjector`, reused rather than
+pretty-printed JSON file per outcome (via the standard `PokieJsonRoundRecordProjector`, reused rather than
 re-implemented — see `LocalJsonExternalRoundProjector`), plus a top-level `index.json`. It declares every
 capability this SDK currently knows about, since its own JSON projection has no reason to reject any of them — a
 real target should only declare what its own format genuinely supports.
@@ -329,9 +329,9 @@ throws rather than writing outside it.
 
 ## Writing your own target
 
-1. Implement `ExternalRoundProjector<T>` for your format's own round shape (or reuse `PokieJsonRoundArtifactProjector`
+1. Implement `ExternalRoundProjector<T>` for your format's own round shape (or reuse `PokieJsonRoundRecordProjector`
    directly, the way the local example does, if canonical JSON is close enough). This is the only piece of the
-   SDK that ever sees a `RoundArtifact<T>` — `ExternalDeploymentService` calls it for you.
+   SDK that ever sees a `RoundRecord<T>` — `ExternalDeploymentService` calls it for you.
 2. Implement `ExternalArtifactGenerator`, consuming `ExternalDeploymentProjectedModeInput[]` — already-projected
    plain JSON, nothing generic over `T`. Never derive a file/path name directly from caller-supplied data (a
    `modeName`, an outcome `id`) — encode it deterministically first, the way
@@ -356,7 +356,7 @@ target/format-specific "deploy canonical content to an external consumer" pipeli
 SDK rather than through it. Having read both contracts closely, the answer is that the split is **structural,
 not an oversight**, for two independent reasons:
 
-1. **`ExternalRoundProjector<T>` has no channel for a mode's own `cost`.** `project(artifact: RoundArtifact<T>): JsonObject`
+1. **`ExternalRoundProjector<T>` has no channel for a mode's own `cost`.** `project(artifact: RoundRecord<T>): JsonObject`
    takes only the artifact — nothing else reaches a projector, by design (see that interface's own doc
    comment: `ExternalDeploymentService` is the only caller, once per outcome, and a generator downstream
    never gets to reach for anything beyond the projector's return value). Stake's own event/payout
@@ -387,7 +387,7 @@ output for any real multi-mode game while *appearing* to satisfy the `ExternalDe
 That's a worse outcome than not integrating at all.
 
 **The two subsystems are deliberately kept as separate, sibling exporters.** They share the same canonical
-upstream input (`WeightedOutcomeLibrary<T>`/`RoundArtifact<T>`) and the same cross-mode homogeneous-provenance
+upstream input (`WeightedOutcomeLibrary<T>`/`RoundRecord<T>`) and the same cross-mode homogeneous-provenance
 check (`ExternalDeploymentRequirements.requiresHomogeneousProvenance`'s own doc comment already calls out
 that it mirrors `StakeEngineExportValidator`'s check), and both publish via the same atomic
 temp-directory-then-rename-swap strategy — but neither is built on top of the other, and that's expected to

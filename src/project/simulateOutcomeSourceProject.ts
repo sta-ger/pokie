@@ -74,13 +74,13 @@ export async function simulateOutcomeSourceProject(
         const replayRound = round + 1;
         const roundRandomSource = seed === undefined ? randomSource : new SeededWeightedOutcomeRandomSource(deriveDeterministicSeed(seed, replayRound));
         const selection = await outcomeSource.drawOutcome(roundRandomSource);
-        game = selection.outcome.artifact.provenance.game;
+        game = selection.outcome.artifact.origin.game;
         libraryId = selection.libraryId;
         libraryHash = selection.libraryHash;
         accumulator.addRound(selection.outcome.artifact.stake, selection.outcome.artifact.totalWin, artifactAnalyticsObservation(selection.outcome.artifact, selection.libraryHash));
         if (seed !== undefined) {
             lastReplay = {
-                game: selection.outcome.artifact.provenance.game,
+                game: selection.outcome.artifact.origin.game,
                 libraryId: selection.libraryId,
                 libraryHash: selection.libraryHash,
                 modeName,

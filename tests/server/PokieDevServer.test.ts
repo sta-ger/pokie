@@ -1118,7 +1118,7 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
             expect(artifact).toBeDefined();
             expect(typeof artifact.roundId).toBe("string");
             expect((artifact.roundId as string).length).toBeGreaterThan(0);
-            expect(artifact.provenance).toEqual({game: {id: "playable-game", name: "Playable Game", version: "1.0.0"}, pokieVersion: "9.9.9"});
+            expect(artifact.origin).toEqual({game: {id: "playable-game", name: "Playable Game", version: "1.0.0"}, pokieVersion: "9.9.9"});
             expect(artifact.betMode).toBe("base");
             expect(artifact.stake).toBe(spun.body.bet);
             expect(artifact.screen).toEqual(spun.body.screen);
@@ -1216,7 +1216,7 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
 
             const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
             const artifact = stateAfter.roundRecord as Record<string, unknown>;
-            expect(artifact.provenance).toEqual({
+            expect(artifact.origin).toEqual({
                 game: {id: "playable-game-with-config-hash", name: "Playable Game With Config Hash", version: "1.0.0"},
                 pokieVersion: "9.9.9",
                 configHash: "sha256:fixture-config-hash",
@@ -1272,7 +1272,7 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
 
             const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
             const artifact = stateAfter.roundRecord as Record<string, unknown>;
-            expect(artifact.provenance).toEqual({
+            expect(artifact.origin).toEqual({
                 game: {id: "built-blueprint-game", name: "Built Blueprint Game", version: "1.0.0"},
                 pokieVersion: "9.9.9",
                 configHash: resolvedConfigHash,

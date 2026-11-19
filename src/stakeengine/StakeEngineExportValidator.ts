@@ -54,7 +54,7 @@ type ModeProvenanceKey = {
 
 function provenanceKeyOf<T extends string | number>(mode: StakeEngineExportModeInput<T>): ModeProvenanceKey | undefined {
     const firstOutcome = mode.library.outcomes[0];
-    const provenance = firstOutcome?.artifact?.provenance;
+    const provenance = firstOutcome?.artifact?.origin;
     if (provenance === undefined) {
         return undefined;
     }

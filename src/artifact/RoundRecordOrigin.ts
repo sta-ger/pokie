@@ -6,7 +6,7 @@ import type {PokieGameManifest} from "../gamepackage/PokieGameManifest.js";
 // exact config that produced it. For a live round captured off a real running game (see
 // SpinCommandHandler), this is populated from PokieGame.getConfigHash() when the loaded game implements
 // it — never invented when it doesn't.
-export type RoundRecordProvenance = {
+export type RoundRecordOrigin = {
     readonly game: Readonly<PokieGameManifest>;
     readonly pokieVersion: string;
     readonly configHash?: string;

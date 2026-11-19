@@ -8,11 +8,11 @@
 `FairnessRoundProof` published *after*, independently verifiable by anyone with the source bundle and the
 original commitment, without running any game/win calculation.
 
-Like every other exporter/bundle format in this codebase (`OutcomeLibraryBundleWriter`, `CertificationEvidenceBundleBuilder`),
+Like every other exporter/bundle format in this codebase (`OutcomeLibraryBundleWriter`, `CertificationPackBuilder`),
 it never introduces a second calculation path: the deterministic draw a `FairnessRoundProof` records is produced
 via one pinned snapshot of a mode's own index (`selectIndexEntryByCumulativeWeight` +
 `readAndVerifyOutcomeAtByteRange`, never `OutcomeLibraryBundleReading.drawOutcome` itself — see "Pinned-snapshot
-drawing" below), the exact same algorithms `OutcomeLibraryBundleReader` and `CertificationEvidenceBundleBuilder`
+drawing" below), the exact same algorithms `OutcomeLibraryBundleReader` and `CertificationPackBuilder`
 already use — only the byte stream feeding the selection (HMAC-SHA256 instead of the pre-generated runtime's
 plain SHA-256 counter stream) is new.
 
@@ -158,7 +158,7 @@ accordingly.
    built/verified from a snapshot caught changing mid-draw.
 
 This is the same "Pinned-snapshot sampling" + "Snapshot consistency" discipline
-[`CertificationEvidenceBundleBuilder`](certification-evidence-bundle.md#pinned-snapshot-sampling) already
+[`CertificationPackBuilder`](certification-evidence-bundle.md#pinned-snapshot-sampling) already
 follows, just for one single outcome rather than a whole sampled sequence, and checked synchronously around one
 draw rather than deferred to just-before-publish. A bundle that briefly changes and is then restored to its exact
 original bytes *before* a build/verify call ever runs leaves that call entirely unaffected — only drift observed
@@ -229,7 +229,7 @@ silently drift from what this validator actually enforces. Never throws.
 `FairnessCommitmentValidating.validate(candidate)` checks a commitment **by itself** — closed shape (an extra,
 unexpected field is exactly as invalid as a missing one), current schema/algorithm versions, valid `sha256:<hex>`
 hashes, non-empty `clientSeed`/`libraryId`, a `modeName` matching this bundle format's own canonical rule
-(`[A-Za-z0-9_-]+` — the same rule `OutcomeLibraryBundleValidator`/`CertificationEvidenceBundleValidator` enforce;
+(`[A-Za-z0-9_-]+` — the same rule `OutcomeLibraryBundleValidator`/`CertificationPackValidator` enforce;
 `modeName` ends up embedded in a filename the moment a draw is attempted, so anything else is rejected here,
 before it ever could be), a non-negative safe `nonce`, and a strictly canonical ISO timestamp. Used both by
 `FairnessRoundProofBuilder` (always, before building) and `FairnessRoundProofVerifying` (always, before trusting

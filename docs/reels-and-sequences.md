@@ -372,7 +372,7 @@ const session = new VideoSlotSession(config,
 An unresolved weighted definition's `getSymbol()`, `getSymbols()` and `toArray()`
 reject literal-strip reads; inspect `getVariants()` or resolve a known retained ID.
 `getSequenceSelections()` exposes reel index, variant ID and context. These are
-canonical step/round artifact fields, validated and hashed, and appear in JSON
+canonical step/round record fields, validated and hashed, and appear in JSON
 replays and Studio inspection. Session state and its trusted schema preserve the
 weighted definitions and active identities across JSON restoration.
 

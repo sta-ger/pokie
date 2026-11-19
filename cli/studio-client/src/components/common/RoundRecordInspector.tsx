@@ -67,7 +67,7 @@ function describeDimensionResult(dimension: ComparisonDimensionResult): string {
     return `${dimension.status === "notApplicable" ? "not applicable" : "unavailable"} — ${dimension.reason}`;
 }
 
-// The Inspect step's core view: provenance, screen, a step navigator (each step shows its own wins and
+// The Inspect step's core view: origin, screen, a step navigator (each step shows its own wins and
 // feature events inline as you page through it -- satisfies "navigate between steps and related
 // events" without a separate cross-reference index), a match/mismatch verdict when there's a known
 // "expected" artifact to compare against, and Advanced details (raw JSON, closed by default) for

@@ -7,11 +7,11 @@ export const STAKE_ENGINE_IMPORT_SYNTHETIC_METADATA_KEY = "stakeEngineImportSynt
 // Stake Engine's own export format only ever preserves one aggregate win amount per step (see
 // StakeEngineRoundEventsProjector) — the real per-round win breakdown (individual line/cluster wins, positions,
 // multiplier breakdowns) is discarded by design and can never be recovered on import. But RoundRecordValidator/
-// buildRoundStepArtifact both require totalWin to exactly equal the sum of wins[].winAmount (confirmed: there is
+// buildRoundStepRecord both require totalWin to exactly equal the sum of wins[].winAmount (confirmed: there is
 // no way to construct a valid step with totalWin > 0 and empty wins) — so reconstructing an artifact from Stake
 // data needs exactly one placeholder win component per step carrying just the recovered amount.
 //
-// Neither buildRoundStepArtifact nor RoundRecordValidator cross-check winningPositions/symbolId against the
+// Neither buildRoundStepRecord nor RoundRecordValidator cross-check winningPositions/symbolId against the
 // step's own screen (confirmed) — so winningPositions is deliberately left empty here rather than inventing
 // positions that were never real, and symbolId is whatever the caller supplies (StakeEngineImporter passes the
 // reconstructed screen's own first symbol, since it's always a valid, defined T). This is never mistaken for a

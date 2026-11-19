@@ -1,4 +1,4 @@
-// Thrown by buildRoundRecord/buildRoundStepArtifact when given input that can never produce a valid
+// Thrown by buildRoundRecord/buildRoundStepRecord when given input that can never produce a valid
 // RoundRecord — an empty steps list, an invalid roundId/betMode/stake/schemaVersion, a non-finite/negative
 // win amount, or content that isn't JSON-safe (see toCanonicalJson) — so a caller finds out immediately, with
 // a specific reason, instead of getting back a RoundRecord that only fails later at hash/projection time or

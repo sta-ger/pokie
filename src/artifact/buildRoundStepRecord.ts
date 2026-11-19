@@ -8,14 +8,14 @@ import type {RoundRecordFeatureEvent} from "./RoundRecordFeatureEvent.js";
 import {RoundRecordBuildError} from "./RoundRecordBuildError.js";
 import type {RoundRecordStepSource} from "./RoundRecordStepSource.js";
 import type {RoundRecordWin} from "./RoundRecordWin.js";
-import type {RoundStepArtifact} from "./RoundStepArtifact.js";
+import type {RoundStepRecord} from "./RoundStepRecord.js";
 
 const FLOAT_EPSILON = 1e-9;
 
-// Pure mapping from an already-computed WinEvaluationResult to one RoundStepArtifact — totalWin/wins are read
+// Pure mapping from an already-computed WinEvaluationResult to one RoundStepRecord — totalWin/wins are read
 // straight off the win evaluation pipeline's own output, never recalculated. Every nested value (positions,
 // multiplier breakdowns, metadata, feature event data, debug) is deep-copied — none of it shares references
-// with the win evaluation pipeline's own state or the caller's own input — and the returned RoundStepArtifact
+// with the win evaluation pipeline's own state or the caller's own input — and the returned RoundStepRecord
 // is deeply frozen, so nothing can mutate it after the fact either. Throws RoundRecordBuildError immediately
 // if: any derived win amount isn't a finite, non-negative number; the win evaluation pipeline's own totalWin
 // isn't a finite, non-negative number, or doesn't match the sum of those same win amounts (a cross-check against
@@ -23,10 +23,10 @@ const FLOAT_EPSILON = 1e-9;
 // WinEvaluationResult but are read via two different getters); a feature event has a missing/empty "type"; or
 // metadata/debug/feature event data isn't JSON-safe (see canonicalizeJsonField) — never returns a step that
 // would only fail later at hash/projection time.
-export function buildRoundStepArtifact<T extends string | number = string>(
+export function buildRoundStepRecord<T extends string | number = string>(
     index: number,
     source: RoundRecordStepSource<T>,
-): RoundStepArtifact<T> {
+): RoundStepRecord<T> {
     if (source.generatedScreen !== undefined && source.geometry === undefined) throw new Error("Generated screen requires coordinate geometry.");
     const wins: RoundRecordWin<T>[] = source.winEvaluationResult.getWinComponents().map((component) => {
         const winAmount = component.getWinAmount();
@@ -77,7 +77,7 @@ export function buildRoundStepArtifact<T extends string | number = string>(
     }));
 
     validateSequenceSelections(source.sequenceSelections, source.screen.length);
-    const step: RoundStepArtifact<T> = {
+    const step: RoundStepRecord<T> = {
         ...(source.sequenceSelections ? {sequenceSelections: source.sequenceSelections.map(item => ({...item}))} : {}),
         index,
         ...(source.geometry ? {geometry: new ScreenProjection(source.geometry).getGeometry(), generatedScreen: source.generatedScreen?.map(reel => [...reel])} : {}),

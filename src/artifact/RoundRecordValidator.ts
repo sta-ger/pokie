@@ -1,7 +1,7 @@
 import {sequenceSelectionsEqual, validateSequenceSelections} from "./validateSequenceSelections.js";
 import {computeRoundRecordHash} from "./computeRoundRecordHash.js";
 import {validateArtifactCoordinates} from "./validateArtifactCoordinates.js";
-import type {RoundStepArtifact} from "./RoundStepArtifact.js";
+import type {RoundStepRecord} from "./RoundStepRecord.js";
 import {InvalidJsonValueError} from "../json/InvalidJsonValueError.js";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
@@ -156,32 +156,32 @@ implements ValidationRule<RoundRecord<T>> {
     }
 
     private validateProvenance(a: Loose<RoundRecord<T>>, issues: ValidationIssue[]): void {
-        const provenance = a.provenance as Loose<RoundRecord<T>["provenance"]> | undefined;
-        if (typeof provenance !== "object" || provenance === null) {
-            issues.push({code: "round-record-provenance-invalid", severity: "error", message: "provenance must be an object."});
+        const origin = a.origin as Loose<RoundRecord<T>["origin"]> | undefined;
+        if (typeof origin !== "object" || origin === null) {
+            issues.push({code: "round-record-origin-invalid", severity: "error", message: "origin must be an object."});
             return;
         }
 
-        const game = provenance.game as Record<string, unknown> | undefined;
+        const game = origin.game as Record<string, unknown> | undefined;
         if (typeof game !== "object" || game === null) {
-            issues.push({code: "round-record-provenance-game-invalid", severity: "error", message: "provenance.game must be an object."});
+            issues.push({code: "round-record-origin-game-invalid", severity: "error", message: "origin.game must be an object."});
         } else {
             (["id", "name", "version"] as const).forEach((field) => {
                 if (!isNonEmptyString(game[field])) {
                     issues.push({
-                        code: `round-record-provenance-game-${field}-invalid`,
+                        code: `round-record-origin-game-${field}-invalid`,
                         severity: "error",
-                        message: `provenance.game.${field} must be a non-empty string.`,
+                        message: `origin.game.${field} must be a non-empty string.`,
                     });
                 }
             });
         }
 
-        if (!isNonEmptyString(provenance.pokieVersion)) {
+        if (!isNonEmptyString(origin.pokieVersion)) {
             issues.push({
-                code: "round-record-provenance-pokie-version-invalid",
+                code: "round-record-origin-pokie-version-invalid",
                 severity: "error",
-                message: "provenance.pokieVersion must be a non-empty string.",
+                message: "origin.pokieVersion must be a non-empty string.",
             });
         }
     }
@@ -249,7 +249,7 @@ implements ValidationRule<RoundRecord<T>> {
             }
 
             try {
-                validateArtifactCoordinates(s as RoundStepArtifact<T>);
+                validateArtifactCoordinates(s as RoundStepRecord<T>);
             } catch (error) {
                 issues.push({code: "round-record-coordinates-invalid", severity: "error", message: String(error)});
             }

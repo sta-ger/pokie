@@ -386,7 +386,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     private provenanceOf(modeName: string, library: WeightedOutcomeLibrary): BundleModeProvenance {
         // Called only after WeightedOutcomeLibraryValidator and the bundle-specific checks found no
         // errors, which guarantees a non-empty mode and a complete first outcome provenance.
-        const provenance = library.outcomes[0].artifact.provenance;
+        const provenance = library.outcomes[0].artifact.origin;
         return {
             modeName,
             gameId: provenance.game.id,

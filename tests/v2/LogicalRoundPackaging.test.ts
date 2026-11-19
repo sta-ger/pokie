@@ -208,7 +208,7 @@ describe("logical-round delivery and mathematical boundaries", () => {
             expect(data.winningPositions).toEqual([]);
             expect(data.holdAndWin?.payout).toBe(0);
             expect(data.jackpot?.award).toBeUndefined();
-            const artifact = api.buildRoundRecordFromSession(session, {roundId: "failed", provenance: {game: b.manifest, pokieVersion: "1.3.0"}});
+            const artifact = api.buildRoundRecordFromSession(session, {roundId: "failed", origin: {game: b.manifest, pokieVersion: "1.3.0"}});
             expect(artifact.totalWin).toBe(0);
             expect(artifact.wins).toEqual([]);
             expect(artifact.featureEvents).toContainEqual({type: "holdAndWin", data: expect.objectContaining({payout: 0})});
@@ -902,7 +902,7 @@ describe("logical-round delivery and mathematical boundaries", () => {
     it("replay addresses a logical round with its actual entry command and ordered artifact", () => {
         const descriptor = new api.ReplayRecorder().record({game: game(0), seed: "7", round: 1, unit: "logical-round", entryCommands: [{kind: "spin", mode: "buy", bet: 7.5}]});
         expect(descriptor.logicalRound).toMatchObject({status: "completed", cursor: 3, totalStake: 37.5, mode: "buy"});
-        expect(descriptor.artifact!.provenance.configHash).toBe(game(0).getConfigHash!());
+        expect(descriptor.artifact!.origin.configHash).toBe(game(0).getConfigHash!());
         expect(descriptor.artifact!.steps).toHaveLength(3);
         expect(descriptor.totalWin).toBe(descriptor.artifact!.totalWin);
     });
@@ -1015,7 +1015,7 @@ describe("logical-round delivery and mathematical boundaries", () => {
 it("validates ordinary rectangular win coordinates through artifact construction, diagnostics and retained logical progress", () => {
     const screen = [["A"], ["A"], ["A"]];
     const result = new api.WinEvaluationResult({lineWins: [new api.LineWinComponent(new api.WinningLine(0.1, [0, 0, 0], [1, 1, 1], "0", [0, 1, 2], [], "A"), [[0, 0], [1, 0], [2, 0]])]});
-    const artifact = api.buildRoundRecord({roundId: "coordinates", stake: 0.05, provenance: {game: {id: "coordinate-owner", name: "Coordinates", version: "1"}, pokieVersion: "1.3.0"}, steps: [{screen, winEvaluationResult: result}]});
+    const artifact = api.buildRoundRecord({roundId: "coordinates", stake: 0.05, origin: {game: {id: "coordinate-owner", name: "Coordinates", version: "1"}, pokieVersion: "1.3.0"}, steps: [{screen, winEvaluationResult: result}]});
     const validator = new api.RoundRecordValidator();
     const projector = new api.PublicRoundRecordProjector();
     expect(projector.project(artifact).wins).toEqual(artifact.wins);
@@ -1034,10 +1034,10 @@ it("validates ordinary rectangular win coordinates through artifact construction
         expect(() => api.projectPublicRoundStep(corrupt.steps[0])).toThrow(/position|index|domain/i);
         expect(diagnostics.every(issue => issue.severity === "error")).toBe(true);
         expect(api.validateLogicalRound({...logical, subrounds: [{...logical.subrounds[0], artifacts: corrupt.steps}]})).toBeDefined();
-        expect(() => api.buildRoundStepArtifact(0, {screen, winEvaluationResult: new api.WinEvaluationResult({lineWins: [new api.LineWinComponent(result.getLineWins()[0].getWinningLine(), [position] as number[][])]})})).toThrow(/position|index|domain/i);
+        expect(() => api.buildRoundStepRecord(0, {screen, winEvaluationResult: new api.WinEvaluationResult({lineWins: [new api.LineWinComponent(result.getLineWins()[0].getWinningLine(), [position] as number[][])]})})).toThrow(/position|index|domain/i);
         expect(projector.project(artifact).wins).toEqual(artifact.wins);
         expect(validator.validate(artifact)).toEqual([]);
         expect(api.validateLogicalRound(logical)).toBeUndefined();
-        expect(api.buildRoundStepArtifact(0, {screen, winEvaluationResult: result})).toEqual(artifact.steps[0]);
+        expect(api.buildRoundStepRecord(0, {screen, winEvaluationResult: result})).toEqual(artifact.steps[0]);
     }
 });

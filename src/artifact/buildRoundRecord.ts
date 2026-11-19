@@ -1,19 +1,19 @@
 import {InvalidJsonValueError} from "../json/InvalidJsonValueError.js";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import {BASE_SIMULATION_CATEGORY} from "../simulation/SimulationCategoryNames.js";
-import {buildRoundStepArtifact} from "./buildRoundStepArtifact.js";
+import {buildRoundStepRecord} from "./buildRoundStepRecord.js";
 import {assertValidFeatureEventInput} from "./internal/assertValidFeatureEventInput.js";
 import {canonicalizeJsonField} from "./internal/canonicalizeJsonField.js";
 import {deepFreeze} from "../internal/deepFreeze.js";
 import {ROUND_RECORD_SCHEMA_VERSION, type RoundRecord} from "./RoundRecord.js";
 import {RoundRecordBuildError} from "./RoundRecordBuildError.js";
 import type {RoundRecordFeatureEvent, RoundRecordFeatureEventInput} from "./RoundRecordFeatureEvent.js";
-import type {RoundRecordProvenance} from "./RoundRecordProvenance.js";
+import type {RoundRecordOrigin} from "./RoundRecordOrigin.js";
 import type {RoundRecordStepSource} from "./RoundRecordStepSource.js";
 
 export type RoundRecordBuildOptions<T extends string | number = string> = {
     roundId: string;
-    provenance: RoundRecordProvenance;
+    origin: RoundRecordOrigin;
     stake: number;
     steps: readonly RoundRecordStepSource<T>[];
     betMode?: string;
@@ -23,12 +23,12 @@ export type RoundRecordBuildOptions<T extends string | number = string> = {
 };
 
 // The one place a RoundRecord's round-level aggregates (totalWin/wins/screen) are derived — always from each
-// step's own already-computed WinEvaluationResult (via buildRoundStepArtifact), never a second calculation
+// step's own already-computed WinEvaluationResult (via buildRoundStepRecord), never a second calculation
 // path. Supports multi-step rounds natively: pass more than one step source (e.g. one per CascadeStep) and the
 // aggregates fold across all of them; a plain single-step round just passes one.
 //
 // Fails fast with RoundRecordBuildError — before any RoundRecord is ever returned — on: an empty steps
-// list, an invalid roundId/betMode/stake/schemaVersion, an invalid win amount (via buildRoundStepArtifact), or
+// list, an invalid roundId/betMode/stake/schemaVersion, an invalid win amount (via buildRoundStepRecord), or
 // content that isn't JSON-safe (metadata/debug/feature event data, or anything else in the built artifact —
 // see the final toCanonicalJson pass below). The returned RoundRecord is deeply copied from every input and
 // deeply frozen (see deepFreeze), so it can never be mutated afterward, whether via the artifact itself or via
@@ -67,7 +67,7 @@ export function buildRoundRecord<T extends string | number = string>(
     }
     (options.featureEvents ?? []).forEach((event) => assertValidFeatureEventInput(event, "round"));
 
-    const steps = options.steps.map((step, index) => buildRoundStepArtifact(index, step));
+    const steps = options.steps.map((step, index) => buildRoundStepRecord(index, step));
     const totalWin = steps.reduce((sum, step) => sum + step.totalWin, 0);
     const wins = steps.flatMap((step) => step.wins);
     const lastStep = steps[steps.length - 1];
@@ -84,7 +84,7 @@ export function buildRoundRecord<T extends string | number = string>(
         ...(lastStep.sequenceSelections ? {sequenceSelections: lastStep.sequenceSelections} : {}),
         schemaVersion,
         roundId: options.roundId,
-        provenance: {...options.provenance, game: {...options.provenance.game}},
+        origin: {...options.origin, game: {...options.origin.game}},
         betMode,
         stake: options.stake,
         totalWin,

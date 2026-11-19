@@ -7,7 +7,7 @@ import {RoundRecordBuildError} from "../RoundRecordBuildError.js";
 // a canonical, deeply-copied, JSON-safe JsonObject in one pass: toCanonicalJson both validates it (fails fast,
 // as RoundRecordBuildError, on anything non-JSON-safe — NaN/Infinity, bigint, symbol, function, undefined,
 // circular references) and rebuilds it as fresh objects/arrays, so the result shares no references with the
-// caller's original value (see buildRoundRecord/buildRoundStepArtifact's own isolation guarantee).
+// caller's original value (see buildRoundRecord/buildRoundStepRecord's own isolation guarantee).
 export function canonicalizeJsonField(fieldPath: string, value: Record<string, unknown>): JsonObject {
     let canonical;
     try {

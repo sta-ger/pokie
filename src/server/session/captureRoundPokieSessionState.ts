@@ -2,7 +2,7 @@ import {captureCoordinatePublicPayload} from "./internal/captureCoordinatePublic
 import {cloneSessionData} from "../../runtime/internal/cloneSessionData.js";
 import {buildRoundRecordFromSession} from "../../artifact/buildRoundRecordFromSession.js";
 import {RoundRecordBuildError} from "../../artifact/RoundRecordBuildError.js";
-import type {RoundRecordProvenance} from "../../artifact/RoundRecordProvenance.js";
+import type {RoundRecordOrigin} from "../../artifact/RoundRecordOrigin.js";
 import type {PokieGameContext} from "../../gamepackage/PokieGameContext.js";
 import type {GameSessionSerializing} from "../../net/GameSessionSerializing.js";
 import type {GameSessionHandling} from "../../session/GameSessionHandling.js";
@@ -18,7 +18,7 @@ import {buildSessionCapturePolicy, type SessionCapturePolicy} from "./SessionCap
 // for betMode/stake.
 export type RoundRecordCaptureRequest = {
     roundId: string;
-    provenance: RoundRecordProvenance;
+    origin: RoundRecordOrigin;
     betMode?: string;
     stake?: number;
     // The operation that produced this round (e.g. "spin") — carried into the built artifact's own
@@ -50,7 +50,7 @@ export type RoundRecordCaptureRequest = {
 //
 // `capturePolicy.mode === "full"` additionally builds and persists a complete RoundRecord (see
 // buildRoundRecordFromSession) as `roundRecord` — but only when `roundRecordRequest` was actually
-// supplied (a caller must have a roundId/provenance to give it) AND `session` has the
+// supplied (a caller must have a roundId/origin to give it) AND `session` has the
 // VideoSlotSessionHandling shape buildRoundRecordFromSession requires. Either gap is recorded as
 // `roundRecordUnavailableReason` — an honest diagnostic, never a fabricated artifact — so a reader can
 // tell "this round genuinely has no RoundRecord" apart from "something went wrong capturing one".
@@ -103,7 +103,7 @@ function captureFullRoundRecord(
 ): void {
     if (roundRecordRequest === undefined) {
         state.roundRecordUnavailableReason =
-            "SessionCapturePolicy.mode is \"full\", but no RoundRecordCaptureRequest (roundId/provenance) was supplied for this round.";
+            "SessionCapturePolicy.mode is \"full\", but no RoundRecordCaptureRequest (roundId/origin) was supplied for this round.";
         return;
     }
     if (!hasVideoSlotShape(session)) {
@@ -116,7 +116,7 @@ function captureFullRoundRecord(
     try {
         state.roundRecord = buildRoundRecordFromSession(session, {
             roundId: roundRecordRequest.roundId,
-            provenance: roundRecordRequest.provenance,
+            origin: roundRecordRequest.origin,
             betMode: roundRecordRequest.betMode,
             stake: roundRecordRequest.stake,
             debug: buildRoundRecordDebugSummary(context, state, previousState, roundRecordRequest, capturePolicy),
@@ -131,7 +131,7 @@ function captureFullRoundRecord(
 }
 
 // Everything a "full" capture owes the round beyond what RoundRecord already has dedicated top-level
-// fields for (screen/wins/steps/betMode/stake/provenance) — command, credits, the session context's own
+// fields for (screen/wins/steps/betMode/stake/origin) — command, credits, the session context's own
 // seed (when the session was actually given one — see PokieGameContext.seed — never fabricated when it
 // wasn't), and a before/after state summary — has no field of its own on RoundRecord, so it's carried
 // in `debug` instead (a plain, caller-defined JsonObject — see RoundRecord's own doc comment). The

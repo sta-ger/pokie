@@ -8,14 +8,14 @@ import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjectio
 import {projectVisiblePayline, projectVisiblePositions} from "../session/videoslot/coordinates/projectVisibleWinData.js";
 import type {RoundRecord} from "./RoundRecord.js";
 import type {RoundRecordWin} from "./RoundRecordWin.js";
-import type {RoundStepArtifact} from "./RoundStepArtifact.js";
+import type {RoundStepRecord} from "./RoundStepRecord.js";
 import {validateArtifactCoordinates} from "./validateArtifactCoordinates.js";
 
 export type PublicRoundRecord<T extends string | number = string> = Pick<RoundRecord<T>, "roundId" | "stake" | "betMode" | "totalWin" | "payoutMultiplier" | "screen" | "sequenceSelections" | "featureEvents"> & {
     readonly steps: readonly PublicRoundStep<T>[];
     readonly wins: readonly RoundRecordWin<T>[];
 };
-export type PublicRoundStep<T extends string | number = string> = Pick<RoundStepArtifact<T>, "index" | "screen" | "totalWin" | "wins" | "featureEvents"> & {readonly visibleRowCoverage?: readonly number[]};
+export type PublicRoundStep<T extends string | number = string> = Pick<RoundStepRecord<T>, "index" | "screen" | "totalWin" | "wins" | "featureEvents"> & {readonly visibleRowCoverage?: readonly number[]};
 
 /** Presentation only. Canonical artifacts and their hashes keep all generated/evaluated evidence. */
 export class PublicRoundRecordProjector<T extends string | number = string> implements RoundRecordProjector<T, PublicRoundRecord<T>> {
@@ -32,7 +32,7 @@ export class PublicRoundRecordProjector<T extends string | number = string> impl
     }
 }
 
-export function projectPublicRoundStep<T extends string | number>(step: RoundStepArtifact<T>): PublicRoundStep<T> {
+export function projectPublicRoundStep<T extends string | number>(step: RoundStepRecord<T>): PublicRoundStep<T> {
     validateArtifactCoordinates(step);
     const projection = step.geometry ? new ScreenProjection(step.geometry) : undefined;
     const wins = step.wins.map(win => {

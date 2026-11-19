@@ -923,7 +923,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                 this.capturePolicy.mode === "full"
                     ? {
                         roundId,
-                        provenance: {
+                        origin: {
                             game: this.game.getManifest(),
                             pokieVersion: this.pokieVersion,
                             // Only ever set when the loaded game actually exposes its own authoritative

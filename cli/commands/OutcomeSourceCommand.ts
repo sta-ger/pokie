@@ -240,7 +240,7 @@ export class OutcomeSourceCommand implements CliCommandHandling {
             const {selection} = result;
             const artifact = selection.outcome.artifact;
             const replay = {
-                game: artifact.provenance.game,
+                game: artifact.origin.game,
                 libraryId: selection.libraryId,
                 libraryHash: selection.libraryHash,
                 modeName: mode,
@@ -259,7 +259,7 @@ export class OutcomeSourceCommand implements CliCommandHandling {
             };
             const descriptor = new ReplayRecorder().recordPreGenerated({
                 sessionId: `outcome-source:${selection.libraryId}:${seed}:${SAMPLE_REPLAY_ROUND}`,
-                game: artifact.provenance.game,
+                game: artifact.origin.game,
                 replay,
                 totalBet: artifact.stake,
                 screen: artifact.screen.map((row) => [...row]),

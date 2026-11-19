@@ -277,7 +277,7 @@ describe("ReplayCommand generated package mode policy", () => {
             expect(descriptor.totalBet).toBeCloseTo(round < 5 ? 1.25 : 2.5, 12);
             expect(descriptor.totalWin).toBe(0);
             expect(descriptor.commands).toHaveLength(round);
-            expect(descriptor.artifact).toMatchObject({stake: (round - 1) % 4 === 0 ? 1.25 : 0, betMode: "buy-more", provenance: {pokieVersion: "2.0.0"}});
+            expect(descriptor.artifact).toMatchObject({stake: (round - 1) % 4 === 0 ? 1.25 : 0, betMode: "buy-more", origin: {pokieVersion: "2.0.0"}});
             expect(descriptor.artifact?.featureEvents).toContainEqual(expect.objectContaining({type: "chargedBetMode", data: {id: "buy-more"}}));
             expect(Boolean(descriptor.artifact?.sequenceSelections?.length)).toBe(weighted);
         },

@@ -15,7 +15,7 @@ guide, not a certification.
 | Weighted bonus outcomes | Finite outcome tables with weights, payout units and duration — see [weighted bonus](weighted-bonus.md). |
 | Resizable grids and geometry | Generated, visible and evaluated screen ownership — see [resizable grid](resizable-grid.md). |
 | Artifacts and interchange | Generated TypeScript/CJS packages, PAR workbooks, extraction and WASM — see [game packages](game-packages.md). |
-| Simulation and replay | Seeded simulation, reports, round artifacts and audit replay — see [simulation](simulation.md) and [round artifacts](round-artifacts.md). |
+| Simulation and replay | Seeded simulation, reports, round records and audit replay — see [simulation](simulation.md) and [round records](round-records.md). |
 
 Custom executable code, arbitrary callbacks and unsupported compositions remain explicit extension
 boundaries. They are not implied by a supported authored family.

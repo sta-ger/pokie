@@ -1,6 +1,6 @@
 import {
     PublicRoundRecordProjector, projectPublicFeatureEvent, VideoSlotSession, SymbolsSequence, Paytable,
-    RoundRecordProvenance,
+    RoundRecordOrigin,
     SymbolsCombination,
     VideoSlotConfig,
     VideoSlotSessionHandling,
@@ -11,12 +11,12 @@ import {
     CascadeStep,
     RoundRecordValidator, ResizableSymbolsCombinationsGenerator, VariableHeightSymbolsCombinationsGenerator,
     CustomLinesDefinitions, SeededRandomNumberGenerator, PokieJsonRoundRecordProjector,
-    projectPublicRoundStep, buildRoundStepArtifact, WinComponent,
+    projectPublicRoundStep, buildRoundStepRecord, WinComponent,
     type RoundRecordWin,
 
 } from "@fromstan/pokie";
 
-const provenance: RoundRecordProvenance = {
+const origin: RoundRecordOrigin = {
     game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     pokieVersion: "1.3.0",
 };
@@ -54,14 +54,14 @@ describe("buildRoundRecordFromSession", () => {
         const steps = kind === "terminal-only" ? [] : [new CascadeStep(screen, evaluation, [], []), new CascadeStep(screen, evaluation, [], [])];
         const selection = [{reelIndex: 0, variantId: "all-A", context: "logical:cascade"}];
         const session = fakeSession({getSequenceSelections: () => selection, getCascadeResult: () => new CascadeResult(screen, screen, steps, {}, {}, {}, kind === "bounded-exhaustion" ? undefined : evaluation)});
-        const artifact = buildRoundRecordFromSession(session, {roundId: "cascade", provenance});
+        const artifact = buildRoundRecordFromSession(session, {roundId: "cascade", origin});
         expect(artifact.sequenceSelections).toEqual(selection);
         expect(artifact.steps).toHaveLength(steps.length + (kind === "bounded-exhaustion" ? 0 : 1));
         artifact.steps.forEach(step => expect(step.sequenceSelections).toEqual(selection));
         expect(new RoundRecordValidator().validate(artifact)).toEqual([]);
     });
     it("uses the session's own bet as stake when it does not implement StakeAmountDetermining", () => {
-        const artifact = buildRoundRecordFromSession(fakeSession(), {roundId: "r1", provenance});
+        const artifact = buildRoundRecordFromSession(fakeSession(), {roundId: "r1", origin});
 
         expect(artifact.stake).toBe(5);
         expect(artifact.betMode).toBe("base");
@@ -72,7 +72,7 @@ describe("buildRoundRecordFromSession", () => {
 
     it("defers to StakeAmountDetermining.getStakeAmount() over the nominal bet, same as determineStakeAmount", () => {
         const session = fakeSession({getStakeAmount: () => 0});
-        const artifact = buildRoundRecordFromSession(session, {roundId: "r2", provenance});
+        const artifact = buildRoundRecordFromSession(session, {roundId: "r2", origin});
 
         expect(artifact.stake).toBe(0);
         expect(artifact.payoutMultiplier).toBe(0);
@@ -80,27 +80,27 @@ describe("buildRoundRecordFromSession", () => {
 
     it("lets an explicit stake override wins over both getBet() and getStakeAmount()", () => {
         const session = fakeSession({getStakeAmount: () => 0});
-        const artifact = buildRoundRecordFromSession(session, {roundId: "r3", provenance, stake: 2});
+        const artifact = buildRoundRecordFromSession(session, {roundId: "r3", origin, stake: 2});
 
         expect(artifact.stake).toBe(2);
     });
 
     it("derives a freeGamesTriggered feature event when getWonFreeGamesNumber() reports a win", () => {
         const session = fakeSession({getWonFreeGamesNumber: () => 8});
-        const artifact = buildRoundRecordFromSession(session, {roundId: "r4", provenance});
+        const artifact = buildRoundRecordFromSession(session, {roundId: "r4", origin});
 
         expect(artifact.featureEvents).toEqual([{type: "freeGamesTriggered", data: {count: 8}}]);
     });
 
     it("does not add a feature event when getWonFreeGamesNumber() reports zero", () => {
         const session = fakeSession({getWonFreeGamesNumber: () => 0});
-        const artifact = buildRoundRecordFromSession(session, {roundId: "r5", provenance});
+        const artifact = buildRoundRecordFromSession(session, {roundId: "r5", origin});
 
         expect(artifact.featureEvents).toBeUndefined();
     });
 
     it("passes betMode through explicitly, never inferring it", () => {
-        const artifact = buildRoundRecordFromSession(fakeSession(), {roundId: "r6", provenance, betMode: "freeGames"});
+        const artifact = buildRoundRecordFromSession(fakeSession(), {roundId: "r6", origin, betMode: "freeGames"});
         expect(artifact.betMode).toBe("freeGames");
     });
 });
@@ -120,7 +120,7 @@ it("preserves a negative numeric sticky symbol through canonical and public sess
     config.setScreenModifiers({wilds: [{symbol: -1, factor: 2}], rules: [{id: "negative", type: "sticky", symbol: -1, space: "evaluated", positions: [[1, 0]], lifetime: 3}]});
     const session = new VideoSlotSession(config);
     session.play();
-    const artifact = buildRoundRecordFromSession(session, {roundId: "negative", provenance});
+    const artifact = buildRoundRecordFromSession(session, {roundId: "negative", origin});
     expect(new RoundRecordValidator<number>().validate(artifact)).toEqual([]);
     const projected = new PublicRoundRecordProjector<number>().project(artifact);
     const event = {type: "screenModifiers", data: {space: "evaluated", rules: [{id: "negative", positions: [[1, 0]]}], sticky: [{ruleId: "negative", position: [1, 0], symbol: -1, factor: 2, remaining: 2}]}};
@@ -154,7 +154,7 @@ it.each(["resizable", "variable"])("captures and publicly projects real %s reel 
         : new VariableHeightSymbolsCombinationsGenerator(config, [1, 2, 3].map(height => new SymbolsSequence<number>().fromArray([height])), rng);
     const session = new VideoSlotSession(config, generator);
     session.play();
-    const artifact = buildRoundRecordFromSession(session, {roundId: "jagged", provenance});
+    const artifact = buildRoundRecordFromSession(session, {roundId: "jagged", origin});
     const screen = [["A"], ["A", "A"], ["A", "A", "A"]];
     expect(session.getWinAmount()).toBe(2);
     expect(artifact.screen).toEqual(screen);
@@ -176,7 +176,7 @@ it.each(["resizable", "variable"])("captures and publicly projects real %s reel 
         }
     }
     const evaluation = (win: RoundRecordWin) => new WinEvaluationResult({winComponents: [new ArtifactComponent(win)]});
-    const build = (win: RoundRecordWin) => buildRoundStepArtifact(0, {screen, winEvaluationResult: evaluation(win)});
+    const build = (win: RoundRecordWin) => buildRoundStepRecord(0, {screen, winEvaluationResult: evaluation(win)});
     expect(build(high).wins[0]).toEqual(high);
     for (const [reel, row] of [[0, 1], [1, 2], [2, 3], [3, 0], [-1, 0], [1, 0.5]]) {
         for (const win of [
@@ -197,7 +197,7 @@ it.each(["resizable", "variable"])("captures and publicly projects real %s reel 
         }
     }
     // A generic custom event remains supported independently of portable canonical events.
-    const custom = buildRoundStepArtifact(0, {screen, winEvaluationResult: evaluation(high), featureEvents: [{type: "foreignFeature", data: {count: 2}}]});
+    const custom = buildRoundStepRecord(0, {screen, winEvaluationResult: evaluation(high), featureEvents: [{type: "foreignFeature", data: {count: 2}}]});
     expect(projectPublicRoundStep(custom).featureEvents).toEqual([{type: "foreignFeature", data: {count: 2}}]);
     const customArtifact = {...artifact, steps: [custom], wins: custom.wins, featureEvents: custom.featureEvents};
     expect(validator.validate(customArtifact)).toEqual([]);

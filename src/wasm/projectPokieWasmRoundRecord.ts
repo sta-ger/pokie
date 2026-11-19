@@ -4,7 +4,7 @@ import {PokieJsonRoundRecordProjector} from "../artifact/PokieJsonRoundRecordPro
 /** Project retained observations; never execute, infer wins or manufacture feature evidence. */
 export function projectPokieWasmRoundRecord(
     round: import("./PokieWasmRuntimeApi.js").PokieWasmRound,
-    provenance: import("../artifact/RoundRecord.js").RoundRecord["provenance"],
+    origin: import("../artifact/RoundRecord.js").RoundRecord["origin"],
     fallbackRoundId: string,
     declaredCapabilities?: readonly string[],
 ): import("../artifact/RoundRecordJson.js").RoundRecordJson {
@@ -13,7 +13,7 @@ export function projectPokieWasmRoundRecord(
     const steps = last?.artifacts;
     if (logical && last && steps?.length) {
         let artifact: import("../artifact/RoundRecord.js").RoundRecord = {
-            schemaVersion: 1, roundId: logical.id, provenance, betMode: logical.mode ?? "base", stake: last.stake, totalWin: last.win,
+            schemaVersion: 1, roundId: logical.id, origin, betMode: logical.mode ?? "base", stake: last.stake, totalWin: last.win,
             payoutMultiplier: last.stake > 0 ? last.win / last.stake : 0, screen: steps[steps.length - 1].screen,
             steps: [...steps], wins: steps.flatMap(step => step.wins), featureEvents: steps.flatMap(step => step.featureEvents ?? []),
             ...(steps[steps.length - 1].sequenceSelections ? {sequenceSelections: steps[steps.length - 1].sequenceSelections} : {}),
@@ -25,7 +25,7 @@ export function projectPokieWasmRoundRecord(
         return new PokieJsonRoundRecordProjector().project(artifact);
     }
     const detailBoundary = "The portable runtime settles total payout but does not expose per-win or feature-event details.";
-    return new PokieJsonRoundRecordProjector().project({schemaVersion: 1, roundId: fallbackRoundId, provenance, betMode: "wasm", stake: round.stake,
+    return new PokieJsonRoundRecordProjector().project({schemaVersion: 1, roundId: fallbackRoundId, origin, betMode: "wasm", stake: round.stake,
         totalWin: round.payout, payoutMultiplier: round.stake > 0 ? round.payout / round.stake : 0, screen: round.screen.map(reel => [...reel]),
         steps: [{index: 0, screen: round.screen.map(reel => [...reel]), totalWin: round.payout, wins: [], debug: {reelStops: [...round.stops], detailBoundary}}],
         wins: [], debug: {reelStops: [...round.stops], ...(declaredCapabilities ? {declaredCapabilities: [...declaredCapabilities]} : {}), detailBoundary}});

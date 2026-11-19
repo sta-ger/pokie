@@ -5,13 +5,13 @@
 // closing this to a union would make every new target's capability a breaking change to this package itself.
 export type ExternalDeploymentCapability = string;
 
-// A target declaring this supports RoundRecord/RoundStepArtifact instances whose "featureEvents" is
+// A target declaring this supports RoundRecord/RoundStepRecord instances whose "featureEvents" is
 // non-empty. Content that uses feature events against a target that doesn't declare this capability is rejected
 // by ExternalDeploymentCompatibilityValidator before any file is generated, rather than silently dropping the
 // events (or letting a generator choke on them) at generation time.
 export const ROUND_RECORD_FEATURE_EVENTS_CAPABILITY = "roundRecord.featureEvents";
 
-// A target declaring this supports RoundRecord/RoundStepArtifact instances whose "debug" field is present.
+// A target declaring this supports RoundRecord/RoundStepRecord instances whose "debug" field is present.
 export const ROUND_RECORD_DEBUG_METADATA_CAPABILITY = "roundRecord.debugMetadata";
 
 // A target declaring this accepts more than one ExternalDeploymentModeInput in a single deployment. Targets

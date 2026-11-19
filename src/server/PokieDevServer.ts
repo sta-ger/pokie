@@ -515,7 +515,7 @@ export class PokieDevServer implements PokieDevServerHandling {
     // version of this one — a configuration mistake that must never surface as a served round instead of
     // a clear startup error.
     private assertLibraryMatchesGameManifest(library: WeightedOutcomeLibrary, manifest: {id: string; version: string}): void {
-        const provenanceGame = library.outcomes[0]?.artifact.provenance.game;
+        const provenanceGame = library.outcomes[0]?.artifact.origin.game;
         if (provenanceGame === undefined || provenanceGame.id !== manifest.id || provenanceGame.version !== manifest.version) {
             throw new PreGeneratedLibraryProvenanceMismatchError(
                 `preGeneratedOutcomeLibrary "${library.libraryId}" was built for game ` +

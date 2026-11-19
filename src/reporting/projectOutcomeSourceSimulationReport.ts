@@ -16,7 +16,7 @@ export function projectOutcomeSourceSimulationReport(source: OutcomeSourceSimula
             durationMs: source.durationMs,
             workers: 1,
             betMode: source.modeName,
-            pokieVersion: source.lastReplay?.artifact?.provenance.pokieVersion,
+            pokieVersion: source.lastReplay?.artifact?.origin.pokieVersion,
             workerSeedStrategy: source.workerSeedStrategy,
             stopReason: source.statistics.rounds < source.requestedRounds ? "sessionStopped" : "maxRounds",
         }),

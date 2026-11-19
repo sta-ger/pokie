@@ -40,7 +40,7 @@ export type OutcomeLibraryBundleManifest = {
     readonly game: PokieGameManifest;
     readonly configHash?: string;
     // Which pokie release *computed* the outcomes themselves — read from the first outcome's own
-    // artifact.provenance.pokieVersion (guaranteed identical across every outcome in every mode by the writer's
+    // artifact.origin.pokieVersion (guaranteed identical across every outcome in every mode by the writer's
     // own cross-outcome/cross-mode homogeneity checks) and cross-checked, in deep validation, against every
     // outcome's own provenance.pokieVersion. A distinct quantity from pokieVersion above — see that field's own
     // doc comment for why they're never required to match.

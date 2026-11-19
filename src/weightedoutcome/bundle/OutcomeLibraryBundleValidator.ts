@@ -828,7 +828,7 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
                     continue;
                 }
 
-                const outcome = value as {id: string; weight: number; artifact: {payoutMultiplier?: unknown; stake?: unknown; betMode?: unknown; provenance?: {game?: {id?: unknown; version?: unknown}; configHash?: unknown; pokieVersion?: unknown}}};
+                const outcome = value as {id: string; weight: number; artifact: {payoutMultiplier?: unknown; stake?: unknown; betMode?: unknown; origin?: {game?: {id?: unknown; version?: unknown}; configHash?: unknown; pokieVersion?: unknown}}};
                 if (seenIds.has(outcome.id)) {
                     issues.push({
                         code: "outcome-library-bundle-outcomes-duplicate-id",
@@ -876,10 +876,10 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
                 }
 
                 const current = {
-                    gameId: outcome.artifact.provenance?.game?.id,
-                    gameVersion: outcome.artifact.provenance?.game?.version,
-                    configHash: outcome.artifact.provenance?.configHash,
-                    pokieVersion: outcome.artifact.provenance?.pokieVersion,
+                    gameId: outcome.artifact.origin?.game?.id,
+                    gameVersion: outcome.artifact.origin?.game?.version,
+                    configHash: outcome.artifact.origin?.configHash,
+                    pokieVersion: outcome.artifact.origin?.pokieVersion,
                     betMode: outcome.artifact.betMode,
                     stake: outcome.artifact.stake,
                 };

@@ -8,7 +8,7 @@ import path from "path";
 import v8 from "v8";
 import {buildRoundRecordFromSession} from "../../artifact/buildRoundRecordFromSession.js";
 import type {RoundRecord} from "../../artifact/RoundRecord.js";
-import type {RoundRecordProvenance} from "../../artifact/RoundRecordProvenance.js";
+import type {RoundRecordOrigin} from "../../artifact/RoundRecordOrigin.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import {determineStakeAmount} from "../../server/session/determineStakeAmount.js";
 import {SeededWeightedOutcomeRandomSource} from "../../pregenerated/SeededWeightedOutcomeRandomSource.js";
@@ -423,7 +423,7 @@ async function *streamExactWeightedOutcomesInternal(
     const manifest = game.getManifest();
     const prepared = prepare(options);
 
-    const provenance: RoundRecordProvenance = {
+    const origin: RoundRecordOrigin = {
         game: manifest,
         pokieVersion: options.pokieVersion,
         ...(prepared.configHash !== undefined ? {configHash: prepared.configHash} : {}),
@@ -457,7 +457,7 @@ async function *streamExactWeightedOutcomesInternal(
 
         const artifact = buildRoundRecordFromSession(session, {
             roundId: id,
-            provenance,
+            origin,
             ...(options.betMode !== undefined ? {betMode: options.betMode} : {}),
             stake,
         });

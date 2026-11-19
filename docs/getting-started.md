@@ -20,14 +20,31 @@ cannot type-check an ESM dependency from a CommonJS file.
 ## Design and test in Studio
 
 Run `npx --package @fromstan/pokie pokie` to open Home. Choose a starter, change its design, then **Create game** to save it and open
-its workspace. **Overview** checks structural validity; **Play** runs real local rounds. **Simulation** estimates
-RTP, and **Build/Export** writes a local package or another supported artifact. Saving a design, preparing its
-runtime, validating the project, and building an artifact are separate results. The saved Blueprint remains
-editable; an exported package is read-only in Studio. Keep the Blueprint for later design changes.
+its workspace. **Overview** checks the design; **Play** runs real local rounds. **Simulation** estimates
+RTP, and **Build/Export** writes a game package or another output. Saving a design, preparing its
+project, validating it and building an output are separate results. The saved game design remains
+editable; an exported game package is read-only in Studio. Keep the design for later changes.
 
-POKIE serves developers and game-math authors; Studio provides a producer-facing local authoring/testing path.
-It does not provide mathematical certification or a casino backend. Delivering a game to an operator requires
-developer integration. See the [CLI reference](cli.md#pokie-projectroot) for launch and artifact commands.
+POKIE serves developers and game-math authors; Studio provides a local authoring and testing path. It
+does not provide mathematical certification or a casino backend. Delivering a game to an operator
+requires developer integration. See the [CLI reference](cli.md#pokie-projectroot) for launch and build
+commands.
+
+## The seven objects
+
+POKIE has seven user-facing objects. Everything else is implementation detail.
+
+| Object | What it is |
+|---|---|
+| **Game design (Blueprint)** | The JSON file where you describe the game. |
+| **Project** | A folder POKIE can open. |
+| **Game package** | A runnable package built from a game design. |
+| **Outcome library** | Every possible round outcome and how often it occurs. |
+| **Round record** | What happened in one round, saved for replay or audit. |
+| **Simulation report** | RTP, hit frequency, volatility and payout statistics. |
+| **Certification pack** | The evidence folder prepared for an auditor. |
+
+See the [glossary](glossary.md) for one-line definitions of slot, build and audit terms.
 
 ## Play a round
 
@@ -58,12 +75,12 @@ swapped out.
 > RNG certification and regulatory/compliance sign-off, which is outside POKIE's scope — see
 > [Reels & Symbol Sequences](reels-and-sequences.md#rngs).
 
-## Determinism/audit gotcha
+## Reproducible replay
 
 Two pieces are relevant if you need to reproduce or audit a specific round:
 
-- `SeededRandomNumberGenerator(seed)` — a deterministic PRNG; the same seed always produces the same sequence of
-  draws, for reproducible tests/replays/demos. Not cryptographically secure — don't use it for real-money play.
+- `SeededRandomNumberGenerator(seed)` — a reproducible random generator; the same seed always produces the same
+  sequence of draws, for tests, replays and demos. Not cryptographically secure — don't use it for real-money play.
 - `SymbolsCombinationsGenerator.getLastStopPositions()` — the per-reel stop position (index into that reel's
   `SymbolsSequence`) that produced the most recently generated combination, so you can reconstruct or log exactly
   how a round's outcome was produced.
@@ -78,3 +95,6 @@ Two pieces are relevant if you need to reproduce or audit a specific round:
 - Want to balance RTP/volatility or run bulk simulations? → [Simulation](simulation.md) and
   [Modeling Slot Math with POKIE](math-modeling.md)
 - Want to send round results to a game client? → [Network Serialization](serialization.md)
+- Want to record, replay or audit a round? → [Round Records](round-records.md) and
+  [Provably Fair](provably-fair.md)
+- Want to prepare evidence for an auditor? → [Certification Pack](certification-pack.md)

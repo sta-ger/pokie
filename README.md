@@ -1,8 +1,8 @@
 # POKIE
 
-POKIE is an ISC-licensed JavaScript/TypeScript framework for video-slot game math: reels, paylines, win
-evaluation, free games, feature mechanics, RTP simulation, deterministic replay and portable game
-artifacts.
+POKIE is an ISC-licensed JavaScript/TypeScript toolkit for video-slot game math: reels, paylines, win
+evaluation, free games, feature mechanics, RTP simulation, reproducible replay and ready-to-run game
+packages.
 
 The 2.0 source is prepared for publication as `@fromstan/pokie`. Until the package is published, install
 a built checkout or a locally produced archive:
@@ -22,23 +22,36 @@ support.
 > an RNG certification. Real-money and regulated games still require independent RNG certification and
 > regulatory sign-off, which is outside POKIE's scope.
 
-## What's included
+## What POKIE gives you
 
-- **Win styles** — line, scatter, ways/megaways-style, cluster and per-symbol value wins, individually or
-  mixed under an explicit aggregation policy.
-- **Feature mechanics** — free games, bet modes (ante/buy feature), Hold & Win / Lock & Spin, fixed and
-  progressive jackpots, cascading wins, resizable grids and weighted bonuses.
-- **Simulation** — per-round `Simulation`, aggregate-only runners, parallel workers, RTP, hit frequency,
-  volatility, confidence intervals and optional convergence-based early stop.
-- **Exact math** — a canonical `WeightedOutcomeLibrary` can enumerate every outcome and its weight, so RTP
-  and payout distributions can be computed without Monte Carlo error.
-- **Artifacts** — `GameBlueprint` JSON, generated TypeScript packages, Outcome Library bundles, Stake
-  Engine adapters, PAR workbooks and canonical WASM modules.
-- **Deterministic replay** — seeded RNG, round artifacts, audit replay and commit-reveal fairness proofs.
-- **CLI and Studio** — author, build, validate, simulate, replay and inspect games from the terminal or a
-  local browser UI.
-- **Network and server primitives** — session serialization plus a local/reference HTTP server with
-  replaceable session storage and wallet ports. It is not a casino backend or RGS.
+- **Game design** — one JSON file describes the symbols, reels, paytable, paylines and features.
+- **Play and test** — run real rounds locally, or simulate millions of rounds and read RTP, hit
+  frequency, volatility and confidence intervals.
+- **Exact math** — an outcome library can list every possible outcome and its weight, so RTP and payout
+  distributions are exact, not sampled.
+- **Build** — turn a game design into a TypeScript game package, an outcome library, a Stake Engine
+  export, a PAR workbook or a WASM build.
+- **Replay and audit** — every round can be recorded, replayed and checked. Certification packs collect
+  the evidence an auditor needs.
+- **CLI and Studio** — author, build, validate, simulate, replay and inspect games from the terminal or
+  a local browser UI.
+- **Network primitives** — session serialization plus a local reference HTTP server with pluggable
+  session storage and wallet connectors. It is not a casino backend or RGS.
+
+## The seven objects
+
+| Object | What it is |
+|---|---|
+| **Game design** | The JSON file where you describe the game. |
+| **Project** | A folder POKIE can open. |
+| **Game package** | A runnable package built from a game design. |
+| **Outcome library** | Every possible round outcome and how often it occurs. |
+| **Round record** | What happened in one round, saved for replay or audit. |
+| **Simulation report** | RTP, hit frequency, volatility and payout statistics. |
+| **Certification pack** | The evidence folder prepared for an auditor. |
+
+The rest — build outputs, indexes, manifests, records and projections — is implementation detail. Start
+with one design, one package and one simulation report.
 
 ## Session
 
@@ -85,7 +98,7 @@ stats.rtpConfidenceInterval95; // {low, high}
 stats.hitCount;
 ```
 
-## Seeded RNG
+## Reproducible RNG
 
 ```js
 import {SymbolsCombinationsGenerator, SeededRandomNumberGenerator, VideoSlotConfig} from "@fromstan/pokie";
@@ -121,15 +134,16 @@ Other commands include `inspect`, `edit`, `reel`, `par`, `optimize`, `replay`, `
 
 ## Studio
 
-`pokie` opens a local web app for designing a `GameBlueprint`, building artifacts, running simulations,
-replaying rounds and playing a game in-process. It is a local development tool, not a hosted service or
-production RGS.
+`pokie` opens a local web app for designing a game, building outputs, running simulations, replaying
+rounds and playing a game in-process. It is a local development tool, not a hosted service or production
+RGS.
 
 ## Documentation
 
 See [docs/README.md](docs/README.md) for the full reference:
 
 - [Getting started](docs/getting-started.md)
+- [Glossary](docs/glossary.md)
 - [Game session and configuration](docs/game-session.md)
 - [Reels and symbol sequences](docs/reels-and-sequences.md)
 - [Paylines and patterns](docs/paylines-and-patterns.md)
@@ -138,8 +152,8 @@ See [docs/README.md](docs/README.md) for the full reference:
 - [Resizable grid](docs/resizable-grid.md)
 - [Simulation](docs/simulation.md)
 - [Serialization](docs/serialization.md)
-- [Round artifacts](docs/round-artifacts.md)
-- [Weighted outcome library](docs/weighted-outcome-library.md)
+- [Round records](docs/round-records.md)
+- [Outcome library](docs/weighted-outcome-library.md)
 - [Game packages](docs/game-packages.md)
 - [CLI](docs/cli.md)
 - [WASM compatibility](docs/wasm-compatibility-boundary.md)
@@ -150,7 +164,7 @@ See [docs/README.md](docs/README.md) for the full reference:
 
 See [pokie-examples](https://github.com/sta-ger/pokie-examples) for working games covering ways wins,
 cluster pays, sticky respins, growing grids, value pays, mixed evaluators and verifiable spins. Local
-Blueprint examples are inline in the [CLI documentation](docs/cli.md).
+game-design examples are inline in the [CLI documentation](docs/cli.md).
 
 ## License
 

@@ -288,7 +288,7 @@ export class StakeEngineImporter<T extends string | number = string> implements 
         try {
             const artifact = buildRoundRecord<T>({
                 roundId: `stakeengine-import:${context.modeName}:${line.id}`,
-                provenance: {
+                origin: {
                     game: context.manifest.game,
                     pokieVersion: context.manifest.pokieVersion,
                     // Only set when actually present: an explicit "configHash: undefined" property (as opposed

@@ -16,7 +16,7 @@ import type {SessionFeatureAnalyticsBeforePlay} from "../../simulation/SessionFe
 import {ValueWinComponent} from "../../session/videoslot/winevaluation/ValueWinComponent.js";
 import {WinningValue} from "../../session/videoslot/WinningValue.js";
 import {validateArtifactCoordinates} from "../../artifact/validateArtifactCoordinates.js";
-import {buildRoundStepArtifact} from "../../artifact/buildRoundStepArtifact.js";
+import {buildRoundStepRecord} from "../../artifact/buildRoundStepRecord.js";
 import {deriveStandardFeatureEvents} from "../../artifact/buildRoundRecordFromSession.js";
 import {SymbolsCombinationsAnalyzer} from "../../session/videoslot/combinations/SymbolsCombinationsAnalyzer.js";
 import type {WonFreeGamesNumberDetermining} from "../../session/WonFreeGamesNumberDetermining.js";
@@ -29,7 +29,7 @@ import {WinningWay} from "../../session/videoslot/WinningWay.js";
 import {WinningCluster} from "../../session/videoslot/WinningCluster.js";
 import type {PokieWasmFeatureSessionState} from "../PokieWasmRuntimeApi.js";
 import type {GameBlueprint} from "../../generated/GameBlueprint.js";
-import type {RoundStepArtifact} from "../../artifact/RoundStepArtifact.js";
+import type {RoundStepRecord} from "../../artifact/RoundStepRecord.js";
 import type {VideoSlotSessionHandling} from "../../session/videoslot/VideoSlotSessionHandling.js";
 import {restoreWinEvaluation} from "../../session/videoslot/winevaluation/WinEvaluationSnapshot.js";
 import {WinEvaluationResult} from "../../session/videoslot/winevaluation/WinEvaluationResult.js";
@@ -56,7 +56,7 @@ export function captureDeclarativeTransitionBalances(session: VideoSlotSessionHa
 /** Rehydrate accepted observations for the existing serializers/analytics observer.
  * Existing stateless math validates retained screens; no RNG, wallet effect or prefix replay.
  */
-export function restoreDeclarativeObservation(session: VideoSlotSessionHandling, blueprint: GameBlueprint, artifacts: readonly RoundStepArtifact[], finalScreen: string[][], win: number, componentAmounts: PokieWasmFeatureSessionState["feature"]["componentAmounts"], calculator: VideoSlotWinCalculator, before?: SessionFeatureAnalyticsBeforePlay, balances?: DeclarativeTransitionBalances, stake?: number, payout?: number): VideoSlotSessionHandling {
+export function restoreDeclarativeObservation(session: VideoSlotSessionHandling, blueprint: GameBlueprint, artifacts: readonly RoundStepRecord[], finalScreen: string[][], win: number, componentAmounts: PokieWasmFeatureSessionState["feature"]["componentAmounts"], calculator: VideoSlotWinCalculator, before?: SessionFeatureAnalyticsBeforePlay, balances?: DeclarativeTransitionBalances, stake?: number, payout?: number): VideoSlotSessionHandling {
     const last = artifacts[artifacts.length - 1];
     if (!last) throw new Error("Missing retained mathematical observation.");
     const event = (type: string) => last.featureEvents?.find(event => event.type === type)?.data;
@@ -130,7 +130,7 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
         if (bounded.cascade && bounded.cascade.evaluatedSteps !== artifacts.length) throw new Error("Cascade observation contradicts its accepted mathematical steps.");
     }
     const pipelineMetadata = {aggregationPolicy: "sum-all-enabled", evaluators: ["shared-slot-math"]};
-    const evaluation = (steps: readonly RoundStepArtifact[], metadata: Record<string, unknown> = pipelineMetadata) => restoreWinEvaluation({
+    const evaluation = (steps: readonly RoundStepRecord[], metadata: Record<string, unknown> = pipelineMetadata) => restoreWinEvaluation({
         components: steps.flatMap(step => step.wins.map(win => ({type: win.type, id: win.id, symbolId: win.symbolId as string, amount: win.winAmount,
             positions: win.winningPositions.map(position => [...position]), multipliers: win.multiplierBreakdown.map(item => ({...item, positions: item.positions.map(position => [...position]), values: [...item.values]})), metadata: win.metadata}))), metadata,
     });
@@ -208,7 +208,7 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
 /** Compare the complete canonical winning set, using the execution calculator.
  * Native decorators retain authority over their special terminal/suppressed results.
  */
-function validateRetainedWins(session: VideoSlotSessionHandling, blueprint: GameBlueprint, steps: readonly RoundStepArtifact[], nativeOutcome: boolean,
+function validateRetainedWins(session: VideoSlotSessionHandling, blueprint: GameBlueprint, steps: readonly RoundStepRecord[], nativeOutcome: boolean,
     calculator: VideoSlotWinCalculator, bounded: BoundedMechanicObservation | undefined, before?: SessionFeatureAnalyticsBeforePlay): {ways: number[]; clusters: number[]} {
     const amounts = {ways: [] as number[], clusters: [] as number[]};
     for (const [index, step] of steps.entries()) {
@@ -218,7 +218,7 @@ function validateRetainedWins(session: VideoSlotSessionHandling, blueprint: Game
         let result = calculator.getWinEvaluationResult();
         if (nativeOutcome) {
             const native = session.getWinEvaluationResult();
-            const expected = buildRoundStepArtifact(step.index, {screen: step.screen, winEvaluationResult: native,
+            const expected = buildRoundStepRecord(step.index, {screen: step.screen, winEvaluationResult: native,
                 ...(step.geometry ? {geometry: step.geometry, generatedScreen: step.generatedScreen} : {})});
             if (stableSlotMathJson(step.wins) !== stableSlotMathJson(expected.wins)) throw new Error("Retained winning set contradicts its native award.");
             // Hold respins deliberately suppress ordinary math, including on completion.
@@ -233,7 +233,7 @@ function validateRetainedWins(session: VideoSlotSessionHandling, blueprint: Game
             }
             if (special.length) result = new WinEvaluationResult({winComponents: [...result.getWinComponents(), ...special]});
         }
-        const expected = buildRoundStepArtifact(step.index, {screen: step.screen, winEvaluationResult: result,
+        const expected = buildRoundStepRecord(step.index, {screen: step.screen, winEvaluationResult: result,
             ...(step.geometry ? {geometry: step.geometry, generatedScreen: step.generatedScreen} : {})});
         if (stableSlotMathJson(step.wins) !== stableSlotMathJson(expected.wins)) throw new Error("Retained winning set or component award contradicts its model, screen, denomination or multipliers.");
         amounts.ways.push(...result.getWaysWins().map(component => component.getWinningWay().getWinAmount()));

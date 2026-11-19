@@ -163,9 +163,9 @@ export class StudioReplayExecutionService {
         const record: StudioReplayJobRecord = {
             id: common?.job.id ?? this.createId(), projectRoot, status: "completed", round: 1, source: "outcome-source-sample",
             seed: replay?.seed, modeName, startedAt, completedRounds: 1, durationMs: 0,
-            game: artifact.provenance.game, abortController: new AbortController(),
+            game: artifact.origin.game, abortController: new AbortController(),
             descriptor: {
-                sessionId, game: artifact.provenance.game, seed: replay?.seed ?? null, round: 1,
+                sessionId, game: artifact.origin.game, seed: replay?.seed ?? null, round: 1,
                 totalBet: artifact.stake, totalWin: artifact.totalWin, screen: artifact.screen.map((row) => [...row]),
                 timestamp: replay?.timestamp ?? startedAt, durationMs: 0,
                 artifact: new PokieJsonRoundRecordProjector().project(artifact),
@@ -358,7 +358,7 @@ export class StudioReplayExecutionService {
             status: common?.operation === "replay" ? common.status : record.status,
             ...replayDescriptorSummary(record.status === "completed" ? record.descriptor : undefined),
             game: record.game,
-            configHash: record.configHash ?? record.descriptor?.artifact?.provenance.configHash,
+            configHash: record.configHash ?? record.descriptor?.artifact?.origin.configHash,
             source: record.source,
             round: record.round,
             seed: record.seed,
@@ -558,7 +558,7 @@ export class StudioReplayExecutionService {
                 durationMs: record.durationMs,
                 ...(record.unit ? {unit: record.unit} : {}), ...(record.entryCommands ? {commands: record.entryCommands} : {}), ...(logicalRound ? {logicalRound} : {}),
                 artifact: logicalRound && this.hasVideoSlotShape(session)
-                    ? new PokieJsonRoundRecordProjector().project(buildLogicalRoundRecord(logicalRound, buildRoundRecordFromSession(session, {roundId: logicalRound.id, stake: logicalRound.totalStake, provenance: {game: manifest, pokieVersion: this.pokieVersion, ...(record.configHash ? {configHash: record.configHash} : {})}})))
+                    ? new PokieJsonRoundRecordProjector().project(buildLogicalRoundRecord(logicalRound, buildRoundRecordFromSession(session, {roundId: logicalRound.id, stake: logicalRound.totalStake, origin: {game: manifest, pokieVersion: this.pokieVersion, ...(record.configHash ? {configHash: record.configHash} : {})}})))
                     : this.buildArtifact(session, manifest, record, finalResult, this.mergeDebugPayloads(stateAfterFinal)),
                 ...(stateBeforeFinal !== undefined ? {stateBefore: this.toPublicSessionState(stateBeforeFinal)} : {}),
                 ...(stateAfterFinal !== undefined ? {stateAfter: this.toPublicSessionState(stateAfterFinal)} : {}),
@@ -854,7 +854,7 @@ export class StudioReplayExecutionService {
             roundId: `replay:${record.seed ?? "no-seed"}:${record.round}`,
             stake: result.stake,
             betMode: result.mode,
-            provenance: {game: manifest, pokieVersion: this.pokieVersion, ...(record.configHash !== undefined ? {configHash: record.configHash} : {})},
+            origin: {game: manifest, pokieVersion: this.pokieVersion, ...(record.configHash !== undefined ? {configHash: record.configHash} : {})},
             ...(debug !== undefined ? {debug} : {}),
         });
         return new PokieJsonRoundRecordProjector().project(artifact);
@@ -1028,7 +1028,7 @@ export class StudioReplayExecutionService {
             ...this.prefixView(job),
             ...(descriptor === undefined ? {} : {
                 game: descriptor.game,
-                configHash: descriptor.artifact?.provenance.configHash,
+                configHash: descriptor.artifact?.origin.configHash,
                 descriptor,
             }),
             id: job.id,
@@ -1060,7 +1060,7 @@ function replayDescriptorSummary(descriptor: ReplayDescriptor | undefined): Pick
     if (descriptor === undefined) return {};
     return {
         game: descriptor.game,
-        configHash: descriptor.artifact?.provenance.configHash,
+        configHash: descriptor.artifact?.origin.configHash,
         totalBet: descriptor.totalBet,
         totalWin: descriptor.totalWin,
         ...(descriptor.outcomeSource === undefined ? {} : {

@@ -71,7 +71,7 @@ describe("StakeEngineExportValidator", () => {
             ...bonus.library,
             outcomes: bonus.library.outcomes.map((outcome) => ({
                 ...outcome,
-                artifact: {...outcome.artifact, provenance: {...outcome.artifact.provenance, game: {...outcome.artifact.provenance.game, id: "other-game"}}},
+                artifact: {...outcome.artifact, origin: {...outcome.artifact.origin, game: {...outcome.artifact.origin.game, id: "other-game"}}},
             })),
         };
 

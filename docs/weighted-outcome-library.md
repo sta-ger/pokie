@@ -4,7 +4,7 @@
 
 `weightedoutcome/` is the "no Monte Carlo" counterpart to [Simulation](simulation.md): instead of sampling
 rounds and estimating RTP/volatility with a confidence interval, a `WeightedOutcomeLibrary` enumerates every
-distinct possible round outcome a math model can produce — each one a canonical [`RoundArtifact`](round-artifacts.md)
+distinct possible round outcome a math model can produce — each one a canonical [`RoundRecord`](round-records.md)
 plus its exact probability weight — and `WeightedOutcomeLibraryAnalyzer` computes exact statistics directly from
 that enumeration. There's no sampling error and no confidence interval to report, because the library already
 accounts for every outcome.
@@ -12,7 +12,7 @@ accounts for every outcome.
 This is the same idea `math-modeling.md`'s "compute the exact theoretical RTP" section already uses ad hoc via
 `SymbolsCombinationsAnalyzer.getUniqueCombinationsWithWeights` — a `WeightedOutcomeLibrary` is the canonical,
 hashable, reusable form of that same "enumerate with weights" pattern, generalized to any round shape (single-step
-or multi-step) via `RoundArtifact` rather than just raw symbol combinations.
+or multi-step) via `RoundRecord` rather than just raw symbol combinations.
 
 ## Data shapes
 
@@ -20,7 +20,7 @@ or multi-step) via `RoundArtifact` rather than just raw symbol combinations.
 type WeightedOutcome<T = string> = {
     readonly id: string;
     readonly weight: number;
-    readonly artifact: RoundArtifact<T>;
+    readonly artifact: RoundRecord<T>;
 };
 
 type WeightedOutcomeLibrary<T = string> = {
@@ -35,11 +35,11 @@ library's total weight (see the analyzer below). It must be a finite number **gr
 exactly `0` is rejected the same as a negative one, not silently accepted — an outcome that can never actually be
 drawn contributes nothing to any statistic, so admitting it would only let a caller believe some outcome (a
 jackpot, say) is "in" the library's analysis when it can never be. `id` is always caller-supplied, the same way
-`RoundArtifact.roundId` is: never auto-generated, so a library rebuilt from the same source math data reproduces
+`RoundRecord.roundId` is: never auto-generated, so a library rebuilt from the same source math data reproduces
 the exact same ids, and therefore the exact same library hash.
 
 Both types are deeply readonly and deeply frozen once built — a `WeightedOutcome`'s own `artifact` isn't
-separately deep-copied, since a `RoundArtifact` is already immutable by construction (built via `buildRoundArtifact`).
+separately deep-copied, since a `RoundRecord` is already immutable by construction (built via `buildRoundRecord`).
 
 ### Library homogeneity: one library is one paid bet
 
@@ -48,9 +48,9 @@ Every outcome in a library must describe the **same** underlying, paid round: th
 `betMode`, and the same `stake` — and that `stake` must be a positive number, never `0`. A library mixes results
 for one specific bet; it isn't a place to combine spins from different games, configs, or bet sizes.
 
-In particular, **a free-games (or any other multi-step) round belongs inside the same `RoundArtifact` as the
-base-game spin that paid for it** — as additional `steps` (`RoundArtifact` already supports multi-step rounds
-natively, see [Round Artifacts](round-artifacts.md)) — not as a second, separate outcome with `stake: 0` mixed
+In particular, **a free-games (or any other multi-step) round belongs inside the same `RoundRecord` as the
+base-game spin that paid for it** — as additional `steps` (`RoundRecord` already supports multi-step rounds
+natively, see [Round Records](round-records.md)) — not as a second, separate outcome with `stake: 0` mixed
 into this library. A `WeightedOutcome` with `stake: 0` would have no way to contribute to `rtp` correctly (its
 `payoutMultiplier` would be `0` regardless of how big its free-games win was), so `buildWeightedOutcomeLibrary`
 rejects it outright.
@@ -60,9 +60,9 @@ rejects it outright.
 ```ts
 function buildWeightedOutcomeLibrary<T = string>(options: {
     libraryId: string;
-    outcomes: readonly {id: string; weight: number; artifact: RoundArtifact<T>}[];
+    outcomes: readonly {id: string; weight: number; artifact: RoundRecord<T>}[];
     schemaVersion?: number;
-    artifactValidator?: ValidationRule<RoundArtifact<T>>; // an *additional* check, never a replacement — see below
+    artifactValidator?: ValidationRule<RoundRecord<T>>; // an *additional* check, never a replacement — see below
 }): WeightedOutcomeLibrary<T>;
 ```
 
@@ -77,12 +77,12 @@ isn't JSON-safe.
 
 ### Artifact validation always runs
 
-A real `RoundArtifactValidator` always validates every outcome's artifact, whether or not `artifactValidator` is
+A real `RoundRecordValidator` always validates every outcome's artifact, whether or not `artifactValidator` is
 given — that option can only ever add *further* checks on top of it, never replace it. A permissive custom
-validator (e.g. one that always reports no issues) can therefore never let a malformed `RoundArtifact` — a
+validator (e.g. one that always reports no issues) can therefore never let a malformed `RoundRecord` — a
 mismatched screen, an inconsistent `totalWin`, ... — through: it's rejected as `weighted-outcome-artifact-invalid`
 either way. Use `artifactValidator` to layer on extra, library- or game-specific invariants beyond what
-`RoundArtifactValidator` already covers, not to loosen its own checks.
+`RoundRecordValidator` already covers, not to loosen its own checks.
 
 Outcomes are canonically sorted by `id` (plain code-point order, not locale-aware) before the library is frozen,
 so building from the exact same set of outcomes always produces the exact same library — and therefore the
@@ -115,8 +115,8 @@ class PokieJsonWeightedOutcomeLibraryProjector<T = string>
 function computeWeightedOutcomeLibraryHash<T = string>(library: WeightedOutcomeLibrary<T>): string; // "sha256:<hex>"
 ```
 
-Both share the exact same canonical serializer (`toCanonicalJson`, see [Round Artifacts](round-artifacts.md)) as
-`computeRoundArtifactHash`/`PokieJsonRoundArtifactProjector` — the same fail-fast JSON-safety guarantees apply.
+Both share the exact same canonical serializer (`toCanonicalJson`, see [Round Records](round-records.md)) as
+`computeRoundRecordHash`/`PokieJsonRoundRecordProjector` — the same fail-fast JSON-safety guarantees apply.
 
 ## Exact analysis (no Monte Carlo)
 
@@ -170,9 +170,9 @@ guarantees) and does not re-validate; validate a library from an untrusted sourc
 
 ```ts
 class WeightedOutcomeLibraryValidator<T = string> implements ValidationRule<WeightedOutcomeLibrary<T>> {
-    // extraArtifactValidator is additive — RoundArtifactValidator always runs regardless, same as
+    // extraArtifactValidator is additive — RoundRecordValidator always runs regardless, same as
     // buildWeightedOutcomeLibrary's own artifactValidator option.
-    constructor(extraArtifactValidator?: ValidationRule<RoundArtifact<T>>);
+    constructor(extraArtifactValidator?: ValidationRule<RoundRecord<T>>);
     validate(library: WeightedOutcomeLibrary<T>): ValidationIssue[];
 }
 ```
@@ -186,10 +186,10 @@ than zero, summing to a finite number greater than zero (flagging the same
 `Infinity`), that each outcome's `artifact.payoutMultiplier`/`artifact.stake` are finite (`stake` additionally
 must be `> 0`), that every outcome shares the same provenance/`betMode`/`stake` as the rest of the library (see
 "library homogeneity" above), and always delegates full validation of each outcome's own `artifact` to a real
-`RoundArtifactValidator` — so "artifact consistency" is exactly `RoundArtifactValidator`'s own definition of
+`RoundRecordValidator` — so "artifact consistency" is exactly `RoundRecordValidator`'s own definition of
 validity, not a second one — plus an overall JSON-safety check. The constructor's `extraArtifactValidator` is
 additive the same way `buildWeightedOutcomeLibrary`'s `artifactValidator` option is (see "artifact validation
-always runs" above): it can only ever report *further* issues, never suppress `RoundArtifactValidator`'s own.
+always runs" above): it can only ever report *further* issues, never suppress `RoundRecordValidator`'s own.
 
 ```ts
 const issues = new WeightedOutcomeLibraryValidator().validate(library);
@@ -260,7 +260,7 @@ its visible grid, and accumulates an exact `bigint` weight per distinct grid —
 before the expensive win-calculation step" optimization `math-modeling.md`'s own ad hoc `SymbolsCombinationsAnalyzer`
 walkthrough already uses, just streamed and bigint-safe. Only then, for each *unique* grid, does it build a real
 session via `createExactEnumerationSession`, force that grid in, call `play()` for real, and build a canonical
-`RoundArtifact` via `buildRoundArtifactFromSession` — no second calculation path anywhere. A count that would lose
+`RoundRecord` via `buildRoundRecordFromSession` — no second calculation path anywhere. A count that would lose
 precision crossing into `WeightedOutcome.weight`'s own `number` type fails fast
 (`weighted-outcome-library-generation-weight-not-representable`) instead of silently rounding. The resulting
 outcomes are handed to `buildWeightedOutcomeLibrary` unchanged, so homogeneous provenance/`betMode`/`stake`,

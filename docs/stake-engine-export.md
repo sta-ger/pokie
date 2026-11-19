@@ -100,25 +100,25 @@ alone.
 
 Stake's own math-sdk doesn't standardize an event schema beyond "a list of dictionary objects" — every game
 defines its own mechanic-specific vocabulary (anticipation, tumble-specific fields, ...). `StakeEngineRoundEventsProjector`
-therefore only maps what a `RoundArtifact` itself already models generically, implementing its own
-`StakeEngineRoundEventsProjecting<T>` interface — deliberately not the generic `RoundArtifactProjector<T, TOutput>`
-extension point `PokieJsonRoundArtifactProjector` uses (see [Round Artifacts](round-artifacts.md)), since a Stake
+therefore only maps what a `RoundRecord` itself already models generically, implementing its own
+`StakeEngineRoundEventsProjecting<T>` interface — deliberately not the generic `RoundRecordProjector<T, TOutput>`
+extension point `PokieJsonRoundRecordProjector` uses (see [Round Records](round-records.md)), since a Stake
 projection needs the mode's own `cost` to convert amounts into Stake units:
 
 ```ts
 type StakeEngineRoundProjectionContext = {readonly cost: number};
 
 interface StakeEngineRoundEventsProjecting<T = string> {
-    project(artifact: RoundArtifact<T>, context: StakeEngineRoundProjectionContext): readonly StakeEngineEvent[];
+    project(artifact: RoundRecord<T>, context: StakeEngineRoundProjectionContext): readonly StakeEngineEvent[];
 }
 ```
 
-| Round Artifact | Stake event |
+| Round Record | Stake event |
 |---|---|
-| each `RoundStepArtifact` (in order) | `{type: "reveal", board: step.screen}` |
+| each `RoundStepRecord` (in order) | `{type: "reveal", board: step.screen}` |
 | that step's own `featureEvents` (in order) | passed through as-is — spread into the event alongside their own `type` |
 | that step, if `totalWin > 0` | `{type: "win", amount}` — `amount` is `step.totalWin` converted to Stake units (`(step.totalWin / artifact.stake) * cost * 100`) |
-| any round-level-only `featureEvents` (passed directly to `buildRoundArtifact`'s own `featureEvents` option, not attached to a step) | same passthrough |
+| any round-level-only `featureEvents` (passed directly to `buildRoundRecord`'s own `featureEvents` option, not attached to a step) | same passthrough |
 | the round, always, exactly once, last | `{type: "finalWin", amount, payoutMultiplier}` — both converted to Stake units the same way (`payoutMultiplier` via `artifact.payoutMultiplier * cost * 100`); since `artifact.totalWin / artifact.stake === artifact.payoutMultiplier`, `finalWin.amount` and `finalWin.payoutMultiplier` are always exactly equal |
 
 Every event is stamped with its own `index` (its position in the final sequence) last, so it always reflects the
@@ -127,7 +127,7 @@ like the top-level `payoutMultiplier` conversion, an amount that isn't represent
 integer once converted throws — `StakeEngineExporter` treats that (or any other error a projector throws) as a
 blocking `ValidationIssue`, never a crash (see Validation below).
 
-`"reveal"`/`"win"`/`"finalWin"` are reserved structural markers in this encoding: a `RoundArtifactFeatureEvent`
+`"reveal"`/`"win"`/`"finalWin"` are reserved structural markers in this encoding: a `RoundRecordFeatureEvent`
 whose own `type` is one of those three throws rather than being exported, since it would otherwise be
 indistinguishable on import from the real structural event of the same name. Rename the feature event's `type`
 before exporting.

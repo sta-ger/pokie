@@ -11,7 +11,7 @@ This is the one canonical, on-disk source both the [pre-generated runtime](prege
 ## Why a bundle, not one JSON file
 
 A real game's outcome library can enumerate a very large number of distinct outcomes, each carrying its own
-`RoundArtifact`. Loading that as a single JSON document means holding every outcome in memory just to read one,
+`RoundRecord`. Loading that as a single JSON document means holding every outcome in memory just to read one,
 or to serve one weighted draw. This bundle format is streaming end to end, so nothing on the write or read side
 ever has to hold a whole mode's outcomes in memory at once:
 
@@ -92,7 +92,7 @@ originally computed its outcomes (e.g. outcomes simulated once, bundled repeated
 difference there as corruption would reject a perfectly valid bundle.
 
 `index_<modeName>.json` is deliberately small — every field is a number or a short string, never a full
-`RoundArtifact` — so it's always cheap to load in full, even for a library with millions of outcomes:
+`RoundRecord` — so it's always cheap to load in full, even for a library with millions of outcomes:
 
 ```ts
 type OutcomeLibraryBundleIndexEntry = {
@@ -157,7 +157,7 @@ interface OutcomeLibraryBundleReading<T extends string | number = string> {
 - `drawOutcome` picks a winning outcome by walking exact integer cumulative weights against
   `randomSource.nextInt(totalWeight)` — the same algorithm
   [`WeightedOutcomeSelector`](pregenerated-runtime.md) uses, deliberately mirrored rather than called directly
-  (that class's own type requires every outcome's full `RoundArtifact`, which is exactly what a streaming,
+  (that class's own type requires every outcome's full `RoundRecord`, which is exactly what a streaming,
   index-only weighted draw exists to avoid loading) — over the index's own entries, then loads exactly the one
   winning outcome via `readOutcomeById`. The two algorithms are deliberately kept in lockstep for the same
   inputs, so they cannot silently diverge.
@@ -286,7 +286,7 @@ versa):
 | `outcome-library-bundle-outcomes-duplicate-id` | the same id appears twice in the outcomes file |
 | `outcome-library-bundle-outcomes-extra-id` / `-missing-id` | an id is in the outcomes file but not the index, or in the index but not the outcomes file — matched **by id**, never by row position |
 | `outcome-library-bundle-outcomes-weight-mismatch` | the same id's weight disagrees between the outcomes file and the index |
-| `outcome-library-bundle-outcomes-artifact-invalid` | an outcome's artifact fails `RoundArtifactValidator` — never a second definition of "valid" |
+| `outcome-library-bundle-outcomes-artifact-invalid` | an outcome's artifact fails `RoundRecordValidator` — never a second definition of "valid" |
 | `outcome-library-bundle-outcomes-inconsistent-provenance` / `-inconsistent-bet-mode` / `-inconsistent-stake` | an outcome's game/config/pokieVersion, `betMode`, or `stake` disagrees with this mode's other outcomes |
 | `outcome-library-bundle-outcomes-manifest-provenance-mismatch` | this mode's outcomes' own (mutually-consistent) game id/version/configHash/pokieVersion doesn't match `manifest.json`'s own top-level `game`/`configHash`/`artifactPokieVersion` — a gap the cross-*outcome* check above can't catch on its own, since it never reads the manifest. Deliberately never compares against `manifest.pokieVersion` (which pokie *tool* version built this bundle file, a different, unrelated quantity from `artifactPokieVersion`) |
 | `outcome-library-bundle-outcomes-manifest-mode-mismatch` | this mode's outcomes' own betMode/stake doesn't match `manifest.json`'s own per-mode `betMode`/`stake` entry |

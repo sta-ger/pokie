@@ -11,7 +11,7 @@ guessed.
 
 ## Lossy vs. lossless — read this before anything else
 
-Stake's own `index.json`/CSV/books never store `RoundArtifact.roundId`, the real per-round win breakdown
+Stake's own `index.json`/CSV/books never store `RoundRecord.roundId`, the real per-round win breakdown
 (individual line/cluster wins, positions, multiplier breakdowns), or `provenance.pokieVersion` (the `pokie`
 version that *built* the original artifact, as opposed to the manifest's own `pokieVersion`, the version that
 *ran the export*) — these three are genuinely unrecoverable, by design of the Stake format itself, not a gap in
@@ -92,7 +92,7 @@ instead of storing the value — losing the key entirely. A null-prototype objec
 intercept the assignment, so every key, including `"__proto__"`, becomes a real own data property.
 
 `"reveal"`/`"win"`/`"finalWin"` are reserved structural markers in this encoding — `StakeEngineRoundEventsProjector`
-now rejects, at export time, any `RoundArtifactFeatureEvent` whose own `type` is one of those three (rename the
+now rejects, at export time, any `RoundRecordFeatureEvent` whose own `type` is one of those three (rename the
 feature event before exporting). This closes what used to be a real ambiguity: it can no longer occur for anything
 this package itself exports. One disclosed, pre-existing limitation remains, and isn't fixable by the importer:
 
@@ -104,7 +104,7 @@ this package itself exports. One disclosed, pre-existing limitation remains, and
 
 ## Reconstructing `wins`: one synthetic component per step
 
-`RoundArtifactValidator`/`buildRoundStepArtifact` both require `totalWin` to exactly equal the sum of
+`RoundRecordValidator`/`buildRoundStepRecord` both require `totalWin` to exactly equal the sum of
 `wins[].winAmount` — there is no way to build a valid step with `totalWin > 0` and empty `wins`. Since the real
 win breakdown is gone, the importer builds exactly one placeholder `WinComponent` per step with a nonzero
 `totalWin`, carrying just the recovered amount:
@@ -116,7 +116,7 @@ export const STAKE_ENGINE_IMPORT_SYNTHETIC_METADATA_KEY = "stakeEngineImportSynt
 Its `winningPositions` is deliberately empty (never invented positions that were never real) and its `metadata`
 always carries `{stakeEngineImportSynthetic: true}` — the documented way to tell a reconstructed win apart from
 a real one downstream. This is the one place the importer knowingly fabricates structure (not data) to satisfy
-`RoundArtifact`'s own invariants; it's never mistaken for a real win breakdown.
+`RoundRecord`'s own invariants; it's never mistaken for a real win breakdown.
 
 ## Path safety — closed against traversal
 
@@ -216,7 +216,7 @@ Two layers, mirroring the exporter's own "validate everything before building" d
 | `stakeengine-import-total-win-mismatch` | the reconstructed steps' own `totalWin` sum disagrees with the round's own reconstructed `totalWin` |
 | `stakeengine-import-book-line-payout-multiplier-mismatch` | a book line's own top-level `payoutMultiplier` disagrees with its own events' `finalWin.payoutMultiplier` |
 | `stakeengine-import-outcome-events-invalid` | the events importer (standard or custom) threw for any other reason |
-| `stakeengine-import-outcome-artifact-invalid` / `stakeengine-import-library-invalid` | the reconstructed data failed `buildRoundArtifact`/`buildWeightedOutcomeLibrary`'s own checks |
+| `stakeengine-import-outcome-artifact-invalid` / `stakeengine-import-library-invalid` | the reconstructed data failed `buildRoundRecord`/`buildWeightedOutcomeLibrary`'s own checks |
 | `stakeengine-import-library-hash-differs-from-manifest` | **info**, always present on a successful mode — see "Lossy vs. lossless" above |
 
 `StakeEngineImporter.importFromDirectory` runs the structural checks first; on any error, nothing is reconstructed

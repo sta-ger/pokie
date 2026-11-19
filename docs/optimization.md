@@ -199,7 +199,7 @@ Terminal evidence is shown alongside diagnostics, job errors, recovery guidance 
 connection/cancellation failures.
 
 Exact evaluation lets Studio answer status, reattachment and cancellation requests
-between batches of round artifacts, including while a single candidate is being
+between batches of round records, including while a single candidate is being
 measured. Cancellation waits for the current synchronous round and owned cleanup;
 it does not publish the unfinished candidate. Reattachment observes the same job
 and does not start another optimization.

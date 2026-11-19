@@ -31,12 +31,12 @@ type ModeProvenanceKey = {
     readonly pokieVersion: string;
 };
 
-function provenanceKeyOf(firstOutcome: {readonly artifact: {readonly provenance: {readonly game: {readonly id: string; readonly version: string}; readonly configHash?: string; readonly pokieVersion: string}}}): ModeProvenanceKey {
+function provenanceKeyOf(firstOutcome: {readonly artifact: {readonly origin: {readonly game: {readonly id: string; readonly version: string}; readonly configHash?: string; readonly pokieVersion: string}}}): ModeProvenanceKey {
     return {
-        gameId: firstOutcome.artifact.provenance.game.id,
-        gameVersion: firstOutcome.artifact.provenance.game.version,
-        configHash: firstOutcome.artifact.provenance.configHash,
-        pokieVersion: firstOutcome.artifact.provenance.pokieVersion,
+        gameId: firstOutcome.artifact.origin.game.id,
+        gameVersion: firstOutcome.artifact.origin.game.version,
+        configHash: firstOutcome.artifact.origin.configHash,
+        pokieVersion: firstOutcome.artifact.origin.pokieVersion,
     };
 }
 
@@ -166,8 +166,8 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                 const current = provenanceKeyOf(result.built.firstOutcome as never);
                 if (firstMode === undefined) {
                     firstMode = {provenanceKey: current, firstOutcome: result.built.firstOutcome};
-                    gameManifest = (result.built.firstOutcome as {artifact: {provenance: {game: OutcomeLibraryBundleManifest["game"]}}}).artifact.provenance.game;
-                    configHash = (result.built.firstOutcome as {artifact: {provenance: {configHash?: string}}}).artifact.provenance.configHash;
+                    gameManifest = (result.built.firstOutcome as {artifact: {origin: {game: OutcomeLibraryBundleManifest["game"]}}}).artifact.origin.game;
+                    configHash = (result.built.firstOutcome as {artifact: {origin: {configHash?: string}}}).artifact.origin.configHash;
                     artifactPokieVersion = current.pokieVersion;
                 } else if (
                     current.gameId !== firstMode.provenanceKey.gameId ||

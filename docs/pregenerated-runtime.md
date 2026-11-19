@@ -3,7 +3,7 @@
 # Pre-Generated Runtime
 
 `pregenerated/` is the runtime counterpart to [Weighted Outcome Library](weighted-outcome-library.md): instead of
-running a game's own calculation path, it draws one already-computed [`RoundArtifact`](round-artifacts.md) from a
+running a game's own calculation path, it draws one already-computed [`RoundRecord`](round-records.md) from a
 `WeightedOutcomeLibrary`, proportional to each outcome's weight, and materializes it into a served round —
 stamped with which library/outcome produced it and the runtime-only facts (round/session/request ids, wallet
 balances, transactions) that only exist because a real round was played. This is the first vertical slice built
@@ -115,7 +115,7 @@ source — can throw the same error for its own reasons and get identical treatm
 
 `PreGeneratedOutcomeSelectionValidator` checks a drawn selection's own structural well-formedness: non-empty
 `libraryId`/`outcome.id`, a valid-format `libraryHash`, positive-safe-integer `weight`/`totalWeight`, `weight <=
-totalWeight`, and an `outcome.artifact` that passes `RoundArtifactValidator`. It runs in two places, deliberately:
+totalWeight`, and an `outcome.artifact` that passes `RoundRecordValidator`. It runs in two places, deliberately:
 immediately after every draw in `PreGeneratedSpinCommandHandler` (see below), and again inside
 `buildPreGeneratedRoundResult` as a defensive backstop for any other caller of that function. A hand-crafted or
 forged `PreGeneratedOutcomeSourcing` implementation is just as capable of returning a structurally invalid
@@ -146,7 +146,7 @@ type PreGeneratedRoundResult<T = string> = {
     schemaVersion: number;
     selection: PreGeneratedRoundSelectionProvenance;
     runtime: PreGeneratedRoundRuntimeContext;
-    artifact: RoundArtifact<T>; // the library's own artifact reference, never copied or mutated
+    artifact: RoundRecord<T>; // the library's own artifact reference, never copied or mutated
 };
 ```
 
@@ -166,7 +166,7 @@ without a full library there's no array to check against — but that guarantee 
 source's own `drawOutcome()`, which always produces a genuine, already-verified outcome.
 
 `PreGeneratedRoundResultValidator` checks the same invariants defensively, over an already-built (or
-untrusted/round-tripped) result, delegating `artifact`'s own validity to a real `RoundArtifactValidator` — never
+untrusted/round-tripped) result, delegating `artifact`'s own validity to a real `RoundRecordValidator` — never
 throws, same convention as `WeightedOutcomeLibraryValidator`. It requires `selection.weight`/`selection.totalWeight`
 to be positive safe integers too (not just finite numbers > 0), and additionally cross-checks fields no
 single-field check can catch on its own: `selection.probability === selection.weight / selection.totalWeight`
@@ -276,7 +276,7 @@ so there's nothing to compensate:
   records tampered in place, between the index being read and the winning record's own byte range being read).
 - **Invalid selection**: the drawn selection failed `PreGeneratedOutcomeSelectionValidator` — a forged or buggy
   custom `PreGeneratedOutcomeSourcing` implementation returned something structurally untrustworthy (an empty
-  `libraryId`, a weight exceeding `totalWeight`, an artifact that fails `RoundArtifactValidator`, ...).
+  `libraryId`, a weight exceeding `totalWeight`, an artifact that fails `RoundRecordValidator`, ...).
 - **Library mismatch**: the loaded session's own `libraryId`/`libraryHash` (stamped at creation) doesn't match the
   identity the handler's outcome source reports for the round it just atomically drew — e.g. a session from
   before a redeploy that swapped the library/bundle, or a same-id library/bundle regenerated with different

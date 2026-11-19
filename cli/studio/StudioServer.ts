@@ -3216,7 +3216,7 @@ export class StudioServer implements StudioServerHandling {
                 const {selection} = result;
                 const artifact = selection.outcome.artifact;
                 replay = {
-                    game: artifact.provenance.game,
+                    game: artifact.origin.game,
                     libraryId: selection.libraryId,
                     libraryHash: selection.libraryHash,
                     modeName: validated.modeName,
@@ -3259,7 +3259,7 @@ export class StudioServer implements StudioServerHandling {
     ): void {
         const view: StudioRuntimeSessionView = {
             sessionId: sessionId ?? crypto.randomUUID(),
-            game: artifact.provenance.game,
+            game: artifact.origin.game,
             bet: artifact.stake,
             win: artifact.totalWin,
             screen: artifact.screen.map((row) => [...row]),

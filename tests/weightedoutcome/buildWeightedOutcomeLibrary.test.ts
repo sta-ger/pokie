@@ -181,7 +181,7 @@ describe("buildWeightedOutcomeLibrary", () => {
             const b = artifactWith({
                 roundId: "r2",
                 totalWin: 0,
-                provenance: {...testProvenance, game: {...testProvenance.game, id: "other-game"}},
+                origin: {...testProvenance, game: {...testProvenance.game, id: "other-game"}},
             });
             expect(
                 getCode(() =>
@@ -201,7 +201,7 @@ describe("buildWeightedOutcomeLibrary", () => {
             const b = artifactWith({
                 roundId: "r2",
                 totalWin: 0,
-                provenance: {...testProvenance, game: {...testProvenance.game, version: "9.9.9"}},
+                origin: {...testProvenance, game: {...testProvenance.game, version: "9.9.9"}},
             });
             expect(
                 getCode(() =>
@@ -217,8 +217,8 @@ describe("buildWeightedOutcomeLibrary", () => {
         });
 
         it("throws when outcomes have different provenance.configHash", () => {
-            const a = artifactWith({roundId: "r1", totalWin: 0, provenance: {...testProvenance, configHash: "hash-a"}});
-            const b = artifactWith({roundId: "r2", totalWin: 0, provenance: {...testProvenance, configHash: "hash-b"}});
+            const a = artifactWith({roundId: "r1", totalWin: 0, origin: {...testProvenance, configHash: "hash-a"}});
+            const b = artifactWith({roundId: "r2", totalWin: 0, origin: {...testProvenance, configHash: "hash-b"}});
             expect(
                 getCode(() =>
                     buildWeightedOutcomeLibrary({
@@ -234,7 +234,7 @@ describe("buildWeightedOutcomeLibrary", () => {
 
         it("throws when outcomes have different provenance.pokieVersion", () => {
             const a = artifactWithTotalWin("r1", 0);
-            const b = artifactWith({roundId: "r2", totalWin: 0, provenance: {...testProvenance, pokieVersion: "9.9.9"}});
+            const b = artifactWith({roundId: "r2", totalWin: 0, origin: {...testProvenance, pokieVersion: "9.9.9"}});
             expect(
                 getCode(() =>
                     buildWeightedOutcomeLibrary({

@@ -9,11 +9,11 @@ import type {WonFreeGamesNumberDetermining} from "../session/WonFreeGamesNumberD
 import {buildRoundRecord} from "./buildRoundRecord.js";
 import type {RoundRecord} from "./RoundRecord.js";
 import type {RoundRecordFeatureEventInput} from "./RoundRecordFeatureEvent.js";
-import type {RoundRecordProvenance} from "./RoundRecordProvenance.js";
+import type {RoundRecordOrigin} from "./RoundRecordOrigin.js";
 
 export type RoundRecordFromSessionOptions = {
     roundId: string;
-    provenance: RoundRecordProvenance;
+    origin: RoundRecordOrigin;
     betMode?: string;
     stake?: number;
     debug?: Record<string, unknown>;
@@ -49,7 +49,7 @@ export function buildRoundRecordFromSession<T extends string | number = string>(
     if (sources?.length && featureEvents.length) sources[sources.length - 1] = {...sources[sources.length - 1], featureEvents};
     const artifact = buildRoundRecord({
         roundId: options.roundId,
-        provenance: options.provenance,
+        origin: options.origin,
         betMode: options.betMode,
         stake,
         debug: options.debug,

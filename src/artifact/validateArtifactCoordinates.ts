@@ -1,9 +1,9 @@
 import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
-import type {RoundStepArtifact} from "./RoundStepArtifact.js";
+import type {RoundStepRecord} from "./RoundStepRecord.js";
 import {projectVisiblePayline} from "../session/videoslot/coordinates/projectVisibleWinData.js";
 
 /** Required canonical evidence, independent of debug capture policy. */
-export function validateArtifactCoordinates<T extends string | number>(step: Pick<RoundStepArtifact<T>, "screen" | "wins" | "geometry" | "generatedScreen">): void {
+export function validateArtifactCoordinates<T extends string | number>(step: Pick<RoundStepRecord<T>, "screen" | "wins" | "geometry" | "generatedScreen">): void {
     if (step.geometry === undefined) {
         if (step.generatedScreen !== undefined) throw new Error("Generated screen requires coordinate geometry.");
     }

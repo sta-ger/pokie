@@ -2,9 +2,9 @@ import type {ReelSequenceSelection} from "../session/videoslot/combinations/Weig
 import type {ScreenGeometry} from "../session/videoslot/coordinates/ScreenGeometry.js";
 import type {JsonObject} from "../json/JsonValue.js";
 import type {RoundRecordFeatureEvent} from "./RoundRecordFeatureEvent.js";
-import type {RoundRecordProvenance} from "./RoundRecordProvenance.js";
+import type {RoundRecordOrigin} from "./RoundRecordOrigin.js";
 import type {RoundRecordWin} from "./RoundRecordWin.js";
-import type {RoundStepArtifact} from "./RoundStepArtifact.js";
+import type {RoundStepRecord} from "./RoundStepRecord.js";
 
 // Tracks this type's own shape (not the pokie package version) — bump when RoundRecord's fields change,
 // same convention as GAME_BLUEPRINT_SCHEMA_VERSION.
@@ -16,7 +16,7 @@ export const ROUND_RECORD_SCHEMA_VERSION = 1;
 // win-calculation path.
 //
 // Deeply readonly, and deeply frozen at build time (see buildRoundRecord): every nested array/object here —
-// screen, steps, wins, positions, multiplier breakdowns, feature events, provenance, metadata/debug — is a copy
+// screen, steps, wins, positions, multiplier breakdowns, feature events, origin, metadata/debug — is a copy
 // isolated from whatever the caller originally passed in, and mutating it afterward throws (this is a plain JS
 // object under strict mode, so Object.freeze is enforced at runtime, not just at the type level).
 //
@@ -28,7 +28,7 @@ export const ROUND_RECORD_SCHEMA_VERSION = 1;
 export type RoundRecord<T extends string | number = string> = {
     readonly schemaVersion: number;
     readonly roundId: string;
-    readonly provenance: RoundRecordProvenance;
+    readonly origin: RoundRecordOrigin;
     readonly betMode: string;
     readonly stake: number;
     readonly totalWin: number;
@@ -37,7 +37,7 @@ export type RoundRecord<T extends string | number = string> = {
     readonly generatedScreen?: readonly (readonly T[])[];
     readonly sequenceSelections?: readonly ReelSequenceSelection[];
     readonly screen: readonly (readonly T[])[];
-    readonly steps: readonly RoundStepArtifact<T>[];
+    readonly steps: readonly RoundStepRecord<T>[];
     readonly wins: readonly RoundRecordWin<T>[];
     readonly featureEvents?: readonly RoundRecordFeatureEvent[];
     readonly debug?: JsonObject;

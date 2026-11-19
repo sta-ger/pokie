@@ -68,7 +68,7 @@ export type PokieDevServerOptions = {
     // `roundRecord` — see PokieSessionState's own doc comment.
     sessionCapturePolicyMode?: SessionCaptureMode;
     // Only ever read when sessionCapturePolicyMode is "full", to stamp a built RoundRecord's own
-    // provenance.pokieVersion (see RoundRecordProvenance). Defaults to "unknown" — the same fallback
+    // provenance.pokieVersion (see RoundRecordOrigin). Defaults to "unknown" — the same fallback
     // StudioReplayExecutionService already uses when it isn't given a real one either.
     pokieVersion?: string;
     // Additive, opt-in-only pre-generated round support (see PokieDevServer's own doc comment,
