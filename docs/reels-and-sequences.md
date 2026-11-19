@@ -419,7 +419,7 @@ The workbook uses `ReelSequences` instead of `ReelStrips` for this source. Colum
 `Reel`, `Variant` and `Position` are contiguous one-based indices; `Type`, `ID`,
 `Weight`, `Symbol` and `Length` preserve complete definitions and ordering. Exact
 members have a single array with blank ID/weight. Weights are decimal **text cells**,
-so ExcelJS serialization preserves fractional, subnormal and extreme finite binary64
+so XLSX serialization preserves fractional, subnormal and extreme finite binary64
 values. IDs and symbols are text too (including numeric-looking IDs).
 
 `Context` is `logical-round-v1`; `Sampling` is `binary64-integer-ratios-v1`.

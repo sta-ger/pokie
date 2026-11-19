@@ -1,6 +1,6 @@
 import {ReelSequencesSheetMapper} from "./mapping/ReelSequencesSheetMapper.js";
 import type {ReelSequencesSheetMapping} from "./mapping/ReelSequencesSheetMapping.js";
-import type ExcelJS from "exceljs";
+import type ExcelJS from "@xlvane/exceljs";
 import {GAME_BLUEPRINT_SCHEMA_VERSION, type GameBlueprint} from "../generated/GameBlueprint.js";
 import type {GameBlueprintValidating} from "../generated/GameBlueprintValidating.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
@@ -70,7 +70,7 @@ export class ParSheetImporter implements ParSheetImporting {
         provenanceMapper: ProvenanceSheetMapping = new ProvenanceSheetMapper(),
         validator: GameBlueprintValidating = new GameBlueprintValidator(),
         readWorkbook: (filePath: string) => Promise<ExcelJS.Workbook> = async (filePath) => {
-            const ExcelJS = (await import("exceljs")).default;
+            const ExcelJS = (await import("@xlvane/exceljs")).default;
             const workbook = new ExcelJS.Workbook();
             await workbook.xlsx.readFile(filePath);
             return workbook;
@@ -252,7 +252,7 @@ export class ParSheetImporter implements ParSheetImporting {
         return {blueprint, provenance, issues, conversionEvidence: {metaSheet, facts, losslessEligible, importedBlueprintHash, provenanceHashMatches}};
     }
 
-    // Wraps whatever readWorkbook throws (ExcelJS's own raw errors -- e.g. "Can't find end of central
+    // Wraps whatever readWorkbook throws (the XLSX reader's raw errors -- e.g. "Can't find end of central
     // directory: is this a zip file?" for a non-.xlsx/corrupt file, complete with a jszip documentation
     // URL that has nothing to do with POKIE) in the same "Could not read/parse ..." convention every
     // other file-loading entry point in this codebase already uses (see loadGameBlueprint,
@@ -436,7 +436,7 @@ function isFormulaCellValue(value: ExcelJS.CellValue): value is ExcelJS.CellForm
     return typeof value === "object" && value !== null && ("formula" in value || "sharedFormula" in value);
 }
 
-// Reduces exceljs's own CellValue union (formulas, rich text, hyperlinks, errors, dates, ...) down to
+// Reduces @xlvane/exceljs's own CellValue union (formulas, rich text, hyperlinks, errors, dates, ...) down to
 // the plain string/number/boolean/undefined shape every mapping/*.ts file works with — a formula cell
 // reads back as its last computed result, rich text as its plain concatenated text, a hyperlink cell
 // as its display text, and an error cell as blank (there is no sensible plain value for "#N/A").
@@ -472,7 +472,7 @@ function rawSheetToGrid(worksheet: ExcelJS.Worksheet): readonly (readonly unknow
         const cells: unknown[] = [];
         row.eachCell({includeEmpty: true}, (cell) => {
             const value = cell.value;
-            // ExcelJS values are plain data, but clone them so callers cannot
+            // Workbook values are plain data, but clone them so callers cannot
             // observe a later workbook mutation through this import result.
             cells.push(value !== null && typeof value === "object" ? JSON.parse(JSON.stringify(value)) : value);
         });

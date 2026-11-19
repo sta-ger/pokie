@@ -1,5 +1,5 @@
 import {authoritativePaytableBlueprint, type AuthoredAwardCase} from "../fixtures/math/AuthoritativePaytableFixture.js";
-import ExcelJS from "exceljs";
+import ExcelJS from "@xlvane/exceljs";
 import fs from "fs";
 import os from "os";
 import path from "path";

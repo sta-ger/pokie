@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
-import ExcelJS from "exceljs";
+import ExcelJS from "@xlvane/exceljs";
 import * as api from "@fromstan/pokie";
 
 export function existingMechanicsBlueprint(row: typeof api.AUTHORED_MECHANIC_CATALOG[number]): api.GameBlueprint {

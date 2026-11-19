@@ -111,7 +111,9 @@ it("preserves the installed host closure for unchanged external games", async ()
         };
         for (const name of Object.keys(manifest.dependencies)) {
             const dependency = await stageDependency(fs.realpathSync(path.resolve("node_modules", name)));
-            fs.symlinkSync(dependency, path.join(installation, "node_modules", name), "dir");
+            const target = path.join(installation, "node_modules", name);
+            fs.mkdirSync(path.dirname(target), {recursive: true});
+            fs.symlinkSync(dependency, target, "dir");
         }
         const behavior = path.join(installation, "node_modules", "host-behavior");
         const leaf = path.join(behavior, "node_modules", "host-leaf");
@@ -126,9 +128,9 @@ const require = createRequire(import.meta.url);
 export * from './gamepackage/loadPokieGame.js';
 export * from './gamepackage/resolvePokieGameEntryModule.js';
 export * from './optimization/internal/optimizationData.js';
-const {Workbook} = require('exceljs'), {Command} = require('commander'), behavior = require('host-behavior');
+const {Workbook} = require('@xlvane/exceljs'), {Command} = require('commander'), behavior = require('host-behavior');
 export const hostProbe = () => [typeof new Workbook().addWorksheet, typeof new Command().parse, behavior];
-export const hostPaths = () => [fileURLToPath(import.meta.url), require.resolve('exceljs'), require.resolve('commander'), require.resolve('host-behavior')];`);
+export const hostPaths = () => [fileURLToPath(import.meta.url), require.resolve('@xlvane/exceljs'), require.resolve('commander'), require.resolve('host-behavior')];`);
         fs.mkdirSync(game);
         fs.writeFileSync(path.join(game, "package.json"), JSON.stringify({name: "unchanged-game", pokie: {entry: "game.cjs"}}));
         fs.writeFileSync(path.join(game, "game.cjs"), `const runtime = require('@fromstan/pokie');

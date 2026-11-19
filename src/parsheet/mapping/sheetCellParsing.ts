@@ -1,7 +1,7 @@
 import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 
 // Plain-value helpers shared by every sheet mapper — pure functions operating on already-flattened
-// SheetGrid cells (see SheetGrid.ts), not exceljs types. Mirrors loadGameBlueprint.ts/
+// SheetGrid cells (see SheetGrid.ts), not @xlvane/exceljs types. Mirrors loadGameBlueprint.ts/
 // buildGameBuildInfo.ts's style of small standalone functions rather than a class, since there's no
 // swappable behavior here to hide behind an interface.
 

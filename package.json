@@ -129,7 +129,7 @@
     ],
     "dependencies": {
         "commander": "^14.0.3",
-        "exceljs": "npm:@xlvane/exceljs@1.3.4"
+        "@xlvane/exceljs": "^1.3.4"
     },
     "overrides": {
         "jest-environment-jsdom": {

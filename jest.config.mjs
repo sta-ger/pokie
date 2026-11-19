@@ -34,7 +34,7 @@ const sourceTestTransform = {
 };
 
 const exceljsModuleNameMapper = {
-    "^exceljs$": "<rootDir>/tests/testUtils/exceljsNative.cjs",
+    "^@xlvane/exceljs$": "<rootDir>/tests/testUtils/xlvaneExceljsNative.cjs",
 };
 
 const sourceTestModuleNameMapper = {

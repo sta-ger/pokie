@@ -12,7 +12,7 @@ export const REPO_ROOT = path.join(__dirname, "..", "..");
 // (a hand-editable scaffold) and BlueprintProjectMaterializer.integration.test.ts (a blueprint-generated
 // package). Real `npm install` calls are slow and, without this override, would also reach the public
 // registry for "pokie" itself, "typescript", and every one of this checkout's own transitive dependencies
-// (e.g. "exceljs" alone pulls in dozens of packages like "archiver" and "@fast-csv/format") -- exactly the
+// (including nested dependencies of packages such as "@xlvane/exceljs") -- exactly the
 // kind of fetch a network-restricted CI sandbox can't complete. Redirecting all of them to this checkout's own
 // already-installed copies via `file:` (direct deps) and `overrides` (the full transitive closure, which a
 // scaffolded/generated package never declares directly) means "npm install" here never needs the registry at

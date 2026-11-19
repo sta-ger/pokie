@@ -1,4 +1,4 @@
-/** ExcelJS creates ordinary ZIP containers with wall-clock entry timestamps.
+/** The XLSX writer creates ordinary ZIP containers with wall-clock entry timestamps.
  * Normalize only those header timestamps so a reviewed workbook candidate can
  * be reproduced in another CLI process. XML content and CRCs stay untouched.
  */

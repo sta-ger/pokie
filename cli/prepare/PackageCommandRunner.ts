@@ -295,7 +295,7 @@ function restorePersistedPackageLock(cwd: string, originalPackageJson: PackageJs
 // installs in production; GamePackagePreparer's own real create -> install -> build lifecycle in its own
 // integration tests, via tests/testUtils/offlinePokieDependencyOverride.ts's localPokieDependencyRunner)
 // so it never has to ask a registry for this exact running POKIE installation, published or not, nor for
-// any of its own dependencies (e.g. "exceljs" alone pulls in dozens of packages of its own). Deliberately
+// any of its own dependencies. Deliberately
 // never touches devDependencies-vs-dependencies install semantics itself (e.g. no "--omit=dev") -- a
 // caller that needs that (BlueprintProjectMaterializer's own dependency phase never needs devDependencies
 // at all, since its staged dist/index.js is already generated -- see its own doc comment) decides that

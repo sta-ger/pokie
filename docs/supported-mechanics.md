@@ -46,7 +46,7 @@ boundaries.
 This does not widen incompatible compositions, custom code/services, PAR geometry, or paid-grid
 outcome-library/Stake targets. See [the current WASM boundary](wasm-compatibility-boundary.md).
 
-PAR fidelity coverage reopens actual ExcelJS workbooks for every existing mechanic, bounded
+PAR fidelity coverage reopens actual XLSX workbooks for every existing mechanic, bounded
 progression composition, modifier and weighted bonus in the authored catalogues, using exact/weighted
 reel sequences and fractional bets. Represented hashes, Game Model projection and seeded
 runtime/restoration are checked together. Empty optional arrays canonicalize to absence; empty

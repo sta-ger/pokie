@@ -52,8 +52,8 @@ function resolvePackageRoot(
 // depend on state that doesn't exist for a real installation) -- resolved via Node's own
 // require.resolve, the same algorithm Node itself uses when a materialized runtime's
 // "require(\"pokie\")" later loads this exact tree. This is what lets withLocalPokieInstall rewrite
-// every one of "pokie"'s own transitive dependencies (e.g. "exceljs" pulling in dozens of packages of
-// its own) to this exact running installation's already-resolved copies, so a staged runtime's own
+// every one of "pokie"'s own transitive dependencies to this exact running installation's
+// already-resolved copies, so a staged runtime's own
 // "npm install" never needs a registry for any of them, not just "pokie" itself.
 //
 // A `pokiePackageRoot` whose own package.json can't be read (a nonexistent path, most commonly a test

@@ -5,7 +5,7 @@ const {createRequire} = require("node:module");
 const path = require("node:path");
 
 const exceljs = createRequire(__filename)(
-    path.join(__dirname, "..", "..", "node_modules", "exceljs", "dist", "index.js"),
+    path.join(__dirname, "..", "..", "node_modules", "@xlvane", "exceljs", "dist", "index.js"),
 );
 
 module.exports = {__esModule: true, default: exceljs, ...exceljs};

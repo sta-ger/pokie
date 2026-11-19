@@ -468,7 +468,7 @@ export async function acquireOptimizationAdapter(
             }
             if (project.type === "parWorkbook") {
                 // Edit only the declared paytable cells; preserve all other workbook parts/declarations.
-                const ExcelJS = (await import("exceljs")).default;
+                const ExcelJS = (await import("@xlvane/exceljs")).default;
                 const workbook = new ExcelJS.Workbook();
                 await workbook.xlsx.readFile(project.rootPath);
                 const sheet = workbook.getWorksheet("Paytable")!;

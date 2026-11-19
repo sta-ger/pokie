@@ -1,5 +1,5 @@
 import {spawn, spawnSync} from "child_process";
-import ExcelJS from "exceljs";
+import ExcelJS from "@xlvane/exceljs";
 import fs from "fs";
 import os from "os";
 import path from "path";

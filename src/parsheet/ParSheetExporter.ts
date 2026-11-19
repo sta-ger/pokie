@@ -4,7 +4,7 @@ import {parSheetConversionReport, parseParSheetConversionReport, type ParSheetCo
 import fs from "fs";
 import {ReelSequencesSheetMapper} from "./mapping/ReelSequencesSheetMapper.js";
 import type {ReelSequencesSheetMapping} from "./mapping/ReelSequencesSheetMapping.js";
-import type ExcelJS from "exceljs";
+import type ExcelJS from "@xlvane/exceljs";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import type {GameBlueprintValidating} from "../generated/GameBlueprintValidating.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
@@ -224,7 +224,7 @@ export class ParSheetExporter implements ParSheetExporting {
         if (issues.some(issue => issue.severity === "error")) return issues;
         const priorLossless = report.losslessEligible;
 
-        const ExcelJS = (await import("exceljs")).default;
+        const ExcelJS = (await import("@xlvane/exceljs")).default;
         const workbook = new ExcelJS.Workbook();
         addSheet(
             workbook,

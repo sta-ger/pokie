@@ -1,5 +1,5 @@
 import {PokieProject, ProjectResolving, ProjectTargetMalformedError, ProjectTargetUnsupportedError, resolvePokieGameDependencyRoots} from "@fromstan/pokie";
-import ExcelJS from "exceljs";
+import ExcelJS from "@xlvane/exceljs";
 import fs from "fs";
 import os from "os";
 import path from "path";
