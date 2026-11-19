@@ -1,5 +1,4 @@
 import js from "@eslint/js";
-import {fixupPluginRules} from "@eslint/compat";
 import tsParser from "@typescript-eslint/parser";
 import tsPlugin from "@typescript-eslint/eslint-plugin";
 import eslintComments from "@eslint-community/eslint-plugin-eslint-comments";
@@ -9,10 +8,6 @@ import globals from "globals";
 
 // Preserve the existing rule policy while using ESLint's native flat configuration.
 const baseRules = {
-    // Keep the pre-migration policy; ESLint 10 newly enables these recommended rules.
-    "no-unassigned-vars": "off",
-    "no-useless-assignment": "off",
-    "preserve-caught-error": "off",
     // typescript-eslint v8 folded no-var-requires (disabled here since v5) into
     // no-require-imports; keeping it off preserves the runtime require() used to load a
     // generated CommonJS package inside tests.
@@ -324,8 +319,7 @@ export default [
         plugins: {
             "@typescript-eslint": tsPlugin,
             "@eslint-community/eslint-comments": eslintComments,
-            // React 7 still uses rule context methods removed in ESLint 10.
-            react: fixupPluginRules(react),
+            react,
             "react-hooks": reactHooks,
         },
         settings: {react: {version: "19.2"}},
