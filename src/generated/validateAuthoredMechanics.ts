@@ -4,7 +4,8 @@ import type {ScreenGeometry} from "../session/videoslot/coordinates/ScreenGeomet
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 
 /** Shared by validation and direct rendering: unknown authored fields never disappear. */
-export function validateAuthoredMechanics(blueprint: Record<string, unknown>): ValidationIssue[] {
+export function validateAuthoredMechanics(input: object): ValidationIssue[] {
+    const blueprint = input as Record<string, unknown>;
     const issues: ValidationIssue[] = [];
     const error = (path: string, message: string, code = "blueprint-mechanics-invalid"): void => {
         issues.push({code, severity: "error", path, message: `${path}: ${message}`});

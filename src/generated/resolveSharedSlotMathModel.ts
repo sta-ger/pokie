@@ -4,7 +4,7 @@ import type {GameBlueprint} from "./GameBlueprint.js";
 import {lowerSharedSlotMath, SHARED_SLOT_DEFAULT_BETS, type SharedSlotMathModel} from "../wasm/math/SharedSlotMath.js";
 /** Structural lowering only: Node's evaluation pipeline owns validation and its explicit opt-out. */
 export function resolveSharedSlotMathModel(blueprint: GameBlueprint): SharedSlotMathModel {
-    const issues = validateAuthoredMechanics(blueprint as unknown as Record<string, unknown>);
+    const issues = validateAuthoredMechanics(blueprint);
     if (issues.length) throw new Error(issues.map(issue => `${issue.code} at ${issue.path}: ${issue.message}`).join("; "));
     const defaultLines = new HorizontalLines(blueprint.reels, blueprint.screenGeometry?.evaluated.rows ?? blueprint.rows);
     const model: SharedSlotMathModel = {

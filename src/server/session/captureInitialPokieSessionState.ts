@@ -41,7 +41,7 @@ export function captureInitialPokieSessionState(
     }
 
     if (serializer !== undefined) {
-        state.initialPayload = captureCoordinatePublicPayload(state, serializer.getInitialData(session) as unknown as Record<string, unknown>);
+        state.initialPayload = captureCoordinatePublicPayload(state, serializer.getInitialData(session));
 
         if (serializer.getInitialDebugData && captureDebugData) {
             state.initialDebugPayload = serializer.getInitialDebugData(session);

@@ -4,7 +4,8 @@ import {WeightedSymbolsSequence} from "../session/videoslot/combinations/Weighte
 import type {WeightedSequenceVariant} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 
 /** Shared JSON/direct definition validation. Diagnostics retain authored reel/variant paths. */
-export function validateBlueprintReelSequences(blueprint: Record<string, unknown>): string[] {
+export function validateBlueprintReelSequences(input: object): string[] {
+    const blueprint = input as Record<string, unknown>;
     const source = blueprint.reelSequences;
     if (source === undefined) return [];
     const errors: string[] = [];

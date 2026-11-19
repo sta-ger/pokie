@@ -76,9 +76,9 @@ export class GamePackageGenerator implements GamePackageGenerating {
         reelStripGeneration?: GameBuildInfoReelStripGeneration,
         options?: GamePackageGenerateOptions,
     ): GeneratedGamePackage {
-        const mechanicErrors = validateAuthoredMechanics(blueprint as unknown as Record<string, unknown>);
+        const mechanicErrors = validateAuthoredMechanics(blueprint);
         if (mechanicErrors.length) throw new Error(mechanicErrors.map(issue => issue.message).join("; "));
-        const variantErrors = validateBlueprintReelSequences(blueprint as unknown as Record<string, unknown>);
+        const variantErrors = validateBlueprintReelSequences(blueprint);
         if (variantErrors.length) throw new Error(variantErrors.join("; "));
         const id = blueprint.manifest.id;
         const projectRoot = resolveGamePackageDestination(id, cwd, outDir);

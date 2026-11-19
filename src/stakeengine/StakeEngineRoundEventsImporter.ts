@@ -176,7 +176,7 @@ export class StakeEngineRoundEventsImporter<T extends string | number = string> 
                 `"reveal" event at index ${event.index} must have exactly {index, type, board}.`,
             );
         }
-        const board = (event as unknown as {board: unknown}).board;
+        const board = event.board;
         if (!Array.isArray(board) || board.length === 0 || !board.every((reel) => Array.isArray(reel) && reel.length > 0)) {
             throw new StakeEngineImportEventsError(
                 "stakeengine-import-events-reveal-shape-invalid",
@@ -193,7 +193,7 @@ export class StakeEngineRoundEventsImporter<T extends string | number = string> 
                 `"win" event at index ${event.index} must have exactly {index, type, amount}.`,
             );
         }
-        const amount = (event as unknown as {amount: unknown}).amount;
+        const amount = event.amount;
         if (typeof amount !== "number" || !Number.isSafeInteger(amount) || amount < 0) {
             throw new StakeEngineImportEventsError(
                 "stakeengine-import-events-win-shape-invalid",
@@ -210,7 +210,7 @@ export class StakeEngineRoundEventsImporter<T extends string | number = string> 
                 `"finalWin" event at index ${event.index} must have exactly {index, type, amount, payoutMultiplier}.`,
             );
         }
-        const {amount, payoutMultiplier} = event as unknown as {amount: unknown; payoutMultiplier: unknown};
+        const {amount, payoutMultiplier} = event;
         if (typeof amount !== "number" || !Number.isSafeInteger(amount) || amount < 0) {
             throw new StakeEngineImportEventsError(
                 "stakeengine-import-events-final-win-shape-invalid",

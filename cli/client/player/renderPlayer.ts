@@ -247,7 +247,7 @@ export function renderReelsGrid(
         const td = doc.createElement("td");
         td.className = "player-reel";
         reelSymbols.forEach((symbol, rowIndex) => {
-            const cell = doc.createElement("div") as unknown as CellElement;
+            const cell = Object.assign(doc.createElement("div"), {baseColor: ""});
             cell.dataset.cell = cellId(reelIndex, rowIndex);
             cell.className = "player-cell";
             const coverage = visibleRowCoverage?.[rowIndex];

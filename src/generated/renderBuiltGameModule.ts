@@ -30,7 +30,7 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     if (issues.some(issue => ["blueprint-betmode-invalid-id", "blueprint-betmode-invalid-entry"].includes(issue.code))) throw new Error(issues.map(issue => `${issue.path ?? "$"}: ${issue.message}`).join("; "));
     const betModeWiring = Array.isArray(blueprint.betModes) && blueprint.betModes.every(mode => mode && typeof mode === "object") ? resolveBetModeCodegenWiring(blueprint) : undefined;
     if (issues.length) throw new Error(issues.map(issue => `${issue.path ?? "$"}: ${issue.message}`).join("; "));
-    const variantErrors = validateBlueprintReelSequences(blueprint as unknown as Record<string, unknown>);
+    const variantErrors = validateBlueprintReelSequences(blueprint);
     if (variantErrors.length) throw new Error(variantErrors.join("; "));
     const resolution = resolveReelStripGeneration(blueprint);
     if (!resolution.success) {

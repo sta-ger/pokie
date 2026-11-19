@@ -17,10 +17,10 @@ import {serializeWinEvaluationResult} from "./serializeWinEvaluationResult.js";
 import type {VideoSlotSessionHandling} from "../../session/videoslot/VideoSlotSessionHandling.js";
 import type {VideoSlotSessionSerializing} from "./VideoSlotSessionSerializing.js";
 import type {WinningClusterDescribing} from "../../session/videoslot/WinningClusterDescribing.js";
-import type {WinningScatterDescribing} from "../../session/videoslot/WinningScatterDescribing.js";
 import type {WinningValueDescribing} from "../../session/videoslot/WinningValueDescribing.js";
 import type {WinningWayDescribing} from "../../session/videoslot/WinningWayDescribing.js";
 import {WinEvaluationResult} from "../../session/videoslot/winevaluation/WinEvaluationResult.js";
+import {recordValues} from "../../internal/recordValues.js";
 
 export class VideoSlotSessionSerializer<T extends string | number | symbol = string>
 implements VideoSlotSessionSerializing<T> {
@@ -99,11 +99,7 @@ implements VideoSlotSessionSerializing<T> {
             }, {});
         }
         if (Object.keys(winningScatters).length > 0) {
-            // Object.values() on a Record keyed by a generic type parameter loses its value type,
-            // so it's cast back to a string-keyed view (safe: JS object keys are always
-            // strings/symbols at runtime regardless of T).
-            const scattersByKey = winningScatters as unknown as Record<string, WinningScatterDescribing<T>>;
-            r.winningScatters = Object.values(scattersByKey).reduce(
+            r.winningScatters = recordValues(winningScatters).reduce(
                 (acc, scatter) => ({
                     ...acc,
                     [scatter.getSymbolId()]: {
@@ -134,8 +130,7 @@ implements VideoSlotSessionSerializing<T> {
         // getWinningValues is optional on VideoSlotSessionHandling for the same reason as
         // getWinningClusters — value-pay is an opt-in extension (see VideoSlotWinDetermining).
         if (Object.keys(winningValues).length > 0) {
-            const valuesByKey = winningValues as unknown as Record<string, WinningValueDescribing<T>>;
-            r.winningValues = Object.values(valuesByKey).reduce(
+            r.winningValues = recordValues(winningValues).reduce(
                 (acc, value) => ({
                     ...acc,
                     [value.getSymbolId()]: {
@@ -151,8 +146,7 @@ implements VideoSlotSessionSerializing<T> {
         // getWinningClusters/getWinningValues — ways-pay is an opt-in extension (see
         // VideoSlotWinDetermining).
         if (Object.keys(winningWays).length > 0) {
-            const waysByKey = winningWays as unknown as Record<string, WinningWayDescribing<T>>;
-            r.winningWays = Object.values(waysByKey).reduce(
+            r.winningWays = recordValues(winningWays).reduce(
                 (acc, way) => ({
                     ...acc,
                     [way.getSymbolId()]: {

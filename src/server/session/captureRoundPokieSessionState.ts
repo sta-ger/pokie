@@ -79,7 +79,7 @@ export function captureRoundPokieSessionState(
     }
 
     if (serializer !== undefined) {
-        state.roundPayload = captureCoordinatePublicPayload(state, serializer.getRoundData(session) as unknown as Record<string, unknown>);
+        state.roundPayload = captureCoordinatePublicPayload(state, serializer.getRoundData(session));
 
         if (serializer.getRoundDebugData && capturePolicy.captureDebugPayloads) {
             state.roundDebugPayload = serializer.getRoundDebugData(session);

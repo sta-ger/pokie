@@ -1,9 +1,9 @@
 import {ScatterWinCalculating} from "../wincalculator/ScatterWinCalculating.js";
-import {WinningScatterDescribing} from "../WinningScatterDescribing.js";
 import {ScatterWinComponent} from "./ScatterWinComponent.js";
 import {WinComponent} from "./WinComponent.js";
 import {WinEvaluationContext} from "./WinEvaluationContext.js";
 import {WinEvaluator} from "./WinEvaluator.js";
+import {recordValues} from "../../../internal/recordValues.js";
 
 export class ScatterWinEvaluator<T extends string | number | symbol = string> implements WinEvaluator<T> {
     private readonly calculator: ScatterWinCalculating<T>;
@@ -26,7 +26,6 @@ export class ScatterWinEvaluator<T extends string | number | symbol = string> im
 
     public evaluate(context: WinEvaluationContext<T>): WinComponent<T>[] {
         const scatters = this.calculator.calculateWinningScatters(context.getBet(), context.getSymbolsCombination());
-        const scattersByKey = scatters as unknown as Record<string, WinningScatterDescribing<T>>;
-        return Object.values(scattersByKey).map((scatter) => new ScatterWinComponent<T>(scatter));
+        return recordValues(scatters).map((scatter) => new ScatterWinComponent<T>(scatter));
     }
 }

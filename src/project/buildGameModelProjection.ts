@@ -23,7 +23,7 @@ function unavailable<T>(reason: string): GameModelSection<T> {
 
 function projectMechanics(blueprint: GameBlueprint): GameModelProjection["mechanics"] {
     try {
-        const issues = validateAuthoredMechanics(blueprint as unknown as Record<string, unknown>)
+        const issues = validateAuthoredMechanics(blueprint)
             .filter(issue => issue.severity === "error");
         return issues.length > 0
             ? {status: "invalid", reason: issues.map(issue => `${issue.code}: ${issue.message}`).join("\n")}
