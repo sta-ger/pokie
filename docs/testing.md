@@ -11,9 +11,10 @@ Use Node 24 (`nvm use`) and install from the lockfile:
 npm ci
 ```
 
-ESLint 10 uses `eslint.config.mjs`. The dependency overrides in `package.json` keep installs free of
-deprecated transitive packages; remove each override when the upstream package adopts a supported
-patched version.
+ESLint 10 uses `eslint.config.mjs`. The remaining overrides pin the Jest browser environment,
+`test-exclude`, and the ESLint peer used by `eslint-plugin-react`. They are not an audit substitute:
+npm does not apply a dependency's `overrides` to consumers, so every runtime dependency must be clean
+as installed.
 
 ## Commands
 
@@ -34,15 +35,22 @@ packaging and the production audit.
 
 ## Dependency audit
 
-`npm run audit:prod` is the release gate and must stay at zero. The full `npm audit` also covers
-development tooling. It currently reports the upstream `picomatch` ReDoS advisory
-([GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)) because Jest, Vite and
-`ts-loader` still resolve `picomatch@4.0.7` (and a few transitive 2.x copies), and npm has no patched
-release yet.
+`npm run audit:prod` is the release gate and must stay at zero. Audit the packed install too: root
+`overrides` only affect this checkout, while consumers resolve the ranges in the tarball.
+`npm run test:packaging` installs the real archive and asserts that its `npm audit --omit=dev` result
+is zero.
 
-Those findings are recorded here instead of being hidden with overrides, audit settings or a
-vendored fork. Re-run both audits when dependencies change, and remove this note once a fixed
-`picomatch` release is available.
+The XLSX runtime dependency is the maintained `exceljs-community` 4.6.1 fork, installed under the
+`exceljs` alias. Upstream `exceljs@4.4.0` is unmaintained and pulls `uuid@8`, whose advisory applies
+to consumers even when a root override replaces it here.
+
+The full `npm audit` also covers development tooling. It currently reports moderate findings in
+Jest's `glob`/`minimatch` chain
+([GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4),
+[GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249)). Those packages are not in
+the packed production tree. The findings are recorded here instead of being hidden with a
+repository-wide override, audit setting or vendored fork. Re-run both audits when dependencies
+change.
 
 ## Jest projects
 

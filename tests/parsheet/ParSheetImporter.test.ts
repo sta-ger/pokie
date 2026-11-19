@@ -144,7 +144,11 @@ describe("ParSheetImporter", () => {
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.readFile(exported);
         const meta = workbook.getWorksheet("Meta")!;
-        const losslessRow = meta.getColumn(1).values.findIndex((value) => value === "Lossless Eligible");
+        let losslessRow = 0;
+        meta.eachRow((row, rowNumber) => {
+            if (row.getCell(1).value === "Lossless Eligible") losslessRow = rowNumber;
+        });
+        expect(losslessRow).toBeGreaterThan(0);
         meta.getRow(losslessRow).getCell(2).value = "false";
         await workbook.xlsx.writeFile(filePath);
 

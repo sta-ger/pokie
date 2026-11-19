@@ -10,6 +10,7 @@
 - Round artifacts, deterministic replay, audit records, commit-reveal fairness proofs and certification evidence bundles.
 - Single ESM library build and declarations, with Node `require(esm)` compatibility; ESM-only browser, WASM and player subpaths.
 - Local/reference HTTP server with replaceable session storage and wallet ports. Not a casino backend or RGS.
-- Release checks audit production dependencies; unresolved development-tooling advisories are reported rather than hidden with overrides or vendored forks.
+- Release checks audit both the repository lockfile and the installed tarball; unresolved development-tooling advisories are reported rather than hidden with overrides or vendored forks.
+- PAR workbooks use the maintained `exceljs-community` 4.6.1 fork so the published production dependency tree contains no known vulnerable package.
 
 Independent RNG certification, regulatory compliance and production operator integration remain outside POKIE's scope.

@@ -38,6 +38,18 @@ describe("packed package", () => {
                 root,
             );
 
+            // Root-level overrides never reach consumers. Audit the tree exactly as the tarball
+            // installed it so a vulnerable production transitive cannot hide behind package.json.
+            const audit = JSON.parse(run("npm", ["audit", "--omit=dev", "--json"], installDir));
+            expect(audit.metadata.vulnerabilities).toMatchObject({
+                info: 0,
+                low: 0,
+                moderate: 0,
+                high: 0,
+                critical: 0,
+                total: 0,
+            });
+
             const packageRoot = path.join(installDir, "node_modules", "@fromstan", "pokie");
             expect(fs.existsSync(path.join(packageRoot, "dist", "esm", "index.js"))).toBe(true);
             expect(fs.existsSync(path.join(packageRoot, "dist", "cjs"))).toBe(false);

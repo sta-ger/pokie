@@ -129,20 +129,13 @@
     ],
     "dependencies": {
         "commander": "^14.0.3",
-        "exceljs": "^4.4.0"
+        "exceljs": "npm:exceljs-community@4.6.1"
     },
     "overrides": {
-        "exceljs": {
-            "uuid": "npm:@lukeed/uuid@2.0.1",
-            "fast-csv": "^5.0.8",
-            "unzipper": "^0.12.5"
-        },
         "jest-environment-jsdom": {
             "jsdom": "~27.4.0"
         },
         "test-exclude": "^8.0.0",
-        "glob": "^14.0.6",
-        "minimatch@>=7": "^11.0.9",
         "eslint-plugin-react": {
             "eslint": "$eslint"
         }
