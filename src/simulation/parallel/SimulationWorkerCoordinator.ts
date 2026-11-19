@@ -18,14 +18,6 @@ type WorkerThreadsModule = {
 // eslint-disable-next-line no-new-func -- preserves a native runtime import in the ESM build and ts-jest's CommonJS transform.
 const importWorkerThreads = new Function("specifier", "return import(specifier)") as (specifier: string) => Promise<WorkerThreadsModule>;
 
-// Jest evaluates source modules in a VM without a dynamic-import callback. Keep the CommonJS
-// fallback equally indirect so browser bundles do not discover the Node-only builtin merely by
-// inspecting this public simulation API.
-// eslint-disable-next-line no-new-func -- mirrors the narrowly-scoped dynamic-import workaround above.
-const requireWorkerThreads = new Function("nodeRequire", "return nodeRequire('worker_threads')") as (
-    nodeRequire: NodeRequire,
-) => WorkerThreadsModule;
-
 export type SimulationWorkerProgress = {workerIndex: number; roundsCompleted: number};
 
 export type SimulationWorkerCoordinatorRunOptions = {
@@ -313,29 +305,7 @@ export class SimulationWorkerCoordinator {
         return (request) => new NodeWorker(url, {workerData: request});
     }
 
-    private async resolveWorkerThreads(): Promise<WorkerThreadsModule> {
-        // Jest reuses a Node process across VM test environments. A native
-        // import of this builtin can retain a callback from an environment
-        // that has already been torn down. Resolve it synchronously in the
-        // CommonJS VM, as the default worker entry resolver already does.
-        if (typeof process !== "undefined" && process.env?.JEST_WORKER_ID !== undefined && typeof require === "function") {
-            return requireWorkerThreads(require);
-        }
-        try {
-            return await importWorkerThreads("worker_threads");
-        } catch (error) {
-            if (!isVmDynamicImportUnavailable(error) || typeof require !== "function") {
-                throw error;
-            }
-            return requireWorkerThreads(require);
-        }
+    private resolveWorkerThreads(): Promise<WorkerThreadsModule> {
+        return importWorkerThreads("worker_threads");
     }
-}
-
-function isVmDynamicImportUnavailable(error: unknown): boolean {
-    return (
-        typeof error === "object" &&
-        error !== null &&
-        (error as {code?: unknown}).code === "ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING_FLAG"
-    );
 }

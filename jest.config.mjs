@@ -33,12 +33,7 @@ const sourceTestTransform = {
     "^.+\\.ts$": ["ts-jest", {tsconfig: "tsconfig.test.json"}],
 };
 
-const exceljsModuleNameMapper = {
-    "^@xlvane/exceljs$": "<rootDir>/tests/testUtils/xlvaneExceljsNative.cjs",
-};
-
 const sourceTestModuleNameMapper = {
-    ...exceljsModuleNameMapper,
     "^@fromstan/pokie$": "<rootDir>/src/index.ts",
     "^@fromstan/pokie/browser$": "<rootDir>/src/browser.ts",
     "^@fromstan/pokie/wasm$": "<rootDir>/src/wasm/browser.ts",
@@ -47,7 +42,6 @@ const sourceTestModuleNameMapper = {
 };
 
 const pokieExamplesModuleNameMapper = {
-    ...exceljsModuleNameMapper,
     "^@fromstan/pokie/client/player$": "<rootDir>/cli/client/player/index.ts",
     "^@fromstan/pokie/browser$": "<rootDir>/src/browser.ts",
     "^@fromstan/pokie/wasm$": "<rootDir>/src/wasm/browser.ts",
