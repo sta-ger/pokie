@@ -13,9 +13,9 @@ npm install /absolute/path/to/pokie
 npm install /absolute/path/to/fromstan-pokie-2.0.0.tgz
 ```
 
-POKIE ships one ESM build. ES modules and TypeScript `NodeNext` consumers import it directly;
-CommonJS `require()` loads the same build on Node `^20.19.0 || >=22.12.0` through Node's
-`require(esm)` support.
+POKIE requires Node `>=22.12.0` and ships one ESM build. ES modules and TypeScript `NodeNext`
+consumers import it directly; CommonJS `require()` loads the same build through Node's `require(esm)`
+support.
 
 > **RNG:** the default `PseudorandomNumberGenerator` uses `Math.random()` and is not cryptographically
 > secure. `SecureRandomNumberGenerator` uses Node's `crypto.randomInt`, but it is a building block, not

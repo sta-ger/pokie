@@ -297,7 +297,7 @@ function assertNotCancelled(options: ParSheetExportOptions | undefined): void {
 function addSheet(workbook: ExcelJS.Workbook, sheetName: string, grid: SheetGrid): void {
     const worksheet = workbook.addWorksheet(sheetName);
     grid.forEach((row) => {
-        worksheet.addRow(row);
+        worksheet.addRow(row as ExcelJS.CellValue[]);
     });
 }
 

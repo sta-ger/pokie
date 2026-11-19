@@ -38,9 +38,9 @@
         "lint": "eslint \"**/*.{ts,tsx}\"",
         "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && npm run typecheck-studio-client",
         "test": "mkdir -p \"$PWD/node_modules/.cache/pokie-tmp\" && TMPDIR=\"$PWD/node_modules/.cache/pokie-tmp\" NODE_OPTIONS=--experimental-vm-modules jest --selectProjects pokie pokie-examples --maxWorkers=\"${JEST_WORKERS:-2}\"",
-        "test:integration": "jest --selectProjects pokie-integration --maxWorkers=2",
+        "test:integration": "NODE_OPTIONS=--experimental-vm-modules jest --selectProjects pokie-integration --maxWorkers=2",
         "test:targeted": "mkdir -p \"$PWD/node_modules/.cache/pokie-tmp\" && TMPDIR=\"$PWD/node_modules/.cache/pokie-tmp\" NODE_OPTIONS=--experimental-vm-modules node --expose-gc --max-old-space-size=1408 scripts/run-targeted-tests.mjs",
-        "test:coverage": "node --max-old-space-size=512 ./node_modules/jest/bin/jest.js --selectProjects pokie pokie-examples pokie-integration --coverage --maxWorkers=1 --workerIdleMemoryLimit=192MB",
+        "test:coverage": "NODE_OPTIONS=--experimental-vm-modules node --max-old-space-size=512 ./node_modules/jest/bin/jest.js --selectProjects pokie pokie-examples pokie-integration --coverage --maxWorkers=1 --workerIdleMemoryLimit=192MB",
         "test:packaging": "jest --selectProjects pokie-packaging --runInBand",
         "audit:prod": "npm audit --omit=dev",
         "check:full": "node scripts/run-full-check.mjs",
@@ -76,7 +76,7 @@
     "homepage": "https://github.com/sta-ger/pokie",
     "license": "ISC",
     "engines": {
-        "node": "^20.19.0 || >=22.12.0"
+        "node": ">=22.12.0"
     },
     "devDependencies": {
         "@eslint-community/eslint-plugin-eslint-comments": "^4.8.1",
@@ -129,7 +129,7 @@
     ],
     "dependencies": {
         "commander": "^14.0.3",
-        "exceljs": "npm:exceljs-community@4.6.1"
+        "exceljs": "npm:@xlvane/exceljs@1.3.4"
     },
     "overrides": {
         "jest-environment-jsdom": {

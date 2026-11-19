@@ -450,8 +450,12 @@ function cellValueToPrimitive(value: ExcelJS.CellValue): unknown {
     if (typeof value !== "object") {
         return value;
     }
-    if ("richText" in value) {
-        return value.richText.map((fragment) => fragment.text).join("");
+    if ("richText" in value && Array.isArray(value.richText)) {
+        return value.richText.map((fragment) => (
+            typeof fragment === "object" && fragment !== null && "text" in fragment
+                ? String((fragment as {text: unknown}).text)
+                : ""
+        )).join("");
     }
     if (isFormulaCellValue(value)) {
         return cellValueToPrimitive(value.result ?? null);

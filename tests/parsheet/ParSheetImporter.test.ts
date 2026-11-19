@@ -24,7 +24,7 @@ describe("ParSheetImporter", () => {
         const workbook = new ExcelJS.Workbook();
         for (const [name, rows] of Object.entries(sheets)) {
             const worksheet = workbook.addWorksheet(name);
-            rows.forEach((row) => worksheet.addRow(row));
+            rows.forEach((row) => worksheet.addRow(row as ExcelJS.CellValue[]));
         }
         await workbook.xlsx.writeFile(filePath);
     }
@@ -173,7 +173,7 @@ describe("ParSheetImporter", () => {
         const workbook = new ExcelJS.Workbook();
         for (const [name, rows] of Object.entries(validSheets)) {
             const worksheet = workbook.addWorksheet(name);
-            rows.forEach((row) => worksheet.addRow(row));
+            rows.forEach((row) => worksheet.addRow(row as ExcelJS.CellValue[]));
         }
         const paytableSheet = workbook.getWorksheet("Paytable")!;
         paytableSheet.getCell("C2").value = {formula: "2+3", result: 5};
