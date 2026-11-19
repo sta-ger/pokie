@@ -40,7 +40,7 @@ Randomness is injected, not hardwired, and both implementations share one reject
 (`drawUnbiasedInt`, internal) so they can never silently drift apart on what "unbiased" means:
 
 - `SeededWeightedOutcomeRandomSource` takes its seed as a **plain string, in full** — never folded down into a
- 32-bit integer first (a hash-then-truncate step would throw away almost all of a hash digest's own entropy and
+ 32-bit integer first (a hash-then-truncate step would throw away almost all of a hash's own entropy and
  reintroduce a birthday-bound collision risk across different seeds a full string doesn't have to accept). It's
  built as a small hash-counter DRBG: block #0/#1/#2/... of its output stream are each
  `SHA-256("<seed>:<counter>")`, concatenated on demand into an arbitrarily long byte stream, from which unbiased
@@ -59,7 +59,7 @@ that leftover remainder and redrawing removes the bias entirely rather than mere
 Assumes `library` is otherwise already validly built (non-empty, canonically sorted — guaranteed by
 `buildWeightedOutcomeLibrary`) and does not re-validate that part; validate a library from an untrusted source
 first (`WeightedOutcomeLibraryValidator`). Still fails fast with `WeightedOutcomeSelectionError` — including on a
-non-integer/overflowing weight, or a `randomSource` that breaks its own contract — as a defensive backstop rather
+non-integer/overflowing weight, or a `randomSource` that breaks its own interface — as a defensive backstop rather
 than silently producing a wrong or biased result. There is deliberately no fallback to "the last outcome": with
 exact integer arithmetic, every draw is provably within range, so anything that would have needed a fallback is a
 real bug surfaced as an error instead.
@@ -86,10 +86,10 @@ the same underlying snapshot. Two implementations ship out of the box:
 
 - **`InMemoryPreGeneratedOutcomeSource`** — wraps an already-built `WeightedOutcomeLibrary` and a caller-claimed
  `libraryHash`, verified against `computeWeightedOutcomeLibraryHash(library)` once, at construction (fails fast
- with `InMemoryPreGeneratedOutcomeSourceError` on a mismatch — the library never changes for this adapter's
+ with `InMemoryPreGeneratedOutcomeSourceError` on a mismatch — the library never changes for this connector's
  whole lifetime, so there's nothing to gain from re-verifying on every draw). Internally reuses
  `WeightedOutcomeSelector`, so its own draws are byte-for-byte the same as before this abstraction existed.
-- **`OutcomeLibraryBundleOutcomeSource`** (see [Outcome Library Bundle](outcome-library-bundle.md)) — reads a
+- **`OutcomeLibraryBundleOutcomeSource`** (see [Outcome Library Folder](outcome-library-folder.md)) — reads a
  outcome-library bundle directly off disk: one small `index_<modeName>.json` read per draw (never the
  full outcomes file, never `readLibrary()`), a weighted pick by exact integer cumulative weight over that
  index's own entries, then a single byte-range read for exactly the winning outcome. The whole `{libraryId,
@@ -109,7 +109,7 @@ class PreGeneratedOutcomeSelectionValidator<T = string> implements ValidationRul
 `drawOutcome()` may throw `PreGeneratedOutcomeSourceConflictError` to signal that the content this draw relied on
 no longer matches what the source itself last promised — `OutcomeLibraryBundleOutcomeSource` throws it whenever
 the underlying byte-range read detects an id/weight/`recordHash` mismatch (the bundle changed mid-draw, or a
-record was tampered with in place — see [Outcome Library Bundle](outcome-library-bundle.md#validation)). Any
+record was tampered with in place — see [Outcome Library Folder](outcome-library-folder.md#validation)). Any
 other `PreGeneratedOutcomeSourcing` implementation — including a hand-written test double or a buggy custom
 source — can throw the same error for its own reasons and get identical treatment.
 
@@ -119,7 +119,7 @@ totalWeight`, and an `outcome.artifact` that passes `RoundRecordValidator`. It r
 immediately after every draw in `PreGeneratedSpinCommandHandler` (see below), and again inside
 `buildPreGeneratedRoundResult` as a defensive backstop for any other caller of that function. A hand-crafted or
 forged `PreGeneratedOutcomeSourcing` implementation is just as capable of returning a structurally invalid
-selection as a real adapter drifting out of sync would be — this is what catches it either way.
+selection as a real connector drifting out of sync would be — this is what catches it either way.
 
 ## The runtime result
 
@@ -174,7 +174,7 @@ single-field check can catch on its own: `selection.probability === selection.we
 equals `artifact.stake` and total credit equals `artifact.totalWin`, that `runtime.balanceAfter` reconciles with
 `balanceBefore` and those same transactions, and that every transaction id in `runtime.transactions` is unique.
 
-## Public/internal projection
+## Public/internal view
 
 ```ts
 class PreGeneratedRoundResultProjector<T = string> {
@@ -210,7 +210,7 @@ identity (including seed and mode) in `replay`; use those values with `pokie rep
 exact recorded-result comparison: `replayOutcomeSourceProject(..., recordedDescriptor)` rejects it with recovery
 instructions. Omitting `recordedDescriptor` remains a current-bundle reconstruction rather than a comparison.
 
-Studio follows this exact selection contract too: a seeded Outcome Library Play spin and a seeded Outcome Source
+Studio follows this exact selection interface too: a seeded Outcome Library Play spin and a seeded Outcome Source
 sample return (and retain in Recent Rounds) the same full `replay` descriptor, including library id/hash, mode,
 artifact, screen and payout. That object is portable input provenance, not a generated UI fixture.
 
@@ -230,11 +230,11 @@ configuration mistake caught at startup, never something a caller discovers mid-
 - `POST /pregenerated-sessions/:id/spin` — body `{requestId?: string}` — draws the session's next round
  deterministically (its configured `PreGeneratedOutcomeSourcing`, seeded from the session's own `seed` and round
  index), settles the wallet (debit `artifact.stake`, credit `artifact.totalWin` when positive), and returns the
- public projection by default, or the full internal view under `?debug=1` (same convention as the live spin
+ public view by default, or the full internal view under `?debug=1` (same convention as the live spin
  path). `PokieDevServerOptions.preGeneratedOutcomeLibrary` is wrapped in an `InMemoryPreGeneratedOutcomeSource`
  internally; nothing about that option itself changed.
 
-`PreGeneratedSpinCommandHandler` orchestrates this: idempotency replay (same `IdempotencyRepository` contract as
+`PreGeneratedSpinCommandHandler` orchestrates this: idempotency replay (same `IdempotencyRepository` interface as
 `SpinCommandHandler`, keyed by `(sessionId, requestId)`), per-session command serialization, and best-effort
 wallet/session-state compensation on failure — the same shape as `SpinCommandHandler`'s own orchestration, applied
 to a configured `PreGeneratedOutcomeSourcing` instead of a live `GameSessionHandling`. No live session object is
@@ -245,7 +245,7 @@ ever created for this path.
 The session's own `libraryId`/`libraryHash` is compared against the *exact* identity the outcome source reports it
 just drew from — never a separately-fetched, potentially stale or newer snapshot. The draw always happens first
 (deterministic, no wallet/session side effects), immediately followed by this comparison, before the idempotency
-cache is ever consulted and before any wallet transaction. This matters for the in-memory adapter too (a stale
+cache is ever consulted and before any wallet transaction. This matters for the in-memory connector too (a stale
 cached result must never stand in for a fresh conflict check when a session was migrated to a different library),
 but it's essential for a bundle-backed source: `OutcomeLibraryBundleOutcomeSource` reads its mode's index fresh on
 every `drawOutcome()` call, so if the bundle is rebuilt in place between two spins (e.g. a redeploy regenerating

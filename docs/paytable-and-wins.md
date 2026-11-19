@@ -24,7 +24,7 @@ If `availableSymbols`/`reelsNumber` are passed to the constructor, a default pay
 own) gets counts `3..reelsNumber` filled in as `(count - 2) × bet` — i.e. 3-of-a-kind pays `1×bet`, 4-of-a-kind
 `2×bet`, 5-of-a-kind `3×bet`. Counts 1 and 2 are never populated by default.
 
-Authored Blueprint paytables use a different input contract: `paytable[symbol][count]` is a
+Authored Blueprint paytables use a different input interface: `paytable[symbol][count]` is a
 **stake multiplier**. Generated runtimes install only those authored entries; they do not fill
 missing symbols or counts from the constructor defaults above. An omitted payout returns zero;
 an explicit zero stays authored as zero. A multiplier of 4 pays `4 × bet`, including bets
@@ -390,7 +390,7 @@ interface WinAmountDetermining { getWinAmount(): number; }
 class NoWinAmount implements WinAmountDetermining { getWinAmount(): number { return 0; } }
 ```
 
-The generic contract the base `GameSession` depends on — it knows nothing about paylines or scatters, just "how
+The generic interface the base `GameSession` depends on — it knows nothing about paylines or scatters, just "how
 much did this round win." `NoWinAmount` is the default before a slot-specific calculator is wired in.
 
 ## Replacing line/scatter win logic entirely
@@ -426,6 +426,6 @@ const calculator = new VideoSlotWinCalculator(config, new CustomLineCalculator()
  `minimumWinningSymbols` (default 2) *and* which counts the paytable actually has non-zero payouts for (default
  constructor only fills 3..reelsNumber). Changing one without the other silently changes what pays.
 
-## Headless runtime contract
+## Headless runtime interface
 
 Headless command execution delegates to the same injected win calculator as direct OOP play. It preserves fractional denominations (including 0.05, 7.5 and 1e-7), authored absent payouts, explicit zeros and free-game grants independently of scatter money. Repository command validation rejects an unsupported denomination without changing legacy direct setter fallback behavior.

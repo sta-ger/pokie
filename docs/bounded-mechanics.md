@@ -1,7 +1,7 @@
 # Authored cascades, respins and collections
 
 `mechanics.cascade`, `mechanics.respins` and `mechanics.collection` are finite
-contracts, implemented by `BoundedVideoSlotSession` using the existing slot,
+interfaces, implemented by `BoundedVideoSlotSession` using the existing slot,
 cascade evaluator, grid transformer and runtime command boundaries. The seven
 nonempty combinations are listed in `AUTHORED_BOUNDED_MECHANIC_CATALOG`.
 
@@ -29,7 +29,7 @@ removal; survivors retain their order. Each refill draws a complete next screen
 from the same owned generator and takes the first N symbols from each reel,
 where N is that reel's removed count. Weighted whole-sequence selection is held
 for the logical round, including refills and respins; reel stops still advance
-the seeded RNG. The final losing evaluation is retained as a mathematical step.
+the seeded RNG. The final losing evaluation is saved as a mathematical step.
 
 After cascading, collection occurs **once per accepted subround**, counting the
 collection symbol on the final screen. Intermediate cascade screens do not
@@ -48,15 +48,15 @@ Respins inspect that same final screen after collection. Entry grants `grant`
 respins. A continuation executes at zero stake, pays its own evaluated win plus
 any collection award immediately, and decrements the remaining count. `none`
 ignores continuation triggers. `reset` resets the remaining count to `grant`,
-clipped by the unused lifetime budget `maxRespins - executed`. At the lifetime
+clipped by the unused lifetime limit `maxRespins - executed`. At the lifetime
 bound the chain completes successfully with zero remaining respins, even when
-the last screen triggers. Grants and executed respins are distinct observations.
+the last screen triggers. Grants and executed respins are distinct samples.
 Restoration accepts only reachable counters: for `none`, a triggered round has
 `remaining + executed = grant`; for `reset`, remaining is at least
 `max(0, grant - executed)` and at most `min(grant, maxRespins - executed)`.
 An untriggered entry has both counters zero. These checks precede nested restore.
-Changing the bet during the chain is rejected. There is no retained-cell or
-banked terminal-payout variant in this contract.
+Changing the bet during the chain is rejected. There is no saved-cell or
+banked terminal-payout variant in this interface.
 
 For example, three C cells contributing 1, threshold 4 and cap 5 produce values
 3, 1, 0, 3, 1, 0 with awards 0, 10, 10, 0, 10, 10. The cap discards excess before
@@ -71,7 +71,7 @@ paytable awards, while the collection award remains 10.
 | Line, ways, cluster evaluation; literal/generated reels and weighted whole sequences | Yes |
 | Standard rectangular geometry, explicit missing/zero payouts, fractional stakes | Yes |
 | Free games, Hold & Win, jackpots, bet modes, screen modifiers, nonstandard geometry with these new rules | Rejected before execution |
-| Opaque generators, custom evaluator callbacks or config subclasses in the bounded adapter | Rejected; use a custom session with its own complete codec instead |
+| Opaque generators, custom evaluator callbacks or config subclasses in the bounded connector | Rejected; use a custom session with its own complete codec instead |
 | WASM | Supported through the shared feature runtime |
 | Paid-grid outcome-library / Stake conversion | Rejected before publication |
 | Blueprint JSON / guided Studio form, generated CJS/TS, extraction and XLSX PAR | Yes |
@@ -106,9 +106,9 @@ Cancellation before acceptance changes nothing; cancellation during composite
 execution retains the accepted prefix and its continuation.
 
 Cascade deliveries are saved mathematical artifacts, not additional calculations
-or settlements. Feature observations include meaningful zeros for collection
+or settlements. Feature samples include meaningful zeros for collection
 value/cap/threshold/contribution/trigger/reset/payout, respin progress and cascade
-counts. Artifacts and their public projection preserve these in
+counts. Artifacts and their public view preserve these in
 `boundedMechanics` events. Play, history and artifact-only Replay interpret the
 same event. Restoring an executable snapshot does not manufacture a historical
 win; durable state/artifacts and original retry results own that historical
@@ -125,7 +125,7 @@ Studio reset.
 
 ## Simulation units
 
-Requested rounds and progress count accepted subrounds. For bounded mechanics,
+Requested rounds and progress count accepted subrounds. For feature chains with limits,
 `logicalRoundMetrics` uses completed logical rounds for hit frequency, payout
 histograms, maximum payout/frequency, means, variance and confidence/convergence
 calculations. `logicalRounds.steps` records accepted subround duration, separately
@@ -134,7 +134,7 @@ fields with `sampling.unit = completed-logical-round`; `rounds` is completed
 logical rounds, `sampling.acceptedSubrounds` is actual accepted plays, and
 `excludedSubrounds` identifies observed unfinished or restored tails without a
 locally observed paid entry. `carriedSubrounds` identifies a completed sample's
-prefix retained from an earlier runner on the same session. These counts are
+prefix saved from an earlier runner on the same session. These counts are
 independent: observing one entry and then nine plays of a nine-subround fixture
 completes a round with one carried subround and leaves one observed subround
 unfinished. Snapshots retain per-session observed/completed coordinate ranges;
@@ -186,7 +186,7 @@ save the authored source. Supported intermediate conversions remain owned by
 Library users can construct `BoundedVideoSlotSession(config, seededGenerator,
 rules, statelessCalculator)` directly. Generated packages provide matching
 configuration hashes, descriptors, serializers and state schemas. Browser users
-can import the bounded contracts/session and cascade serializer from
+can import the bounded interfaces/session and cascade serializer from
 `@fromstan/pokie/browser`. Package extraction reads represented rules without
 executing a session. New-only mechanics choose the PAR configuration-JSON sheet;
 unknown/duplicate rules and opaque extraction retain explicit diagnostics.

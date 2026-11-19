@@ -9,7 +9,7 @@ games, see [pokie-examples](https://github.com/sta-ger/pokie-examples). For the 
 [glossary](glossary.md).
 
 **Scope:** POKIE is a game-logic library, not a casino backend. It does not ship an RGS, a production
-wallet or ledger, a compliance platform, a key-management service or a timestamping authority. It
+wallet or ledger, a compliance platform, a key-management service or a timestamping trusted source. It
 computes round outcomes and wins and provides reproducible tooling on top of that. Wiring any of it into
 an account, currency or compliance system is left to the integrating backend. `pokie serve` and `pokie
 dev` are local/reference tools, not production infrastructure.
@@ -47,7 +47,7 @@ dev` are local/reference tools, not production infrastructure.
  constraints, including proportional symbol weights.
 15. **[Outcome library](weighted-outcome-library.md)** — every possible outcome with its exact weight,
  and exact (not Monte Carlo) statistics.
-16. **[Outcome library folder](outcome-library-bundle.md)** — the on-disk storage format for an outcome
+16. **[Outcome library folder](outcome-library-folder.md)** — the on-disk storage format for an outcome
  library.
 17. **[Pre-generated runtime](pregenerated-runtime.md)** — drawing and replaying rounds from an outcome
  library.
@@ -76,7 +76,7 @@ dev` are local/reference tools, not production infrastructure.
 28. **[Stake Engine import](stake-engine-import.md)** — importing a POKIE-produced Stake Engine export.
 29. **[Stake Engine standalone](stake-engine-standalone.md)** — reading, validating and analyzing any
  Stake Engine outcome directory.
-30. **[External connector SDK](external-adapter-sdk.md)** — interfaces for delivering an outcome library
+30. **[External connector SDK](external-connector-sdk.md)** — interfaces for delivering an outcome library
  to an external format or RGS-style target.
 31. **[WASM compatibility](wasm-compatibility-boundary.md)** — the versioned WASM component interface and
  supported execution limits.

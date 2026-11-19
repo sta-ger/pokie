@@ -447,4 +447,4 @@ without selecting or saving them. Validation/save/build share diagnostics
 with reel/variant paths in the Reels section. Invalid authored content can still be
 loaded for correction; failed validation or build leaves the source and output
 unchanged. `pokie reel generate` does not flatten this runtime source, and generation
-apply/materialize requires its existing explicit authoring action.
+apply/create requires its existing explicit authoring action.

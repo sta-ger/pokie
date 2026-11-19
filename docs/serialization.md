@@ -268,8 +268,8 @@ contains.
 ## Executable repository records
 
 Storage `version` is an optimistic revision, independent of `identity.gameId`, `compatibilityVersion`,
-`stateSchemaVersion` and optional `modelHash`. Generated definitions expose their authoritative blueprint
-hash. Hand-authored definitions use their manifest id/version, or explicitly declare
+`stateSchemaVersion` and optional `modelHash`. Generated definitions expose their trusted blueprint
+hash. Hand-authored definitions use their package id/version, or explicitly declare
 `getSessionCompatibility(): {version, stateSchemaVersion}`. This is the author's compatibility promise,
 not an invented hash of arbitrary code. Change it whenever math, construction context or the codec changes.
 The default compatibility schema version is `"1"`. The selected game must declare
@@ -281,13 +281,13 @@ Custom schemas require the selected game's nonmutating `validateSessionState(sta
 validator rejects even if the record claims `{kind: "custom"}`. Records without identity are rejected as `incompatible-state`;
 this workflow does not migrate historical snapshots or silently reset them.
 `getSessionCommandCapabilities(context)` additionally declares the supported model selections without
-construction or RNG draws. Repository validation uses this declaration or process-local authority
+construction or RNG draws. Repository validation uses this declaration or process-local trusted source
 captured from a trusted primed session, including for HTTP reads, cached results and direct reconciliation.
-Persisted capability lists may restrict the trusted set but may never expand it; the current bet and captured
+Persisted supported action lists may restrict the trusted set but may never expand it; the current bet and captured
 mode must belong to those lists. Each subsequent round retains the validated lists in persisted, cached
-and captured recovery snapshots; successful play and recovery never broaden them back to model capabilities.
+and captured recovery snapshots; successful play and recovery never broaden them back to model supported actions.
 A record claiming durable recovery without declarations is `incompatible-state`;
-a live-only record without retained authority is `restoration-unsupported`. Forged selections are
+a live-only record without saved trusted source is `restoration-unsupported`. Forged selections are
 `corrupt-state`. Existing `getManifest()`/`createSession()` packages remain playable through their primed
 live session without adding methods. Initial capture marks them `live-only` when either declaration is
 absent; trusted live schema checks never authorize reconstruction. Initial creation and direct session
@@ -295,7 +295,7 @@ callers retain their constructor defaults.
 
 Capture initial state with the game as the fifth argument to `captureInitialPokieSessionState`. The record
 owns the construction context (including numeric versus string seeds), resolved model identity, nominal bet,
-settled balance, command capabilities, and `featureState`. The wallet remains authoritative for the
+settled balance, command supported actions, and `featureState`. The wallet remains trusted for the
 balance used during real settlement. `featureState` contains private executable RNG/counter/bank/mode state
 and the actual resolved reel strips. Restoring a seeded built-in session replaces constructor-generated
 reels with those strips, then restores the RNG. Other model settings are reconstructed by the game's
@@ -315,7 +315,7 @@ round, and never replay earlier rounds. Public serializers do not expose `featur
 `SessionStateRestoring.isSessionStateRestorable()` is an explicit promise of a complete codec, together with
 `toSessionState()`, `fromSessionState()` and nonmutating `validateSessionState(state)`. Method presence alone makes no durability claim. A custom codec
 must validate its opaque JSON payload and required nested fields and restore the resolved model and every
-collaborator that affects future rounds. Declare the authoritative schema on the game and additionally expose
+collaborator that affects future rounds. Declare the trusted schema on the game and additionally expose
 `PokieGame.validateSessionState(state, context)` for nonmutating validation before construction/recovery. Subclasses
 and custom decorators must make their own complete-state promise; inheriting an incomplete base codec is
 insufficient. A game without a game-level schema declaration remains playable with a primed live session,
@@ -340,9 +340,9 @@ nested base object. An absent built-in feature snapshot is corrupt. Custom state
 validator, including when absent. A game may explicitly provide `validateLiveSessionState(state, context)`
 for its partial snapshot; otherwise `validateSessionState` applies. Neither a partial snapshot nor a
 live-only marker authorizes reconstruction. Games without an executable codec can retain observable-only
-live records with schema and command authority captured from their trusted primed object, plus structural
+live records with schema and command trusted source captured from their trusted primed object, plus structural
 snapshot checks. A trusted built-in session with a complete codec still requires complete snapshot fields;
-only an unsupported live collaborator permits the built-in partial policy. With declared command authority,
+only an unsupported live collaborator permits the built-in partial policy. With declared command trusted source,
 completed retries can also recover without the live
 object. Without that declaration, losing the object rejects retries as well as new rounds before recovery
 writes. New rounds after loss of unsupported live state remain unsupported.
@@ -359,7 +359,7 @@ only after persistence. Corruption/incompatibility require operator repair or ex
 session; clients retain the last settled view and never automatically reset or retry those failures.
 Current state, both snapshots and scalar fields of cached results, and captured recovery results all pass
 these checks before publication or reconciliation writes. A validated already-computed live-only operation
-can recover from its retained operation log without constructing or playing a session. A new round after
+can recover from its saved operation log without constructing or playing a session. A new round after
 loss of that live object still returns `restoration-unsupported`. Direct `SpinReconciliationService` callers
 must supply the selected game as the final constructor argument; omitting it requires manual recovery.
 This does not grant reconciliation ownership or replace durable wallet settlement proof.
@@ -368,19 +368,19 @@ Durable game-state recovery alone does not preserve the default in-memory wallet
 operation log or Studio active-session registry across a process restart.
 
 Trusted live snapshot validation distinguishes missing custom captures from required built-in children.
-It derives this distinction from constructed composition, never from a stored schema, capability list
+It derives this distinction from constructed composition, never from a stored schema, supported action list
 or `executionState` flag. Opaque legacy custom captures remain finite serializable data; they are not
-durable codecs. Free-game counters, banks and nested built-in snapshots remain required. Every retained
+durable codecs. Free-game counters, banks and nested built-in snapshots remain required. Every saved
 bet-mode node is checked against the selected game's declared modes or that live node's trusted modes,
 including current state and both states of cached/captured results, before publication or recovery writes.
 
 The trusted composition policy follows constructed children across independently loaded public
-module instances; constructor identity in the host is not composition authority. An injected RNG
+module instances; constructor identity in the host is not composition trusted source. An injected RNG
 whose capture is finite opaque data can continue in its primed live session without adopting the
-built-in seeded numeric codec. This does not certify reconstruction: loss of live authority refuses
+built-in seeded numeric codec. This does not certify reconstruction: loss of live trusted source refuses
 new commands and undeclared-codec recovery before construction or recovery writes. Complete seeded
-children and declared codecs retain their existing strict validation. At each retained built-in mode
-node, the selected mode must also satisfy any applicable validated stored capability restriction.
+children and declared codecs retain their existing strict validation. At each saved built-in mode
+node, the selected mode must also satisfy any applicable validated stored supported action restriction.
 
 The plain built-in `GameSession` retains its strict empty executable codec. Existing subclasses with
 `toSessionState(): {round: number}` and `fromSessionState(state: {round: number}): this` keep those
@@ -392,7 +392,7 @@ undeclared-codec recovery before construction or recovery writes.
 
 ## Generated, visible and evaluated coordinates
 
-Viewport presentation and required internal coordinate evidence: see the coordinate contract and adapter support matrix.
+Viewport presentation and required internal coordinate evidence: see the coordinate interface and connector support matrix.
 
 Durable external settlement saves the full calculated continuation and detached public/debug
 result before remote debit/payout. Invalid or nonserializable capture blocks dispatch;
@@ -428,16 +428,16 @@ retry after response loss. Their delivery controls offer one subround or a
 complete logical round. Studio Play is explicitly `process-only`; its history
 keeps one record per logical round and retains committed history across project
 changes, while late responses cannot replace another project's active session.
-WASM supports declared logical continuation with artifact-bound v4 feature checkpoints and process-only Studio Play. Outcome-source Play retains its separate single-outcome contract.
+WASM supports declared logical continuation with artifact-bound v4 feature checkpoints and process-only Studio Play. Outcome-source Play retains its separate single-outcome interface.
 
 ## Executable audit state and public display
 
-Exact package audit replay requires an authoritative `getSessionStateSchema`,
+Exact package audit replay requires an trusted `getSessionStateSchema`,
 `getSessionCommandCapabilities`, `getConfigHash` and complete session
-capture/restore/validate contract. Custom codecs also need the selected game's
+capture/restore/validate interface. Custom codecs also need the selected game's
 nonmutating `validateSessionState`. Snapshots must contain finite, acyclic, lossless
 JSON covering every collaborator that can affect future calculation. A presentation
-serializer does not establish this contract. Unsupported codecs are explicit;
+serializer does not establish this interface. Unsupported codecs are explicit;
 a throwing codec cannot publish successful audit evidence.
 
 The initial executable boundary is captured without asking for nonexistent round
@@ -449,14 +449,14 @@ counters, excluding arbitrary metadata/debug/generated cells. Studio's full arti
 JSON and full audit download intentionally include private evidence and are labelled
 separately from the visible display.
 
-Built-in retained-result repositories own logical identity history outside session
+Built-in saved-result repositories own logical identity history outside session
 snapshots. Custom independent ports without `loadRound` retain a bounded identity
 fallback (10,000 entries) and must retire the session at its bound. Direct runtime
 retry retention is bounded to 10,000 deliveries; historical duplicates remain
-available at the bound. `SessionRuntime.release()` clears retained results and
+available at the bound. `SessionRuntime.release()` clears saved results and
 retires execution. Owners must drain work before release. Pending logical delivery
 is bounded to 10,000 deliveries; repeated composite batches cannot bypass that bound.
-Durable result retention remains the store owner's lifecycle responsibility.
+Durable result retention remains the store owner's status responsibility.
 
 A direct `ReplayRecorder` retains at most 10,000 accepted audit deliveries per session,
 including unkeyed calls and deliveries observed inside composite commands. Its optional
@@ -465,9 +465,9 @@ the requested command bounds (a composite's `maxSubrounds`, default 1,000); insu
 capacity rejects without drawing or changing the session. Historical retries remain
 available at capacity. Exported recordings remain usable after the session is gone.
 `releaseAuditSession(session)` drops recorder references and releases/retires the direct
-runtime's retained results; drain work and export evidence before release.
+runtime's saved results; drain work and export evidence before release.
 
-Built-in executable schemas include nested `hold-and-win` and `jackpot` nodes. Hold&Win snapshots retain entry denomination, unique configured locks/effects, respins, payout and the settled outcome. Jackpot snapshots retain configured accumulating balances, per-pool statistics and the settled award. Validation checks nested RNG state before restoration mutates any feature/pool. Certification excludes custom collaborators and shared mutable pools. Public round payloads/artifacts and retained results remain the output authority across restart; restoring state never credits a prior award again. File-session restart still requires compatible wallet/result/recovery ports; the transactional store persists those boundaries atomically.
+Built-in executable schemas include nested `hold-and-win` and `jackpot` nodes. Hold&Win snapshots retain entry denomination, unique configured locks/effects, respins, payout and the settled outcome. Jackpot snapshots retain configured accumulating balances, per-pool statistics and the settled award. Validation checks nested RNG state before restoration mutates any feature/pool. Certification excludes custom collaborators and shared mutable pools. Public round payloads/artifacts and saved results remain the output trusted source across restart; restoring state never credits a prior award again. File-session restart still requires compatible wallet/result/recovery ports; the transactional store persists those boundaries atomically.
 
 ### Modifier state
 
@@ -480,24 +480,24 @@ The finite built-in product multiplier is restoration-compatible; an explicitly
 injected `MultiplierResolver`, including a custom combine callback, remains
 uncertified. Snapshots preserve state across free games and mode changes; reads
 and duplicate delivery never decrement it. Opaque generators remain custom even
-when their live snapshot retains modifier data. See the [math contract](math-modeling.md#authored-wilds-and-screen-modifiers).
+when their live snapshot retains modifier data. See the [math interface](math-modeling.md#authored-wilds-and-screen-modifiers).
 
 ## Bounded authored mechanics
 
 See [cascades, respins and collections](bounded-mechanics.md) for the declarative
-contracts, supported compositions, authoring/build/extraction/PAR workflow,
+interfaces, supported compositions, authoring/build/extraction/PAR workflow,
 logical-round accounting, continuation and durability boundaries.
 
 ## Portable declarative checkpoints
 
-ABI 3 feature artifacts use `pokie.state.v4`, binding the artifact, actual consumed
+ABI 3 feature artifacts use `pokie.state.v4`, link the artifact, actual consumed
 RNG count/continuation, denomination/mode/context, native mechanic state and latest
 logical delivery. Restore reconstructs static reels from the bound model and
-validates the last accepted observations against progress before restoring the
+validates the last accepted samples against progress before restoring the
 host. A failed successor preserves an accepted composite prefix and its remaining
-request budget; fresh JSON restoration can retry that request or accept the proper
+request limit; fresh JSON restoration can retry that request or accept the proper
 continuation. Changed entry selection and foreign/stale/skipped cursors reject.
 Snapshots retain no cumulative command/draw/completed-round history. Explicit
 composite/replay output and bounded trace evidence are separate caller-owned data.
-Ordinary artifacts retain compact v3 state and their plain-play contract. These
+Ordinary artifacts retain compact v3 state and their plain-play interface. These
 files are executable checkpoints, not durable wallet/result transactions.

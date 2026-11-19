@@ -255,7 +255,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
         };
     }, []);
     // Same "outdated" distinction as validateOutdated above, for a completed Build silently invalidated by
-    // a later build-configuration edit -- modes, output directory and pack authorities only touch
+    // a later build-configuration edit -- modes, output directory and pack trusted sources only touch
     // Build; bundleDir also invalidates Validate. Cleared the instant a
     // fresh Build run starts. Rendered on Select/configure (where modes live) rather than duplicating the
     // validateOutdated banner's own "rerun Validate" guidance whenever both are true at once.
@@ -475,7 +475,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
     // Studio owns creation and inspection, while independent verification remains the canonical CLI
     // verifier. The handoff is tied to the actual source/output of this successful build; source
     // validation alone never claims to verify an already-written evidence directory.
-    const certificationVerifyCommand = `pokie certification verify ${outDir.trim()} --source ${bundleDir.trim()}${Object.values(packFields).some(value => value.trim()) ? " --authorities authorities.json" : ""}${packFields.templateFile.trim() ? ` --template ${packFields.templateFile.trim()}` : ""}`;
+    const certificationVerifyCommand = `pokie certification verify ${outDir.trim()} --source ${bundleDir.trim()}${Object.values(packFields).some(value => value.trim()) ? " --trusted-sources sources.json" : ""}${packFields.templateFile.trim() ? ` --template ${packFields.templateFile.trim()}` : ""}`;
 
     function renderValidateStep(): ReactNode {
         if (!validateReachable) {
@@ -874,7 +874,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                         </PageSection>
                         {downloadError && <ErrorState message={downloadError} />}
                         <QuickActions>
-                            <Button onClick={() => downloadJsonBlob("authorities.json", packConfiguration().pack)}>Download authorities.json</Button>
+                            <Button onClick={() => downloadJsonBlob("trusted-sources.json", packConfiguration().pack)}>Download trusted sources</Button>
                             {buildResult.files.filter(file => file.startsWith("pack.")).map(file => <Button key={file} onClick={() => {
                                 return downloadPack(file);
                             }}>Download {file}</Button>)}

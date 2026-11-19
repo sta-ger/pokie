@@ -24,8 +24,8 @@ this importer. Rather than invent plausible-looking stand-ins, the importer uses
 | `provenance.pokieVersion` | substituted with `pokie-manifest.json`'s own `pokieVersion` |
 
 Within the supported format, Stake-facing outcome IDs, weights and raw integer payout multipliers
-round-trip exactly. Manifest fields (`cost`, `betMode`, `stake`, `libraryId`, game and config identity)
-are retained. Reconstructed native fractional ratios and currency amounts are binary64 approximations;
+round-trip exactly. Package fields (`cost`, `betMode`, `stake`, `libraryId`, game and config identity)
+are saved. Reconstructed native fractional ratios and currency amounts are binary64 approximations;
 their floating-point bits need not match the original native objects. Each accepted reversal must
 reproduce the original raw Stake integer under the shared forward calculation.
 
@@ -54,7 +54,7 @@ the CLI (`pokie import <stakeDir>` writes exactly what `pokie build --target sta
 
 Import only ever round-trips a directory produced by `pokie build --target stakeAdapter` — there is no path for
 importing a hand-crafted or foreign Stake package with caller-supplied fallback fields. Without a recognized
-manifest (`generatedBy` identifies POKIE's adapter export), `betMode`/`stake`/`provenance`/`libraryId` are genuinely
+manifest (`generatedBy` identifies POKIE's connector export), `betMode`/`stake`/`provenance`/`libraryId` are genuinely
 unrecoverable, and reporting `stakeengine-import-manifest-missing`/`stakeengine-import-manifest-unrecognized`
 is the honest outcome — not inventing stand-in values for them.
 
@@ -182,7 +182,7 @@ Two layers, mirroring the exporter's own "validate everything before building" d
 | `stakeengine-import-mode-filename-mismatch` | a mode's `weights`/`events` filename doesn't exactly match `lookup_<name>.csv`/`books_<name>.jsonl.zst` |
 | `stakeengine-import-filename-reused` / `stakeengine-import-filename-case-collision` | two modes' `weights`/`events` filenames are exactly the same, or differ only in case |
 | `stakeengine-import-manifest-missing` / `stakeengine-import-manifest-unreadable` / `stakeengine-import-manifest-invalid-json` | `pokie-manifest.json` doesn't exist / couldn't be read / doesn't parse as JSON |
-| `stakeengine-import-manifest-unrecognized` | it parses but was not written by POKIE's adapter export, or its `modes` isn't an array |
+| `stakeengine-import-manifest-unrecognized` | it parses but was not written by POKIE's connector export, or its `modes` isn't an array |
 | `stakeengine-import-manifest-schema-version-unsupported` | its `schemaVersion` isn't the currently supported one |
 | `stakeengine-import-manifest-field-invalid` | a required top-level manifest field (`game`, `pokieVersion`, `generatedAt`, `files`,...) is missing or the wrong type |
 | `stakeengine-import-manifest-mode-field-invalid` / `stakeengine-import-manifest-library-id-invalid` / `stakeengine-import-manifest-library-hash-invalid` / `stakeengine-import-manifest-outcome-count-invalid` | a manifest mode entry, or one of its `libraryId`/`libraryHash`/`outcomeCount` fields specifically, is missing or malformed (`libraryHash` must match `^sha256:[0-9a-f]{64}$`; `outcomeCount` must be a *positive* safe integer — zero outcomes is rejected, not silently accepted) |
@@ -221,7 +221,7 @@ Two layers, mirroring the exporter's own "validate everything before building" d
 
 `StakeEngineImporter.importFromDirectory` runs the structural checks first; on any error, nothing is reconstructed
 at all (`{modes: [], manifest: undefined, issues}`). Otherwise it reconstructs every mode fully in memory; any
-per-outcome error still means the whole import reports nothing built — the same all-or-nothing contract as
+per-outcome error still means the whole import reports nothing built — the same all-or-nothing interface as
 `StakeEngineExporter.exportToDirectory`.
 
 ## CLI usage
@@ -292,7 +292,7 @@ For an otherwise compatible POKIE export exceeding that native domain,
 `StakeEngineImporter` returns `exactSource` with captured payload bytes and an
 explicit `stakeengine-import-exact-payload` diagnostic; `modes` is empty. It never
 rescales weights or constructs a misleading numeric library. The import writer
-publishes a **Stake adapter project**, preserving CSV/books/index/manifest bytes.
+publishes a **Stake connector project**, preserving CSV/books/index/manifest bytes.
 `pokie import`, its Stake alias and their JSON output identify that
 payload. Reopen it with the importer, analyze/report/diff it as an Outcome Source,
 and re-export with `pokie build SOURCE --target stakeAdapter --out NEW` or

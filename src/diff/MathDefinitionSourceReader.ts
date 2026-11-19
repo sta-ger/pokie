@@ -17,7 +17,7 @@ import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import {GameBlueprintReadBudgetExceededError, loadGameBlueprint} from "../generated/loadGameBlueprint.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
-import {materializeReelStrips} from "../generated/materializeReelStrips.js";
+import {writeReelStrips} from "../generated/writeReelStrips.js";
 import {ParSheetImporter} from "../parsheet/ParSheetImporter.js";
 import type {PokieProject} from "../project/PokieProject.js";
 import {ProjectTargetResolver} from "../project/ProjectTargetResolver.js";
@@ -303,7 +303,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
             if (!resolution.success) throw new Error(
                 "Deterministic reel generation failed: " + JSON.stringify(resolution.reels).slice(0, 1500),
             );
-            const model = {...materializeReelStrips(authored, resolution.reelStripGeneration)};
+            const model = {...writeReelStrips(authored, resolution.reelStripGeneration)};
             Reflect.deleteProperty(model, "symbolWeights");
             Reflect.deleteProperty(model, "reelStripGeneration");
             const extraction = await this.extraction.extract(

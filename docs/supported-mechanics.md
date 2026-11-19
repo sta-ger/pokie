@@ -1,7 +1,7 @@
 # Supported mechanics
 
 POKIE's authored mechanics are finite, validated Blueprint data. This page maps the supported
-families; field-level contracts and limits live in the linked documents. It is an implementation
+families; field-level interfaces and limits live in the linked documents. It is an implementation
 guide, not a certification.
 
 | Family | Support |
@@ -9,9 +9,9 @@ guide, not a certification.
 | Free games and retriggers | Zero and additive grants, retrigger policies and free-game session state — see [free games](free-games.md). |
 | Hold&Win | Flat and entry-bet awards, lock coordinates, reset and exhaustion — see [game session](game-session.md). |
 | Jackpots | Fixed and accumulating pools, contribution, award and reset — see [game session](game-session.md). |
-| Bet modes | Base, ante and explicit purchase lifecycle — see [game session](game-session.md). |
+| Bet modes | Base, ante and explicit purchase status — see [game session](game-session.md). |
 | Screen modifiers and wild variants | Expanding, sticky, restricted, multiplier, transform and reel rules — see [authored wilds](math-modeling.md#authored-wilds-and-screen-modifiers). |
-| Cascades, respins and collections | All seven nonempty combinations with bounded terminal/progression behavior — see [bounded mechanics](bounded-mechanics.md). |
+| Cascades, respins and collections | All seven nonempty combinations with bounded terminal/progression behavior — see [feature chains with limits](bounded-mechanics.md). |
 | Weighted bonus outcomes | Finite outcome tables with weights, payout units and duration — see [weighted bonus](weighted-bonus.md). |
 | Resizable grids and geometry | Generated, visible and evaluated screen ownership — see [resizable grid](resizable-grid.md). |
 | Artifacts and interchange | Generated TypeScript/CJS packages, PAR workbooks, extraction and WASM — see [game packages](game-packages.md). |
@@ -22,7 +22,7 @@ boundaries. They are not implied by a supported authored family.
 
 ## Advanced declared-model analysis
 
-The advanced declared-model boundary records each source/mechanic adapter, initial-state and numeric
+The advanced declared-model boundary records each source/mechanic connector, initial-state and numeric
 assumptions, supported checks, all-path termination semantics and unsupported persistent state.
 Blueprint runtime handlers are reused; custom executable fidelity is never inferred from descriptor
 completeness. Exhausted analysis budgets remain unknown, distinct from runtime respin caps and cascade
@@ -37,7 +37,7 @@ amount-only analytics, without invented feature events. See
 
 ## Portable feature execution
 
-Portable feature execution is exercised by the retained native public-runtime and browser suites.
+Portable feature execution is exercised by the saved native public-runtime and browser suites.
 They generate real packages and artifacts, compile all generated TypeScript, and use fresh root ESM
 and `require(esm)`, browser and wasm exports. Independent amounts, screens, feature progress,
 settlement, selected identity, JSON restoration, replay and next RNG are checked at meaningful
@@ -48,7 +48,7 @@ outcome-library/Stake targets. See [the current WASM boundary](wasm-compatibilit
 
 PAR fidelity coverage reopens actual XLSX workbooks for every existing mechanic, bounded
 progression composition, modifier and weighted bonus in the authored catalogues, using exact/weighted
-reel sequences and fractional bets. Represented hashes, Game Model projection and seeded
+reel sequences and fractional bets. Represented hashes, Game Model view and seeded
 runtime/restoration are checked together. Empty optional arrays canonicalize to absence; empty
 paytable symbol maps are represented by symbol-only rows. Geometry/custom mechanics/unknown policies
 are rejected rather than treated as lossless.
@@ -61,10 +61,10 @@ draft.
 
 ## Dossier preparation
 
-dossier preparation adds versioned dossier sections through the existing builder/verifier,
-authoritative model rules and field coverage, statistics and executable audit replay when
+certification pack preparation adds versioned certification pack sections through the existing builder/verifier,
+trusted model rules and field coverage, statistics and executable audit replay when
 explicitly supplied. Formats are JSON, console text, Markdown, HTML and local selectable-text PDF.
-Partial/custom/unknown model authority remains visible. Outcome-only dossiers cannot establish
+Partial/custom/unknown model trusted source remains visible. Outcome-only certification packs cannot establish
 originating rules; SDK/fairness evidence is explicitly unavailable. YAML is optional and
 unimplemented. This is assessment preparation, not certification. See
-[the dossier contract](certification-evidence-bundle.md).
+[the certification pack interface](certification-pack.md).

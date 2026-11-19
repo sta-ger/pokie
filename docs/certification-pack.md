@@ -74,14 +74,14 @@ const bytes = await new CertificationPackRenderer().render(result.manifest!, "pd
 
 ## Pack contents and integrity
 
-The pack manifest schema **2** contains pack content schema **1**, presentation template schema **1**, the
+The pack index schema **2** contains pack content schema **1**, presentation template schema **1**, the
 original per-mode sample and analysis entries and deep-validation issues. Required sections are:
 
 | Section | Contents and boundaries |
 | --- | --- |
-| identity | actual model/config hash, source folder identity, source manifest and hash, runtime version, revision labels |
+| identity | actual model/config hash, source folder identity, source index and hash, runtime version, revision labels |
 | rules | authored and effective symbols, paytable, ordered and weighted reels, bets, modes, win model, mechanics, geometry, field sources, diagnostics and advanced validation |
-| statistics | exact retained-library distributions, generator strategy and coverage, sampled reports, confidence intervals, seeds, workers, populations, stop reasons and explicit unavailable evidence |
+| statistics | exact saved-library distributions, generator strategy and coverage, sampled reports, confidence intervals, seeds, workers, populations, stop reasons and explicit unavailable evidence |
 | validation | deep source results at build time, declared-model assumptions and executable fidelity; verification is shallow plus independently checked samples |
 | reproduction | native weighted sample selection and separately identified executable audit captures and commands, with partial-capture boundaries |
 | support | preparation-only notice, complete/partial/unavailable **model representation**, limitations and absent SDK/fairness evidence |
@@ -99,7 +99,7 @@ a Blueprint/PAR/WASM definition alone does not grant arbitrary execution. Unsupp
 captures remain unavailable or partial.
 
 Compatibility is explicit: pack format 1 supports POKIE **2.0.x** producer and build runtimes (including
-prerelease/build labels), with retained **1.3.x** reading compatibility for internal engineering
+prerelease/build labels), with saved **1.3.x** reading compatibility for internal engineering
 evidence. Other runtime lanes and malformed versions reject with a rebuild diagnostic; origin metadata
 must never be relabelled. The independent interfaces remain: descriptor and Blueprint schema 1,
 simulation report schema 1, `pokie.audit-round.v1` and `pokie.session-runtime.v1`. Legacy sample-only
@@ -180,10 +180,10 @@ failed builds produce no downloadable successful pack. Simulation report downloa
 JSON/Markdown/HTML interfaces.
 
 SDK and fairness evidence is currently explicitly **unavailable** in this pack. No profile is inferred
-from a bundle or game name. Existing [SDK diagnostics](external-adapter-sdk.md) establish local target
+from a bundle or game name. Existing [SDK diagnostics](external-connector-sdk.md) establish local target
 compatibility, never provider acceptance; existing [HMAC fairness proofs](provably-fair.md) establish
 only their versioned reproducible outcome-selection checks, never precommit timing or general game
-fairness. These separate interfaces must not be presented as certification authority.
+fairness. These separate interfaces must not be presented as certification trusted source.
 
 ### Studio destinations and cancellation
 

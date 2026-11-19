@@ -4,7 +4,7 @@
 
 This walkthrough covers manual modeling, measurement, and iteration. The separate
 [optimization workflow](optimization.md) supports declared same-type tunables with finite exact or bounded
-seeded search, held-out confidence assessment, locks and explicit saves. Noisy observations do not guarantee
+seeded search, held-out confidence assessment, locks and explicit saves. Noisy samples do not guarantee
 exact target attainment.
 
 Blueprint `screenGeometry` declares generated, visible and evaluated coordinates. Rectangular overscan and
@@ -17,13 +17,13 @@ editor, build, runtime/restore, simulation/report, extraction, PAR and replay wo
 targets remain explicit; arbitrary callbacks and dynamic targets remain custom-only, and lossy extraction
 is blocked. PAR does not represent nonidentity geometry.
 
-[definition comparison](#canonical-definition-comparison) reads authoritative Blueprint,
-package descriptor, PAR and WASM data, preserving partial/unsupported status when authority is
+[definition comparison](#canonical-definition-comparison) reads trusted Blueprint,
+package descriptor, PAR and WASM data, preserving partial/unsupported status when trusted source is
 incomplete. It is separate from statistical report and Outcome Library/Stake comparisons.
 [Advanced declared-model validation](#advanced-declared-model-validation) adds bounded reachability,
 all-path termination and invariant analysis using supported runtime handlers or finite declared transitions.
 Exhausted budgets remain unknown; descriptor or transition completeness does not prove arbitrary custom-code
-behavior, and persistent-state limitations remain explicit. Historical assessments are retained as
+behavior, and persistent-state limitations remain explicit. Historical assessments are saved as
 engineering history, not current support guidance.
 
 A worked walkthrough of using POKIE to balance RTP, hit frequency, and volatility for a video slot's math model.
@@ -160,7 +160,7 @@ Across independent reels the joint event mass is the product of those weights.
 `getCombinationProbability()` rejects weighted inputs because there is no single
 uniform tuple probability. Outcome-library generation sweeps the same ordered
 variant/stop events, merges mass for identical grids in memory or disk partitions,
-and evaluates each grid through the existing forced-session seam. A deduplicated
+and evaluates each grid through the existing forced-session extension point. A deduplicated
 artifact does not claim one arbitrary variant ID for several possible sources.
 Exact source identity includes all authored IDs, arrays, weights and ordering,
 including zero-weight alternatives; incompatible checkpoints are rejected.
@@ -169,7 +169,7 @@ A tiny fixture uses a 1:3 all-A/all-B reel, an exact all-A reel, and a two-A lin
 paying four times stake. Its exact RTP is `1/4 * 4 = 1`. Seeded runtime and sampled
 libraries use the same distribution. Positive numeric probability underflow is an
 explicit exact-analysis/export boundary, while runtime selection retains exact
-binary64 weight ratios. See [the reel contract](reels-and-sequences.md#weighted-whole-sequence-reels).
+binary64 weight ratios. See [the reel interface](reels-and-sequences.md#weighted-whole-sequence-reels).
 
 ## Authored wilds and screen modifiers
 
@@ -209,7 +209,7 @@ its **unique winning coordinates**, once per position. The ways product applies
 to the complete component (including its ways count), not separately to each
 way. Separate winning lines each receive their own factors. Losing cells and
 scatter components contribute no factors. Overflow fails before settlement.
-Existing evaluator target selection is retained: all-wild lines have no regular
+Existing evaluator target selection is saved: all-wild lines have no regular
 target and pay zero even when a wild has an own paytable entry; ways excludes wild
 paytable targets. A mixed line pays its regular target's entry. For `[A,W2,W3]`,
 restrictions to A, paytable A/3 = 10, factors 2 and 3, and bet 0.05, payout is
@@ -218,9 +218,9 @@ restrictions to A, paytable A/3 = 10, factors 2 and 3, and bet 0.05, payout is
 Sticky acquisition occurs at its rule's position in the ordered sequence, after
 earlier rules. It retains that rule's wild and factor identity, reapplies it at
 the same point in each subsequent step, then decrements its lifetime. Lifetime
-includes acquisition; a retained cell is not refreshed while retained. Its last
+includes acquisition; a saved cell is not refreshed while saved. Its last
 application has remaining 0 and is then removed; a later step can acquire again.
-Later rules may overwrite the current screen without rewriting the retained
+Later rules may overwrite the current screen without rewriting the saved
 identity. Counters advance per executed step across paid spins, free continuations
 and mode changes, not per logical round or response. New sessions start empty;
 failed evaluation/settlement and duplicate delivery cannot commit another advance.
@@ -228,16 +228,16 @@ failed evaluation/settlement and duplicate delivery cannot commit another advanc
 All six variants compose with line, ways and cluster win models, exact/weighted
 reel sources, supported geometry, free games, bet modes and jackpots. Hold & Win
 and value evaluators are explicitly unsupported with these declarations. WASM
-preserves these supported modifier contracts. Persistent sticky rules block independent-spin exact
+preserves these supported modifier interfaces. Persistent sticky rules block independent-spin exact
 outcome enumeration and its downstream conversions; stateless rules use the same
 session payout path during enumeration. Custom callbacks retain their custom
-capability/extraction boundary. See [serialization](serialization.md) and
+supported action/extraction boundary. See [serialization](serialization.md) and
 the implementation evidence record.
 
 ## Bounded authored mechanics
 
 See [cascades, respins and collections](bounded-mechanics.md) for the declarative
-contracts, supported compositions, authoring/build/extraction/PAR workflow,
+interfaces, supported compositions, authoring/build/extraction/PAR workflow,
 logical-round accounting, continuation and durability boundaries.
 
 ## Weighted bonus authoring
@@ -261,13 +261,13 @@ hashes and payout engines are unchanged.
 Inputs may be paths, resolved projects, caller-owned `PokieGame` objects, or
 `{kind: "blueprint", model, location?}`. Blueprint JSON, package model descriptors,
 PAR import and integrity-bound WASM readers supply data. Display
-projections and reel preview samples are never definition authorities. Package
+views and reel preview samples are never definition trusted sources. Package
 extraction releases its own snapshots; caller games and unrelated leases remain
 caller-owned. Both reads settle and all owned cleanup completes before returning,
 including either-side failures and cancellation. Cancellation never returns an
 identical result; snapshot cleanup failure remains a failed result.
 
-### Version 1 machine contract
+### Version 1 machine interface
 
 The result contains `schemaVersion: 1`, `comparisonKind: "math-definition"`,
 `scope: "declared-effective-model"`, `status`, `left`, `right`, and `changes`.
@@ -276,18 +276,18 @@ Statuses are `identical`, `different`, `partial`, `unsupported`, `invalid`,
 `identical` or `different`. An empty supported subset does not prove equality.
 Each source carries identity (kind, location when available, descriptor and
 Blueprint schema versions), support, complete known authored/effective JSON,
-field authority evidence, bounded diagnostics and comparison limits.
+field trusted source evidence, bounded diagnostics and comparison limits.
 
 A change has an RFC 6901 JSON Pointer `path`, `classification`, `mathematical`,
 `seededTraceImpact`, and `before` / `after`. Paths escape `~` as `~0` and `/` as
 `~1`; array indices are zero-based. Changes sort by pointer using code-unit
 ordering. Object insertion order is ignored. Optional `context` identifies
 reels, variant IDs, mode IDs, symbols/match counts, weighted-bonus table/outcome
-and feature IDs, selection context and sampling contract.
+and feature IDs, selection context and sampling interface.
 
 Each side is either `{present: false, provenance:...}` or
 `{present: true, value: <exact JSON value>, provenance:...}`. Missing values are
-never serialized as null or zero. Provenance records authority, authored
+never serialized as null or zero. Provenance records trusted source, authored
 presence/value, and `authored`, `effective`, `defaulted` or `unknown` status.
 For package inputs, authored presence means presence in the supplied descriptor
 declaration, not recovered pre-build authoring instructions. Original authoring
@@ -298,12 +298,12 @@ tiny positive weights survive JSON serialization. Non-finite numbers, accessors,
 cycles, unsafe keys and oversized direct data are rejected explicitly.
 
 Classifications are `mathematical`, `representation`, `provenance`, `order`, and
-`validation`. Authored default omission versus explicit default is retained as a
+`validation`. Authored default omission versus explicit default is saved as a
 representation change even when effective values agree. Missing payout/grant
 versus explicit zero, and missing versus empty symbol tables, remain visible
 without asserting a payout change. Generated effective reels and authoring
 instructions are separate: changing metadata or generation representation can
-change hash-derived materialized strips, in which case the strip changes are
+change hash-derived created strips, in which case the strip changes are
 mathematical. With literal reels held fixed, mode labels and descriptive `targetRtp`,
 paylines ignored by ways/cluster evaluators, and omitted modifier wild `factor`
 versus explicit `1` remain visible representation changes without mathematical CI
@@ -314,12 +314,12 @@ the authored pass retains representation additions/removals. Mixed/weighted
 sequences retain variant IDs, weights and selection ordering. Actual wild
 multipliers, sequence positions and payout amounts remain mathematical.
 For generated/Blueprint modes with no `runtimeType` anywhere, `costMultiplier`
-and `isDefault` are metadata; an explicit runtime mode contract retains executable
-cost/default changes. Custom descriptors without that generated contract do not
+and `isDefault` are metadata; an explicit runtime mode interface retains executable
+cost/default changes. Custom descriptors without that generated interface do not
 establish that their costs are inert.
 Generated packages cannot recover discarded generation instructions.
 
-Ordered arrays are retained. Permutations are `order` changes, with a separate
+Ordered arrays are saved. Permutations are `order` changes, with a separate
 mathematical flag; reel positions, modifier execution and cumulative weighted
 selection retain their operational ordering. The `symbols` inventory is a
 membership declaration: reordering the same inventory is a non-mathematical
@@ -344,12 +344,12 @@ literal keys. Unsupported ancestors override exact/default evidence at every
 descendant; default filtering and normalization use the same path identity.
 
 Provenance is compared at containers as well as leaves, including empty objects
-and arrays. Retained all-exact sequence declarations also retain authority-only
+and arrays. Retained all-exact sequence declarations also retain trusted source-only
 changes at `/reelSequences`, individual reels, `type`, and `symbols`, even though
 mathematical values compare through effective strips. Recorded absent symbol
 tables, payout entries and omitted feature fields retain their own provenance
-changes with `present: false` on both sides. This never supplies missing values. A container authority change has its own pointer even when child
-fields have independent authority. A child representation change that already
+changes with `present: false` on both sides. This never supplies missing values. A container trusted source change has its own pointer even when child
+fields have independent trusted source. A child representation change that already
 discloses adding/removing a default declaration avoids redundant parent entries.
 
 Diagnostic paths use JSON Pointers, with `""` for the root. Source validator dotted
@@ -387,10 +387,10 @@ maxWinPolicy: {
 `{type: "none", scope, authority}` establishes a declared absence;
 `{type: "unknown", authority}` marks an unknown policy. The generated runtime
 has no payout cap, so its absent declaration resolves to `none` with framework
-authority. An undeclared custom policy is `unknown`, making the result partial.
+trusted source. An undeclared custom policy is `unknown`, making the result partial.
 Observed report `maxWin`, library maxima and equal hashes never substitute for a
 policy declaration. Declared value/unit/scope changes are mathematical;
-authority-only changes are representation/provenance information. Unknown extra
+trusted source-only changes are representation/provenance information. Unknown extra
 policy fields and malformed policies are rejected.
 
 Comparison completeness does not grant conversion eligibility. Extraction retains a
@@ -399,12 +399,12 @@ valid declared max-win policy for comparison, but emits no `blueprint` or
 `conversionDiagnostics` explains `max-win-policy-not-representable`. Artifact
 planning and publication refuse these conversions, including intermediate
 Blueprints for package/PAR/WASM builds. A declared `none` policy permits the
-existing conversion contract. No payout cap is added.
+existing conversion interface. No payout cap is added.
 
 A custom descriptor declares representable behavior; it cannot prove arbitrary
 executable fidelity. Unsupported collaborators, unknown fields, absent descriptors,
 incompatible versions, throwing getters and asynchronous rejection retain explicit
-boundaries. Unsupported field authority overrides defaults and exact evidence at
+boundaries. Unsupported field trusted source overrides defaults and exact evidence at
 all descendants. Unknown fields retain declarations without fabricated effective
 defaults or asserted mathematical changes; provenance traversal includes array
 elements in modifiers, variants and modes. Known partial fields are still compared. PAR comparison covers only
@@ -435,4 +435,4 @@ lifetime wallet/counter overflow retain limitations. Max-win declarations are
 checked in their declared units/scope and never install an enforcement cap.
 See the full source/mechanic boundary.
 
-See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.
+See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning interfaces, locks, evidence and explicit candidate publication.

@@ -181,7 +181,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
                 if (packHash(template) !== manifest.presentation.templateHash || sha256OfBytes(fs.readFileSync(options.templateFile)) !== manifest.presentation.templateArtifactHash) throw new Error("Template differs from the explicitly selected raw/semantic authority.");
             } else if (manifest.presentation.templateHash !== packHash(DEFAULT_CERTIFICATION_PACK_TEMPLATE)) throw new Error("Unselected custom template has no explicit artifact authority.");
             if (manifest.pack.rules.status === "available" && !options.pack?.modelSource) throw new Error("Explicit pack modelSource authority is required; retained model locations are never followed.");
-            if ((options.pack?.reportFiles?.length ?? 0) !== manifest.pack.statistics.estimates.length || (options.pack?.replayFiles?.length ?? 0) !== manifest.pack.reproduction.recordings.length) throw new Error("Explicit reportFiles/replayFiles authorities must cover every attached item.");
+            if ((options.pack?.reportFiles?.length ?? 0) !== manifest.pack.statistics.estimates.length || (options.pack?.replayFiles?.length ?? 0) !== manifest.pack.reproduction.recordings.length) throw new Error("Explicit reportFiles/replayFiles trusted sources must cover every attached item.");
             const actual = await acquireCertificationPack(sourceManifest, packHash(sourceManifest), options.pack, options.signal, sourceBundleDir);
             if (packHash(actual) !== packHash(manifest.pack)) throw new Error("Pack model/report/replay/revision evidence differs from selected authority or runtime reproduction.");
         } catch (error) {

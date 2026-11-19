@@ -202,7 +202,7 @@ or category is missing from that side) rather than a computed `delta` — both c
 `string` (see above), and a delta over an arbitrary-precision decimal string is intentionally left to the caller
 rather than reimplemented as float subtraction here. `warnings` flags material `rtp`/`hitFrequency`/`maxRatio`
 swings past a constructor-configurable threshold (`DEFAULT_RTP_DELTA_WARNING_THRESHOLD` and friends), the same
-"flag it, don't fail on it" contract `pokie diff` itself uses.
+"flag it, don't fail on it" interface `pokie diff` itself uses.
 
 ```ts
 import {StakeEngineStandaloneAnalysisDiffer} from "@fromstan/pokie";

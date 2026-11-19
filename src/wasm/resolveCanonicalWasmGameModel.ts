@@ -1,6 +1,6 @@
 import {resolveResolvedCanonicalWasmGameModel} from "./resolveResolvedCanonicalWasmGameModel.js";
 import {normalizeResolvedWasmBlueprint} from "./DeclarativeWasmModel.js";
-import {materializeReelStrips} from "../generated/materializeReelStrips.js";
+import {writeReelStrips} from "../generated/writeReelStrips.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import type {PokieWasmGameModel} from "./PokieWasmCanonicalModule.js";
@@ -14,7 +14,7 @@ export function resolveCanonicalWasmGameModel(blueprint: GameBlueprint): PokieWa
     }
     let materialized: GameBlueprint;
     try {
-        materialized = normalizeResolvedWasmBlueprint(materializeReelStrips(blueprint, resolution.reelStripGeneration));
+        materialized = normalizeResolvedWasmBlueprint(writeReelStrips(blueprint, resolution.reelStripGeneration));
     } catch (error) {
         throw new Error(`Blueprint "${blueprint.manifest.id}" cannot materialize its reel strips for the canonical WASM model. ${error instanceof Error ? error.message : String(error)} Next: use valid literal/generated strips or repair the authored symbol weights.`);
     }

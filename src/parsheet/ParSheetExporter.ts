@@ -8,7 +8,7 @@ import type ExcelJS from "@xlvane/exceljs";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import type {GameBlueprintValidating} from "../generated/GameBlueprintValidating.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
-import {materializeReelStrips} from "../generated/materializeReelStrips.js";
+import {writeReelStrips} from "../generated/writeReelStrips.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
 import {convertSharedWeightsToReelStrips} from "../project/buildGameModelReels.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
@@ -78,7 +78,7 @@ export function prepareBlueprintForParSheetExport(
             };
         }
         return {
-            blueprint: removeSharedWeights(materializeReelStrips(authored, resolution.reelStripGeneration)),
+            blueprint: removeSharedWeights(writeReelStrips(authored, resolution.reelStripGeneration)),
             issues: [...validationIssues, materializationIssue(
                 "parsheet-generated-reels-materialized",
                 "Generated reelStripGeneration entries were resolved to literal ReelStrips for the PAR workbook; importing this workbook cannot restore the generated source.",

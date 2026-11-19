@@ -2,7 +2,7 @@
 
 # WASM Compatibility Boundary
 
-POKIE WASM is a first-class, portable artifact target. `pokie build <Blueprint> --target wasm` emits a valid
+POKIE WASM is a first-class, portable output format. `pokie build <Blueprint> --target wasm` emits a valid
 `game.wasm` and an integrity-bound `game.wasm.pokie-wasm.json` manifest. The portable `@fromstan/pokie/wasm` runtime
 instantiates only standard WebAssembly and receives randomness from its host; Node file loading, Studio state,
 and process concerns stay outside that runtime. POKIE intentionally does **not** promise that an arbitrary
@@ -10,9 +10,9 @@ handwritten Node package can be compiled to WASM: Blueprint is the source, and P
 the existing model-preserving Blueprint import.
 
 The production-readable source for this boundary is `WASM_PRODUCT_CONTRACT` in
-`src/project/WasmProductContract.ts`. Resolver capabilities, CLI inspection and
+`src/project/WasmProductContract.ts`. Resolver supported actions, CLI inspection and
 unsupported-operation diagnostics, conversion planning, and Studio's refreshed
-WASM availability all derive from that contract; this page explains it but does
+WASM availability all derive from that interface; this page explains it but does
 not define a second product route.
 
 **Scope:** Blueprint/PAR artifact production, integrity-checked resolution, portable runtime API,
@@ -34,7 +34,7 @@ ABI **3.0.0** imports `pokie.next_random: () -> f64` and exports `play(f64) -> f
 `evaluate(f64) -> f64` and fixed-limit `memory`. Ordinary `play` consumes one raw
 host draw per reel and uses `floor(draw * strip.length)` with circular stops.
 `evaluate` consumes no RNG. Feature orchestration reuses the same Node session
-classes, contextual generator, modifier pipeline and settlement contracts; its
+classes, contextual generator, modifier pipeline and settlement interfaces; its
 projected/modified screens are evaluated by the shared WASM kernel. There is no
 second replay or payout engine. Unpaid initialization runs once. Weighted
 selection and rejection sampling consume their actual draws; cascade refills
@@ -48,12 +48,12 @@ modes, jackpots, weighted reels and geometry. This is not universal stackability
 conflicting progression owners, modifiers with Hold&Win, bounded decorators with
 other progression decorators, and weighted-bonus schema exclusions remain errors.
 External wallet/shared-progressive services and arbitrary callbacks, evaluators,
-generators or opaque wrappers fail preflight.
+generators or opaque wrappers fail check.
 
 The arithmetic model remains `pokie.game.v2` / `pokie.math.v2`. A versioned
 `features: {schemaVersion: "pokie.features.v1", blueprint:...}` extension binds
 the complete resolved declarative definition. The runtime checks that its
-arithmetic projection agrees with that definition. Byte count, SHA-256,
+arithmetic view agrees with that definition. Byte count, SHA-256,
 configuration hash, component identity, imports, export signatures, memory layout,
 serialization and operation declarations are checked before session publication.
 Exact executable reconstruction rejects internally rehashed code/model mismatches.
@@ -65,8 +65,8 @@ wild-substitution table address at 116. `lowerSharedSlotMath` describes the full
 image. Limits remain 64 reels, 64 evaluation rows, 1024 evaluation cells, 128
 symbols, 1024 paylines, 65536 stops per reel, 262144 total arithmetic stops and
 8 MiB evaluator memory. Feature draws have a finite 262144-draw mathematical-step
-budget; exhaustion fails and rolls back rather than truncating a distribution.
-The 64 KiB small-artifact budget is not a size promise for every supported model.
+limit; exhaustion fails and rolls back rather than truncating a distribution.
+The 64 KiB small-artifact limit is not a size promise for every supported model.
 
 Blueprint is canonical. Supported PAR intermediates and complete declared package
 models use model-preserving extraction; absence of Node builtins is advisory and
@@ -75,7 +75,7 @@ publishes the module last, with owned-file cleanup on cancellation/failure.
 Legacy metadata-only components remain inspection-only. Play, serialize, replay
 and inspect declarations remain independent operation checks.
 
-## The contract — `PokieWasmComponentManifest`
+## The interface — `PokieWasmComponentManifest`
 
 A WASM component built against POKIE declares itself via a sidecar JSON manifest (see "Resolution" below for
 where that file lives) shaped as `PokieWasmComponentManifest`:
@@ -99,7 +99,7 @@ type PokieWasmComponentManifest = {
 ```
 
 - **Metadata** — `component.id`/`component.version` identify the component build itself, independent of
- `schemaVersion` (POKIE's own contract version) and `minPokieVersion` (the lowest package release the component
+ `schemaVersion` (POKIE's own interface version) and `minPokieVersion` (the lowest package release the component
  claims compatibility with — enforced during resolution and before portable runtime instantiation).
 - **Session/play/state serialization** — three format ids naming the wire shape the component's own host
  boundary expects for a session's config, one played round, and persisted state. POKIE places no constraint on
@@ -110,21 +110,21 @@ type PokieWasmComponentManifest = {
  `host.services` is the open list of any other host-provided service ids the component needs.
 - **Capability discovery** — `capabilities` is an open vocabulary of ids the component declares support for,
  the same convention `ProjectCapability`/`ExternalDeploymentCapability` (see the
- [External Adapter SDK](external-adapter-sdk.md)) already use elsewhere in this package: never closed to a
+ [External Adapter SDK](external-connector-sdk.md)) already use elsewhere in this package: never closed to a
  union, so a component author can declare ids a generic POKIE check simply never looks at.
 
-`POKIE_WASM_CONTRACT_VERSION` (currently `"1.0.0"`) is the version of this contract the running POKIE package
+`POKIE_WASM_CONTRACT_VERSION` (currently `"1.0.0"`) is the version of this interface the running POKIE package
 understands. `PokieWasmComponentManifestValidator` checks a manifest's own shape (every field present and
 correctly typed); `assessWasmComponentCompatibility` runs that validator first, then checks the manifest's own
 `schemaVersion` against `POKIE_WASM_CONTRACT_VERSION` — **major-only**: a manifest with an equal-or-lower
 minor/patch on the same major is compatible, a differing major is not. Shape and compatibility are deliberately
 two separate, separately testable steps, the same split
-[`ExternalDeploymentTargetDescriptorValidator`/`ExternalDeploymentCompatibilityValidator`](external-adapter-sdk.md)
+[`ExternalDeploymentTargetDescriptorValidator`/`ExternalDeploymentCompatibilityValidator`](external-connector-sdk.md)
 draw for `ExternalDeploymentTarget`.
 
 ## Resolution — `WasmProjectTargetAdapter`
 
-`ProjectTargetResolver` (see [CLI](cli.md) and the `ProjectResolving` contract) recognizes a `.wasm` file as a
+`ProjectTargetResolver` (see [CLI](cli.md) and the `ProjectResolving` interface) recognizes a `.wasm` file as a
 `"wasm"` `PokieProject` only when it's paired with a sidecar manifest named by appending `.pokie-wasm.json` to
 the `.wasm` file's own full name — e.g. `game.wasm` needs `game.wasm.pokie-wasm.json` next to it. Four possible
 outcomes:
@@ -133,16 +133,16 @@ outcomes:
 |---|---|
 | No sidecar at all | `resolve()` throws `ProjectTargetUnsupportedError` naming exactly where a sidecar was looked for — an ordinary `.wasm` file is never silently treated as unrecognized *or* as a valid POKIE target. |
 | Sidecar present, but unreadable JSON or fails `PokieWasmComponentManifestValidator`'s shape check | `resolve()` throws `ProjectTargetMalformedError` — the manifest signaled intent to be this type and failed a deeper read, the same convention `TsPackageProjectTargetAdapter`/`OutcomeLibraryProjectTargetAdapter` use for their own manifests. |
-| Sidecar present, well-shaped, but `assessWasmComponentCompatibility` rejects its `schemaVersion` | `resolve()` throws `ProjectTargetUnsupportedError` naming exactly which contract version was declared vs. required — a clear incompatibility diagnostic. |
+| Sidecar present, well-shaped, but `assessWasmComponentCompatibility` rejects its `schemaVersion` | `resolve()` throws `ProjectTargetUnsupportedError` naming exactly which interface version was declared vs. required — a clear incompatibility diagnostic. |
 | Sidecar present, well-shaped, and compatible | Resolves as a `"wasm"` `PokieProject`. |
 
 Every compatible WASM project carries `WASM_MANIFEST_READ_CAPABILITY` (`"wasm.manifest.read"`). Integrity-bound
 artifacts additionally carry `WASM_CANONICAL_ARTIFACT_CAPABILITY` (`"wasm.canonical"`): that proves the
 module bytes and manifest have one identity, but authorizes no runtime operation by itself. The manifest's
 declared `runtime.play`, `runtime.serialize`, `runtime.replay`, and `artifact.inspect` operations grant their
-matching capabilities independently after that integrity check. The complete portable play/serialize/replay
+matching supported actions independently after that integrity check. The complete portable play/serialize/replay
 declaration set additionally grants `WASM_RUNTIME_EXECUTE_CAPABILITY` (`"wasm.runtime.execute"`). Consumers must
-use the relevant declared per-operation capability, not treat identity or the aggregate bundle as a
+use the relevant declared per-operation supported action, not treat identity or the aggregate bundle as a
 substitute for it.
 
 A legacy sidecar-only component deliberately retains only manifest inspection so Studio and the CLI can explain the
@@ -150,11 +150,11 @@ migration boundary without falsely advertising execution. A resolved WASM artifa
 `WASM_EXPORT_CAPABILITY`, because it is an output rather than a conversion source; the authored `blueprint` and
 `parWorkbook` project types grant `wasm.export` for the explicit Blueprint/PAR matrix edges.
 
-`readWasmComponentManifest(project)` reads component id/version, serialization format ids, host bindings, and
-declared capabilities. Resolution also verifies the module/manifest integrity binding before runtime
+`readWasmComponentManifest(project)` reads component id/version, serialization format ids, host links, and
+declared supported actions. Resolution also verifies the module/manifest integrity link before runtime
 operations; a swapped, stale, malformed, or incompatible sidecar is rejected before instantiation.
 
-## Package-to-WASM preflight — `assessWasmPackagingPreflight`
+## Package-to-WASM check — `assessWasmPackagingPreflight`
 
 For an existing POKIE `tsPackage`, `assessWasmPackagingPreflight`
 runs an advisory-only scan over that package's own source: it statically finds every `import`/`require` of a
@@ -178,30 +178,30 @@ No package compilation is implied by a `"wasm"` project resolving successfully, 
 
 ## Portable continuation and explicit evidence (runtime API 2.1)
 
-Ordinary snapshots retain `pokie.state.v3`: artifact identity, seed, sequence,
+Ordinary snapshots retain `pokie.state.v3`: file identity, seed, sequence,
 credits, actual draw count and optional JSON-safe RNG continuation. Feature
 snapshots use `pokie.state.v4`, adding entry bet/mode/context, native executable
 progress, banks/pools, locks/sticky lifetimes, weighted selections/counters and
 one compact logical delivery. Artifact-owned strips are reconstructed from the
-model, never from a retained session prefix. Nested state and its last accepted
-observation must agree before host restoration. Initialized sequence-zero
-snapshots and numeric RNG state zero remain authoritative.
+model, never from a saved session prefix. Nested state and its last accepted
+sample must agree before host restoration. Initialized sequence-zero
+snapshots and numeric RNG state zero remain trusted.
 
-`play` accepts the existing spin command contract: `bet`, `mode`, `roundId`,
+`play` accepts the existing spin command interface: `bet`, `mode`, `roundId`,
 `delivery`, `continuation` and `maxSubrounds`. Continuations cannot change entry
 selection or charge another paid stake. `win` is mathematical win; `payout` is
 wallet release, including terminal free-game banks. Delivery-only cascade frames
 have zero new stake, payout and mathematical win. `logicalRound` retains totals
 and the latest mathematical subround, not a growing subround history. Composite
 `deliveries` are finite requested response evidence and are excluded from state.
-An interrupted composite retains one pending request/budget, so an original
+An interrupted composite retains one pending request/limit, so an original
 request retry or its proper successor can finish without another charge.
 Historical arbitrary retry retention is not promised by this compact protocol.
 
 Feature execution requires a bounded serializable/restorable RNG host. Ordinary
-nextRandom-only hosts retain their live execution contract. Sibling sessions and
+nextRandom-only hosts retain their live execution interface. Sibling sessions and
 replay restore their owned RNG continuation before effects. Restore validates
-schema/artifact identities, model-bound nested state, weighted IDs/order/context,
+schema/file identities, model-bound nested state, weighted IDs/order/context,
 counters, coordinates, finite amounts and delivery cursors without replaying
 history. Mathematical failure rolls back the unaccepted successor; accepted
 composite prefixes remain checkpoints. Traps and disposal retire owned sessions
@@ -218,7 +218,7 @@ compact states and incompatible schemas are rejected.
 call `session.setTraceCollector(trace)` later. It captures ordered RNG evidence:
 `initialization` (unpaid), `round` (settled paid play), or `replay`, plus sequence
 and per-event draws. It retains the first `capacity` events, drops subsequent
-events, and exposes `dropped`, detached `entries`, and lifecycle `status`.
+events, and exposes `dropped`, detached `entries`, and status `status`.
 Attachment never backfills prior evidence; restoring an existing snapshot
 emits no synthetic initialization. An empty seed descriptor does initialize
 and can emit its actual initialization draws. Only the concrete collector is
@@ -242,7 +242,7 @@ reads clone-safe evidence, and replay may return a finite `trace` field.
 Restore replaces the session and ends its collector. Cancel/dispose also
 invalidate pending initialization before it can publish a replacement.
 
-CLI and direct server simulation use collector-free sessions and aggregate results with `workers=1`. The Studio browser executes fixed-budget simulation in a production module Worker, reusing `collectPokieWasmSimulation`, shared command sequencing and `SimulationAccumulator`. Replay reuses `collectPokieWasmReplay` and the existing replay runtime, keeping only the final requested observation. CLI retains its requested command/result batch. Neither path keeps cumulative continuation history.
+CLI and direct server simulation use collector-free sessions and aggregate results with `workers=1`. The Studio browser executes fixed-limit simulation in a production module Worker, reusing `collectPokieWasmSimulation`, shared command sequencing and `SimulationAccumulator`. Replay reuses `collectPokieWasmReplay` and the existing replay runtime, keeping only the final requested sample. CLI retains its requested command/result batch. Neither path keeps cumulative continuation history.
 See [feature analytics](simulation.md#feature-analytics-aggregates) for bounds,
 accounting and focused regression commands.
 
@@ -261,18 +261,18 @@ integer-ratio/rejection sampler selects by reel, then stop; active selections ar
 held through feature continuations and cascade refills. Configured probabilities
 and eligible observed counts are distinct. Reads, rejected plays and duplicate
 deliveries do not add selections. Weighted bonus tables and stored outcome
-libraries remain separate contracts. Supported PAR preserves whole sequences;
+libraries remain separate interfaces. Supported PAR preserves whole sequences;
 WASM does not flatten them into independent symbol weights.
 
 Portable replay remains distinct from package audit recordings. CLI and Studio
 forward modes and logical-round intent for supported artifacts; Play is
 process-only, and simulation excludes delivery-only frames from mathematical
-sampling while preserving money, lifecycle and weighted counters.
+sampling while preserving money, status and weighted counters.
 
 ## Bounded authored mechanics
 
 See [cascades, respins and collections](bounded-mechanics.md) for the declarative
-contracts, supported compositions, authoring/build/extraction/PAR workflow,
+interfaces, supported compositions, authoring/build/extraction/PAR workflow,
 logical-round accounting, continuation and durability boundaries.
 
 ## Weighted bonus authoring
@@ -287,10 +287,10 @@ maps every mandatory family separately from arbitrary custom callbacks.
 
 `pokie game.wasm` opens Project Studio, including Home/recent/registered reopening. `inspect` remains explicit CLI inspection. `/api/project/wasm/artifact` delivers a matching byte/sidecar pair scoped to the active Project generation. Integrity and compatibility checks run before admission, in browser loading, at Worker initialization and before publication. Same-path replacement invalidates an active Play session and stale job output. No package loader handles a failed WASM artifact.
 
-`PokieWasmWorkerClient` correlates requests and progress with Project, generation, artifact and job identities. The Vite module Worker is emitted with installed Studio assets, including dynamic simulation imports. Both public browser exports keep filesystem code in the Node adapter. Worker load/error/messageerror/malformed response/trap failures settle requests and release the Worker. Long loops yield to the Worker event loop; Studio active cancellation uses termination, so it can interrupt initialization and long execution. Progress retains only the latest accepted prefix; cancelled/failed jobs publish no completed report.
+`PokieWasmWorkerClient` correlates requests and progress with Project, generation, artifact and job identities. The Vite module Worker is emitted with installed Studio assets, including dynamic simulation imports. Both public browser exports keep filesystem code in the Node connector. Worker load/error/messageerror/malformed response/trap failures settle requests and release the Worker. Long loops yield to the Worker event loop; Studio active cancellation uses termination, so it can interrupt initialization and long execution. Progress retains only the latest accepted prefix; cancelled/failed jobs publish no completed report.
 
-A tab owns its Workers; `StudioJobService` owns durable jobs and downloads. Reload/pagehide disposes owned Workers and reports cancellation. A lost owner expires to `recovery-required` with an explicit retry; another tab discovers that job rather than resubmitting it. Play retains one idle session Worker until reset, replacement, pagehide or connection loss. Checkpoint restore creates and validates a replacement before releasing a valid session. Restore controls require `runtime.serialize`; Play/Simulation require `runtime.play`; Replay requires `runtime.replay`; detail projection requires `artifact.inspect`. The combined `wasm.runtime.execute` capability is never required to grant an individual operation. Unsupported adaptive stopping or multiple simulation Workers fail before admission.
+A tab owns its Workers; `StudioJobService` owns durable jobs and downloads. Reload/pagehide disposes owned Workers and reports cancellation. A lost owner expires to `recovery-required` with an explicit retry; another tab discovers that job rather than resubmitting it. Play retains one idle session Worker until reset, replacement, pagehide or connection loss. Checkpoint restore creates and validates a replacement before releasing a valid session. Restore controls require `runtime.serialize`; Play/Simulation require `runtime.play`; Replay requires `runtime.replay`; detail view requires `artifact.inspect`. The combined `wasm.runtime.execute` supported action is never required to grant an individual operation. Unsupported adaptive stopping or multiple simulation Workers fail before admission.
 
 Installed/rendered browser verification, same-candidate packaging and controller gates are independent requirements. Source-level checks and the standalone Chromium runtime fixture support that verification; they do not establish installed workflow approval.
 
-See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.
+See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning interfaces, locks, evidence and explicit candidate publication.

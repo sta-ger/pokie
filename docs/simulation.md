@@ -4,34 +4,34 @@
 
 Opt-in `SimulationObservationRequest` counters record bounded named event presence and arbitrary
 half-open payout/actual-paid-stake buckets. Aggregate, chunked and worker paths retain the same request
-and accepted-observation counts through snapshots/merging; missing or different coverage is rejected.
-These are selected subround observations, not a claim of full feature-round coverage. Existing currency
+and accepted-sample counts through snapshots/merging; missing or different coverage is rejected.
+These are selected subround samples, not a claim of full feature-round coverage. Existing currency
 histograms and default simulation behavior are unchanged. The [optimization workflow](optimization.md)
-uses supported population adapters, a separately seeded fixed held-out assessment and bounded joint
+uses supported population connectors, a separately seeded fixed held-out assessment and bounded joint
 confidence intervals. Simulation precision convergence is not optimization target attainment; neither a
 short zero-variance sample nor an empirical maximum supplies a mathematical support bound.
 
 [Feature analytics](#feature-analytics-aggregates) record entries, retriggers,
 completions, duration/bonus-win distributions, component hits, weighted selections and payout attribution
 for supported authored mechanics. Reports label actual paid/logical/subround populations and denominators;
-overlapping lifecycle summaries are separate from the additive base/feature/jackpot/unavailable monetary
-partition. Feature WASM supplies lifecycle/component evidence; ordinary amount-only WASM,
-flattened outcome events and custom sessions cannot establish missing lifecycle attribution. Missing
-capabilities remain unavailable rather than observed zero. See the
+overlapping status summaries are separate from the additive base/feature/jackpot/unavailable monetary
+partition. Feature WASM supplies status/component evidence; ordinary amount-only WASM,
+flattened outcome events and custom sessions cannot establish missing status attribution. Missing
+supported actions remain unavailable rather than observed zero. See the
 [launch support register](supported-mechanics.md) for composition and target limits.
 
-Ordinary simulation reports support JSON, Markdown and HTML. Certification dossiers separately
+Ordinary simulation reports support JSON, Markdown and HTML. Certification certification packs separately
 support JSON, console text, Markdown, HTML and local selectable-text PDF through
 [`pokie report`](cli.md#pokie-report-simulationreportjson); this does not add PDF output to ordinary simulation
-or outcome-analysis reports. See [dossier preparation](certification-evidence-bundle.md). Dossier preparation
+or outcome-analysis reports. See [certification pack preparation](certification-pack.md). Dossier preparation
 does not establish regulatory certification. PAR workbook exchange is a separate model format.
-YAML authoring and dossier YAML output remain unimplemented.
+YAML authoring and certification pack YAML output remain unimplemented.
 
-[definition comparison](math-modeling.md#canonical-definition-comparison) reads authoritative
+[definition comparison](math-modeling.md#canonical-definition-comparison) reads trusted
 Blueprint, package descriptor, PAR and WASM models through the shared CLI/Studio differ. Statistical
 report and Outcome Library/Stake aggregate comparisons remain separate workflows. Partial models retain
 limits; matching observed totals cannot prove definition equality or arbitrary custom-code behavior.
-Historical assessments are retained as engineering history, not current support guidance.
+Historical assessments are saved as engineering history, not current support guidance.
 
 `Simulation` drives any `GameSessionHandling` (e.g. `VideoSlotSession`) through repeated rounds and aggregates
 statistics — the tool for RTP/volatility/hit-frequency work. See
@@ -338,7 +338,7 @@ that wants to clamp/validate a user-supplied worker count itself before construc
 | Execution | In-process, no thread spawned | N real `worker_threads`, one per non-zero round share |
 | Game package | Real package, or an in-memory/mocked one (via a custom `loadGame`) | **Real, on-disk package only** |
 | Seed | Used unchanged | Deterministically derived per worker (see `WorkerSeedStrategy`) |
-| vs. pre-`--workers` behavior | Byte-for-byte identical | N/A — a new capability, not a faster version of the old path |
+| vs. pre-`--workers` behavior | Byte-for-byte identical | N/A — a new supported action, not a faster version of the old path |
 
 ### Memory/CPU considerations
 
@@ -455,11 +455,11 @@ the round. Concretely, for each round about to be played, the default chain reso
  below) for *this* round? If so, that's the category, full stop — nothing else is consulted.
 2. **Stake-based** — otherwise, does the session implement `StakeAmountDetermining`? If so, the round is
  `"freeGames"` when `getStakeAmount() === 0`, `"base"` otherwise.
-3. **No breakdown** — otherwise (or if neither contract is implemented at all), this round isn't attributed to
+3. **No breakdown** — otherwise (or if neither interface is implemented at all), this round isn't attributed to
  any category. It still plays and counts toward the overall totals; `getBreakdownStatistics()` only ends up
  `undefined` for the whole run if *no* round, ever, was categorized by *any* step above.
 
-A session implementing neither contract is completely unaffected by any of this — same as before this feature
+A session implementing neither interface is completely unaffected by any of this — same as before this feature
 existed. A session implementing only `StakeAmountDetermining` gets exactly the base/freeGames split it always
 had. A session implementing `SimulationCategoryDetermining` can override that split per round, or opt out of it
 entirely by always returning a valid category. This default is purely additive; nothing about it changes
@@ -585,8 +585,8 @@ delivery does not introduce full-feature enumeration.
 
 Capable sessions additionally report `logicalRounds` with completed entry count,
 domain step count, actual total stake and mathematical total win. An unfinished
-observation travels with the executable session across runner/chunk boundaries
-and closes once when its domain feature ends. Completed observations merge
+sample travels with the executable session across runner/chunk boundaries
+and closes once when its domain feature ends. Completed samples merge
 through accumulator snapshots and `SimulationStatisticsMerger`; `Simulation`
 also exposes `getLogicalRoundStatistics()`. Partial final features are omitted
 from completed logical totals, while their played steps remain in the existing
@@ -595,8 +595,8 @@ A forcing mode locked by an explicit simulation strategy is selected afresh at
 each new entry; delivery loops never invoke that strategy to buy another round.
 
 A feature tail first observed without its entry ledger is not a completed logical
-observation. Its steps still count normally; bare feature snapshots cannot recover
-the original entry price or command. Durable runtime statistics use the retained
+sample. Its steps still count normally; bare feature snapshots cannot recover
+the original entry price or command. Durable runtime statistics use the saved
 logical entry and therefore complete normally after restart.
 
 ## Whole-sequence selection coverage
@@ -610,7 +610,7 @@ Each `reelSequences` report entry contains its reel index, `logical-round` conte
 model identity, selection denominator and configured variants. Every variant has
 its ID, authored weight, normalized probability (and exact `probabilityRatio`),
 count, observed frequency and `uncovered` flag. Positive-weight entries with zero
-observations are uncovered; zero-weight entries are identified separately. A zero
+samples are uncovered; zero-weight entries are identified separately. A zero
 selection denominator yields frequency zero, never NaN. Reports keep unseen
 configured entries, and incompatible weighted model identities cannot be merged.
 
@@ -632,10 +632,10 @@ It explains variant additions/removals, ordering, authored weight, full-array an
 context/model changes even when payout metrics agree. Configured changes are separate
 from observed count/denominator differences; multi-mode sets propagate these changes.
 Reports without sequence fields remain comparable. Cancelled/failed simulation jobs
-keep their existing partial-result/completion contract; editor previews are not
+keep their existing partial-result/completion interface; editor previews are not
 observed simulation results.
 
-Authored Hold&Win/jackpot/mode compositions use the existing aggregate/parallel runners and report renderers. Actual charged stake remains the denominator; zero-stake continuation payouts retain feature attribution. Jackpot statistics are run-local deltas, including reused/restored sessions. Each simulation worker owns independent session-local accumulating pools; reports do not represent one shared progressive. Fixed pools count contributions without growing their balance. A fixed mode selector intentionally repeats purchases when available, unlike Play's fresh-action purchase controls. Incomplete feature tails remain incomplete observations. See the catalogue.
+Authored Hold&Win/jackpot/mode compositions use the existing aggregate/parallel runners and report renderers. Actual charged stake remains the denominator; zero-stake continuation payouts retain feature attribution. Jackpot statistics are run-local deltas, including reused/restored sessions. Each simulation worker owns independent session-local accumulating pools; reports do not represent one shared progressive. Fixed pools count contributions without growing their balance. A fixed mode selector intentionally repeats purchases when available, unlike Play's fresh-action purchase controls. Incomplete feature tails remain incomplete samples. See the catalogue.
 
 Authored modifier reports expose `modifiers.steps`, `ruleApplications`,
 `stickySteps` (including the expiry application) and `multipliedComponents`.
@@ -647,7 +647,7 @@ still applies: serial and parallel sticky trajectories are not promised identica
 ## Bounded authored mechanics
 
 See [cascades, respins and collections](bounded-mechanics.md) for the declarative
-contracts, supported compositions, authoring/build/extraction/PAR workflow,
+interfaces, supported compositions, authoring/build/extraction/PAR workflow,
 logical-round accounting, continuation and durability boundaries.
 
 ## Weighted bonus authoring
@@ -661,27 +661,27 @@ maps every mandatory family separately from arbitrary custom callbacks.
 
 `AggregateSimulationRunner` and `Simulation` share the accepted mathematical-play
 observer. `SimulationAccumulator.addRound(stake, win, observation?)` accepts its
-plain-data observation contract; omit observation when only amounts are known.
+plain-data sample interface; omit sample when only amounts are known.
 `statistics.analytics` carries schema/event version 1, executable `modelId`,
-capabilities and the metric policy through snapshots, chunk/worker merges,
+supported actions and the metric policy through snapshots, chunk/worker merges,
 reports, CLI JSON/text and Studio report details/downloads. Older reports with no
 analytics remain readable and display **unavailable**, rather than invented zero
-observations. `setSimulationModelIdentity(session, game.getConfigHash?.())` binds
+samples. `setSimulationModelIdentity(session, game.getConfigHash?.())` binds
 an executable identity for direct runners; the package/parallel paths do this
 automatically. A custom model without a hash is explicitly unidentified. A null
 identity cannot merge with a known identity. Two anonymous envelopes may merge
-only with matching metric/capability policy; this is not evidence of the same
+only with matching metric/supported action policy; this is not evidence of the same
 executable model. An empty, unconfigured accumulator
 can adopt an envelope; a configured empty accumulator still enforces its policy. Restored older amount-only
 accumulators can continue amount-only accounting, keeping analytics unavailable;
-they cannot acquire current provenance or accept identified observations without
+they cannot acquire current provenance or accept identified samples without
 rebuilding from evidence.
 
 Every rate retains numerator and denominator. Paid entries count positive
 **actual charged stake**, including purchases; logical entries count observed
 new logical entries on a session, including legitimate zero-stake entries. Accepted
 subrounds count successful plays once and remain the requested-round/progress
-budget. Completed logical rounds exclude incomplete/exhausted and restored tails
+limit. Completed logical rounds exclude incomplete/exhausted and restored tails
 without entry evidence. Mathematical cascade evaluations have a separate count;
 delivery-only stages and retries never call this observer. Completed logical
 sample core report metrics can therefore have a different population from the
@@ -699,7 +699,7 @@ observed monetary totals and the analytics subround metrics.
 - Average bonus win = completed feature win sum / completions. Zero-duration and
  zero-win completions enter their distributions. Both duration and win use four
  fixed buckets: `0`, `(0,10)`, `[10,100)`, `100+`. Duration is integral. A parent
- and a child may both observe the same feature play; lifecycle win summaries
+ and a child may both observe the same feature play; status win summaries
  overlap and are **not** an additive payout partition.
 - The additive partition reads the session evaluation's components
  once: jackpot components first, then feature continuations/explicit feature
@@ -721,11 +721,11 @@ observed monetary totals and the analytics subround metrics.
  equal-value identity is immaterial. Contribution uses their sum / total win.
 
 All zero-denominator ratios return numeric zero, and raw counts distinguish an
-observed zero from unavailable lifecycle/components or an unconfigured feature.
+observed zero from unavailable status/components or an unconfigured feature.
 Native outcome libraries use their flattened wins once, supporting
 component hits and jackpot attribution. Their other component amounts are marked
 unattributed (`partition.unavailable`): event presence does not establish a
-feature lifecycle. Feature WASM rounds expose accepted mathematical lifecycle/component observations and weighted counters. Ordinary amount-only artifacts keep those metrics explicitly unavailable.
+feature stages. Feature WASM rounds expose accepted mathematical status/component samples and weighted counters. Ordinary amount-only artifacts keep those metrics explicitly unavailable.
 
 Built-in free games, Hold&Win, bounded respins, collection, cascades, weighted
 bonuses, modifiers and their already-supported jackpot/bet-mode compositions use
@@ -747,13 +747,13 @@ Excess model dimensions/trajectories reject before mutation. Logical reconciliat
 immediately discards matched coordinates and summarizes abandoned samples;
 unmatched disjoint coordinates are capped at 128 per trajectory. This bounds even
 adversarial partition fragmentation rather than merely coalescing adjacent ranges.
-No event, screen, completed-feature ID or logical-round ID is retained per play.
+No event, screen, completed-feature ID or logical-round ID is saved per play.
 The legacy `Simulation` API still retains payout/bet/RTP history arrays: its shared
 analytics is bounded, but that entire API intentionally remains history-retaining.
 
-Partition equivalence means **identical observations**. Integer/exactly representable
+Partition equivalence means **identical samples**. Integer/exactly representable
 fixtures prove exact monetary and count merges; arbitrary floating-point addition
-is order-dependent. Fractional stakes (0.05, 7.5, 1e-7) are retained without rounding.
+is order-dependent. Fractional stakes (0.05, 7.5, 1e-7) are saved without rounding.
 For workers=1 the seed is unchanged. For workers>1 each seed is
 `<seed>::worker<index>/<totalWorkers>`. Fixed seed, worker count, model and options
 are reproducible; changing worker count does not preserve the sequential draw
@@ -764,23 +764,23 @@ denominators, never averages of worker rates.
 
 Native outcome reports also retain their actual `derived-round-seed-v1` policy
 (`"<seed>:<round>"`, no package-worker split). WASM reports retain the single
-portable seeded-host policy. These adapter policies do not claim equivalence to
+portable seeded-host policy. These connector policies do not claim equivalence to
 the package worker RNG streams. Unseeded outcome API callers retain their own
-random-source contract rather than a fabricated seeded replay guarantee.
+random-source interface rather than a fabricated seeded replay guarantee.
 
 ### Saved analytics and precision diagnostics
 
-Current reports persist `diagnostics` beside the V2 feature aggregates. The saved report is authoritative in Studio, including after reopening history; supplementary compatibility statistics fill only legacy missing fields. JSON, console, Markdown, HTML and Studio share the same diagnostic projection. An absent analytics block means unavailable legacy support, not observed zero.
+Current reports persist `diagnostics` beside the V2 feature aggregates. The saved report is trusted in Studio, including after reopening history; supplementary compatibility statistics fill only legacy missing fields. JSON, console, Markdown, HTML and Studio share the same diagnostic view. An absent analytics block means unavailable legacy support, not observed zero.
 
-The requested budget counts accepted plays. When logical-round observations exist, hit frequency, means, payout histogram, volatility, maximum and confidence intervals use **completed logical rounds**. Monetary totals and monetary RTP include every accepted play, including unfinished tails. The interval's centre can therefore differ from monetary RTP. Reports show accepted plays, completed samples, carried observations and excluded unfinished/restored tails separately. Each worker owns an independent session trajectory.
+The requested limit counts accepted plays. When logical-round samples exist, hit frequency, means, payout histogram, volatility, maximum and confidence intervals use **completed logical rounds**. Monetary totals and monetary RTP include every accepted play, including unfinished tails. The interval's centre can therefore differ from monetary RTP. Reports show accepted plays, completed samples, carried samples and excluded unfinished/restored tails separately. Each worker owns an independent session trajectory.
 
-Feature entries use paid entries or logical entries as labelled; retriggers use feature entries. Duration and bonus-win distributions use completed features only, with bins `0`, `(0,10)`, `[10,100)`, `[100,infinity)`. Duration is executed feature plays and bonus win is currency. The payout histogram uses the same currency boundaries despite its historical `1-9`/`10-99` keys. Accepted-play dead spins, maximum occurrence/share and top ten wins are separate from the completed-logical-round maximum. “Exact maximum observed win” means the observed sample maximum, never a theoretical game maximum. Overlapping lifecycle wins must not be added; base/feature/jackpot/unavailable monetary partitions are additive. Bet mode is a separate attribution dimension.
+Feature entries use paid entries or logical entries as labelled; retriggers use feature entries. Duration and bonus-win distributions use completed features only, with bins `0`, `(0,10)`, `[10,100)`, `[100,infinity)`. Duration is executed feature plays and bonus win is currency. The payout histogram uses the same currency boundaries despite its historical `1-9`/`10-99` keys. Accepted-play dead spins, maximum occurrence/share and top ten wins are separate from the completed-logical-round maximum. “Exact maximum observed win” means the observed sample maximum, never a theoretical game maximum. Overlapping status wins must not be added; base/feature/jackpot/unavailable monetary partitions are additive. Bet mode is a separate attribution dimension.
 
-A normal-approximation 95% interval is an empirical estimate. Adaptive precision does not prove agreement with configured target RTP or coverage of unseen rare events. The report distinguishes insufficient samples, an uninformative losing prefix, insufficient precision, empirical precision and fixed-budget runs without a requested tolerance. Low-evidence warnings use actual usable samples even if a large budget was requested. Adaptive checks reject fewer than two usable samples, zero charged stake, losing-only prefixes and known uncovered positive-weight selections. Checks remain independent per worker at chunk boundaries; all contributing workers must converge. `maxRounds` explicitly means the budget ended, including when tolerance was not attained. The merged interval is separate from the worst-worker adaptive half-width. An adaptive run that stopped before any check stores a null half-width and renders it as unavailable, rather than inventing a measured zero or persisting Infinity.
+A normal-approximation 95% interval is an empirical estimate. Adaptive precision does not prove agreement with configured target RTP or coverage of unseen rare events. The report distinguishes insufficient samples, an uninformative losing prefix, insufficient precision, empirical precision and fixed-limit runs without a requested tolerance. Low-evidence warnings use actual usable samples even if a large limit was requested. Adaptive checks reject fewer than two usable samples, zero charged stake, losing-only prefixes and known uncovered positive-weight selections. Checks remain independent per worker at chunk boundaries; all contributing workers must converge. `maxRounds` explicitly means the limit ended, including when tolerance was not attained. The merged interval is separate from the worst-worker adaptive half-width. An adaptive run that stopped before any check stores a null half-width and renders it as unavailable, rather than inventing a measured zero or persisting Infinity.
 
-Native sampled outcome-library outputs retain their library provenance and statistics and now also project the ordinary saved simulation report. `pokie report` accepts both that projection and the older sampled shape. These sampled estimates are separate from static outcome-source analysis. Flattened artifact events cannot prove lifecycle; ordinary amount-only WASM artifacts supply amount-only observations, and custom sessions may lack lifecycle/component capabilities. Unassignable money stays in `unavailable` without losing total-win accounting.
+Native sampled outcome-library outputs retain their library provenance and statistics and now also project the ordinary saved simulation report. `pokie report` accepts both that view and the older sampled shape. These sampled estimates are separate from static outcome-source analysis. Flattened artifact events cannot prove status; ordinary amount-only WASM artifacts supply amount-only samples, and custom sessions may lack status/component supported actions. Unassignable money stays in `unavailable` without losing total-win accounting.
 
 
 ## Dossier preparation
 
-Assessment dossiers attach canonical schema-1 simulation reports and reproduce seeded mathematics through the same runner, preserving CI availability, worker seed strategy, feature attribution, logical/subround populations and per-mode denominators. Outcome-source projections label `reproducibility.libraryHash` separately from runtime `configHash`. Exact library distributions do not create sampled CIs or prove full model coverage. See [dossier reproduction](certification-evidence-bundle.md).
+Assessment certification packs attach canonical schema-1 simulation reports and reproduce seeded mathematics through the same runner, preserving CI availability, worker seed strategy, feature attribution, logical/subround populations and per-mode denominators. Outcome-source views label `reproducibility.libraryHash` separately from runtime `configHash`. Exact library distributions do not create sampled CIs or prove full model coverage. See [certification pack reproduction](certification-pack.md).

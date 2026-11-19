@@ -109,7 +109,7 @@ Restoration validates all of these before changing nested state. Explicit runtim
 round IDs define contexts; direct play allocates an implicit paid-entry context.
 Continuation reuses that context. Direct callers supplying contexts must use
 fresh IDs; active-context replacement and immediate consumed-context reuse reject.
-Use `SessionRuntime` or serving commands for retained request idempotency.
+Use `SessionRuntime` or serving commands for saved request idempotency.
 
 Stepwise/composite delivery, durable fresh-handler recovery and direct play use
 the same progression. Duplicate commands and delivery-only frames do not draw
@@ -144,25 +144,25 @@ cascade/respins/collections), modifiers, jackpot, modes and custom geometry cann
 be combined with this table. Those standalone launch families retain their own
 supported workflows. Unsupported combinations reject before build or drawing.
 
-WASM preserves this selection/payout/duration contract through the shared session runtime. Independent-grid
+WASM preserves this selection/payout/duration interface through the shared session runtime. Independent-grid
 outcome-library generation and downstream Stake conversion lack an exact
-enumeration capability for it and must fail before final publication. Build a
+enumeration supported action for it and must fail before final publication. Build a
 TypeScript package, Blueprint or PAR workbook to preserve these rules.
 
 Arbitrary callbacks, dynamic target selection and opaque wrappers are outside
 this finite schema. Packages must retain explicit `PackageModelDescriptor.unsupported`
 path/code/reason diagnostics. Inspection keeps unrelated sections available and
 does not run a session to guess custom behavior. Existing custom runtime
-capabilities remain usable; resemblance to a built-in class does not certify
+supported actions remain usable; resemblance to a built-in class does not certify
 restoration or exact extraction. Lossy Blueprint publication remains blocked.
 
-### Restoration observation and direct context rule
+### Restoration sample and direct context rule
 
 Restoration binds the selected identity **and** `executed`/`remaining` to the
-last accepted observation. Conserving their sum is insufficient: changing
-`0/2` to `1/1` against an unchanged entry observation is corrupt state. Explicit
+last accepted sample. Conserving their sum is insufficient: changing
+`0/2` to `1/1` against an unchanged entry sample is corrupt state. Explicit
 logical delivery checks the last mathematical subround's event;
-ordinary delivery checks the retained serialized bounded-mechanic observation
+ordinary delivery checks the saved serialized bounded-mechanic sample
 (or full-capture artifact). Retained copies must agree. These checks precede
 fresh session creation, RNG advancement and repository/wallet effects.
 

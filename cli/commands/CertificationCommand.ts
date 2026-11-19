@@ -30,11 +30,11 @@ const USAGE =
     "Usage: pokie certification build <bundleDir> <config.json> [--out <dir>]\n" +
     "   or: pokie certification verify <certDir> --source <bundleDir>";
 const BUILD_USAGE = "Usage: pokie certification build <bundleDir> <config.json> [--out <dir>]";
-const VERIFY_USAGE = "Usage: pokie certification verify <certDir> --source <bundleDir>";
+const VERIFY_USAGE = "Usage: pokie certification verify <certDir> --source <bundleDir> [--trusted-sources <json>]";
 const CONFIG_HINT =
     '<config.json> lists one sample source per mode of the given outcome-library bundle — {"modes": ' +
     '[{"modeName": "base", "seed": "cert-2026-07-15-base", "sampleCount": 200}, ...]} — see ' +
-    "docs/certification-pack-bundle.md for the format.";
+    "docs/certification-pack.md for the format.";
 
 type BuildDescriptorModeEntry = {modeName: string; seed: string; sampleCount: number};
 type BuildDescriptor = {modes: BuildDescriptorModeEntry[]; pack?: CertificationPackInputs; output?: CertificationPackOutput};
@@ -139,9 +139,9 @@ export class CertificationCommand implements CliCommandHandling {
 
         parent
             .command("build")
-            .description("Build a canonical certification/evidence bundle on top of an outcome-library bundle.")
+            .description("Build a canonical certification pack on top of an outcome-library bundle.")
             .argument("<bundleDir>", "an existing outcome-library bundle directory (create one with \"pokie build <config.json> --target outcomeLibrary --out <bundleDir>\")")
-            .argument("<config.json>", "lists one sample source per mode -- see docs/certification-pack-bundle.md")
+            .argument("<config.json>", "lists one sample source per mode -- see docs/certification-pack.md")
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
             .option("--out <dir>", "output directory (default: a \"certification\" sibling of <config.json>)")
             .action(async (bundleDir: string, configPath: string, excess: string[], options: {out?: string}) => {
@@ -161,13 +161,13 @@ export class CertificationCommand implements CliCommandHandling {
 
         parent
             .command("verify")
-            .description("Verify a certification/evidence bundle against its outcome-library source.")
-            .argument("<certDir>", "an existing certification/evidence bundle directory built by \"pokie certification build\"")
+            .description("Verify a certification pack against its outcome-library source.")
+            .argument("<certDir>", "an existing certification pack directory built by \"pokie certification build\"")
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
             .option("--source <bundleDir>", "the outcome-library bundle the certification bundle was built from (required)")
             .option("--template <json>", "explicit custom presentation template authority")
-            .option("--authorities <json>", "explicit relocated model/report/replay/revision authorities JSON")
-            .action(async (certDir: string, excess: string[], options: {source?: string; authorities?: string; template?: string}) => {
+            .option("--trusted-sources <json>", "explicit relocated model/report/replay/revision trusted sources JSON")
+            .action(async (certDir: string, excess: string[], options: {source?: string; trustedSources?: string; template?: string}) => {
                 if (excess.length > 0) {
                     throw new Error(`Unknown option "${excess[0]}". ${VERIFY_USAGE}`);
                 }
@@ -178,7 +178,7 @@ export class CertificationCommand implements CliCommandHandling {
                 const onCancel = () => controller.abort();
                 process.once("SIGINT", onCancel);
                 try {
-                    exitCodeRef.value = await this.executeVerify(certDir, options.source, options.authorities, controller.signal, options.template);
+                    exitCodeRef.value = await this.executeVerify(certDir, options.source, options.trustedSources, controller.signal, options.template);
                 } finally {
                     process.off("SIGINT", onCancel);
                 }
@@ -212,14 +212,14 @@ export class CertificationCommand implements CliCommandHandling {
         const warnings = result.issues.filter((issue) => issue.severity !== "error");
 
         if (errors.length > 0) {
-            console.error(`Could not build a certification/evidence bundle from "${bundleDir}" to "${outDir}" (${errors.length} error(s)):`);
+            console.error(`Could not build a certification pack from "${bundleDir}" to "${outDir}" (${errors.length} error(s)):`);
             this.printIssues(errors);
             return 1;
         }
 
         console.log(CERTIFICATION_PREPARATION_NOTICE);
         if (result.manifest) console.log(`Model coverage: ${result.manifest.pack.support.coverage}. ${result.manifest.pack.support.limitations.join(" ")}`);
-        console.log(`Built a certification/evidence bundle from "${bundleDir}" to "${outDir}":`);
+        console.log(`Built a certification pack from "${bundleDir}" to "${outDir}":`);
         for (const file of result.files) {
             console.log(`  wrote  ${file}`);
         }
@@ -230,27 +230,27 @@ export class CertificationCommand implements CliCommandHandling {
         return 0;
     }
 
-    private async executeVerify(certDir: string, sourceBundleDir: string, authoritiesPath?: string, signal?: AbortSignal, templateFile?: string): Promise<number> {
+    private async executeVerify(certDir: string, sourceBundleDir: string, trustedSourcesPath?: string, signal?: AbortSignal, templateFile?: string): Promise<number> {
         await this.checkOutcomeLibrarySource(sourceBundleDir, CERTIFICATION_VERIFY_OPERATION);
 
         let pack: CertificationPackInputs | undefined;
-        if (authoritiesPath) {
-            const raw = this.loadJson(authoritiesPath);
+        if (trustedSourcesPath) {
+            const raw = this.loadJson(trustedSourcesPath);
             validateCertificationPackInputs(raw);
-            pack = this.resolveAuthorities(raw, authoritiesPath);
+            pack = this.resolveTrustedSources(raw, trustedSourcesPath);
         }
         const issues = await this.verifier.verify(certDir, {sourceBundleDir, ...(pack ? {pack} : {}), ...(signal ? {signal} : {}), ...(templateFile ? {templateFile} : {})});
         const errors = issues.filter((issue) => issue.severity === "error");
         const rest = issues.filter((issue) => issue.severity !== "error");
 
         if (errors.length > 0) {
-            console.error(`"${certDir}" did not verify as a valid certification/evidence bundle (${errors.length} error(s)):`);
+            console.error(`"${certDir}" did not verify as a valid certification pack (${errors.length} error(s)):`);
             this.printIssues(errors);
             return 1;
         }
 
         console.log(CERTIFICATION_PREPARATION_NOTICE);
-        console.log(`"${certDir}" verified successfully as a certification/evidence bundle.`);
+        console.log(`"${certDir}" verified successfully as a certification pack.`);
         for (const issue of rest) {
             console.log(`  ${issue.severity}  ${issue.code}: ${issue.message}`);
         }
@@ -283,7 +283,7 @@ export class CertificationCommand implements CliCommandHandling {
         }
     }
 
-    private resolveAuthorities(input: CertificationPackInputs, configPath: string): CertificationPackInputs {
+    private resolveTrustedSources(input: CertificationPackInputs, configPath: string): CertificationPackInputs {
         const resolve = (file: string) => path.resolve(path.dirname(configPath), file);
         return {...input, ...(input.modelSource ? {modelSource: resolve(input.modelSource)} : {}), ...(input.reportFiles ? {reportFiles: input.reportFiles.map(resolve)} : {}), ...(input.replayFiles ? {replayFiles: input.replayFiles.map(resolve)} : {})};
     }
@@ -312,7 +312,7 @@ export class CertificationCommand implements CliCommandHandling {
         if (extra.pack !== undefined) validateCertificationPackInputs(extra.pack);
         if (extra.output !== undefined) validateCertificationPackOutput(extra.output);
         const output = extra.output as CertificationPackOutput | undefined;
-        return {modes, ...(extra.pack ? {pack: this.resolveAuthorities(extra.pack as CertificationPackInputs, configPath)} : {}), ...(output ? {output: {...output, ...(output.templateFile ? {templateFile: path.resolve(path.dirname(configPath), output.templateFile)} : {})}} : {})};
+        return {modes, ...(extra.pack ? {pack: this.resolveTrustedSources(extra.pack as CertificationPackInputs, configPath)} : {}), ...(output ? {output: {...output, ...(output.templateFile ? {templateFile: path.resolve(path.dirname(configPath), output.templateFile)} : {})}} : {})};
     }
 
 }

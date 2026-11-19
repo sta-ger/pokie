@@ -4,12 +4,12 @@
 
 POKIE itself only defines game *logic* (sessions, win calculation, simulation). A **game package** is the
 convention for shipping a concrete game — symbols, paytable, config, session wiring — as a standalone npm package
-that a CLI, simulator, validator, or server adapter can load without knowing anything about that game in advance.
+that a CLI, simulator, validator, or server connector can load without knowing anything about that game in advance.
 
 A game package is a regular npm package that depends on `@fromstan/pokie` and exports one object implementing the
-`PokieGame` contract from a `pokie.entry` file declared in its `package.json`.
+`PokieGame` interface from a `pokie.entry` file declared in its `package.json`.
 
-## The contract
+## The interface
 
 ```ts
 type PokieGameManifest = {
@@ -74,7 +74,7 @@ field:
 
 Writing the TypeScript source is only the first step — a package isn't loadable until its dependencies are
 installed and it's been compiled. The CLI-internal `GamePackagePreparer` (`cli/prepare/GamePackagePreparer.ts`)
-carries a target directory through that whole lifecycle in one call: **create** the scaffold (package.json,
+carries a target directory through that whole status in one call: **create** the scaffold (package.json,
 tsconfig.json, README.md, src/index.ts), **install** its dependencies (`npm install`, producing
 package-lock.json), **build** it (`npm run build`, producing dist/index.js), then **verify** the result actually
 loads as a valid `PokieGame` (via `PokieGamePackageValidating`). Each phase's failure is reported as a
@@ -99,7 +99,7 @@ metadata and private deep imports are not public exports. See the [WASM boundary
 for portable execution and independent format versions.
 
 Code-first preparation can temporarily resolve an unpublished POKIE dependency against the running
-installation, restoring its authored manifest and lockfile afterwards. Artifact builds through the
+installation, restoring its authored manifest and lockfile afterwards. Builds through the
 CLI and Studio instead persist that installation as a `file:` dependency in both generated manifests,
 alongside the immediate runtime link. Thus their documented `npm install` reuses the same runtime
 without assuming a registry release exists. Keep that installation at its recorded location.
@@ -177,7 +177,7 @@ manifest with a missing/empty `id`, `name`, or `version`. The rejection error li
 ## Validating a loaded export
 
 `isPokieGame(value)` is a plain type guard — useful for a quick runtime check without importing the validation
-machinery. It's a shallower check than what `loadPokieGame` runs internally (shape only, not manifest content):
+machinery. It's a shallower check than what `loadPokieGame` runs internally (shape only, not index content):
 
 ```ts
 import {isPokieGame} from "@fromstan/pokie";
@@ -204,20 +204,20 @@ if (result.hasErrors()) {
 
 `loadPokieGame`, `isPokieGame`, and `PokieGameContractValidationRule` are the building blocks the `pokie init`/
 `pokie sim`/`pokie validate`/`pokie report`/`pokie diff`/`pokie replay`/`pokie serve`/`pokie client`/
-`pokie dev` [CLI](cli.md) commands are built on — `pokie validate` in particular wraps this same contract check in
+`pokie dev` [CLI](cli.md) commands are built on — `pokie validate` in particular wraps this same interface check in
 `PokieGamePackageValidator`, returning a structured report instead of throwing.
 
-## Headless runtime contract
+## Headless runtime interface
 
 `PokieGame` also defines the headless runtime compatibility ports `getSessionCompatibility()` and `validateSessionState()`. Generated and code-first packages use the same `SessionRuntime` / repository command semantics; see [game-session.md](game-session.md#headless-commands-and-repository-ownership) and [serialization.md](serialization.md#executable-repository-records). Existing packages exposing only `getManifest()` and `createSession(context)` need no rewrite for live
-Play: direct repository commands, serve and Studio capture command/schema authority from the trusted
+Play: direct repository commands, serve and Studio capture command/schema trusted source from the trusted
 constructed object when it is primed. Save the initial record with the selected game and pass its committed
 revision to `primeSession()`; serve and Studio do this automatically. Those captures remain `live-only`
-even if the session itself has a complete codec. Persisted capability lists cannot supply authority.
+even if the session itself has a complete codec. Persisted supported action lists cannot supply trusted source.
 After live-state loss, new commands and undeclared-package retries return `restoration-unsupported`
 without constructing a replacement. Durable opt-in requires both `getSessionStateSchema()` and
 `getSessionCommandCapabilities(context)`, plus a complete session codec (and a validator for a custom schema).
-Declared command authority also permits validated completed live-only retries without constructing a session.
+Declared command trusted source also permits validated completed live-only retries without constructing a session.
 
 Trusted live validation follows built-in free-game and bet-mode composition node by node. An unchanged
 custom decorator may omit a snapshot or emit an opaque legacy snapshot inside those wrappers. Such
@@ -228,38 +228,38 @@ own strict validation requirements, including the game validator for custom payl
 
 ## Generated, visible and evaluated coordinates
 
-Blueprint screenGeometry, generated packages and conversion support: see the coordinate contract and adapter support matrix.
+Blueprint screenGeometry, generated packages and conversion support: see the coordinate interface and connector support matrix.
 
-### Exact audit capability
+### Exact audit supported action
 
 A generated game declares its model hash, compatible executable schema and
-command capabilities. Its sessions use the existing seeded RNG codec even when
+command supported actions. Its sessions use the existing seeded RNG codec even when
 the caller omits a seed: that session randomly initializes its own RNG state,
-which is retained for restoration and exact audit. An omitted seed remains
+which is saved for restoration and exact audit. An omitted seed remains
 absent from request provenance; exact replay restores the captured state rather
 than recreating it from an invented caller seed. Explicit seeds keep their
-existing deterministic draw sequence. A hand-authored game must supply the same authorities for
+existing deterministic draw sequence. A hand-authored game must supply the same trusted sources for
 exact audit replay, including a `getConfigHash` covering effective math configuration
-and all custom collaborators. Manifest id/version alone cannot prove model equality.
+and all custom collaborators. Package id/version alone cannot prove model equality.
 `createSession` must return a detached executable instance, never a live serving
 session. Custom state requires complete capture, restore, session validation and
 selected-package validation; dynamic variants and RNG algorithms/state must be
-covered by that model/codec compatibility promise. Missing authority leaves ordinary
+covered by that model/codec compatibility promise. Missing trusted source leaves ordinary
 play and legacy seed-forward replay available, with exact audit explicitly unavailable.
 
 ## Whole-sequence variants
 
 Generated and recompiled typed packages preserve `reelSequences`, complete variant
 arrays, IDs and relative weights. Public ESM and `require()` consumers use the same
-context contract; weighted-definition recognition survives that module boundary.
+context interface; weighted-definition recognition survives that module boundary.
 The model hash includes authored variants and versioned context/sampling semantics.
 Existing exact-only models keep their stop draws and seeded mathematics.
 
 `loadGameBlueprint()` checks sequence definitions before runtime use.
-Authoring adapters may request `{preserveInvalidAuthoredContent: true}` to retain a
+Authoring connectors may request `{preserveInvalidAuthoredContent: true}` to retain a
 broken draft for correction; this does not authorize build or runtime publication.
 Studio and CLI editing use that authoring option and validate before saving the new
-source. PAR and WASM preserve the `reelSequences` representation and its identity. See [the reel contract](reels-and-sequences.md#weighted-whole-sequence-reels).
+source. PAR and WASM preserve the `reelSequences` representation and its identity. See [the reel interface](reels-and-sequences.md#weighted-whole-sequence-reels).
 
 ## Public package model extraction
 
@@ -271,7 +271,7 @@ module execution. Path inputs own an isolated loader snapshot and release it on 
 path. A supplied game remains caller-owned; extraction never creates, advances or destroys a
 session, and never calls a supplied game's release hook.
 
-A package may implement the optional `PokieGame.getModelDescriptor()` capability:
+A package may implement the optional `PokieGame.getModelDescriptor()` supported action:
 
 ```ts
 getModelDescriptor(): PackageModelDescriptor {
@@ -287,16 +287,16 @@ getModelDescriptor(): PackageModelDescriptor {
 ```
 
 `model` contains the effective, representable `GameBlueprint` data; it can be partial for
-inspection. `getManifest()` is authoritative for game identity and must agree with a descriptor's
+inspection. `getManifest()` is trusted for game identity and must agree with a descriptor's
 manifest. npm package name/version do not become game identity. Contract versions are independent
-of the game's manifest version. Generated CommonJS and recompilable TypeScript entrypoints expose
+of the game's package version. Generated CommonJS and recompilable TypeScript entrypoints expose
 the same descriptor without a Blueprint JSON file or historical build-info sidecar.
 
-Supported data includes manifest fields, geometry, symbol order, wild/scatter declarations,
+Supported data includes package fields, geometry, symbol order, wild/scatter declarations,
 paylines, authored multiplier tables, declared numeric bets, lines/ways/clusters, scatter free-game
 awards and all Blueprint bet-mode declarations/semantics. Exact reel order and weighted
 whole-sequence variant IDs, order, weights (including zero), symbols and mixed exact/weighted
-reels survive extraction. Reels must already be materialized. Extraction never regenerates a
+reels survive extraction. Reels must already be created. Extraction never regenerates a
 model from symbolWeights, a new seed or hash, nor substitutes the currently selected variant.
 Absent payout/grant entries, empty symbol tables and explicit zeros remain distinct. There is
 no integer parsing of stakes and no runtime payout sampling to infer a linear model.
@@ -310,7 +310,7 @@ a successful Blueprint. Unknown model/mechanic fields also prevent automatic gen
 
 Results distinguish `complete`, `partial`, `unsupported`, `malformed` and `cancelled`. Each result
 contains source identity, descriptor/schema versions when known, path-addressed diagnostics and
-`exact`/`inferred`/`defaulted`/`unsupported` field evidence with authority. This implementation uses
+`exact`/`inferred`/`defaulted`/`unsupported` field evidence with trusted source. This implementation uses
 exact declarations and labelled runtime defaults rather than inferring payouts. Nested entries,
 variant definitions, known absent awards and omitted optional runtime defaults are recorded.
 The detached validator rejects cycles, non-finite numbers, bigint/functions/symbols, sparse
@@ -336,13 +336,13 @@ publication, cancellation and registration failures roll back operation-owned ou
 ## Package extraction to an editable Blueprint
 
 Opening or registering a package preserves its `tsPackage` identity and source bytes. Model preview
-uses `PackageBlueprintExtraction.extract(packageRoot | game, {signal})`, the same authority used by
+uses `PackageBlueprintExtraction.extract(packageRoot | game, {signal})`, the same trusted source used by
 artifact planning, CLI and Studio. Path inputs release their owned runtime snapshots. Caller-supplied
 games and sessions remain caller-owned; extraction does not create or advance sessions.
 
 A version-1 public effective-model descriptor can declare representable model data. This is distinct
-from inspecting manifest metadata. Legacy getters alone yield partial diagnostics. Unsupported custom
-mechanic paths/codes/messages and field authorities remain visible; capability advertisement permits
+from inspecting package metadata. Legacy getters alone yield partial diagnostics. Unsupported custom
+mechanic paths/codes/messages and field trusted sources remain visible; supported action advertisement permits
 an extraction attempt, not a promise of successful conversion. Exact, inferred (when supplied),
 defaulted and unsupported fields and comparison limits travel with the result.
 
@@ -364,7 +364,7 @@ and grants are preserved, never padded into equivalent-looking defaults.
 
 ## Authored Hold&Win, jackpot and bet modes
 
-Blueprint `mechanics` accepts `freeGames`, `holdAndWin`, `jackpot`, `modifiers`, `cascade`, `respins` and `collection`. The bounded contracts and their composition restrictions are documented in [bounded mechanics](bounded-mechanics.md). Unknown fields and unsupported policies fail validation, including direct generator/render calls. Free games use `retriggerPolicy: "additive"` (also the legacy omitted default). Award counts start at one and awards may be zero. Hold&Win requires the explicit `reset-on-new-lock` policy:
+Blueprint `mechanics` accepts `freeGames`, `holdAndWin`, `jackpot`, `modifiers`, `cascade`, `respins` and `collection`. The bounded interfaces and their composition restrictions are documented in [feature chains with limits](bounded-mechanics.md). Unknown fields and unsupported policies fail validation, including direct generator/render calls. Free games use `retriggerPolicy: "additive"` (also the legacy omitted default). Award counts start at one and awards may be zero. Hold&Win requires the explicit `reset-on-new-lock` policy:
 
 ```json
 {
@@ -390,7 +390,7 @@ Assembly order is base (optionally free games), Hold&Win if present, executable 
 
 Executable modes require every mode's `runtimeType`, exactly one safe default, and compatible free games for purchases. `costMultiplier`/labels/`isDefault` without runtime semantics remain metadata; `forcedFreeGames` without runtime opt-in is invalid. Base/ante selections persist. Buy-feature selection is consumed once at entry and resets to the default; another purchase requires a fresh action after feature completion. Original charged mode attribution remains available separately from current selection.
 
-Generated CJS and TypeScript, exact descriptor extraction and real XLSX interchange retain these fields. The Mechanics workbook sheet uses `Mechanic` and `Configuration JSON` rows for extended configurations, preserving explicit retrigger policies; legacy free-game award sheets remain readable. Structural hashes include all mechanic and executable mode fields. Build conversions retain `build SOURCE --target TARGET`, explicit Save/Apply and new/empty destinations. WASM preserves Hold&Win/jackpot histories; paid-grid outcome-library/Stake projections reject those histories rather than erase them; generated games with these mechanics expose no paid-grid exact-enumeration constructor.
+Generated CJS and TypeScript, exact descriptor extraction and real XLSX interchange retain these fields. The Mechanics workbook sheet uses `Mechanic` and `Configuration JSON` rows for extended configurations, preserving explicit retrigger policies; legacy free-game award sheets remain readable. Structural hashes include all mechanic and executable mode fields. Build conversions retain `build SOURCE --target TARGET`, explicit Save/Apply and new/empty destinations. WASM preserves Hold&Win/jackpot histories; paid-grid outcome-library/Stake views reject those histories rather than erase them; generated games with these mechanics expose no paid-grid exact-enumeration constructor.
 
 Custom collectors/triggers/aggregators, stake-dependent/random jackpot triggers, custom contributions or entry handlers, multi-tier selection, and shared/distributed progressives remain custom code. A descriptor states representable data; it cannot certify opaque collaborator behavior. Built-in restoration certification requires resolved built-in collaborators and a restorable nested seeded session. Sharing a mutable accumulating pool invalidates built-in certification.
 
@@ -404,12 +404,12 @@ identity. Build any Blueprint using `mechanics.modifiers` with
 `pokie build SOURCE --target tsPackage --out NEW_DIRECTORY`, then open that
 package with `pokie PACKAGE`. Stateless modifiers retain exact enumeration;
 sticky games explicitly lack independent-spin enumeration. See the
-[math contract](math-modeling.md#authored-wilds-and-screen-modifiers).
+[math interface](math-modeling.md#authored-wilds-and-screen-modifiers).
 
 ## Bounded authored mechanics
 
 See [cascades, respins and collections](bounded-mechanics.md) for the declarative
-contracts, supported compositions, authoring/build/extraction/PAR workflow,
+interfaces, supported compositions, authoring/build/extraction/PAR workflow,
 logical-round accounting, continuation and durability boundaries.
 
 ## Weighted bonus authoring
@@ -424,7 +424,7 @@ maps every mandatory family separately from arbitrary custom callbacks.
 `pokie diff package-a package-b --comparison definition` and the public
 `compareMathDefinitions` API use `getModelDescriptor()` through
 `PackageBlueprintExtraction`, including asynchronous descriptors and owned
-snapshot cleanup. A capability authorizes attempting extraction; it does not
+snapshot cleanup. A supported action authorizes attempting extraction; it does not
 certify complete or executable model equivalence. Known partial fields remain
 inspectable and opaque/custom boundaries never become identical by omission.
 
@@ -444,16 +444,16 @@ emitting a `blueprint`/`blueprintHash` and supplies `conversionDiagnostics` with
 plans for Blueprint, regenerated package, PAR and WASM refuse to discard it.
 CLI build and Studio conversion preview/build share this registry boundary.
 A declared absence (`type: "none"`) remains representable. This comparison
-contract does not implement a payout cap. Explicit unsupported field authority
+interface does not implement a payout cap. Explicit unsupported field trusted source
 also overrides generated defaults and applies to descendants, including fields
 inside arrays.
 
 Advanced analysis of a package is analysis of its declared model. It does not
 instantiate custom sessions to infer a theorem. A complete descriptor, a
-`sourceKind: "generated"` label, package-contract validity or restorable codec
+`sourceKind: "generated"` label, package-interface validity or restorable codec
 cannot establish arbitrary TypeScript executable fidelity. Undeclared max-win
 policy and unsupported nested collaborators remain unknown. Source-path
 acquisition owns and releases its snapshot; a direct supplied game remains
 caller-owned. See the advanced-validation report for supported checks and limits.
 
-See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.
+See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning interfaces, locks, evidence and explicit candidate publication.

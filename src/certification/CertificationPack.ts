@@ -13,7 +13,7 @@ export const CERTIFICATION_METRIC_SEMANTICS = [
 export const CERTIFICATION_PACK_SECTIONS = ["identity", "rules", "statistics", "validation", "reproduction", "support"] as const;
 export type CertificationPackSection = typeof CERTIFICATION_PACK_SECTIONS[number];
 export type CertificationPackFormat = "json" | "console" | "markdown" | "html" | "pdf";
-/** Explicit authorities; no path in retained evidence is ever followed during verification. */
+/** Explicit trusted sources; no path in retained evidence is ever followed during verification. */
 export type CertificationPackInputs = {
     readonly modelSource?: string;
     readonly reportFiles?: readonly string[];

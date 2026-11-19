@@ -306,7 +306,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
             assertNotCancelled(options);
             // Reacquire every explicit authority before commit, closing changes during sampling/rendering.
             const finalPack = await acquireCertificationPack(sourceManifest, initialManifestHash, options?.pack, options?.signal, bundleDir);
-            if (packHash(finalPack) !== packHash(pack)) throw new Error("Pack authorities changed before publication.");
+            if (packHash(finalPack) !== packHash(pack)) throw new Error("Pack trusted sources changed before publication.");
             if (options?.output?.templateFile && (packHash(parseCertificationJson(fs.readFileSync(options.output.templateFile, "utf8"))) !== presentation.templateHash || sha256OfBytes(fs.readFileSync(options.output.templateFile)) !== templateArtifactHash)) throw new Error("Template changed before publication.");
             options?.onStage?.("Publishing pack");
             // Let a host deliver cancellation queued during the last source/reproduction check.

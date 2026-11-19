@@ -228,23 +228,23 @@ describe("ReelCommand", () => {
         expect(printed).toMatch(/position\(s\) differ from the current reelStrips\[1\]/);
     });
 
-    describe("--materialize", () => {
+    describe("--write-reels", () => {
         it.each(["json", "text"])("rejects weighted literal materialization in %s without resolving or writing", async format => {
             const blueprint: GameBlueprint = {...noReelStripGenerationBlueprint, reelSequences: [{type: "weighted", variants: [{id: "only", symbols: ["A"], weight: 1}]}]};
             const write = jest.fn(),
                 resolve = jest.fn();
             const command = new ReelCommand(loaderFor(blueprint), write, resolve);
-            expect(await command.run(["generate", "game.json", "--materialize", "--out", "untouched.json", ...(format === "json" ? ["--format", "json"] : [])])).toBe(1);
+            expect(await command.run(["generate", "game.json", "--write-reels", "--out", "untouched.json", ...(format === "json" ? ["--format", "json"] : [])])).toBe(1);
             expect(write).not.toHaveBeenCalled();
             expect(resolve).not.toHaveBeenCalled();
             expect(JSON.stringify(logSpy.mock.calls)).toContain("does not support reelSequences");
-            if (format === "json") expect(JSON.parse(logSpy.mock.calls[0][0])).toMatchObject({materialized: false, code: "reel-sequences-materialization-unsupported"});
+            if (format === "json") expect(JSON.parse(logSpy.mock.calls[0][0])).toMatchObject({written: false, code: "reel-sequences-write-unsupported"});
         });
         it("resolves the whole blueprint and writes a plain reelStrips array with reelStripGeneration removed", async () => {
             const writeFile = jest.fn();
             const command = new ReelCommand(loaderFor(baseBlueprint), writeFile);
 
-            const exitCode = await command.run(["generate", "game.json", "--materialize"]);
+            const exitCode = await command.run(["generate", "game.json", "--write-reels"]);
 
             expect(exitCode).toBe(0);
             expect(writeFile).toHaveBeenCalledTimes(1);
@@ -258,11 +258,11 @@ describe("ReelCommand", () => {
             expect(written.reelStrips?.[2]).toHaveLength(4);
         });
 
-        it("--materialize --out <file> writes to the given path instead of overwriting the input", async () => {
+        it("--write-reels --out <file> writes to the given path instead of overwriting the input", async () => {
             const writeFile = jest.fn();
             const command = new ReelCommand(loaderFor(baseBlueprint), writeFile);
 
-            await command.run(["generate", "game.json", "--materialize", "--out", "custom.json"]);
+            await command.run(["generate", "game.json", "--write-reels", "--out", "custom.json"]);
 
             expect(writeFile).toHaveBeenCalledTimes(1);
             expect(writeFile.mock.calls[0][0]).toBe("custom.json");
@@ -272,11 +272,11 @@ describe("ReelCommand", () => {
             const writeFile = jest.fn();
             const command = new ReelCommand(loaderFor(noReelStripGenerationBlueprint), writeFile);
 
-            const exitCode = await command.run(["generate", "game.json", "--materialize", "--format", "json"]);
+            const exitCode = await command.run(["generate", "game.json", "--write-reels", "--format", "json"]);
 
             expect(exitCode).toBe(0);
             const parsed = JSON.parse(logSpy.mock.calls[0][0] as string);
-            expect(parsed.materialized).toBe(true);
+            expect(parsed.written).toBe(true);
             expect(parsed.reelCount).toBe(noReelStripGenerationBlueprint.reels);
         });
 
@@ -284,36 +284,36 @@ describe("ReelCommand", () => {
             const writeFile = jest.fn();
             const command = new ReelCommand(loaderFor(impossibleBlueprint), writeFile);
 
-            const exitCode = await command.run(["generate", "game.json", "--materialize", "--format", "json"]);
+            const exitCode = await command.run(["generate", "game.json", "--write-reels", "--format", "json"]);
 
             expect(exitCode).toBe(1);
             expect(writeFile).not.toHaveBeenCalled();
             const parsed = JSON.parse(logSpy.mock.calls[0][0] as string);
-            expect(parsed.materialized).toBe(false);
+            expect(parsed.written).toBe(false);
             expect(parsed.reels[0].success).toBe(false);
         });
 
-        it("rejects --materialize combined with --reel", async () => {
+        it("rejects --write-reels combined with --reel", async () => {
             const command = new ReelCommand(loaderFor(baseBlueprint));
 
-            await expect(command.run(["generate", "game.json", "--materialize", "--reel", "1"])).rejects.toThrow(
-                /--materialize cannot be combined with --reel\/--seed\/--apply/,
+            await expect(command.run(["generate", "game.json", "--write-reels", "--reel", "1"])).rejects.toThrow(
+                /--write-reels cannot be combined with --reel\/--seed\/--apply/,
             );
         });
 
-        it("rejects --materialize combined with --seed", async () => {
+        it("rejects --write-reels combined with --seed", async () => {
             const command = new ReelCommand(loaderFor(baseBlueprint));
 
-            await expect(command.run(["generate", "game.json", "--materialize", "--seed", "1"])).rejects.toThrow(
-                /--materialize cannot be combined with --reel\/--seed\/--apply/,
+            await expect(command.run(["generate", "game.json", "--write-reels", "--seed", "1"])).rejects.toThrow(
+                /--write-reels cannot be combined with --reel\/--seed\/--apply/,
             );
         });
 
-        it("rejects --materialize combined with --apply", async () => {
+        it("rejects --write-reels combined with --apply", async () => {
             const command = new ReelCommand(loaderFor(baseBlueprint));
 
-            await expect(command.run(["generate", "game.json", "--materialize", "--apply"])).rejects.toThrow(
-                /--materialize cannot be combined with --reel\/--seed\/--apply/,
+            await expect(command.run(["generate", "game.json", "--write-reels", "--apply"])).rejects.toThrow(
+                /--write-reels cannot be combined with --reel\/--seed\/--apply/,
             );
         });
     });

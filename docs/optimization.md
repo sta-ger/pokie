@@ -4,7 +4,7 @@
 Studio Project → Overview → **Optimize math** use `ProjectOptimizationService`,
 the same operation available from the package root to ESM and `require()` callers.
 Studio checks tuning support, starts a durable cancellable job, retains its
-verdict/evidence across reload, and saves a reviewed candidate only on request.
+result/evidence across reload, and saves a reviewed candidate only on request.
 The ordinary `pokie` / `pokie SOURCE` Studio startup is unchanged.
 Conversions remain `build SOURCE --target TARGET`.
 
@@ -30,28 +30,28 @@ locks protect presence, values, order, and descendants. Overlapping tunables,
 ancestor/descendant lock conflicts, unknown fields, unsupported units,
 nonfinite values, and contradictory fixed/count/sum declarations are rejected.
 `protectedFiles` lists relative file paths whose exact bytes must survive;
-a byte lock on a file that the tuning workflow must update is a preflight error.
+a byte lock on a file that the tuning workflow must update is a check error.
 All undeclared model fields are compared after native serialization/readback,
 even when the user supplies no locks.
 
-| Input/output ProjectType | Concrete finite workflow and authority |
+| Input/output ProjectType | Concrete finite workflow and trusted source |
 | --- | --- |
 | Blueprint | Existing authored paytable multipliers; literal strips or weighted whole-sequence reels; existing authored bets. Returns Blueprint JSON. |
 | PAR workbook | Existing paytable cells in a lossless workbook; edits the workbook in place in a detached copy, updates its provenance hash, and reimports it. Ignored/defaulted/formula features fail before candidate writes. Returns XLSX. |
-| TS package | An author-declared `pokie-tuning.json` v1 contract binds a JSON parameter Blueprint, permitted paytable paths, every custom source-file hash, and executable `getConfigHash()` / exact enumeration. Copies the package and edits only parameters and their contract hash; preserves custom code bytes and evaluates the real loaded candidate. No build script is launched. Returns a loadable package. |
+| TS package | An author-declared `pokie-tuning.json` v1 interface binds a JSON parameter Blueprint, permitted paytable paths, every custom source-file hash, and executable `getConfigHash()` / exact enumeration. Copies the package and edits only parameters and their interface hash; preserves custom code bytes and evaluates the real loaded candidate. No build script is launched. Returns a loadable package. |
 | Outcome Library | `/modes/MODE/outcomes/ID/weight` numeric weights, scoped to one mode. Preserves IDs, artifacts and other modes; the native writer rebuilds indexes, hashes, totals and analysis; deep validation/readback precedes measurement. Returns a native bundle. |
 | Stake | The same weight paths, with uint64 **decimal strings**, never JavaScript numeric weights. Retains IDs, payout units, mode costs, books and events, and reads the directory with `StakeEngineOutcomeSourceReader`. Returns a native Stake directory. |
 | WASM | An explicitly bound component with a `pokie.wasm-tuning.v1` companion containing source, paths, source hash, module hash and builder version. Recompilation must reproduce the original bytes before search. Tunes literal-reel, feature-free source, rebuilds WASM and companions, and checks the executable over every stop tuple. Returns WASM. |
 
 `declarePackageTuning(packageRoot, parameterFile, paths)` is an explicit authoring
-operation that writes a new contract. Authors must make the executable load the
+operation that writes a new interface. Authors must make the executable load the
 parameter file and expose the corresponding `computeGameBlueprintHash` through
 `getConfigHash`; `createExactEnumerationSession` must drive that same executable
 math with the supplied deterministic combinations generator. A convenient
 `createTunableBlueprintGame(model)` assembly is provided for data-backed packages;
-custom packages can implement this contract without replacing their own code.
+custom packages can implement this interface without replacing their own code.
 The optimizer does not infer tuning permission from a model descriptor or from
-runtime execution capability. Missing, stale or tampered source authority fails
+runtime execution supported action. Missing, stale or tampered source trusted source fails
 before executable acquisition and candidate writes. Detached candidates and saved packages
 bind declared runtime dependencies to the same installed packages resolved from the source
 project (including project-local installations), rather than resolving from scratch ancestry.
@@ -60,7 +60,7 @@ packages retain source/build timestamps for stale-entry detection. Exact candida
 and measured at the destination before publication is accepted. Seeded candidates retain their single
 reviewed assessment without resampling. Their evidence separately binds installed dependency bytes
 and the resolved transitive dependency graph (including the host runtime). Search/assessment and save
-reject dependency drift or disappearance. Save loads the destination and verifies its model binding
+reject dependency drift or disappearance. Save loads the destination and verifies its model link
 before accepting publication, then releases its game resources and loader lease.
 Every load copies the resolved runtime dependency graph to invocation-owned paths, including
 transitive and peer dependencies and the host runtime. Enumeration, search, held-out assessment and
@@ -76,21 +76,21 @@ Dependencies remain ordinary external package dependencies;
 Filesystem aliases in authored input/publication paths are rejected.
 
 `bindCanonicalWasmTuningSource(wasmPath, blueprint, paths)` is the separate,
-explicit source-binding action. It writes a new `.tuning.json` companion only
+explicit source-link action. It writes a new `.tuning.json` companion only
 when compiling that source with the descriptor reproduces the module
 bytes. Integrity alone, legacy sidecars, an embedded model, or an opaque
 custom component cannot authorize regeneration. WASM candidates preserve compact
-runtime state and the existing host RNG contract.
+runtime state and the existing host RNG interface.
 
 Stake tuning preserves native integer precision. Its distribution is no longer
 the one described by an old POKIE export's reconstructed-library hash. That old
-manifest is retained verbatim as `optimization-input-pokie-manifest.json`, and a
+manifest is saved verbatim as `optimization-input-pokie-manifest.json`, and a
 `pokie-native-weights.json` inventory binds all current native files. Project
 resolution recognizes this integrity-bound native candidate. Standalone native
-readback/analysis remains authoritative; a claim of lossless reconstruction into
+readback/analysis remains trusted; a claim of lossless reconstruction into
 a number-weighted POKIE Outcome Library is not made. Original books/event bytes,
-including tiny positive native probabilities, are retained. Native candidates expose only
-inspect/analysis capabilities. Import and build/re-export require the original compatible
+including tiny positive native probabilities, are saved. Native candidates expose only
+inspect/analysis supported actions. Import and build/re-export require the original compatible
 POKIE export; they are unavailable for native-only candidates. Use explicit candidate save
 to retain native uint64 weights and books without reconstruction.
 
@@ -108,8 +108,8 @@ Targets and exactness:
 - Maximum win uses `currency` or `betMultiple`. `constraints.maxWin` is an output
  bound in the same selected population, never an installed payout cap. Native Outcome
  Library and Stake weights must be positive; zero-weight tuning domains are rejected
- during preflight. Authored zero paytable/grant values and zero-weight reel variants
- keep their separate contracts.
+ during check. Authored zero paytable/grant values and zero-weight reel variants
+ keep their separate interfaces.
 - Tolerances are nonnegative finite numbers. Omitted tolerance means exact
  binary64 comparison (the same as explicit absolute zero); explicit zero is
  preserved in evidence. Relative tolerance multiplies the absolute target
@@ -133,16 +133,16 @@ readback; representation and missing-versus-zero authored values are preserved.
 
 `exact-finite-v1` traverses the Cartesian product in submitted order, with the
 last dimension varying fastest, selecting the first match. Seed is a nonempty
-string of at most 256 characters, retained verbatim; exact selection uses no
-random draw. Each attempted candidate costs one deterministic budget unit,
-including constraint rejection, materialization, validation and measurement.
+string of at most 256 characters, saved verbatim; exact selection uses no
+random draw. Each attempted candidate costs one deterministic limit unit,
+including constraint rejection, preparation, validation and measurement.
 `budget` and the separate per-candidate exact reel/native-population `maxOutcomes` cap
 are integers in `[1,1000000]`. Zero, negative, fractional, nonfinite, unsafe or
 string-encoded budgets are invalid. A population cap or unfinished candidate
 search returns `exhausted`; only complete supported search returns `infeasible`.
 Acquisition, evaluation, native-validation and cleanup failures return `failure`.
 Cancellation cannot establish infeasibility. Evidence includes source revision,
-adapter/strategy versions, request units/tolerances/population, finite domains,
+connector/strategy versions, request units/tolerances/population, finite domains,
 seed, caps, work counts, ordered evaluations, metrics, diff and readback checks.
 
 Library usage:
@@ -172,14 +172,14 @@ rerun optimization to obtain a new save receipt. Closing/switching Project or
 cancelling a job discards an unfinished candidate and drains the executor.
 
 Exact evaluation reports progress inside each candidate: raw reel-stop draws,
-then materialized outcomes, and executable checks where applicable. These are
+then created outcomes, and executable checks where applicable. These are
 separate stages and units. The deduplicated outcome total is indeterminate until
-materialization finishes; completed raw draws do not mean the candidate is ready.
+preparation finishes; completed raw draws do not mean the candidate is ready.
 Studio displays these live counts, and library `onProgress` / CLI `--progress`
 evidence includes optional `work` with decimal-string counts and an optional total.
 The candidate counter counts evaluated or rejected candidates. Updates are bounded
 to roughly ten per second plus stage changes, first work and population completion;
-this observation cadence never limits execution. Supported tuning can still end
+this sample cadence never limits execution. Supported tuning can still end
 infeasible; cancellation discards unfinished work and cannot expose an Apply preview.
 
 CLI JSON is always structured; `--progress` emits progress JSON to stderr.
@@ -189,9 +189,9 @@ cancellation and waits for owned work to settle. Node orchestration is kept out
 of browser entrypoints; Studio imports the same pure policy validator.
 
 Publication rejects destinations inside the optimization scratch root and owned run
-workspaces, including other retained candidates. Each save owns
+workspaces, including other saved candidates. Each save owns
 independent authored file bytes, supports cross-filesystem destinations, and survives
-candidate discard. External dependency bindings continue to identify the source
+candidate discard. External dependency links continue to identify the source
 installation. Rollback removes only files and directories owned by that save.
 Studio support, start and save requests include the expected Project root, alongside
 source revisions; changing Projects invalidates the request even for identical files.
@@ -218,8 +218,8 @@ Set `policy.strategy` to `seeded-search-v1` and supply a complete `sampling` obj
 
 The other fields are unchanged from the exact example. For sampling, give each target an explicit
 positive tolerance (for example RTP `0.75` with absolute tolerance `0.15`). Omitted or zero tolerance
-is retained, but numerical equality cannot be certified from samples. `minSamples` must be at least
-30; an assessment budget below it is permitted and returns `exhausted`, not approval. All sample
+is saved, but numerical equality cannot be certified from samples. `minSamples` must be at least
+30; an assessment limit below it is permitted and returns `exhausted`, not approval. All sample
 budgets and counts are integers in `[1,1000000]`, `workers` is at most 16, `chunkSize` at most 1000,
 candidate attempts at most 10000, and confidence must be finite in `[0.8,1)`.
 
@@ -227,7 +227,7 @@ candidate attempts at most 10000, and confidence must be finite in `[0.8,1)`.
 | --- | --- |
 | Blueprint | Literal reels or whole-sequence variants; line payouts; feature-free logical rounds or paid entries. Free-game entry triggers may be counted, not their continuations. |
 | Lossless PAR | Same supported authored populations; native paytable-cell readback preserves other declarations. |
-| Explicitly declared TS package | Feature-free complete rounds with finite executable enumeration, source/dependency binding and model hash. The executable enumeration establishes the return support bound; actual seeded sessions supply observations. The package must honor the `createSession({seed})` RNG contract, including independent seeds. An opaque/hash-only runtime is insufficient. |
+| Explicitly declared TS package | Feature-free complete rounds with finite executable enumeration, source/dependency link and model hash. The executable enumeration establishes the return support bound; actual seeded sessions supply samples. The package must honor the `createSession({seed})` RNG interface, including independent seeds. An opaque/hash-only runtime is insufficient. |
 | Outcome Library | Selected `native-outcomes` numeric weights, matching artifact stake; event identities come from stored `featureEvents[].type`. |
 | Stake | Selected `native-outcomes` uint64 string weights (never rounded to numbers); actual paid cost is denomination times native mode cost. |
 | Source-bound WASM | Supported feature-free literal reels, rebuilt reproducibly and checked against every executable stop tuple before using the bound authored population. |
@@ -236,10 +236,10 @@ Only RTP, hit probability, named feature-event presence and requested half-open 
 buckets are sampled targets. For example `{"metric":"featureFrequency","unit":"ratio","event":"bonus","value":0.25,"tolerance":{"kind":"absolute","value":0.04}}`
 and `{"metric":"distribution","unit":"ratio","bucket":{"min":2,"max":4},"value":0.25,"tolerance":{"kind":"absolute","value":0.04}}`.
 Buckets use payout / actual paid stake, not the legacy currency histogram. Repeated occurrences
-of an event in an observation count once. Zero/all-success events cannot pass the required
+of an event in an sample count once. Zero/all-success events cannot pass the required
 success/failure coverage check. A native draw is not a generating game's full logical round.
 Sample maxima and volatility are unsupported targets/constraints in this strategy; use exact
-authority rather than interpreting an observed maximum as a hard bound. Advanced stateful mechanics
+trusted source rather than interpreting an observed maximum as a hard bound. Advanced stateful mechanics
 and incomplete logical-round populations are explicitly unsupported, not silently approximated.
 
 ### Determinism and work accounting
@@ -252,18 +252,18 @@ squared target errors divided by `max(tolerance.value, abs(target.value), 1)` sq
 The first visited minimum wins ties, regardless of worker completion timing.
 
 Each attempt, including constraint rejection, consumes one candidate unit. Only surviving native
-readback candidates consume search observations, at most `searchSamples` each and never beyond
+readback candidates consume search samples, at most `searchSamples` each and never beyond
 the separate total `searchBudget`. A final shortened search batch is recorded as such. The best
 candidate is frozen before one reserved `assessmentSamples` run. Its seed is
 `JSON.stringify([seed,"assessment",0])`; search seeds are `JSON.stringify([seed,"search",attempt])`
 with one-based attempt numbers. WorkerSeedStrategy derives per-worker streams. Worker count is
 part of reproducibility: changing it changes streams and may change selected parameters.
 
-Evidence records the full validated request, source inventory revision, adapter/strategy/policy
+Evidence records the full validated request, source inventory revision, connector/strategy/policy
 versions, model identity, ordered parameters, per-candidate fitness/seeds/actual samples, total
 attempts/rejections/search/held-out samples, executable validation work, selected diff and assessment.
-Executable-validation observations (TS enumeration, or authored plus actual WASM stop tuples) are
-counted separately from sampled observations and bounded by `maxOutcomes` for each sweep. No hidden
+Executable-validation samples (TS enumeration, or authored plus actual WASM stop tuples) are
+counted separately from sampled samples and bounded by `maxOutcomes` for each sweep. No hidden
 target evaluations occur on save. Supported authored diffs reuse the math-definition reader/differ
 in analysis-only mode; that partial declared-model comparison is not itself runtime proof. Native
 weight diffs retain integer strings. Scratch paths, timestamps and job IDs are excluded from evidence;
@@ -272,14 +272,14 @@ rerun its request against the same identified source and dependencies to compare
 ### Confidence and truthful verdicts
 
 One fixed held-out assessment uses two-sided Hoeffding intervals, with Bonferroni allocation
-`delta=(1-confidence)/numberOfTargets`. Probability observations have range `[0,1]`; RTP observations
+`delta=(1-confidence)/numberOfTargets`. Probability samples have range `[0,1]`; RTP samples
 use a finite support bound derived from the resolved line/scatter math (including default
 paylines over evaluated geometry) or the validated native/executable
 population, never a sampled maximum. This deliberately does not reuse the empirical normal interval's
 zero-variance shortcut. Existing simulation precision convergence is not optimization attainment.
 
 Every target needs its entire simultaneous confidence interval **inside** its tolerance region,
-positive allowance, all requested assessment observations, at least `minSamples`, finite estimates,
+positive allowance, all requested assessment samples, at least `minSamples`, finite estimates,
 and at least `minEventCount` successes and failures. RTP conservatively uses paying/nonpaying
 coverage too. Merely containing the target or matching its estimate is insufficient. Rare/unseen
 payouts, zero empirical variance and tolerance-boundary overlap therefore cannot create spurious
@@ -291,14 +291,14 @@ separate user-initiated reruns; do not cherry-pick reruns as stronger evidence.
 - `attained`: all requested assessment regions established and the declared search completed.
 - `inconclusive`: a candidate exists but assessment is uncertain or missed; even exhaustive **sampling**
  of candidates is not a proof of infeasibility.
-- `exhausted`: candidate/search budget stopped the search or assessment cannot meet its minimum;
+- `exhausted`: candidate/search limit stopped the search or assessment cannot meet its minimum;
  evidence retains the concrete stop reason and any best-so-far candidate.
 - `infeasible`: reserved for exhaustive exact target exclusion or structural exclusion of every declared
  candidate. Contradictory declarations/target intervals instead return `invalid` before preparation.
 
 Candidate presence never means approval. Direct callers may explicitly `publish` and then `discard`
 an `attained`, `inconclusive` or `exhausted` candidate. CLI `--out` and Studio save follow the same
-contract, writing a sibling `DESTINATION.optimization.json` with the original verdict, reviewed
+interface, writing a sibling `DESTINATION.optimization.json` with the original result, reviewed
 candidate revision and full evidence. Saving cannot turn an exhausted candidate into success.
 Studio job `completed` means execution ended, not mathematical attainment. Restarted jobs retain
 durable evidence but need a rerun for process-local save ownership.
@@ -321,10 +321,10 @@ from these implementation checks.
 Artifact publication and authored apply are separate operations. `publish(candidate, request,
 newDestination)` and CLI `--out` preserve the source and require a new/empty destination.
 `apply(candidate, currentRequest)` explicitly commits Blueprint JSON, PAR paytable
-cells/provenance, or a declared TS package's parameter file and contract model hash. Outcome
+cells/provenance, or a declared TS package's parameter file and interface model hash. Outcome
 Library, Stake and WASM remain generated artifacts: save them to a new destination. Source
-code, package metadata, dependency bindings, workbook declarations and locked model fields
-are not tuning inputs unless the documented contract grants that field.
+code, package metadata, dependency links, workbook declarations and locked model fields
+are not tuning inputs unless the documented interface grants that field.
 
 For the CLI, first capture and inspect the JSON preview **outside the source project tree**:
 
@@ -338,28 +338,28 @@ candidate revision, source identity/revision and normalized policy revision to e
 preview. It obtains a fresh process-local engine receipt; persisted JSON never restores an engine
 receipt. A changed lock, source, selected candidate or policy requires a fresh review. `--apply` and
 `--out` are mutually exclusive. A default preview discards its temporary candidate after printing.
-The apply response keeps its mathematical verdict, including inconclusive/exhausted best-so-far
+The apply response keeps its mathematical result, including inconclusive/exhausted best-so-far
 results; deliberate application does not certify a target that was not attained.
 
 Studio Overview presents per-target units, population, requested value/tolerance, measured result
-and verdict. Sampled measurements use the held-out assessment with confidence bounds, confidence
-level and actual observations; search estimates remain only in expanded provenance. Exact results
+and result. Sampled measurements use the held-out assessment with confidence bounds, confidence
+level and actual samples; search estimates remain only in expanded provenance. Exact results
 are labelled exact. Tunables, locks, protected files, constraint checks, precision and native parameter
 changes remain visible; authored definition changes reuse the shared definition differ. A native
 weight preview preserves uint64 strings and does not imply a Blueprint conversion.
 
 `POST /api/project/optimization/apply` takes `{expectedProjectRoot, jobId, request}`; artifact
 `/save` additionally requires `destination`. Both check the submitted current normalized policy
-through the retained shared authority. Apply validates a detached same-type copy and native readback
+through the saved shared trusted source. Apply validates a detached same-type copy and native readback
 before committing, compares source and candidate revisions again at the write boundary, and consumes
-the old preview. TS parameter and contract writes roll back together on write/cleanup failure;
+the old preview. TS parameter and interface writes roll back together on write/cleanup failure;
 rollback preserves conflicting external edits and reports recovery instructions. Failed staging
 cleanup occurs before authored mutation. Studio clears the old Play session, refreshes its project
 runtime from committed bytes, and requires fresh support/review for another apply.
 
 Browser reload reattaches server-owned jobs through identity. Server restart retains
-terminal evidence but cannot resume an optimization search or restore candidate apply/save authority.
-Use a fresh support check and run after cancellation, operational failure, restart or lost authority.
+terminal evidence but cannot resume an optimization search or restore candidate apply/save trusted source.
+Use a fresh support check and run after cancellation, operational failure, restart or lost trusted source.
 The generic recover endpoint only resumes separately supported generation jobs. Project close/switch
 and shutdown request cancellation and drain owned optimization executions/candidates; independently
 published artifacts survive candidate cleanup. Independent browser/API/CLI verification and production

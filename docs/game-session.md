@@ -199,7 +199,7 @@ details on lines/patterns/paytable, [Free Games](free-games.md) for the bonus-ro
 `PokieGame` is the game definition and `GameSessionHandling` remains its injected OOP domain session.
 `SessionRuntime` implements the portable `SessionRuntimeHandling` command boundary. Its `SessionCommand`
 (currently `{kind: "spin", bet?, mode?}`) produces `SessionCommandResult`; JavaScript inputs are checked too.
-The adapter calls the injected session's `play()` once. A successful `prepare()` returns a ready command with `rollback` and `execute` callbacks for settlement adapters; rejected preparation has no executor. A ready command executes once; rollback disables its executor and cannot undo an executed round. It does not calculate payouts. Constructor defaults,
+The connector calls the injected session's `play()` once. A successful `prepare()` returns a ready command with `rollback` and `execute` callbacks for settlement connectors; rejected preparation has no executor. A ready command executes once; rollback disables its executor and cannot undo an executed round. It does not calculate payouts. Constructor defaults,
 legacy setter fallback, injected collaborators and decorator composition remain available to direct callers.
 
 Simulation (including aggregate/worker execution), replay, Studio scenario spins and exact enumeration use
@@ -211,10 +211,10 @@ first rollback is terminal: later rollback or execute calls cannot change a subs
 
 For repository sessions, `SpinCommandHandler` implements `RepositoryCommandHandling`. Its `execute()` accepts
 `RepositoryCommand` (the same command plus `sessionId`, optional `requestId` and `expectedVersion`) and returns
-`SpinCommandResult` after settlement and persistence. The positional `handle()` delegates to the same dispatcher and retains its legacy operational-error rejection behavior. `execute()` returns typed operational failures (`storage-error`, `settlement-error`, `execution-error`) after compensation; `handle()` rejects with the original exception object. Custom adapters can use `RuntimeCommandError` to retain a classified primary cause. Wallet
-settlement, queuing, idempotency, compensation and reconciliation stay in this adapter. `primeSession()` is an
+`SpinCommandResult` after settlement and persistence. The positional `handle()` delegates to the same dispatcher and retains its legacy operational-error rejection behavior. `execute()` returns typed operational failures (`storage-error`, `settlement-error`, `execution-error`) after compensation; `handle()` rejects with the original exception object. Custom connectors can use `RuntimeCommandError` to retain a classified primary cause. Wallet
+settlement, queuing, idempotency, compensation and reconciliation stay in this connector. `primeSession()` is an
 cache registration: save an initial record first and pass its committed revision. For a package without
-repository declarations, it also captures trusted live schema/command authority from that object. An unversioned repository
+repository declarations, it also captures trusted live schema/command trusted source from that object. An unversioned repository
 cannot authorize reuse of a live-only cache; durable sessions reconstruct on every new command.
 The selected game's `getSessionStateSchema()` declares the codec before reconstruction. For example,
 `{kind: "seeded-video-slot"}` restores the built-in RNG and resolved reel strips; optional `reels` and
@@ -223,24 +223,24 @@ The selected game's `getSessionStateSchema()` declares the codec before reconstr
 must capture and restore the complete model and executable state. Packages without a declaration can
 keep a primed live session but cannot promise durable reconstruction. An unchanged
 `getManifest()`/`createSession()` package uses the primed object's captured supported bets, modes and schema
-as process-local authority. Serve and Studio Play/scenario searches use this same handler path. Such records
+as process-local trusted source. Serve and Studio Play/scenario searches use this same handler path. Such records
 remain `live-only`; losing the object returns `restoration-unsupported` before construction or recovery writes.
 For durable recovery or construction-free retries after live-state loss, declare
 `getSessionCommandCapabilities(context)`, the selected model's supported `bets` and optional executable
-`modes`. It must resolve without constructing a session or consuming RNG. Persisted capabilities may
+`modes`. It must resolve without constructing a session or consuming RNG. Persisted supported actions may
 restrict the trusted set, but cannot add selections. Generated games and scaffolds supply these declarations;
 hand-authored packages opt into recovery alongside their compatibility promise.
 Direct constructors and `SessionRuntime` do not require these repository declarations. See [serialization](serialization.md).
 
-Syntactically valid retries validate the current record and the complete retained result before returning
-it. With declared command authority, already-computed retries can recover without a live executable object, including live-only sessions;
+Syntactically valid retries validate the current record and the complete saved result before returning
+it. With declared command trusted source, already-computed retries can recover without a live executable object, including live-only sessions;
 new rounds still require that object or complete durable state. Unsupported bet/mode selections reject
 before pending recovery writes. Schema matching applies to live-only records even when `featureState`
 is absent. A game explicitly supplies `validateLiveSessionState` to authorize partial state. Generated/scaffolded
 policies accept `{}` for an unseeded generator and require the complete seeded snapshot when a seed is supplied. They validate any captured RNG/reels, required feature counters and nested envelopes. A custom codec
 always runs its selected-game validator. `validateLiveSessionState(state, context)` can explicitly validate
 a partial snapshot, including an intentionally absent snapshot; it grants no reconstruction
-authority. Completed retries use this same policy and return retained accounting without constructing a session. Revision conflicts reject new rounds; completed retries return their
+trusted source. Completed retries use this same policy and return saved accounting without constructing a session. Revision conflicts reject new rounds; completed retries return their
 original settled result even when the caller repeats its original revision.
 
 ```ts
@@ -295,7 +295,7 @@ undeclared compositions reject restoration before constructing a replacement or 
 
 Select `SqliteTransactionalRoundStore` explicitly for canonical, completely restorable
 sessions. This is a **local test/reference ledger**, not an external wallet or RGS.
-The optional adapter requires Node >=22.16 with `node:sqlite` enabled (implementation
+The optional connector requires Node >=22.16 with `node:sqlite` enabled (implementation
 verification uses Node 24.18). Other package runtimes remain supported for portable,
 browser and compensation paths. Root imports do not load SQLite; unsupported selection
 fails with an upgrade/configuration error and never falls back to memory.
@@ -325,7 +325,7 @@ await reopened.close();
 
 Use a supported authored bet; fractional stakes remain numbers without integer conversion.
 Initialization rejects duplicate session IDs, incompatible/invalid state and live-only
-engines. The selected game must declare its complete codec and command authority.
+engines. The selected game must declare its complete codec and command trusted source.
 
 SQLite schema version 1/application ID `0x504f4b49` is validated on open; unknown or
 altered schemas fail, with no automatic migration. `sessions` holds executable state,
@@ -371,14 +371,14 @@ while preserving the primary failure. Reopening after process death needs no man
 lock cleanup. Direct library callers own close; a configured `PokieDevServer` owns it.
 Atomic reconciliation only observes complete results; it performs no compensating writes
 and has no incomplete committed operations to sweep. `primeSession` does not supply
-executable authority to this path.
+executable trusted source to this path.
 
 The existing repository/wallet constructor retains **weaker process-local compensation**,
 including its legacy replay semantics (changed bet/mode may replay an old saved result).
 Implementing existing port interfaces, even over one database, does not make that path
 atomic. `FileSessionRepository` instance-local queues are not cross-process locks.
 Studio Play/scenarios, pre-generated handlers and outcome-source serving retain their
-existing in-memory/compensation contracts. Durable Studio job records do not make Play
+existing in-memory/compensation interfaces. Durable Studio job records do not make Play
 rounds durable. Browser/portable/WASM consumers have no SQLite requirement.
 
 ## Durable external-wallet reconciliation
@@ -401,9 +401,9 @@ await handler.execute({kind: "spin", sessionId, requestId: "stable-logical-round
  expectedVersion: 1, bet: 0.05, mode: "base"});
 ```
 
-A provider explicitly declares durable idempotency, authoritative inspection and permanent
-session/kind/amount identity binding, plus a durable terminal-rejection fence. These are provider promises requiring independent
-contract verification, not inferred from method names. Duplicate debit/credit calls must
+A provider explicitly declares durable idempotency, trusted inspection and permanent
+session/kind/amount identity link, plus a durable terminal-rejection fence. These are provider promises requiring independent
+interface verification, not inferred from method names. Duplicate debit/credit calls must
 return their **original** balance even after unrelated transactions or provider restart.
 In-memory wallets, plain `WalletPort`, `TransactionalWalletAdapter`, incomplete inspection,
 and non-durable operation/result repositories are incapable of this guarantee. Select the
@@ -412,7 +412,7 @@ weaker local/dev configurations. A strong selection without its capable store fa
 construction/open, before calculation or settlement. SQLite is optional, loaded only on
 explicit open; Node with `node:sqlite` transaction inspection and WAL/FULL support is required.
 Unsupported selections never fall back to memory. Existing root exports include
-both composition and capability contracts; browser/WASM entries remain portable.
+both composition and supported action interfaces; browser/WASM entries remain portable.
 
 The external store first reserves the session and freezes the command envelope. It restores
 and calculates through the handler using a private local ledger, then persists
@@ -420,8 +420,8 @@ both permanent wallet IDs and exact leg kinds/amounts (captured from ledger call
 never reconstructed from balances), complete executable/RNG continuation and detached
 response **before the first effective remote action**. No real wallet calls run inside the
 reference store transaction. Each remote phase has committed local intent before dispatch.
-Only confirmed settlement publishes the new session revision and retained result together.
-Committed kind/amount must match the captured leg; its original provider balance is authoritative
+Only confirmed settlement publishes the new session revision and saved result together.
+Committed kind/amount must match the captured leg; its original provider balance is trusted
 even when unrelated provider activity changes the balance. The response and persisted session
 credits use the payout leg’s historical provider balance. Calculation payloads and artifacts
 retain the calculation snapshot; no exclusive provider balance ownership is assumed.
@@ -430,12 +430,12 @@ owner tokens and bounded leases fence late local publication. Expired ownership 
 recovery with the original remote IDs, never replacement charge IDs. Provider idempotency
 must cover overlapping late dispatches from stale owners.
 
-Inspection distinguishes `unknown`, `pending`, `not-applied` (authoritative), `committed`
+Inspection distinguishes `unknown`, `pending`, `not-applied` (trusted), `committed`
 (with original kind, amount and balance), `compensated`, and terminal `rejected`
 (with bound kind, amount and reason). `rejected` must permanently fence all earlier in-flight
 and future dispatches of that identity. `not-applied` permits redispatch of the same identity
 but cannot prove terminal rejection, even following an insufficient-funds response. A provider reservation that
-remains pending must finish through its provider lifecycle or operator recovery; POKIE
+remains pending must finish through its provider status or operator recovery; POKIE
 cannot guess its outcome. Unknown/pending/compensated, malformed inspection, inspection
 failure and exhausted budgets return `recovery-required`, retaining intent and blocking
 fresh settlement. A rejected promise can have applied its debit/payout: it never authorizes
@@ -446,14 +446,14 @@ A confirmed payout recovers the saved response without replaying the game.
 Network calls have a finite timeout and receive an abort signal where supported. Cancellation
 before dispatch has no remote effect; cancellation/timeout after possible dispatch preserves
 ambiguity. Aborting a request does not prove the provider cancelled its transaction. Timers
-and listeners are released, and late acknowledgement has no publication authority. Direct
+and listeners are released, and late acknowledgement has no publication trusted source. Direct
 `execute(command, signal)` supports caller cancellation; HTTP disconnection still drains the
 accepted round on shutdown. Server stop rejects new admission, drains bounded accepted work
 and closes owned storage before caller game release. Library callers own `close()`.
 
 Strong identities include session, requestId and the exact original bet/mode/version envelope.
 Identical completed retries precede stale-version checking and return the original accounting,
-revision and request-specific public/debug projection after restart and subsequent rounds.
+revision and request-specific public/debug view after restart and subsequent rounds.
 Different payloads conflict; keys across sessions remain independent. Numeric stakes, including
 0.05, 7.5, 1e-7 and zero free stakes, remain numbers without rounding or string conversion.
 Invalid commands, blocked/insufficient funds, corruption, identity/revision conflicts,
@@ -464,15 +464,15 @@ remains bound but preparation can run again through an explicitly submitted orig
 retry; these transient errors are not permanently saved as completed results. Released failures
 are excluded from recovery sweeps, and the store rechecks recovery eligibility under ownership
 so a stale discovery cannot execute them. The player can Retry or submit a fresh logical round
-after that explicit disposition. A provider’s terminal rejected debit retains its historical
-error and also permits a fresh round. Transport loss, errors without the disposition,
+after that explicit result. A provider’s terminal rejected debit retains its historical
+error and also permits a fresh round. Transport loss, errors without the result,
 `recovery-required` and `identity-conflict` preserve the original pending identity and payload;
 they never authorize a new charge key. A rejected payout after committed debit still requires
 operator recovery and keeps the session reserved.
 
 A controllable independent provider can be used for controller verification. Its separate SQLite
 database, pre/post-action disconnects, missing acknowledgement, inspection overrides and debit/payout
-counters exercise the lifecycle without substituting the local reference ledger.
+counters exercise the status without substituting the local reference ledger.
 
 ### Logical entry and continuation
 
@@ -498,11 +498,11 @@ never purchases another entry. Resolver exhaustion is reported as `exhausted`,
 which cannot authorize a new entry or pretend that the mathematics completed.
 
 The mathematical cursor counts domain `play()` calls. The delivery cursor also
-counts publication of retained cascade steps. A cascade is calculated once; its
-terminal evaluation is retained with the winning steps. An immediately ending
+counts publication of saved cascade steps. A cascade is calculated once; its
+terminal evaluation is saved with the winning steps. An immediately ending
 cascade has no winning cascade stages and one terminal screen. Publishing saved
 steps advances only delivery state. `prepare()` prepares one such unit, even
-when the requested policy is composite; settlement adapters own the loop and
+when the requested policy is composite; settlement connectors own the loop and
 commit each subround separately.
 
 Omitting both delivery and continuation preserves the existing one-`play()`
@@ -510,7 +510,7 @@ command. Direct `play()`, simulation quotas and exact enumeration retain this
 unit. Do not mix these calls into an explicitly pending logical round. Free-game
 and bet-mode decorators declare `hasPendingLogicalRound()`; custom sessions must
 implement `LogicalRoundProgressProviding` explicitly. Custom HTTP games can
-advertise that promise with `supportsLogicalRoundDelivery()`. This capability
+advertise that promise with `supportsLogicalRoundDelivery()`. This supported action
 never supplies an executable state codec or a durability guarantee.
 
 `SpinCommandHandler.execute()` additionally requires a stable `requestId` for
@@ -519,7 +519,7 @@ SQLite local store commits executable/RNG state, logical progress, accounting
 and the detached response together. The external store uses the existing durable
 settlement intents and permanent provider identities. Saved-stage deliveries
 use no debit or payout leg. Retrying the original composite request walks its
-retained subround identities; retrying a subround returns its own saved output,
+saved subround identities; retrying a subround returns its own saved output,
 even after later rounds. Changed delivery, selection, round, cursor, bound or
 version under the same durable request identity conflicts.
 
@@ -529,7 +529,7 @@ retains that result and stops subsequent work; a failed successor includes
 `committedProgress`. Remote uncertainty retains the original settlement owner
 and must be reconciled. HTTP disconnects cancel subsequent delivery, and shutdown
 drains accepted work. Direct portable runtimes have process-local retry storage;
-passing retained logical progress to their constructor supplies a continuation,
+passing saved logical progress to their constructor supplies a continuation,
 not durable wallet/result recovery. Complete restart recovery requires a complete
 codec and an owning durable store. File snapshots with ephemeral wallet/retry
 participants and Studio Play advertise no process-restart guarantee.
@@ -540,4 +540,4 @@ accepted units and their results. Live-only direct sessions require their own
 transaction boundary; the portable runtime does not invent an inverse for custom
 mutable collaborators.
 
-Hold&Win owns pending logical progress while locks/respins are active. Supported decorator assembly puts jackpot outside Hold&Win and executable modes, so it sees the charged stake and its awards survive feature suppression. Built-in decorators forward mode selection, observation, pending progress, category and jackpot-statistics capabilities. Purchased entries retain their charged mode separately from the current default selection; continuations do not re-arm purchases. See [the authored contracts](game-packages.md#authored-holdwin-jackpot-and-bet-modes).
+Hold&Win owns pending logical progress while locks/respins are active. Supported decorator assembly puts jackpot outside Hold&Win and executable modes, so it sees the charged stake and its awards survive feature suppression. Built-in decorators forward mode selection, sample, pending progress, category and jackpot-statistics supported actions. Purchased entries retain their charged mode separately from the current default selection; continuations do not re-arm purchases. See [the authored interfaces](game-packages.md#authored-holdwin-jackpot-and-bet-modes).

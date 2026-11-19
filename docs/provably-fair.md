@@ -3,7 +3,7 @@
 # Provably Fair
 
 `fairness/` implements a commit-reveal Provably Fair proof for a single round drawn from an already-built
-[Outcome Library Bundle](outcome-library-bundle.md) — a `FairnessServerSeedCommitment` published *before*
+[Outcome Library Folder](outcome-library-folder.md) — a `FairnessServerSeedCommitment` published *before*
 `clientSeed`/`nonce` are even known, a `FairnessCommitment` published *before* the outcome is selected, and a
 `FairnessRoundProof` published *after*, independently verifiable by anyone with the source bundle and the
 original commitment, without running any game/win calculation.
@@ -32,7 +32,7 @@ choosing `serverSeed`. That guarantee needs two separate, sequential artifacts:
 3. **`FairnessRoundProof`** — the reveal, published after the round settles.
 
 This library cannot itself prove *when* step 1 was published relative to step 2 — that needs an external
-commitment log or timestamping authority, out of scope here. What the type split provides is the structural
+commitment log or timestamping trusted source, out of scope here. What the type split provides is the structural
 shape that makes publishing the server-seed commitment first the only way to use the API at all, rather than an
 unenforced convention a single, more permissive function signature could quietly be used to skip.
 
@@ -47,7 +47,7 @@ unenforced convention a single, more permissive function signature could quietly
 3. **Reveal** — once the round is settled, `FairnessRoundProofBuilder.build(commitment, serverSeed, sourceBundleDir)`
  draws the one outcome this commitment's own `clientSeed`/`nonce`/(now-revealed) `serverSeed` deterministically
  select, and returns a `FairnessRoundProof` carrying the revealed `serverSeed`, the drawn
- `outcomeId`/`weight`/`recordHash`, the mode index's own `indexHash`, and a `commitmentHash` binding this exact
+ `outcomeId`/`weight`/`recordHash`, the mode index's own `indexHash`, and a `commitmentHash` link this exact
  proof to the exact commitment it was built from. Published to the player after the round.
 4. **Verify** — anyone holding the source bundle and the original `FairnessCommitment` can independently confirm
  the proof: is it genuinely bound to that commitment (`commitmentHash` plus an exact field-by-field match), does
@@ -135,7 +135,7 @@ accordingly.
  check — never trusted blindly: `OutcomeLibraryBundleReader.readModeIndex` itself does no runtime shape
  checking at all (a raw `JSON.parse` + type-cast), so a malformed or hand-tampered `index_<modeName>.json`
  would otherwise be trusted as-is. This check mirrors the relevant parts of
- [`OutcomeLibraryBundleValidator`](outcome-library-bundle.md)'s own per-mode checks — closed shape at both the
+ [`OutcomeLibraryBundleValidator`](outcome-library-folder.md)'s own per-mode checks — closed shape at both the
  index and the per-entry level (every entry must be *exactly* `{id, weight, byteOffset, byteLength,
  recordHash}`, no more, no fewer), current schema/library-schema versions, `index.modeName` matching the mode
  actually requested, `index.outcomesFile` matching `outcomes_<modeName>.jsonl` **exactly** (not just "a
@@ -158,7 +158,7 @@ accordingly.
  built/verified from a snapshot caught changing mid-draw.
 
 This is the same "Pinned-snapshot sampling" + "Snapshot consistency" discipline
-[`CertificationPackBuilder`](certification-evidence-bundle.md#pinned-snapshot-sampling) already
+[`CertificationPackBuilder`](certification-pack.md#pinned-snapshot-sampling) already
 follows, just for one single outcome rather than a whole sampled sequence, and checked synchronously around one
 draw rather than deferred to just-before-publish. A bundle that briefly changes and is then restored to its exact
 original bytes *before* a build/verify call ever runs leaves that call entirely unaffected — only drift observed
@@ -298,7 +298,7 @@ how to pair a `serverSeed` with its own hash — trivial for anyone, including a
 fresh `serverSeed`/`clientSeed`/`nonce` and drawing a real, self-consistent outcome from the same public bundle.
 Verification therefore layers three genuinely independent checks, each catching something the others can't:
 
-- **Commitment binding** (`commitmentHash` + field-by-field match): catches a proof never actually built from the
+- **Commitment link** (`commitmentHash` + field-by-field match): catches a proof never actually built from the
  genuine commitment at all, however internally self-consistent it is on its own.
 - **Live record check** (index-only `weight`/`recordHash` comparison): catches a substituted-but-individually-
  valid outcome id whose content was tampered.
@@ -315,9 +315,9 @@ The full commit-reveal-verify flow, end to end:
 
 ```
 pokie fairness seed-commit serverSeed.txt --out seed-commitment.json
-pokie fairness commit seed-commitment.json --client-seed player-seed --nonce 0 --source../bundle --mode <modeName> --out commitment.json
-pokie fairness reveal commitment.json --server-seed serverSeed.txt --source../bundle --out proof.json
-pokie fairness verify proof.json --commitment commitment.json --source../bundle
+pokie fairness commit seed-commitment.json --client-seed player-seed --nonce 0 --source ../bundle --mode <modeName> --out commitment.json
+pokie fairness reveal commitment.json --server-seed serverSeed.txt --source ../bundle --out proof.json
+pokie fairness verify proof.json --commitment commitment.json --source ../bundle
 ```
 
 `seed-commit`/`commit`/`reveal` call straight through to `computeFairnessServerSeedCommitment`/
@@ -349,4 +349,4 @@ const issues = await new FairnessRoundProofVerifier().verify(proof, {commitment,
 
 ## Dossier preparation
 
-Dossier preparation currently marks fairness evidence unavailable rather than inferring it from a model or bundle. The supported `pokie-fairness-hmac-sha256-v1` proof/commitment checks remain separate, scoped to the selected library/index/outcome identities. Deterministic/HMAC selection does not establish precommit publication timing, general game fairness or certification. See [dossier boundaries](certification-evidence-bundle.md).
+Dossier preparation currently marks fairness evidence unavailable rather than inferring it from a model or bundle. The supported `pokie-fairness-hmac-sha256-v1` proof/commitment checks remain separate, scoped to the selected library/index/outcome identities. Deterministic/HMAC selection does not establish precommit publication timing, general game fairness or certification. See [certification pack boundaries](certification-pack.md).

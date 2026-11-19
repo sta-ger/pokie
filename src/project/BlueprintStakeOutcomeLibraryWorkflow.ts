@@ -2,7 +2,7 @@ import fs from "fs";
 import vm from "vm";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
-import {materializeReelStrips} from "../generated/materializeReelStrips.js";
+import {writeReelStrips} from "../generated/writeReelStrips.js";
 import {renderBuiltGameModule} from "../generated/renderBuiltGameModule.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
 import {resolveSharedSlotMathModel} from "../generated/resolveSharedSlotMathModel.js";
@@ -454,7 +454,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                 .join("; ");
             throw new Error(`Blueprint "${blueprintPath}" cannot generate its reels; fix it in Game Model and retry: ${diagnostics}`);
         }
-        return materializeReelStrips(blueprint as GameBlueprint, resolution.reelStripGeneration);
+        return writeReelStrips(blueprint as GameBlueprint, resolution.reelStripGeneration);
     }
 
     private loadMaterializedGame(blueprint: GameBlueprint): PokieGame {

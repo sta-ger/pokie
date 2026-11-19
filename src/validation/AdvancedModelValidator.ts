@@ -3,7 +3,7 @@ import {DeclaredContinuationError, declaredAccountingOwnership, validateDeclared
 import {canonicalDefinitionJson} from "../diff/MathDefinitionDiffer.js";
 import {modelFieldPathSegments} from "../generated/internal/modelFieldPath.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
-import {materializeReelStrips} from "../generated/materializeReelStrips.js";
+import {writeReelStrips} from "../generated/writeReelStrips.js";
 import type {AdvancedBlueprintInput, AdvancedModelValidating, AdvancedModelValidationReport, AdvancedValidationCheck, AdvancedValidationOptions, DeclaredTransitionModel} from "./AdvancedModelValidation.js";
 import {AnalysisBudget, AnalysisStopped} from "./internal/AnalysisBudget.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
@@ -251,7 +251,7 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
             await budget.yield();
             const resolved = resolveReelStripGeneration(model);
             if (!resolved.success) throw new Error("Declared reel generation constraints cannot be satisfied.");
-            model = materializeReelStrips(model, resolved.reelStripGeneration);
+            model = writeReelStrips(model, resolved.reelStripGeneration);
             budget.check();
             definitions = model.reelSequences ?? model.reelStrips!.map(symbols => ({type: "exact", symbols}));
         }

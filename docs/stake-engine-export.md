@@ -9,11 +9,11 @@ export target POKIE ships and, like every other exporter in the project (`ParShe
 it never introduces a second calculation path — every number it writes already exists on the library's own
 outcomes/artifacts, re-shaped, not recomputed.
 
-This is a deliberately separate, sibling pipeline to the [External Adapter SDK](external-adapter-sdk.md) — not
+This is a deliberately separate, sibling pipeline to the [External Adapter SDK](external-connector-sdk.md) — not
 built on top of it, and not the other way around. See
-[Why Stake Engine Export isn't an `ExternalDeploymentTarget`](external-adapter-sdk.md#why-stake-engine-export-isnt-an-externaldeploymenttarget)
+[Why Stake Engine Export isn't an `ExternalDeploymentTarget`](external-connector-sdk.md#why-stake-engine-export-isnt-an-externaldeploymenttarget)
 for exactly why (a mode's own `cost`, required here for unit conversion, has no channel through that SDK's
-generic projector contract, and a real Stake export's atomicity spans modes with different costs in a way the
+generic projector interface, and a real Stake export's atomicity spans modes with different costs in a way the
 SDK's per-target-fixed-descriptor model can't represent).
 
 ## Output layout
@@ -103,7 +103,7 @@ defines its own mechanic-specific vocabulary (anticipation, tumble-specific fiel
 therefore only maps what a `RoundRecord` itself already models generically, implementing its own
 `StakeEngineRoundEventsProjecting<T>` interface — deliberately not the generic `RoundRecordProjector<T, TOutput>`
 extension point `PokieJsonRoundRecordProjector` uses (see [Round Records](round-records.md)), since a Stake
-projection needs the mode's own `cost` to convert amounts into Stake units:
+view needs the mode's own `cost` to convert amounts into Stake units:
 
 ```ts
 type StakeEngineRoundProjectionContext = {readonly cost: number};
@@ -183,7 +183,7 @@ if the publish rename fails, and never exposes a partially written directory. Bo
  per-mode files are ever left behind.
 
 Because the whole directory is discarded and rebuilt this way, using the programmatic writer with an existing `outDir` is only
-allowed when that directory is either empty or recognized as a prior POKIE adapter-export run's own
+allowed when that directory is either empty or recognized as a prior POKIE connector-export run's own
 output (via that run's own `pokie-manifest.json`) — otherwise a caller pointing `--out` at an unrelated directory
 by mistake would have it wiped wholesale. An unrecognized non-empty directory is refused outright, with nothing
 touched. Conceptually the same rebuild-safety guarantee as `GamePackageGenerator`'s own (see
@@ -208,10 +208,10 @@ uses three same-directory renames, and each one has a distinct, deliberate failu
 
 Every one of these failure branches also guarantees the staging directory itself never lingers past the call that
 created it (removed best-effort, without ever masking whichever error is actually being thrown/returned). A
-private backup path is retained only when it holds the previous payload for manual recovery.
+private backup path is saved only when it holds the previous payload for manual recovery.
 
 The CLI build, `pokie build <config.json> --target stakeAdapter`, deliberately has a stricter public
-contract: it rejects every occupied destination before this writer is invoked. Choose a different unused `--out`
+interface: it rejects every occupied destination before this writer is invoked. Choose a different unused `--out`
 path (or remove the destination yourself after checking it); the build never replaces an occupied destination.
 
 ## CLI usage
@@ -220,7 +220,7 @@ path (or remove the destination yourself after checking it); the build never rep
 pokie build <config.json> --target stakeAdapter [--out <dir>] [--dry-run]
 ```
 
-`--dry-run` validates the adapter source and resolved destination without writing anything. It reports an
+`--dry-run` validates the connector source and resolved destination without writing anything. It reports an
 incompatible source or occupied destination before a publish is attempted.
 
 `<config.json>` lists one `WeightedOutcomeLibrary` JSON file per mode:
@@ -237,7 +237,7 @@ incompatible source or occupied destination before a publish is attempted.
 `libraryPath` entries resolve relative to `<config.json>`'s own directory. Default `--out` is `<config.json>`'s
 directory plus `/stakeAdapter`.
 
-A mode entry can load its library from a [Outcome Library Bundle](outcome-library-bundle.md) instead
+A mode entry can load its library from a [Outcome Library Folder](outcome-library-folder.md) instead
 of a plain JSON file — replace `libraryPath` with `bundleDir` (and optionally `bundleModeName`, which defaults
 to `modeName`):
 
@@ -248,7 +248,7 @@ to `modeName`):
 Exactly one of `libraryPath`/`bundleDir` is required per mode. When **every** mode in the config uses
 `bundleDir`, the export streams each mode's outcomes directly from its bundle via
 `StakeEngineBundleStreamingExporter` — reading `libraryHash`/`libraryId`/`outcomeCount` straight from the
-bundle's own index and never calling `readLibrary()`, never materializing a `WeightedOutcomeLibrary`. Mixing even
+bundle's own index and never calling `readLibrary()`, never creating a `WeightedOutcomeLibrary`. Mixing even
 one `libraryPath` mode into the same export falls back to the existing `StakeEngineExporter` path (loading every
 `bundleDir` mode's library fully via `loadWeightedOutcomeLibraryFromBundle` first) — both paths produce
 byte-identical `index.json`/CSV/books output, so which one runs is purely a performance/memory concern, never a
@@ -299,7 +299,7 @@ const result = await exporter.exportToDirectory(
 It reuses the same low-level pieces as `StakeEngineExporter` (`convertRatioToStakeUnits`,
 `parseStakeEngineOutcomeId`, `StakeEngineRoundEventsProjector`, the atomic-publish machinery) and the same
 mode-name/cost validation rules, but is a deliberately separate class rather than a variant grafted onto
-`StakeEngineExporter` — that class's own array-based "every mode's library fully in memory" contract is already
+`StakeEngineExporter` — that class's own array-based "every mode's library fully in memory" interface is already
 stabilized and untouched by this streaming path.
 
 ### Numeric format boundaries
@@ -315,7 +315,7 @@ Numeric analytics are approximate; standalone decimal fractions are capped at 40
 
 Numeric `WeightedOutcomeLibrary` exporter inputs require **positive safe integer**
 weights (1 through 9007199254740991); an unsafe integer-valued JavaScript Number
-is rejected. Streaming native bundles retain their safe-integer bundle contract.
+is rejected. Streaming native bundles retain their safe-integer bundle interface.
 Exact imported Stake payloads instead retain positive UInt64 decimal weights
 through `exportExactSourceToDirectory`; aggregate totals may exceed UInt64.
 No weight is rounded or probability-preservingly rescaled. This does not widen

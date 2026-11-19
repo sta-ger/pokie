@@ -80,4 +80,4 @@ new LeftToRightLinesPatterns(5).toArray();
 
 ## Generated, visible and evaluated coordinates
 
-Evaluation-local paylines and visible drawing coordinates: see the coordinate contract and adapter support matrix.
+Evaluation-local paylines and visible drawing coordinates: see the coordinate interface and connector support matrix.

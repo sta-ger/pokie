@@ -3396,7 +3396,7 @@ export class StudioServer implements StudioServerHandling {
         try {
             if (typeof this.certificationService.requestIdentity === "function") inputIdentity = this.certificationService.requestIdentity(projectRoot, validated);
         } catch (error) {
-            authorityFailure = `Could not acquire certification authorities: ${error instanceof Error ? error.message : String(error)}. Select existing physical project-local inputs within the 64 MiB / 10000 file budget, then rebuild.`;
+            authorityFailure = `Could not acquire certification trusted sources: ${error instanceof Error ? error.message : String(error)}. Select existing physical project-local inputs within the 64 MiB / 10000 file budget, then rebuild.`;
         }
         const execution = await this.executeCommonOperation(
             res,

@@ -295,7 +295,7 @@ practice:
 
 ## Generated, visible and evaluated coordinates
 
-Explicit generated matrices, visible viewports and evaluation windows: see the coordinate contract and adapter support matrix.
+Explicit generated matrices, visible viewports and evaluation windows: see the coordinate interface and connector support matrix.
 
 ## Weighted whole-sequence reels
 
@@ -326,7 +326,7 @@ reads wrap circularly, just as they do for an exact `SymbolsSequence`.
 For each new context, the fixed-height generator visits reels in ascending index
 order. On a weighted reel it selects one complete variant, then draws that reel's
 uniform stop. An exact reel draws only its stop. Subsequent generation in the same
-context draws stops from the retained arrays without selecting again. There is no
+context draws stops from the saved arrays without selecting again. There is no
 per-symbol selection, array concatenation, or integer replication of strips.
 
 | Context | Selection lifetime | Included in selection statistics |
@@ -341,7 +341,7 @@ context, chosen reel/variant IDs and counters keyed by configured variants. An
 unfunded play, invalid command or invalid model draws nothing. Idempotent runtime
 retries reuse the saved delivery; seeded runtime rollback and repository
 compensation restore selection state and counters together with RNG state. Use the
-runtime/repository contracts for transactional execution.
+runtime/repository interfaces for transactional execution.
 
 Relative weights use their exact binary64 integer ratios, reduced by GCD. A total
 at most `2^32` takes one `getRandomInt(0, total)` variant draw. Larger totals draw
@@ -370,32 +370,32 @@ const session = new VideoSlotSession(config,
 
 `getSize()`, configuration/variant inspection and analytics never select a variant.
 An unresolved weighted definition's `getSymbol()`, `getSymbols()` and `toArray()`
-reject literal-strip reads; inspect `getVariants()` or resolve a known retained ID.
+reject literal-strip reads; inspect `getVariants()` or resolve a known saved ID.
 `getSequenceSelections()` exposes reel index, variant ID and context. These are
 step/round record fields, validated and hashed, and appear in JSON
 replays and Studio inspection. Session state and its trusted schema preserve the
 weighted definitions and active identities across JSON restoration.
 
 The fixed-height generator and the built-in free-game/bet-mode decorators support
-this contract. Variable-height and resizable generators reject weighted inputs
+this interface. Variable-height and resizable generators reject weighted inputs
 before drawing. Custom generators must explicitly declare support and own the
-corresponding context/capture contract; forced-grid enumeration declares support
+corresponding context/capture interface; forced-grid enumeration declares support
 without claiming a runtime selection. PAR preserves exact and weighted `reelSequences` through the
 `ReelSequences` sheet. WASM preserves this source and its contextual selection without flattening. Generated TypeScript game
 packages preserve all alternatives and IDs.
 
-Outcome Library bundles have a separate positive-integer frequency contract.
+Outcome Library bundles have a separate positive-integer frequency interface.
 Exact enumeration of weighted sequences can produce fractional probability weights;
 the bundle writer rejects those weights rather than rounding them. An explicit
 `pokie build SOURCE --target outcomeLibrary --sample N --seed SEED` publishes
 sampled integer frequencies. That sampled bundle does not replace the lossless
-sequence definitions retained by a TypeScript package or PAR workbook.
+sequence definitions saved by a TypeScript package or PAR workbook.
 
 Weighted reel definitions, including mixed exact strips, remain fixed for the
 lifetime of a generator/session. Replacing them on a live configuration is rejected
 before drawing or publishing a state/statistics snapshot. Create a new session for
 an authored model change. JSON restoration may rebuild equivalent literal objects;
-it cannot change the retained weighted model's arrays or distribution.
+it cannot change the saved weighted model's arrays or distribution.
 
 When restoring a standalone generator, pair `getSelectionState()` /
 `setSelectionState()` with its RNG capture/restore methods. Its bounded implicit
@@ -423,7 +423,7 @@ so XLSX serialization preserves fractional, subnormal and extreme finite binary6
 values. IDs and symbols are text too (including numeric-looking IDs).
 
 `Context` is `logical-round-v1`; `Sampling` is `binary64-integer-ratios-v1`.
-These versioned contracts are fixed, not authored selectors. Unsupported context,
+These versioned interfaces are fixed, not authored selectors. Unsupported context,
 conflicting sheets, missing/duplicate indices, invalid variants and unknown symbols
 produce sheet/row/column or authored-field diagnostics. Relative weights need a
 positive total; they need not sum to one or 100. Zero entries are valid. Negative or
@@ -434,15 +434,15 @@ variants are invalid; large finite totals do not overflow validation.
 Object-key order is canonicalized; array order is meaningful. This hash remains
 separate from Studio's exact-content hash. Untouched XLSX imports match
 provenance. Edits invalidate identity or fail validation; ignored/defaulted/formula
-materialization withholds a lossless claim. Imported Blueprint publications include
+preparation withholds a lossless claim. Imported Blueprint publications include
 conversion-evidence sidecars. Managed Studio import evidence is bound to workbook
 bytes and imported content, survives restart, and loses its lossless claim after
 workbook drift or draft edits. Republishing cannot upgrade ineligible evidence.
 
 Legacy literal `ReelStrips` remains supported. Generated reels and per-symbol
 `symbolWeights` export as separately diagnosed deterministic snapshots. Whole-sequence
-PAR does not materialize or flatten alternatives. `pokie reel generate` retains its
-explicit unsupported materialization boundary, and weighted outcome libraries remain
+PAR does not create or flatten alternatives. `pokie reel generate` retains its
+explicit unsupported preparation boundary, and weighted outcome libraries remain
 precomputed outcome artifacts, with no reconstruction edge to Blueprint/PAR.
 
 ## Weighted bonus authoring

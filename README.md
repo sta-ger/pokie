@@ -50,7 +50,7 @@ support.
 | **Simulation report** | RTP, hit frequency, volatility and payout statistics. |
 | **Certification pack** | The evidence folder prepared for an auditor. |
 
-The rest — build outputs, indexes, manifests, records and projections — is implementation detail. Start
+The rest — build outputs, indexes, manifests, records and views — is implementation detail. Start
 with one design, one package and one simulation report.
 
 ## Session

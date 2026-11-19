@@ -56,7 +56,7 @@ It holds no state of its own — just `protected readonly baseSession` and one d
 member — so overriding a method or two is all you need to write. Both `VideoSlotWithFreeGamesSession` and
 `VideoSlotWithResizableGridSession` are built this way — read either as a worked example.
 
-## Headless runtime contract
+## Headless runtime interface
 
 The public root exports `SessionRuntimeHandling`, `SessionRuntime`, `SessionCommand`, `SessionCommandResult`, `RepositoryCommandHandling`, `RepositoryCommand`, `GameSessionIdentity`, `SessionStateRestoring`, `SpinCommandHandler`, and the existing repository/codec interfaces. Compose these around `PokieGame` and injected `GameSessionHandling` collaborators; no private imports or new package subpath are required. Custom durable sessions explicitly promise a complete codec and validate opaque state before recovery; built-in subclasses do not inherit a completeness promise for added hidden state.
 
@@ -68,7 +68,7 @@ log and local ledger) tied to one owning transaction. Implementations must acqui
 cross-process ownership before loading/constructing/calculating, preserve supplied intent
 identity, roll back non-played results/exceptions, commit the whole tuple before success,
 return detached historical results and drain accepted calls on close. Existing independent
-port implementations do not gain this contract by sharing a database filename.
+port implementations do not gain this interface by sharing a database filename.
 
 `SqliteTransactionalRoundStore.open(filename, {lockWaitMs})` is the durable WAL/FULL
 reference implementation, lazily loading optional Node SQLite. `ReferenceRoundLedger`
@@ -77,13 +77,13 @@ and forbids separate compensation. Public root declarations include these APIs;
 browser/portable entry points remain independent. See
 [configuration, schema, identity and recovery](game-session.md#durable-transactional-reference-rounds).
 `new SpinCommandHandler(game, store, captureOptions)` uses the existing `SessionRuntime`
-and capture/authority contracts. Direct initialize/readSession/lookupResult/close APIs
+and capture/trusted source interfaces. Direct initialize/readSession/lookupResult/close APIs
 support reopen without domain execution. A server's `transactionalRoundStore` option
 accepts exclusive ownership; pre-generated/outcome-source and Studio Play remain on
 separate, weaker settlement paths.
 
 `ExternalRoundStore` / `SqliteExternalRoundStore` compose a durable local outbox with a
-`DurableWalletPort`; declared durability and inspection capabilities require provider
+`DurableWalletPort`; declared durability and inspection supported actions require provider
 verification. Session fencing, permanent settlement IDs, calculated continuation and saved
 responses survive local restart. This composition reconciles independent stores and never
 claims distributed ACID. Legacy independent repositories and wallets remain weaker
@@ -93,7 +93,7 @@ compensation configurations. See [external settlement](game-session.md#durable-e
 
 For expanding/sticky/restricted/multiplier wilds, transforms and reel fills, use
 `VideoSlotConfig.setScreenModifiers` or Blueprint `mechanics.modifiers`; the
-[math contract](math-modeling.md#authored-wilds-and-screen-modifiers) specifies
+[math interface](math-modeling.md#authored-wilds-and-screen-modifiers) specifies
 ordering and supported combinations. `ScreenModifierHandling` describes the
 finite interpreter. Its proposed state is committed by `VideoSlotSession` only
 after successful settlement. Arbitrary generators, transform callbacks,

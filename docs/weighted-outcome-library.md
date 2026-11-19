@@ -177,7 +177,7 @@ class WeightedOutcomeLibraryValidator<T = string> implements ValidationRule<Weig
 }
 ```
 
-Reuses the existing generic `ValidationRule<T>` contract. Never throws, even for a malformed or hand-crafted
+Reuses the existing generic `ValidationRule<T>` interface. Never throws, even for a malformed or hand-crafted
 library. Checks `libraryId`/`schemaVersion` (including that it's the currently supported version), that
 `outcomes` is non-empty with unique, non-empty `id`s **already in ascending order**
 (`weighted-outcome-library-outcomes-not-sorted` otherwise) and finite `weight`s that are each strictly greater
@@ -219,7 +219,7 @@ Optional and feature-detected, same convention as `getSessionSerializer`/`getBet
 outcome space is a finite, enumerable set of reel-stop combinations (a video slot with fixed reel strips) MAY
 implement this: the returned session must be the same concrete `VideoSlotSessionHandling` `createSession()` itself
 builds, just constructed with the caller-supplied `combinationsGenerator` swapped in for the game's own
-randomness-backed one — the DI seam `VideoSlotSession`'s own constructor already exposes. A paid spin that triggers
+randomness-backed one — the DI extension point `VideoSlotSession`'s own constructor already exposes. A paid spin that triggers
 free games remains exactly enumerable: its artifact carries the real `freeGamesTriggered` event from that entry
 spin. A game with no finite paid-spin enumeration (cascades, hold-and-win, a resizable grid,...) simply has no
 exact strategy: generation fails closed with a
@@ -254,7 +254,7 @@ function generateSampledWeightedOutcomeLibrary(options: Omit<GenerateExactWeight
 
 `options` always includes `libraryId`, the loaded `game`/`pokieVersion` (and optionally `configHash`/`betMode`/
 `stake`, threaded onto every generated artifact). Generation runs in two phases: it streams every raw reel-stop
-tuple (an odometer sweep over each reel's own strip, never materializing the whole space as an array — memory is
+tuple (an odometer sweep over each reel's own strip, never creating the whole space as an array — memory is
 bounded by the number of *distinct* grids actually reachable, not the raw combination count), resolves each into
 its visible grid, and accumulates an exact `bigint` weight per distinct grid — the same "dedupe identical grids
 before the expensive win-calculation step" optimization `math-modeling.md`'s own ad hoc `SymbolsCombinationsAnalyzer`
@@ -267,7 +267,7 @@ JSON-safety, and every other existing invariant are still checked by that one re
 
 `generateExactWeightedOutcomeLibrary` collects the whole stream and returns an already-built library;
 `streamExactWeightedOutcomes` is the lower-level `AsyncGenerator` form, usable directly as an
-`OutcomeLibraryBundleModeInput`'s own `outcomes` (see [Outcome Library Bundle](outcome-library-bundle.md)) — both
+`OutcomeLibraryBundleModeInput`'s own `outcomes` (see [Outcome Library Folder](outcome-library-folder.md)) — both
 are the exact same underlying generation.
 
 ### Large spaces: bounds, bounded-coverage, cancel/resume/progress
@@ -314,7 +314,7 @@ pokie build <project> --target outcomeLibrary
 `generate` is the CLI entry point for everything above: it loads `<packageRoot>` — a package built by
 `pokie build` (or any package `loadPokieGame()` can require) — and drives *its own* session/win-calculation
 runtime through `generateExactWeightedOutcomeLibrary`, exactly as described in "Generating" above. This is a
-different workflow from outcome-bundle export (see [Outcome Library Bundle](outcome-library-bundle.md#cli-usage)):
+different workflow from outcome-bundle export (see [Outcome Library Folder](outcome-library-folder.md#cli-usage)):
 that export never loads or executes a `PokieGame` at all — it only bundles `WeightedOutcomeLibrary` JSON (or JSONL
 outcome streams) that some earlier step, such as `generate`, already produced. Bundle readers likewise only ever
 inspect an already-built bundle. `generate` is the public workflow that runs a live game.
@@ -332,7 +332,7 @@ Outcome Library bundle; it can then be used with `pokie validate`, `pokie sim`, 
  `weighted-outcome-library-generation-unsupported` code rather than guessing at one.
 - `--mode <betModeId>` — the `betMode` threaded onto every generated outcome's artifact; also folds into the
  default `--library-id` (`<manifest.id>-<mode>` when `--library-id` isn't given). For an explicit runtime
- bet-mode contract, omitting `--mode` resolves its declared `Is Default` mode first: that resolved mode is
+ bet-mode interface, omitting `--mode` resolves its declared `Is Default` mode first: that resolved mode is
  selected on the enumeration session and is used consistently for the artifact, library id, and bundle mode
  name. It is not an implicit `base` label. Legacy metadata-only `BetModes` remain labels only; omitting the
  flag preserves their historical unlabeled/base-compatible library identity.
@@ -375,7 +375,7 @@ Outcome Library bundle; it can then be used with `pokie validate`, `pokie sim`, 
 same bigint-safe number-or-decimal-string convention `stake-engine-standalone.md`'s own `StakeEngineStandaloneExactDecimal`
 uses, `seed` when `"bounded-coverage"`, `pokieVersion`/`game`/`configHash`/`generatedAt`) is returned alongside every
 generated library. Threading it into `OutcomeLibraryBundleModeInput.generator` copies it verbatim into that mode's
-own bundle manifest entry (see [Outcome Library Bundle](outcome-library-bundle.md)) — present only for a mode
+own library index entry (see [Outcome Library Folder](outcome-library-folder.md)) — present only for a mode
 actually built by this generator, absent for one built from an already-computed outcome source.
 
 ## Whole-sequence variants in generation
@@ -401,7 +401,7 @@ Weighted whole-sequence reels now support lossless PAR interchange and rendered
 Studio authoring. They are authored runtime alternatives with per-logical-round
 selection denominators; `WeightedOutcomeLibrary` remains a precomputed-outcome
 artifact with its own analyzer/report route. Per-symbol `symbolWeights` is a third
-capability, whose PAR conversion is a diagnosed literal snapshot. No outcome-library
+supported action, whose PAR conversion is a diagnosed literal snapshot. No outcome-library
 reconstruction edge to Blueprint/PAR or arbitrary TypeScript-source recovery is
 implied by sequence interchange.
 
@@ -412,4 +412,4 @@ payout/duration units, authoring/interchange, restoration/replay, statistics and
 custom-rule/target boundaries. The [launch support register](supported-mechanics.md)
 maps every mandatory family separately from arbitrary custom callbacks.
 
-See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.
+See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning interfaces, locks, evidence and explicit candidate publication.

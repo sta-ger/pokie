@@ -11,7 +11,7 @@ import type {GameBlueprint} from "./GameBlueprint.js";
 import type {GameBuildInfoReelStripGeneration} from "./GameBuildInfoReelStripGeneration.js";
 import type {GamePackageGenerateOptions, GamePackageGenerating} from "./GamePackageGenerating.js";
 import type {GeneratedGamePackage} from "./GeneratedGamePackage.js";
-import {materializeReelStrips} from "./materializeReelStrips.js";
+import {writeReelStrips} from "./writeReelStrips.js";
 import {renderBuiltGameModule, renderBuiltGameModuleSource} from "./renderBuiltGameModule.js";
 import {renderBuiltPackageLock} from "./renderBuiltPackageLock.js";
 import {renderBuiltPackageReadme} from "./renderBuiltPackageReadme.js";
@@ -48,7 +48,7 @@ export class GamePackageGenerator implements GamePackageGenerating {
     // (so it can report per-reel diagnostics its own way) and passes the result straight through. A
     // caller that omits it entirely — e.g. calling this generator directly with an in-memory blueprint
     // — gets resolution run for it right here, failing the same way BuildCommand would have. The
-    // actual runtime file (dist/index.js) gets a *materialized* copy (materializeReelStrips) with
+    // actual runtime file (dist/index.js) gets a *materialized* copy (writeReelStrips) with
     // reelStripGeneration resolved into a plain reelStrips array — the runtime module never depends on
     // the generation API.
     //
@@ -88,11 +88,11 @@ export class GamePackageGenerator implements GamePackageGenerating {
 
         this.assertMissingOrEmpty(projectRoot);
 
-        // materializeReelStrips can throw (see its own fail-fast checks) — it runs before any
+        // writeReelStrips can throw (see its own fail-fast checks) — it runs before any
         // filesystem write below (including the staged directory this generator writes into first) so
         // a failure never creates or modifies anything, whether it's this call's own resolution or a
         // caller-supplied one.
-        const materializedBlueprint = materializeReelStrips(blueprint, resolvedReelStripGeneration);
+        const materializedBlueprint = writeReelStrips(blueprint, resolvedReelStripGeneration);
 
         const runtimePackageRoot = options?.runtimePackageRoot === undefined ? undefined : path.resolve(options.runtimePackageRoot);
         const basePackageJson = buildPackageJsonPatch(

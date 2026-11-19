@@ -29,7 +29,7 @@ const MAX_REEL_SEED_EXCLUSIVE = 0x7fffffff;
 // expressed as one independent, already-resolved-shape "generated" entry per reel (see
 // buildReelStripGeneration below) rather than a single flat symbolWeights map: every reel's own strip
 // content can be inspected directly off the blueprint (via resolveReelStripGeneration/
-// materializeReelStrips, or "pokie build --dry-run") without first running it through the engine's
+// writeReelStrips, or "pokie build --dry-run") without first running it through the engine's
 // implicit runtime weighting, and re-resolving the same blueprint always reproduces the exact same
 // strips (each entry's own "seed" is drawn deterministically from the strategy's own `random`).
 // Three design choices keep it warning-free under GameBlueprintValidator by construction, not by luck:
