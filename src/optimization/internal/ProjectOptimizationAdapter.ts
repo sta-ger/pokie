@@ -1,5 +1,4 @@
 import {POKIE_VERSION} from "../../PokieVersion.js";
-import {stabilizeWorkbookContainer} from "./stabilizeWorkbookContainer.js";
 import {resolveSharedSlotMathModel} from "../../generated/resolveSharedSlotMathModel.js";
 import {integerRelativeWeights} from "../../session/videoslot/combinations/WeightedSymbolsSequence.js";
 import {ParallelSimulationRunner} from "../../simulation/parallel/ParallelSimulationRunner.js";
@@ -485,7 +484,7 @@ export async function acquireOptimizationAdapter(
                     if (row.getCell(1).value === "Blueprint Hash") row.getCell(2).value = computeBlueprintHash(model);
                 });
                 const output = path.join(directory, "candidate.xlsx");
-                fs.writeFileSync(output, stabilizeWorkbookContainer(await workbook.xlsx.writeBuffer()));
+                fs.writeFileSync(output, await workbook.xlsx.writeBuffer());
                 return output;
             }
             if (project.type === "tsPackage") {
