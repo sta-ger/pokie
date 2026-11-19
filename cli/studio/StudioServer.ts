@@ -1473,7 +1473,7 @@ export class StudioServer implements StudioServerHandling {
 
             }
             if (this.stopping || this.validationTransitions > 0) {
-                this.sendJson(res, 409, {error: "Project is changing; retry the dossier download after it settles."});
+                this.sendJson(res, 409, {error: "Project is changing; retry the pack download after it settles."});
                 return;
             }
             const context = this.currentContext;
@@ -1487,13 +1487,13 @@ export class StudioServer implements StudioServerHandling {
                 const outDir = url.searchParams.get("outDir") ?? "";
                 const file = url.searchParams.get("file") ?? "";
                 const job = this.jobService.list(projectRoot).find(item => item.operation === "certification-build" && item.status === "completed" && item.request.outDir === outDir && (item.result?.provenance?.manifest as {evidenceContentHash?: string} | undefined)?.evidenceContentHash === identity);
-                if (!job) throw new Error("No successful retained dossier matches this request.");
+                if (!job) throw new Error("No successful retained pack matches this request.");
                 const request = validateCertificationBuildRequest(job.request);
-                if (typeof job.request.inputIdentity === "string" && this.certificationService.requestIdentity(projectRoot, request) !== job.request.inputIdentity) throw new Error("Dossier input files changed; prepare a fresh dossier.");
+                if (typeof job.request.inputIdentity === "string" && this.certificationService.requestIdentity(projectRoot, request) !== job.request.inputIdentity) throw new Error("Pack input files changed; prepare a fresh pack.");
                 const operation = this.certificationService.download(projectRoot, request, file, identity, controller.signal);
                 this.certificationDownloads.set(controller, operation);
                 const download = await operation;
-                if (controller.signal.aborted || this.currentContext !== context) throw new Error("Dossier download cancelled; reopen the current project and retry.");
+                if (controller.signal.aborted || this.currentContext !== context) throw new Error("Pack download cancelled; reopen the current project and retry.");
                 res.writeHead(200, {"Content-Type": download.mime, "Content-Disposition": `attachment; filename="${file.replace(/[^a-zA-Z0-9_.-]/g, "_")}"`, "Content-Length": download.bytes.length});
                 res.end(download.bytes);
             } catch (error) {
@@ -3409,12 +3409,12 @@ export class StudioServer implements StudioServerHandling {
             },
             ({signal, progress}) => authorityFailure ? Promise.resolve({status: "load-error" as const, error: authorityFailure}) : this.certificationService.build(projectRoot, validated.bundleDir, validated.modes, validated.outDir, {
                 signal,
-                ...(validated.dossier ? {dossier: validated.dossier} : {}), ...(validated.output ? {output: validated.output} : {}),
+                ...(validated.pack ? {pack: validated.pack} : {}), ...(validated.output ? {output: validated.output} : {}),
                 onProgress: (stage, unit, current, total, message) => progress({stage, unit, current, total, message}),
             }),
             (result, cancelled) => {
                 if (cancelled) return result.status === "load-error" && (/cleanup failed/).test(result.error) ? {status: "failed", error: result.error, recovery} : {status: "cancelled", result: {summary: "Certification evidence build cancellation settled; inspect the retained executor result for cleanup diagnostics."}, recovery};
-                if (result.status === "ok") return {status: "completed", result: {summary: `${result.manifest.dossier?.support.notice ?? "Certification-ready preparation only."} Model representation: ${result.manifest.dossier?.support.coverage ?? "unavailable"}.`, outputs: result.files.map((file) => ({path: file, label: "Certification evidence", downloadPath: `/api/project/certification/download?${new URLSearchParams({outDir: validated.outDir, identity: result.manifest.evidenceContentHash, file})}`})), provenance: {bundleDir: validated.bundleDir, manifest: result.manifest, artifactHashes: result.artifactHashes ?? {}}, detail: {outDir: validated.outDir, templateHash: result.manifest.presentation?.templateHash}}};
+                if (result.status === "ok") return {status: "completed", result: {summary: `${result.manifest.pack?.support.notice ?? "Certification-ready preparation only."} Model representation: ${result.manifest.pack?.support.coverage ?? "unavailable"}.`, outputs: result.files.map((file) => ({path: file, label: "Certification evidence", downloadPath: `/api/project/certification/download?${new URLSearchParams({outDir: validated.outDir, identity: result.manifest.evidenceContentHash, file})}`})), provenance: {bundleDir: validated.bundleDir, manifest: result.manifest, artifactHashes: result.artifactHashes ?? {}}, detail: {outDir: validated.outDir, templateHash: result.manifest.presentation?.templateHash}}};
                 return {status: "failed", error: result.status === "load-error" ? result.error : "Certification evidence build failed.", recovery: {action: "rebuild", reason: "Correct the source bundle and rebuild the evidence."}};
             },
             (error, cancelled) => cancelled && !(error instanceof Error && (/cleanup failed/).test(error.message))

@@ -73,7 +73,7 @@ export class ReportCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Render simulation/outcome analysis as JSON, Markdown or HTML, or a canonical evidence dossier as JSON, console, Markdown, HTML or local PDF.";
+        return "Render simulation/outcome analysis as JSON, Markdown or HTML, or a canonical evidence pack as JSON, console, Markdown, HTML or local PDF.";
     }
 
     public getCommanderCommand(): Command {
@@ -94,7 +94,7 @@ export class ReportCommand implements CliCommandHandling {
 
         const project = (await this.resolveProjectSafely(reportPath)) ?? this.recognizeStandaloneStakeOutcomeDirectory(reportPath);
         if (project?.type === "outcomeLibrary" || project?.type === "stakeAdapter") {
-            if (template !== undefined) throw new Error("--template is supported only for canonical dossier inputs.");
+            if (template !== undefined) throw new Error("--template is supported only for canonical pack inputs.");
             let outcomeSourceReport: OutcomeSourceProjectReport;
             try {
                 outcomeSourceReport = await this.outcomeSourceAnalyzer.analyze(project);
@@ -123,21 +123,21 @@ export class ReportCommand implements CliCommandHandling {
             throw alternative.error;
         }
 
-        if ("dossier" in parsed) {
+        if ("pack" in parsed) {
             const issues = await new CertificationPackValidator().validate(path.dirname(path.resolve(reportPath)));
-            if (issues.some(issue => issue.severity === "error")) throw new Error(`Invalid dossier: ${issues.map(issue => issue.message).join("; ")}`);
+            if (issues.some(issue => issue.severity === "error")) throw new Error(`Invalid pack: ${issues.map(issue => issue.message).join("; ")}`);
             let selectedTemplate: CertificationPackTemplate | undefined;
             if (template) selectedTemplate = loadCertificationPackTemplate(template);
             const result = await new CertificationPackRenderer().render(parsed, format, selectedTemplate ?? parsed.presentation.template);
             if (out) writeOutputFileAtomically(out, result, true);
             if (Buffer.isBuffer(result)) {
-                if (!out) throw new Error("PDF dossier output requires --out <new-file>.");
+                if (!out) throw new Error("PDF pack output requires --out <new-file>.");
                 console.log(CERTIFICATION_PREPARATION_NOTICE);
-                console.log(`PDF dossier written to "${out}".`);
+                console.log(`PDF pack written to "${out}".`);
             } else console.log(result);
             return;
         }
-        if (format === "pdf" || format === "console" || template) throw new Error("PDF/console and template selection require a canonical dossier manifest.json; simulation reports support json, markdown, html.");
+        if (format === "pdf" || format === "console" || template) throw new Error("PDF/console and template selection require a canonical pack manifest.json; simulation reports support json, markdown, html.");
         let rendered: string;
         if (format === "json") {
             rendered = JSON.stringify(parsed, null, 4);
@@ -158,13 +158,13 @@ export class ReportCommand implements CliCommandHandling {
             .description(this.getDescription())
             .argument("<projectOrSimulationReportJson>", "a supported outcome project or pokie sim JSON report")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
-            .option("--format <value>", '"markdown", "html", "json", "console" or "pdf" (dossier only for console/pdf; default: "markdown")', (value: string) => {
+            .option("--format <value>", '"markdown", "html", "json", "console" or "pdf" (pack only for console/pdf; default: "markdown")', (value: string) => {
                 if (value !== "markdown" && value !== "html" && value !== "json" && value !== "pdf" && value !== "console") {
                     throw new Error(`--format must be "markdown", "html", or "json". ${USAGE}`);
                 }
                 return value as ReportFormat;
             })
-            .option("--template <json>", "version 1 dossier presentation template (local JSON, no resources)")
+            .option("--template <json>", "version 1 pack presentation template (local JSON, no resources)")
             .option("--out <file>", "file path to write the rendered report to")
             .action((path: string, excess: string[], options: {format?: ReportFormat; out?: string; template?: string}) => {
                 // An empty-string positional is "present" as far as Commander's own required-argument
@@ -262,7 +262,7 @@ export class ReportCommand implements CliCommandHandling {
             throw new Error(`"${reportPath}" is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
         }
 
-        if (parsed && typeof parsed === "object" && "dossier" in parsed) return parsed as CertificationPackManifest;
+        if (parsed && typeof parsed === "object" && "pack" in parsed) return parsed as CertificationPackManifest;
 
         // Historical sampled outcome reports are not static outcome-source analyses.
         if (typeof parsed === "object" && parsed !== null && "libraryId" in parsed && !("rounds" in parsed)) {

@@ -19,7 +19,7 @@ import {CERTIFICATION_METRIC_SEMANTICS, CERTIFICATION_PREPARATION_NOTICE, type C
 import {CertificationPackBuildCancelledError} from "../CertificationPackBuildOptions.js";
 import {sha256OfBytes} from "./sha256OfBytes.js";
 
-export function dossierHash(value: unknown): string {
+export function packHash(value: unknown): string {
     return sha256OfBytes(JSON.stringify(toCanonicalJson(value)));
 }
 
@@ -29,19 +29,19 @@ export function certificationSourceHash(source: string): string {
     let bytes = 0;
     const visit = (file: string, name: string): void => {
         const stat = fs.lstatSync(file);
-        if (stat.isSymbolicLink()) throw new Error(`Dossier source contains a symbolic link: ${name}`);
+        if (stat.isSymbolicLink()) throw new Error(`Pack source contains a symbolic link: ${name}`);
         if (stat.isDirectory()) {
             for (const child of fs.readdirSync(file).sort()) {
                 if (["node_modules", ".git"].includes(child)) continue;
                 visit(path.join(file, child), `${name}/${child}`);
             }
         } else {
-            if (!stat.isFile() || (bytes += stat.size) > 64 * 1024 * 1024 || entries.length >= 10000) throw new Error("Dossier source exceeds the 64 MiB / 10000 file acquisition limit.");
+            if (!stat.isFile() || (bytes += stat.size) > 64 * 1024 * 1024 || entries.length >= 10000) throw new Error("Pack source exceeds the 64 MiB / 10000 file acquisition limit.");
             entries.push({name, hash: sha256OfBytes(fs.readFileSync(file))});
         }
     };
     visit(source, ".");
-    return dossierHash(entries);
+    return packHash(entries);
 }
 
 export function stableDefinition(snapshot: MathDefinitionSnapshot): MathDefinitionSnapshot {
@@ -50,7 +50,7 @@ export function stableDefinition(snapshot: MathDefinitionSnapshot): MathDefiniti
     return result;
 }
 
-export function validateDossierReport(value: unknown, modelHash: string | null, source: OutcomeLibraryBundleManifest): asserts value is SimulationReport {
+export function validatePackReport(value: unknown, modelHash: string | null, source: OutcomeLibraryBundleManifest): asserts value is SimulationReport {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Expected a canonical simulation report.");
     const report = value as SimulationReport;
     if (report.schemaVersion !== 1) throw new Error("Unsupported or legacy report version; regenerate a canonical v1 report from the selected runtime.");
@@ -63,7 +63,7 @@ export function validateDossierReport(value: unknown, modelHash: string | null, 
         if (report.targetRtp !== undefined) throw new Error("Native outcome bundles have no declared RTP target authority; do not infer one from their exact distribution.");
         if (!mode || report.reproducibility.configHash !== undefined || mode.libraryHash !== report.reproducibility.libraryHash || mode.libraryHash !== native.libraryHash || mode.libraryId !== native.libraryId || report.betMode !== native.modeName) throw new Error("Outcome-source report does not bind the selected mode/library; a library hash is not a model hash.");
     } else if (!modelHash || report.reproducibility.configHash !== modelHash) throw new Error("Simulation report does not bind the selected actual model; game name/version alone is insufficient.");
-    if (report.reproducibility.seed !== report.seed || dossierHash(report.reproducibility.game) !== dossierHash(report.game)) throw new Error("Contradictory simulation seed/game reproducibility metadata.");
+    if (report.reproducibility.seed !== report.seed || packHash(report.reproducibility.game) !== packHash(report.game)) throw new Error("Contradictory simulation seed/game reproducibility metadata.");
     if (report.reproducibility.pokieVersion !== source.artifactPokieVersion) throw new Error("Simulation report runtime version is incompatible with the source artifacts.");
     for (const field of ["totalBet", "totalWin", "rtp", "hitFrequency", "maxWin", "durationMs", "spinsPerSecond"] as const) if (!Number.isFinite(report[field]) || report[field] < 0) throw new Error(`Invalid simulation report ${field}.`);
     if (!Number.isSafeInteger(report.rounds) || !Number.isSafeInteger(report.requestedRounds) || report.rounds < 0 || report.requestedRounds < report.rounds || report.reproducibility.actualRounds !== report.rounds || report.reproducibility.requestedRounds !== report.requestedRounds) throw new Error("Inconsistent simulation report populations.");
@@ -104,24 +104,24 @@ export async function acquireCertificationPack(source: OutcomeLibraryBundleManif
         for (const file of inputs.reportFiles ?? []) {
             check();
             const attachment = readJson(file);
-            validateDossierReport(attachment.value, modelHash, source);
+            validatePackReport(attachment.value, modelHash, source);
             const report = attachment.value;
             if (report.seed === null || !report.seed.trim() || !report.reproducibility?.workerSeedStrategy || !Number.isSafeInteger(report.workers) || report.workers! < 1) throw new Error("Reproducible sampled evidence requires a seed, workers and seed strategy; otherwise keep statistics unavailable.");
             let reproduced: SimulationReport;
             let seedStrategy: string;
             if (report.reproducibility.libraryHash !== undefined) {
                 if (!sourceBundleDir || report.workers !== 1 || !report.betMode) throw new Error("Outcome-source report reproduction requires the explicit source bundle, mode and single-process sampler.");
-                const result = await simulateOutcomeSourceProject({type: "outcomeLibrary", rootPath: sourceBundleDir, capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary, provenance: "explicit dossier authority"}, report.betMode, report.requestedRounds, new SeededWeightedOutcomeRandomSource(report.seed), report.seed, {signal});
+                const result = await simulateOutcomeSourceProject({type: "outcomeLibrary", rootPath: sourceBundleDir, capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary, provenance: "explicit pack authority"}, report.betMode, report.requestedRounds, new SeededWeightedOutcomeRandomSource(report.seed), report.seed, {signal});
                 check();
                 if (!result.supported) throw new Error(result.diagnostic.message);
                 reproduced = projectOutcomeSourceSimulationReport(result.report);
-                if (dossierHash(Reflect.get(report, "statistics")) !== dossierHash(result.report.statistics)) throw new Error("Outcome-source statistics differ from deterministic execution.");
+                if (packHash(Reflect.get(report, "statistics")) !== packHash(result.report.statistics)) throw new Error("Outcome-source statistics differ from deterministic execution.");
                 const stableReplay = (value: unknown): unknown => {
                     if (!value || typeof value !== "object") return null;
                     const {timestamp: _time, durationMs: _duration, ...stable} = value as Record<string, unknown>;
                     return stable;
                 };
-                if (dossierHash(stableReplay(Reflect.get(report, "lastReplay"))) !== dossierHash(stableReplay(result.report.lastReplay))) throw new Error("Outcome-source replay sample differs from deterministic selection.");
+                if (packHash(stableReplay(Reflect.get(report, "lastReplay"))) !== packHash(stableReplay(result.report.lastReplay))) throw new Error("Outcome-source replay sample differs from deterministic selection.");
                 seedStrategy = result.report.workerSeedStrategy!;
             } else {
                 if (!inputs.modelSource || !loaded) throw new Error("Runtime statistics require an explicitly selected executable package; a definition alone cannot grant execution.");
@@ -137,7 +137,7 @@ export async function acquireCertificationPack(source: OutcomeLibraryBundleManif
             }
             const fields = ["rounds", "totalBet", "totalWin", "rtp", "hitFrequency", "maxWin", "averageBet", "averagePayout", "volatility", "averagePayoutConfidenceInterval95", "rtpConfidenceInterval95", "convergence", "stopReason", "diagnostics", "sampling", "logicalRounds", "analytics", "modifiers", "weightedBonus", "reelSequences", "breakdown", "jackpot", "payoutHistogram", "maxWinFrequency"] as const;
             for (const field of fields) {
-                if (report[field] !== undefined && dossierHash(report[field]) !== dossierHash(reproduced[field])) throw new Error(`Simulation report ${field} differs from deterministic execution of the selected model.`);
+                if (report[field] !== undefined && packHash(report[field]) !== packHash(reproduced[field])) throw new Error(`Simulation report ${field} differs from deterministic execution of the selected model.`);
             }
             if (report.reproducibility.workerSeedStrategy !== seedStrategy) throw new Error("Reproduced simulation model/seed strategy differs from the report.");
             estimates.push({hash: attachment.hash, raw: attachment.raw, value: report});
@@ -167,15 +167,15 @@ export async function acquireCertificationPack(source: OutcomeLibraryBundleManif
             rules: {status: definition ? "available" : "unavailable", definition},
             statistics: {exact: "source-mode-distributions", semantics: CERTIFICATION_METRIC_SEMANTICS, estimates, unavailable: estimates.length ? estimates.flatMap((attachment, index) => ["rtpConfidenceInterval95", "convergence", "analytics", "stopReason"].filter(key => Reflect.get(attachment.value, key) === undefined).map(key => `Report ${index}: ${key} unavailable`)) : ["Sampled simulation, CI, convergence and feature statistics unavailable; exact outcome distributions have no sampling CI."]},
             validation: {source: "deep-at-build; shallow-and-sampled-at-verification", model: definition ? "advanced-declared-model" : "unavailable", assumptions: ["Declared model validation does not prove custom executable fidelity.", "Source outcome validation is exhaustive at build; verification rechecks structure and selected outcomes, not every outcome."]},
-            reproduction: {selection: "seeded-native-weighted-outcome", runtime: recordings.length ? "audit-round-v1" : "unavailable", recordings, commands: ["pokie certification build SOURCE CONFIG.json --out NEW_DOSSIER", "pokie certification verify DOSSIER --source SOURCE --authorities AUTHORITIES.json", "pokie report DOSSIER/manifest.json --format pdf --out dossier.pdf"], variableMetadata: ["generatedAt", "sourceBundleDir", "deepValidation.ranAt", "simulation durationMs/spinsPerSecond and command paths are observational; attached raw report hashes remain exact"]},
+            reproduction: {selection: "seeded-native-weighted-outcome", runtime: recordings.length ? "audit-round-v1" : "unavailable", recordings, commands: ["pokie certification build SOURCE CONFIG.json --out NEW_DOSSIER", "pokie certification verify DOSSIER --source SOURCE --authorities AUTHORITIES.json", "pokie report DOSSIER/manifest.json --format pdf --out pack.pdf"], variableMetadata: ["generatedAt", "sourceBundleDir", "deepValidation.ranAt", "simulation durationMs/spinsPerSecond and command paths are observational; attached raw report hashes remain exact"]},
             support: {notice: CERTIFICATION_PREPARATION_NOTICE, coverage, limitations: [...(definition?.limits ?? []), "Local PDF uses selectable standard-font text with lossless [U+XXXX] notation for non-ASCII characters; JSON/HTML retain Unicode glyphs.", ...(!definition ? ["Readable originating model unavailable; outcome-only evidence cannot establish model rules or executable fidelity."] : []), ...(recordings.length ? ["Runtime replay covers only attached captures; partial captures remain partial."] : ["Executable state/command replay unavailable; outcome selection is not runtime replay."]), "SDK evidence unavailable: local compatibility is not provider acceptance.", "Fairness evidence unavailable: deterministic/HMAC verification cannot prove precommit timing or general game fairness."], sdk: "unavailable", fairness: "unavailable", yaml: "unimplemented; optional, non-mandatory"},
         };
     } finally {
-        await releaseDossierRuntime(loaded);
+        await releasePackRuntime(loaded);
     }
 }
 
-async function releaseDossierRuntime(loaded: Awaited<ReturnType<typeof loadPokieGameRuntime>> | undefined): Promise<void> {
+async function releasePackRuntime(loaded: Awaited<ReturnType<typeof loadPokieGameRuntime>> | undefined): Promise<void> {
     if (!loaded) return;
     const failures: unknown[] = [];
     try {
@@ -188,5 +188,5 @@ async function releaseDossierRuntime(loaded: Awaited<ReturnType<typeof loadPokie
     } catch (error) {
         failures.push(error);
     }
-    if (failures.length) throw new Error(`Dossier runtime cleanup failed: ${failures.map(String).join("; ")}`);
+    if (failures.length) throw new Error(`Pack runtime cleanup failed: ${failures.map(String).join("; ")}`);
 }

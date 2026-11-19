@@ -194,7 +194,7 @@ export function isModeEntryShape(value: unknown): value is CertificationPackMode
 }
 
 const MANIFEST_KEYS = new Set([
-    "dossier", "presentation",
+    "pack", "presentation",
     "schemaVersion",
     "generatedBy",
     "pokieVersion",
@@ -220,7 +220,7 @@ export function isManifestShape(value: unknown): value is CertificationPackManif
     const manifest = value as Partial<Record<keyof CertificationPackManifest, unknown>>;
     return (
         typeof manifest.schemaVersion === "number" &&
-        typeof manifest.dossier === "object" && manifest.dossier !== null &&
+        typeof manifest.pack === "object" && manifest.pack !== null &&
         typeof manifest.presentation === "object" && manifest.presentation !== null &&
         isNonEmptyString(manifest.generatedBy) &&
         isNonEmptyString(manifest.pokieVersion) &&

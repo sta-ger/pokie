@@ -41,7 +41,7 @@ export type CertificationPackDeepValidation = {
 // by drawing samples through OutcomeLibraryBundleReading.drawOutcome (the same weighted-draw algorithm the
 // pre-generated runtime itself uses).
 export type CertificationPackManifest = {
-    readonly dossier: CertificationPack;
+    readonly pack: CertificationPack;
     readonly presentation: {readonly template: CertificationPackTemplate; readonly templateHash: string; readonly templateArtifactHash: string | null; readonly formats: readonly CertificationPackFormat[]};
     readonly schemaVersion: number;
     readonly generatedBy: string;

@@ -1,7 +1,7 @@
 import type {CertificationPackInputs, CertificationPackOutput} from "./CertificationPack.js";
 /** Lifecycle controls for a certification publication. */
 export type CertificationPackBuildOptions = {
-    readonly dossier?: CertificationPackInputs;
+    readonly pack?: CertificationPackInputs;
     readonly output?: CertificationPackOutput;
     readonly onStage?: (stage: string) => void;
     readonly signal?: AbortSignal;

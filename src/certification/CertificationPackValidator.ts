@@ -2,7 +2,7 @@ import {CertificationPackBuildCancelledError} from "./CertificationPackBuildOpti
 import {certificationPackFileName} from "./CertificationPack.js";
 import {parseCertificationJson} from "./internal/parseCertificationJson.js";
 import {CertificationPackRenderer, validateCertificationPackTemplate} from "./CertificationPackRenderer.js";
-import {dossierHash} from "./internal/acquireCertificationPack.js";
+import {packHash} from "./internal/acquireCertificationPack.js";
 import {validateCertificationPack} from "./internal/validateCertificationPack.js";
 import fs from "fs";
 import path from "path";
@@ -108,19 +108,19 @@ export class CertificationPackValidator implements CertificationPackValidating {
         const manifest = parsed;
         const issues: ValidationIssue[] = [];
         try {
-            validateCertificationPack(manifest.dossier, manifest);
+            validateCertificationPack(manifest.pack, manifest);
             const presentation = manifest.presentation;
-            if (Object.keys(presentation).sort().join(",") !== "formats,template,templateArtifactHash,templateHash") throw new Error("Unknown dossier presentation fields.");
+            if (Object.keys(presentation).sort().join(",") !== "formats,template,templateArtifactHash,templateHash") throw new Error("Unknown pack presentation fields.");
             validateCertificationPackTemplate(presentation.template);
             if (presentation.templateArtifactHash !== null && !(/^sha256:[a-f0-9]{64}$/).test(presentation.templateArtifactHash)) throw new Error("Invalid template raw artifact identity.");
-            if (dossierHash(presentation.template) !== presentation.templateHash || !Array.isArray(presentation.formats) || !presentation.formats.length || new Set(presentation.formats).size !== presentation.formats.length) throw new Error("Invalid template identity or formats.");
+            if (packHash(presentation.template) !== presentation.templateHash || !Array.isArray(presentation.formats) || !presentation.formats.length || new Set(presentation.formats).size !== presentation.formats.length) throw new Error("Invalid template identity or formats.");
             for (const format of presentation.formats) {
                 checkCancellation(signal);
                 const file = resolveSafeCertificationPackFilePath(certDir, certificationPackFileName(format));
-                if (!file) throw new Error("Unsafe dossier output path.");
+                if (!file) throw new Error("Unsafe pack output path.");
                 const expected = await new CertificationPackRenderer().render(manifest, format, presentation.template, signal);
                 checkCancellation(signal);
-                if (!fs.readFileSync(file).equals(Buffer.from(expected))) throw new Error(`Rendered ${format} differs from canonical dossier; regenerate all requested files.`);
+                if (!fs.readFileSync(file).equals(Buffer.from(expected))) throw new Error(`Rendered ${format} differs from canonical pack; regenerate all requested files.`);
             }
         } catch (error) {
             checkCancellation(signal);
@@ -399,7 +399,7 @@ export class CertificationPackValidator implements CertificationPackValidating {
         }
 
         for (const file of fs.readdirSync(certDir)) {
-            if (!expected.has(file)) issues.push({code: "certification-pack-bundle-unexpected-file", severity: "error", message: `Unexpected dossier file: ${file}`});
+            if (!expected.has(file)) issues.push({code: "certification-pack-bundle-unexpected-file", severity: "error", message: `Unexpected pack file: ${file}`});
         }
         for (const file of expected) {
             if (!seen.has(file)) {

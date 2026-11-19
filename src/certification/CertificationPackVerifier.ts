@@ -1,7 +1,7 @@
 import {CertificationPackBuildCancelledError} from "./CertificationPackBuildOptions.js";
 import {DEFAULT_CERTIFICATION_PACK_TEMPLATE, loadCertificationPackTemplate} from "./CertificationPackRenderer.js";
 import {parseCertificationJson} from "./internal/parseCertificationJson.js";
-import {acquireCertificationPack, dossierHash} from "./internal/acquireCertificationPack.js";
+import {acquireCertificationPack, packHash} from "./internal/acquireCertificationPack.js";
 import fs from "fs";
 import path from "path";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
@@ -178,12 +178,12 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
             if (manifest.presentation.templateArtifactHash !== null) {
                 if (!options.templateFile) throw new Error("Explicit templateFile authority is required for a custom template; pass --template <json>.");
                 const template = loadCertificationPackTemplate(options.templateFile);
-                if (dossierHash(template) !== manifest.presentation.templateHash || sha256OfBytes(fs.readFileSync(options.templateFile)) !== manifest.presentation.templateArtifactHash) throw new Error("Template differs from the explicitly selected raw/semantic authority.");
-            } else if (manifest.presentation.templateHash !== dossierHash(DEFAULT_CERTIFICATION_PACK_TEMPLATE)) throw new Error("Unselected custom template has no explicit artifact authority.");
-            if (manifest.dossier.rules.status === "available" && !options.dossier?.modelSource) throw new Error("Explicit dossier modelSource authority is required; retained model locations are never followed.");
-            if ((options.dossier?.reportFiles?.length ?? 0) !== manifest.dossier.statistics.estimates.length || (options.dossier?.replayFiles?.length ?? 0) !== manifest.dossier.reproduction.recordings.length) throw new Error("Explicit reportFiles/replayFiles authorities must cover every attached item.");
-            const actual = await acquireCertificationPack(sourceManifest, dossierHash(sourceManifest), options.dossier, options.signal, sourceBundleDir);
-            if (dossierHash(actual) !== dossierHash(manifest.dossier)) throw new Error("Dossier model/report/replay/revision evidence differs from selected authority or runtime reproduction.");
+                if (packHash(template) !== manifest.presentation.templateHash || sha256OfBytes(fs.readFileSync(options.templateFile)) !== manifest.presentation.templateArtifactHash) throw new Error("Template differs from the explicitly selected raw/semantic authority.");
+            } else if (manifest.presentation.templateHash !== packHash(DEFAULT_CERTIFICATION_PACK_TEMPLATE)) throw new Error("Unselected custom template has no explicit artifact authority.");
+            if (manifest.pack.rules.status === "available" && !options.pack?.modelSource) throw new Error("Explicit pack modelSource authority is required; retained model locations are never followed.");
+            if ((options.pack?.reportFiles?.length ?? 0) !== manifest.pack.statistics.estimates.length || (options.pack?.replayFiles?.length ?? 0) !== manifest.pack.reproduction.recordings.length) throw new Error("Explicit reportFiles/replayFiles authorities must cover every attached item.");
+            const actual = await acquireCertificationPack(sourceManifest, packHash(sourceManifest), options.pack, options.signal, sourceBundleDir);
+            if (packHash(actual) !== packHash(manifest.pack)) throw new Error("Pack model/report/replay/revision evidence differs from selected authority or runtime reproduction.");
         } catch (error) {
             if (error instanceof Error && (/cleanup failed/).test(error.message)) throw error;
             if (error instanceof CertificationPackBuildCancelledError) throw error;

@@ -23,7 +23,7 @@ export type CertificationPackContentHashInput = Omit<CertificationPackManifest, 
 export function computeCertificationPackContentHash(manifest: CertificationPackContentHashInput): string {
     const basis = {
         schemaVersion: manifest.schemaVersion,
-        dossier: manifest.dossier,
+        pack: manifest.pack,
         presentation: manifest.presentation,
         generatedBy: manifest.generatedBy,
         pokieVersion: manifest.pokieVersion,

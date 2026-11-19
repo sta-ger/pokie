@@ -1,6 +1,6 @@
 import {resolveSafeCertificationPackFilePath} from "./internal/resolveSafeCertificationPackFilePath.js";
 import {parseCertificationJson} from "./internal/parseCertificationJson.js";
-import {acquireCertificationPack, certificationSourceHash, dossierHash} from "./internal/acquireCertificationPack.js";
+import {acquireCertificationPack, certificationSourceHash, packHash} from "./internal/acquireCertificationPack.js";
 import {CertificationPackRenderer, DEFAULT_CERTIFICATION_PACK_TEMPLATE, validateCertificationPackTemplate} from "./CertificationPackRenderer.js";
 import {certificationPackFileName, validateCertificationPackInputs, validateCertificationPackOutput, type CertificationPackTemplate, type CertificationPackFormat, type CertificationPack} from "./CertificationPack.js";
 import crypto from "crypto";
@@ -147,7 +147,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
             return path.join(physical(path.dirname(absolute)), path.basename(absolute));
         };
         const outputIdentity = physical(outDir);
-        for (const input of [bundleDir, options?.dossier?.modelSource, ...(options?.dossier?.reportFiles ?? []), ...(options?.dossier?.replayFiles ?? []), options?.output?.templateFile]) {
+        for (const input of [bundleDir, options?.pack?.modelSource, ...(options?.pack?.reportFiles ?? []), ...(options?.pack?.replayFiles ?? []), options?.output?.templateFile]) {
             if (!input) continue;
             const inputIdentity = physical(input);
             if (inputIdentity === outputIdentity || inputIdentity.startsWith(outputIdentity + path.sep) || outputIdentity.startsWith(inputIdentity + path.sep)) throw new Error("Certification source/output overlap is not permitted, including symlink aliases.");
@@ -216,27 +216,27 @@ export class CertificationPackBuilder<T extends string | number = string> implem
 
         assertNotCancelled(options);
         options?.onStage?.("Acquiring model and evidence");
-        let dossier;
+        let pack;
         let templateArtifactHash: string | null = null;
         let template: CertificationPackTemplate = DEFAULT_CERTIFICATION_PACK_TEMPLATE;
         const formats: readonly CertificationPackFormat[] = options?.output?.formats ?? ["json", "console", "markdown", "html", "pdf"];
         try {
-            validateCertificationPackInputs(options?.dossier ?? {});
+            validateCertificationPackInputs(options?.pack ?? {});
             validateCertificationPackOutput(options?.output ?? {});
-            if (!formats.length || new Set(formats).size !== formats.length || formats.some(format => !["json", "console", "markdown", "html", "pdf"].includes(format))) throw new Error("Dossier formats must be a nonempty unique selection of json, console, markdown, html, pdf; YAML is unimplemented.");
+            if (!formats.length || new Set(formats).size !== formats.length || formats.some(format => !["json", "console", "markdown", "html", "pdf"].includes(format))) throw new Error("Pack formats must be a nonempty unique selection of json, console, markdown, html, pdf; YAML is unimplemented.");
             if (options?.output?.templateFile) {
                 certificationSourceHash(options.output.templateFile);
                 templateArtifactHash = sha256OfBytes(fs.readFileSync(options.output.templateFile));
                 template = parseCertificationJson(fs.readFileSync(options.output.templateFile, "utf8")) as CertificationPackTemplate;
             }
             validateCertificationPackTemplate(template);
-            dossier = await acquireCertificationPack(sourceManifest, initialManifestHash, options?.dossier, options?.signal, bundleDir);
+            pack = await acquireCertificationPack(sourceManifest, initialManifestHash, options?.pack, options?.signal, bundleDir);
         } catch (error) {
             if (error instanceof Error && (/cleanup failed/).test(error.message)) throw error;
             assertNotCancelled(options);
             return this.failed(outDir, upfrontIssues, [{code: "certification-pack-input-invalid", severity: "error", message: error instanceof Error ? error.message : String(error)}]);
         }
-        const presentation = {template, templateHash: dossierHash(template), templateArtifactHash, formats};
+        const presentation = {template, templateHash: packHash(template), templateArtifactHash, formats};
         const stagingDir = `${outDir}.staging-${crypto.randomBytes(6).toString("hex")}`;
         fs.mkdirSync(stagingDir, {recursive: true});
         let publication: PublishedDirectoryOwnership | undefined;
@@ -265,7 +265,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
             const generatedAt = this.now().toISOString();
 
             const draftManifest = {
-                dossier,
+                pack,
                 presentation,
                 schemaVersion: CERTIFICATION_PACK_MANIFEST_SCHEMA_VERSION,
                 generatedBy: "pokie certification build",
@@ -305,16 +305,16 @@ export class CertificationPackBuilder<T extends string | number = string> implem
 
             assertNotCancelled(options);
             // Reacquire every explicit authority before commit, closing changes during sampling/rendering.
-            const finalDossier = await acquireCertificationPack(sourceManifest, initialManifestHash, options?.dossier, options?.signal, bundleDir);
-            if (dossierHash(finalDossier) !== dossierHash(dossier)) throw new Error("Dossier authorities changed before publication.");
-            if (options?.output?.templateFile && (dossierHash(parseCertificationJson(fs.readFileSync(options.output.templateFile, "utf8"))) !== presentation.templateHash || sha256OfBytes(fs.readFileSync(options.output.templateFile)) !== templateArtifactHash)) throw new Error("Template changed before publication.");
-            options?.onStage?.("Publishing dossier");
+            const finalPack = await acquireCertificationPack(sourceManifest, initialManifestHash, options?.pack, options?.signal, bundleDir);
+            if (packHash(finalPack) !== packHash(pack)) throw new Error("Pack authorities changed before publication.");
+            if (options?.output?.templateFile && (packHash(parseCertificationJson(fs.readFileSync(options.output.templateFile, "utf8"))) !== presentation.templateHash || sha256OfBytes(fs.readFileSync(options.output.templateFile)) !== templateArtifactHash)) throw new Error("Template changed before publication.");
+            options?.onStage?.("Publishing pack");
             // Let a host deliver cancellation queued during the last source/reproduction check.
             await new Promise<void>(resolve => {
                 setImmediate(resolve);
             });
             assertNotCancelled(options);
-            this.assertAuthorityBytesUnchanged(dossier, templateArtifactHash, options);
+            this.assertAuthorityBytesUnchanged(pack, templateArtifactHash, options);
             const finalSourceDrift = await this.detectSourceBundleDrift(bundleDir, modes, initialManifestHash, initialIndexes);
             if (finalSourceDrift) return this.failed(outDir, upfrontIssues, [finalSourceDrift]);
             assertNotCancelled(options);
@@ -357,21 +357,21 @@ export class CertificationPackBuilder<T extends string | number = string> implem
         }
     }
 
-    private assertAuthorityBytesUnchanged(dossier: CertificationPack, templateArtifactHash: string | null, options?: CertificationPackBuildOptions): void {
-        const inputs = options?.dossier;
+    private assertAuthorityBytesUnchanged(pack: CertificationPack, templateArtifactHash: string | null, options?: CertificationPackBuildOptions): void {
+        const inputs = options?.pack;
         const modelHash = inputs?.modelSource ? certificationSourceHash(inputs.modelSource) : null;
-        if (modelHash !== dossier.identity.modelArtifactHash) throw new Error("Model bytes changed before dossier commit.");
+        if (modelHash !== pack.identity.modelArtifactHash) throw new Error("Model bytes changed before pack commit.");
         const reports = inputs?.reportFiles ?? [], 
             replays = inputs?.replayFiles ?? [];
-        if (reports.length !== dossier.statistics.estimates.length || replays.length !== dossier.reproduction.recordings.length) throw new Error("Evidence selection changed before dossier commit.");
-        const attachments = [...reports.map((file, index) => ({file, hash: dossier.statistics.estimates[index].hash})), ...replays.map((file, index) => ({file, hash: dossier.reproduction.recordings[index].hash}))];
+        if (reports.length !== pack.statistics.estimates.length || replays.length !== pack.reproduction.recordings.length) throw new Error("Evidence selection changed before pack commit.");
+        const attachments = [...reports.map((file, index) => ({file, hash: pack.statistics.estimates[index].hash})), ...replays.map((file, index) => ({file, hash: pack.reproduction.recordings[index].hash}))];
         for (const {file, hash} of attachments) {
             certificationSourceHash(file);
-            if (sha256OfBytes(fs.readFileSync(file)) !== hash) throw new Error("Evidence attachment bytes changed before dossier commit.");
+            if (sha256OfBytes(fs.readFileSync(file)) !== hash) throw new Error("Evidence attachment bytes changed before pack commit.");
         }
         const templateFile = options?.output?.templateFile;
         if (templateFile) certificationSourceHash(templateFile);
-        if ((templateFile ? sha256OfBytes(fs.readFileSync(templateFile)) : null) !== templateArtifactHash) throw new Error("Template bytes changed before dossier commit.");
+        if ((templateFile ? sha256OfBytes(fs.readFileSync(templateFile)) : null) !== templateArtifactHash) throw new Error("Template bytes changed before pack commit.");
     }
 
     private cleanupStaging(stagingDir: string, publication?: PublishedDirectoryOwnership): void {

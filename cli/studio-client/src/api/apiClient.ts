@@ -1281,7 +1281,7 @@ export async function buildCertificationPack(
     bundleDir: string,
     modes: CertificationBuildModeInput[],
     outDir: string,
-    configuration?: {dossier?: CertificationPackInputs; output?: CertificationPackOutput},
+    configuration?: {pack?: CertificationPackInputs; output?: CertificationPackOutput},
 ): Promise<StudioCertificationBuildView> {
     const response = await fetchImpl("/api/project/certification/build", {
         method: "POST",
@@ -1482,7 +1482,7 @@ export async function optimizationAction<T>(fetchImpl: FetchLike, action: "suppo
 export async function downloadCertificationPack(fetchImpl: FetchLike, outDir: string, identity: string, file: string): Promise<Blob> {
     const query = new URLSearchParams({outDir, identity, file});
     const response = await fetchImpl(`/api/project/certification/download?${query}`);
-    if (!response.ok) throw new Error(await extractErrorMessage(response, "Dossier download failed; inputs may have changed"));
-    if (!response.blob) throw new Error("Binary dossier download is unavailable in this transport.");
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Pack download failed; inputs may have changed"));
+    if (!response.blob) throw new Error("Binary pack download is unavailable in this transport.");
     return response.blob();
 }

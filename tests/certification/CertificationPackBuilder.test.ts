@@ -84,13 +84,13 @@ describe("CertificationPackBuilder", () => {
         expect(modeEntry.sampleCount).toBe(10);
         expect(modeEntry.samplesFile).toBe("samples_base.jsonl");
 
-        expect([...result.files].sort()).toEqual(["manifest.json", "samples_base.jsonl", "dossier.json", "dossier.txt", "dossier.md", "dossier.html", "dossier.pdf"].sort());
+        expect([...result.files].sort()).toEqual(["manifest.json", "samples_base.jsonl", "pack.json", "pack.txt", "pack.md", "pack.html", "pack.pdf"].sort());
         for (const file of result.files) {
             expect(fs.existsSync(path.join(certDir, file))).toBe(true);
         }
     });
 
-    it.each(["Rendering pdf", "Publishing dossier"])("cancels at %s without publishing or replacing an empty destination", async stage => {
+    it.each(["Rendering pdf", "Publishing pack"])("cancels at %s without publishing or replacing an empty destination", async stage => {
         await buildSourceOutcomeLibraryBundle(bundleDir);
         fs.mkdirSync(certDir);
         const inode = fs.statSync(certDir).ino;
@@ -111,7 +111,7 @@ describe("CertificationPackBuilder", () => {
         await buildSourceOutcomeLibraryBundle(bundleDir);
         const result = await new CertificationPackBuilder(CERTIFICATION_TEST_POKIE_VERSION).buildFromBundle(bundleDir, [{modeName: "base", seed: "s", sampleCount: 2}], certDir, {
             onStage: stage => {
-                if (stage !== "Publishing dossier") return;
+                if (stage !== "Publishing pack") return;
                 setImmediate(() => {
                     const file = path.join(bundleDir, "manifest.json");
                     const source = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -125,7 +125,7 @@ describe("CertificationPackBuilder", () => {
         expect(fs.existsSync(certDir)).toBe(false);
     });
 
-    it("reports PDF write and cleanup failures without a successful dossier", async () => {
+    it("reports PDF write and cleanup failures without a successful pack", async () => {
         await buildSourceOutcomeLibraryBundle(bundleDir);
         const builder = new CertificationPackBuilder(CERTIFICATION_TEST_POKIE_VERSION, undefined, undefined, undefined, undefined,
             (file, contents) => {
@@ -239,7 +239,7 @@ describe("CertificationPackBuilder", () => {
             undefined, undefined, undefined, undefined, undefined, undefined,
             () => {
                 expect(JSON.parse(fs.readFileSync(path.join(certDir, "manifest.json"), "utf8"))).toHaveProperty("evidenceContentHash");
-                expect(fs.readFileSync(path.join(certDir, "dossier.pdf")).toString()).toContain("%PDF-1.4");
+                expect(fs.readFileSync(path.join(certDir, "pack.pdf")).toString()).toContain("%PDF-1.4");
                 observed = true;
                 controller.abort();
             },
@@ -262,14 +262,14 @@ describe("CertificationPackBuilder", () => {
             CERTIFICATION_TEST_POKIE_VERSION, undefined, undefined, undefined, undefined,
             undefined, undefined, undefined, undefined, undefined, undefined,
             () => {
-                const member = path.join(certDir, "dossier.pdf");
+                const member = path.join(certDir, "pack.pdf");
                 if (mutation === "replacement") fs.unlinkSync(member);
                 fs.writeFileSync(member, "competing replacement");
             },
         );
         await expect(builder.buildFromBundle(bundleDir, [{modeName: "base", seed: "s", sampleCount: 1}], certDir)).rejects.toThrow(/claimed|ownership changed/);
-        expect(fs.readdirSync(certDir)).toEqual(["dossier.pdf"]);
-        expect(fs.readFileSync(path.join(certDir, "dossier.pdf"), "utf8")).toBe("competing replacement");
+        expect(fs.readdirSync(certDir)).toEqual(["pack.pdf"]);
+        expect(fs.readFileSync(path.join(certDir, "pack.pdf"), "utf8")).toBe("competing replacement");
         if (existing) expect(fs.statSync(certDir).ino).toBe(identity);
         expect(siblingLeftovers(certDir)).toEqual([]);
     });

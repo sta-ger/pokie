@@ -37,7 +37,7 @@ const CONFIG_HINT =
     "docs/certification-pack-bundle.md for the format.";
 
 type BuildDescriptorModeEntry = {modeName: string; seed: string; sampleCount: number};
-type BuildDescriptor = {modes: BuildDescriptorModeEntry[]; dossier?: CertificationPackInputs; output?: CertificationPackOutput};
+type BuildDescriptor = {modes: BuildDescriptorModeEntry[]; pack?: CertificationPackInputs; output?: CertificationPackOutput};
 
 // Two CLI verbs ("pokie certification build"/"pokie certification verify") sharing one command, the same way
 // OutcomeLibraryCommand owns "build"/"validate" and StakeEngineCommand owns "export"/"import" — cli/pokie.ts
@@ -200,7 +200,7 @@ export class CertificationCommand implements CliCommandHandling {
 
         let result: CertificationPackBuildResult;
         try {
-            result = await this.builder.buildFromBundle(bundleDir, modes, outDir, {signal, ...(descriptor.dossier ? {dossier: descriptor.dossier} : {}), ...(descriptor.output ? {output: descriptor.output} : {})});
+            result = await this.builder.buildFromBundle(bundleDir, modes, outDir, {signal, ...(descriptor.pack ? {pack: descriptor.pack} : {}), ...(descriptor.output ? {output: descriptor.output} : {})});
         } catch (error) {
             if (error instanceof CertificationPackBuildCancelledError) {
                 console.error("Certification/evidence build was cancelled. No incomplete evidence was published; retry the same command when ready.");
@@ -218,7 +218,7 @@ export class CertificationCommand implements CliCommandHandling {
         }
 
         console.log(CERTIFICATION_PREPARATION_NOTICE);
-        if (result.manifest) console.log(`Model coverage: ${result.manifest.dossier.support.coverage}. ${result.manifest.dossier.support.limitations.join(" ")}`);
+        if (result.manifest) console.log(`Model coverage: ${result.manifest.pack.support.coverage}. ${result.manifest.pack.support.limitations.join(" ")}`);
         console.log(`Built a certification/evidence bundle from "${bundleDir}" to "${outDir}":`);
         for (const file of result.files) {
             console.log(`  wrote  ${file}`);
@@ -233,13 +233,13 @@ export class CertificationCommand implements CliCommandHandling {
     private async executeVerify(certDir: string, sourceBundleDir: string, authoritiesPath?: string, signal?: AbortSignal, templateFile?: string): Promise<number> {
         await this.checkOutcomeLibrarySource(sourceBundleDir, CERTIFICATION_VERIFY_OPERATION);
 
-        let dossier: CertificationPackInputs | undefined;
+        let pack: CertificationPackInputs | undefined;
         if (authoritiesPath) {
             const raw = this.loadJson(authoritiesPath);
             validateCertificationPackInputs(raw);
-            dossier = this.resolveAuthorities(raw, authoritiesPath);
+            pack = this.resolveAuthorities(raw, authoritiesPath);
         }
-        const issues = await this.verifier.verify(certDir, {sourceBundleDir, ...(dossier ? {dossier} : {}), ...(signal ? {signal} : {}), ...(templateFile ? {templateFile} : {})});
+        const issues = await this.verifier.verify(certDir, {sourceBundleDir, ...(pack ? {pack} : {}), ...(signal ? {signal} : {}), ...(templateFile ? {templateFile} : {})});
         const errors = issues.filter((issue) => issue.severity === "error");
         const rest = issues.filter((issue) => issue.severity !== "error");
 
@@ -308,11 +308,11 @@ export class CertificationCommand implements CliCommandHandling {
             return {modeName: e.modeName, seed: e.seed, sampleCount: e.sampleCount};
         });
 
-        const extra = parsed as {dossier?: unknown; output?: unknown};
-        if (extra.dossier !== undefined) validateCertificationPackInputs(extra.dossier);
+        const extra = parsed as {pack?: unknown; output?: unknown};
+        if (extra.pack !== undefined) validateCertificationPackInputs(extra.pack);
         if (extra.output !== undefined) validateCertificationPackOutput(extra.output);
         const output = extra.output as CertificationPackOutput | undefined;
-        return {modes, ...(extra.dossier ? {dossier: this.resolveAuthorities(extra.dossier as CertificationPackInputs, configPath)} : {}), ...(output ? {output: {...output, ...(output.templateFile ? {templateFile: path.resolve(path.dirname(configPath), output.templateFile)} : {})}} : {})};
+        return {modes, ...(extra.pack ? {pack: this.resolveAuthorities(extra.pack as CertificationPackInputs, configPath)} : {}), ...(output ? {output: {...output, ...(output.templateFile ? {templateFile: path.resolve(path.dirname(configPath), output.templateFile)} : {})}} : {})};
     }
 
 }

@@ -59,6 +59,6 @@ export function describeCertificationProvenanceSummary(manifest: CertificationPa
         `Certification evidence for ${manifest.game.name} v${manifest.game.version}, ` +
         `built from ${modeCount} mode${modeCount === 1 ? "" : "s"} of the source outcome-library bundle ` +
         `(pokie v${manifest.pokieVersion}). Evidence hash ${manifest.evidenceContentHash}. ` +
-        `Model coverage: ${manifest.dossier?.support.coverage ?? "unavailable"}. Certification-ready preparation only; integrity verification is not regulatory approval, independent RNG certification or compliance sign-off.`
+        `Model coverage: ${manifest.pack?.support.coverage ?? "unavailable"}. Certification-ready preparation only; integrity verification is not regulatory approval, independent RNG certification or compliance sign-off.`
     );
 }

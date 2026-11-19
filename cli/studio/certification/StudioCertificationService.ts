@@ -1,5 +1,5 @@
 import path from "path";
-import {certificationSourceHash, dossierHash} from "../../../src/certification/internal/acquireCertificationPack.js";
+import {certificationSourceHash, packHash} from "../../../src/certification/internal/acquireCertificationPack.js";
 import {resolveSafeCertificationPackFilePath} from "../../../src/certification/internal/resolveSafeCertificationPackFilePath.js";
 import {
     CERTIFICATION_PREPARATION_NOTICE,
@@ -28,7 +28,7 @@ export type StudioCertificationProgressReporting = (
 ) => void;
 
 export type StudioCertificationExecutionOptions = {
-    readonly dossier?: CertificationPackInputs;
+    readonly pack?: CertificationPackInputs;
     readonly output?: CertificationPackOutput;
     readonly signal?: AbortSignal;
     readonly onProgress?: StudioCertificationProgressReporting;
@@ -61,28 +61,28 @@ export class StudioCertificationService {
     }
 
     public requestIdentity(projectRoot: string, request: ValidatedCertificationBuildRequest): string {
-        const inputs = this.resolveDossierPaths(projectRoot, request.dossier, request.output);
+        const inputs = this.resolvePackPaths(projectRoot, request.pack, request.output);
         const source = resolveProjectDirectory(projectRoot, request.bundleDir, this.realpath);
         const out = this.resolveOutputDirectory(projectRoot, request.outDir);
         if (out.status === "error") throw new Error(out.message);
         if (source.status === "error") throw new Error(source.message);
-        return dossierHash({outDir: out.resolvedPath, sourceManifest: certificationSourceHash(path.join(source.resolvedPath, "manifest.json")), inputs: [inputs.dossier?.modelSource, ...(inputs.dossier?.reportFiles ?? []), ...(inputs.dossier?.replayFiles ?? []), inputs.output?.templateFile].filter((file): file is string => file !== undefined).map(certificationSourceHash)});
+        return packHash({outDir: out.resolvedPath, sourceManifest: certificationSourceHash(path.join(source.resolvedPath, "manifest.json")), inputs: [inputs.pack?.modelSource, ...(inputs.pack?.reportFiles ?? []), ...(inputs.pack?.replayFiles ?? []), inputs.output?.templateFile].filter((file): file is string => file !== undefined).map(certificationSourceHash)});
     }
 
     public async download(projectRoot: string, request: ValidatedCertificationBuildRequest, file: string, identity: string, signal?: AbortSignal): Promise<{bytes: Buffer; mime: string}> {
         const out = this.resolveOutputDirectory(projectRoot, request.outDir);
         const source = resolveProjectDirectory(projectRoot, request.bundleDir, this.realpath);
-        if (out.status === "error" || source.status === "error") throw new Error("Dossier paths are outside this project.");
-        const inputs = this.resolveDossierPaths(projectRoot, request.dossier, request.output);
-        const issues = await new CertificationPackVerifier().verify(out.resolvedPath, {sourceBundleDir: source.resolvedPath, dossier: inputs.dossier, templateFile: inputs.output?.templateFile, signal});
+        if (out.status === "error" || source.status === "error") throw new Error("Pack paths are outside this project.");
+        const inputs = this.resolvePackPaths(projectRoot, request.pack, request.output);
+        const issues = await new CertificationPackVerifier().verify(out.resolvedPath, {sourceBundleDir: source.resolvedPath, pack: inputs.pack, templateFile: inputs.output?.templateFile, signal});
         const cleanupFailure = issues.find(issue => issue.code === "certification-pack-verify-cleanup-failed");
         if (cleanupFailure) throw new Error(cleanupFailure.message);
         if (signal?.aborted) throw new CertificationPackBuildCancelledError();
-        if (issues.some(issue => issue.severity === "error")) throw new Error(`Dossier inputs are stale or invalid: ${issues.map(issue => issue.message).join("; ")}`);
+        if (issues.some(issue => issue.severity === "error")) throw new Error(`Pack inputs are stale or invalid: ${issues.map(issue => issue.message).join("; ")}`);
         const manifest = JSON.parse(fs.readFileSync(path.join(out.resolvedPath, "manifest.json"), "utf8")) as {evidenceContentHash: string; files: string[]};
-        if (manifest.evidenceContentHash !== identity || !manifest.files.includes(file)) throw new Error("Dossier identity/file is stale or unknown.");
+        if (manifest.evidenceContentHash !== identity || !manifest.files.includes(file)) throw new Error("Pack identity/file is stale or unknown.");
         const safe = resolveSafeCertificationPackFilePath(out.resolvedPath, file);
-        if (!safe) throw new Error("Unsafe dossier download path.");
+        if (!safe) throw new Error("Unsafe pack download path.");
         const mime = ({".jsonl": "application/x-ndjson; charset=utf-8", ".pdf": "application/pdf", ".html": "text/html; charset=utf-8", ".md": "text/markdown; charset=utf-8", ".txt": "text/plain; charset=utf-8"} as Record<string, string>)[path.extname(file)] ?? "application/json; charset=utf-8";
         return {bytes: fs.readFileSync(safe), mime};
     }
@@ -125,7 +125,7 @@ export class StudioCertificationService {
         outDir: string,
         options?: AbortSignal | StudioCertificationExecutionOptions,
     ): Promise<StudioCertificationBuildView> {
-        const {signal, onProgress, dossier, output} = executionOptions(options);
+        const {signal, onProgress, pack, output} = executionOptions(options);
         const sampleCount = modes.reduce((total, mode) => total + mode.sampleCount, 0);
         onProgress?.("Resolving inputs", "build stages", 0, 3, "Resolving the evidence source and staging destination.");
         const resolvedBundle = resolveProjectDirectory(projectRoot, bundleDir, this.realpath);
@@ -144,7 +144,7 @@ export class StudioCertificationService {
         }));
 
         try {
-            const resolvedInputs = this.resolveDossierPaths(projectRoot, dossier, output);
+            const resolvedInputs = this.resolvePackPaths(projectRoot, pack, output);
             onProgress?.("Sampling evidence", "samples", 0, sampleCount, `Building evidence for ${modes.length} mode${modes.length === 1 ? "" : "s"}.`);
             const result = await this.builder.buildFromBundle(resolvedBundle.resolvedPath, modeInputs, resolvedOutDir.resolvedPath, {
                 signal,
@@ -189,18 +189,18 @@ export class StudioCertificationService {
             }
             return {status: "ok", resolvedPath};
         } catch (error) {
-            return {status: "error", message: `Cannot resolve dossier destination: ${error instanceof Error ? error.message : String(error)}`};
+            return {status: "error", message: `Cannot resolve pack destination: ${error instanceof Error ? error.message : String(error)}`};
         }
     }
 
-    private resolveDossierPaths(projectRoot: string, dossier?: CertificationPackInputs, output?: CertificationPackOutput): {dossier?: CertificationPackInputs; output?: CertificationPackOutput} {
+    private resolvePackPaths(projectRoot: string, pack?: CertificationPackInputs, output?: CertificationPackOutput): {pack?: CertificationPackInputs; output?: CertificationPackOutput} {
         const resolve = (input: string): string => {
             const result = resolveProjectDirectory(projectRoot, input, this.realpath);
             if (result.status === "error") throw new Error(result.message);
             return result.resolvedPath;
         };
         return {
-            ...(dossier ? {dossier: {...dossier, ...(dossier.modelSource ? {modelSource: resolve(dossier.modelSource)} : {}), ...(dossier.reportFiles ? {reportFiles: dossier.reportFiles.map(resolve)} : {}), ...(dossier.replayFiles ? {replayFiles: dossier.replayFiles.map(resolve)} : {})}} : {}),
+            ...(pack ? {pack: {...pack, ...(pack.modelSource ? {modelSource: resolve(pack.modelSource)} : {}), ...(pack.reportFiles ? {reportFiles: pack.reportFiles.map(resolve)} : {}), ...(pack.replayFiles ? {replayFiles: pack.replayFiles.map(resolve)} : {})}} : {}),
             ...(output ? {output: {...output, ...(output.templateFile ? {templateFile: resolve(output.templateFile)} : {})}} : {}),
         };
     }

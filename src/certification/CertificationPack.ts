@@ -76,25 +76,25 @@ export type CertificationPack = {
 };
 
 export function validateCertificationPackInputs(value: unknown): asserts value is CertificationPackInputs {
-    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Dossier inputs must be an object.");
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Pack inputs must be an object.");
     const input = value as Record<string, unknown>;
-    if (Object.keys(input).some(key => !["modelSource", "reportFiles", "replayFiles", "sourceRevision", "candidateRevision"].includes(key))) throw new Error("Unknown dossier input field.");
-    for (const field of ["modelSource", "sourceRevision", "candidateRevision"]) if (input[field] !== undefined && (typeof input[field] !== "string" || !(input[field] as string).trim())) throw new Error(`Dossier ${field} must be a nonempty string.`);
+    if (Object.keys(input).some(key => !["modelSource", "reportFiles", "replayFiles", "sourceRevision", "candidateRevision"].includes(key))) throw new Error("Unknown pack input field.");
+    for (const field of ["modelSource", "sourceRevision", "candidateRevision"]) if (input[field] !== undefined && (typeof input[field] !== "string" || !(input[field] as string).trim())) throw new Error(`Pack ${field} must be a nonempty string.`);
     for (const field of ["reportFiles", "replayFiles"]) {
         const files = input[field];
-        if (files !== undefined && (!Array.isArray(files) || files.length > 100 || new Set(files).size !== files.length || !files.every(file => typeof file === "string" && file.trim()))) throw new Error(`Dossier ${field} must contain up to 100 unique explicit paths.`);
+        if (files !== undefined && (!Array.isArray(files) || files.length > 100 || new Set(files).size !== files.length || !files.every(file => typeof file === "string" && file.trim()))) throw new Error(`Pack ${field} must contain up to 100 unique explicit paths.`);
     }
 }
 export function validateCertificationPackOutput(value: unknown): asserts value is CertificationPackOutput {
-    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Dossier output must be an object.");
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Pack output must be an object.");
     const output = value as Record<string, unknown>;
-    if (Object.keys(output).some(key => !["formats", "templateFile"].includes(key))) throw new Error("Unknown dossier output field.");
+    if (Object.keys(output).some(key => !["formats", "templateFile"].includes(key))) throw new Error("Unknown pack output field.");
     if (output.templateFile !== undefined && (typeof output.templateFile !== "string" || !output.templateFile.trim())) throw new Error("templateFile must be a nonempty local path.");
-    if (output.formats !== undefined && (!Array.isArray(output.formats) || !output.formats.length || new Set(output.formats).size !== output.formats.length || !output.formats.every(format => ["json", "console", "markdown", "html", "pdf"].includes(format)))) throw new Error("Select unique dossier formats: json, console, markdown, html, pdf. YAML is unimplemented.");
+    if (output.formats !== undefined && (!Array.isArray(output.formats) || !output.formats.length || new Set(output.formats).size !== output.formats.length || !output.formats.every(format => ["json", "console", "markdown", "html", "pdf"].includes(format)))) throw new Error("Select unique pack formats: json, console, markdown, html, pdf. YAML is unimplemented.");
 }
 
 export function certificationPackFileName(format: CertificationPackFormat): string {
     const extension = {json: "json", console: "txt", markdown: "md", html: "html", pdf: "pdf"}[format];
-    if (!extension) throw new Error(`Unsupported dossier format ${String(format)}.`);
-    return `dossier.${extension}`;
+    if (!extension) throw new Error(`Unsupported pack format ${String(format)}.`);
+    return `pack.${extension}`;
 }

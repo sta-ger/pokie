@@ -1333,7 +1333,7 @@ export type CertificationPackModeEntry = {
 export type CertificationPackDeepValidation = {ranAt: string; issues: ValidationIssue[]};
 
 export type CertificationPackManifest = {
-    dossier?: CertificationPack;
+    pack?: CertificationPack;
     presentation?: {template: CertificationPackTemplate; templateHash: string; templateArtifactHash: string | null; formats: readonly CertificationPackFormat[]};
     schemaVersion: number;
     generatedBy: string;

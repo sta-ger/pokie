@@ -1,8 +1,8 @@
 import {validateCertificationPackInputs, validateCertificationPackOutput, type CertificationPackInputs, type CertificationPackOutput} from "@fromstan/pokie";
-export type CertificationBuildRequestInput = {bundleDir?: unknown; outDir?: unknown; modes?: unknown; dossier?: unknown; output?: unknown};
+export type CertificationBuildRequestInput = {bundleDir?: unknown; outDir?: unknown; modes?: unknown; pack?: unknown; output?: unknown};
 export type ValidatedCertificationBuildModeInput = {readonly modeName: string; readonly seed: string; readonly sampleCount: number};
 export type ValidatedCertificationBuildRequest = {
-    readonly dossier?: CertificationPackInputs;
+    readonly pack?: CertificationPackInputs;
     readonly output?: CertificationPackOutput;
     readonly bundleDir: string;
     readonly outDir: string;
@@ -41,7 +41,7 @@ export function validateCertificationBuildRequest(input: CertificationBuildReque
         return {modeName: e.modeName, seed: e.seed, sampleCount: e.sampleCount};
     });
 
-    if (input.dossier !== undefined) validateCertificationPackInputs(input.dossier);
+    if (input.pack !== undefined) validateCertificationPackInputs(input.pack);
     if (input.output !== undefined) validateCertificationPackOutput(input.output);
-    return {bundleDir: input.bundleDir, outDir: input.outDir, modes, ...(input.dossier ? {dossier: input.dossier as CertificationPackInputs} : {}), ...(input.output ? {output: input.output as CertificationPackOutput} : {})};
+    return {bundleDir: input.bundleDir, outDir: input.outDir, modes, ...(input.pack ? {pack: input.pack as CertificationPackInputs} : {}), ...(input.output ? {output: input.output as CertificationPackOutput} : {})};
 }

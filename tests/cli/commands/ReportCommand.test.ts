@@ -133,12 +133,12 @@ function writeForeignStakeOutcomeDirectory(dir: string): void {
 }
 
 describe("ReportCommand", () => {
-    it("renders a real canonical dossier to PDF and refuses to replace a user report or publish bad templates", async () => {
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), "report-dossier-"));
+    it("renders a real canonical pack to PDF and refuses to replace a user report or publish bad templates", async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "report-pack-"));
         const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
         try {
             const source = path.join(root, "source"),
-                out = path.join(root, "dossier"),
+                out = path.join(root, "pack"),
                 output = path.join(root, "assessment.pdf");
             await buildSourceOutcomeLibraryBundle(source);
             const built = await new CertificationPackBuilder("1.3.0").buildFromBundle(source, [{modeName: "base", seed: "s", sampleCount: 2}], out);
@@ -509,7 +509,7 @@ describe("ReportCommand outcome-source project routing", () => {
         provenance: "test fixture",
     };
 
-    it.each(["outcomeLibrary", "stakeAdapter"] as const)("rejects dossier templates before %s analysis or output writes", async type => {
+    it.each(["outcomeLibrary", "stakeAdapter"] as const)("rejects pack templates before %s analysis or output writes", async type => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "report-options-"));
         try {
             const output = path.join(root, "existing.html");
@@ -518,7 +518,7 @@ describe("ReportCommand outcome-source project routing", () => {
             const project = {...outcomeLibraryProject, type, capabilities: PROJECT_TYPE_CAPABILITIES[type]};
             const command = new ReportCommand(createStubReadFile({}), undefined, undefined, stubProjectResolver(project), {analyze});
             for (const template of ["missing.json", "invalid.json"]) {
-                await expect(command.run([project.rootPath, "--template", template, "--format", "html", "--out", output])).rejects.toThrow(/--template.*only.*dossier/);
+                await expect(command.run([project.rootPath, "--template", template, "--format", "html", "--out", output])).rejects.toThrow(/--template.*only.*pack/);
             }
             expect(analyze).not.toHaveBeenCalled();
             expect(fs.readFileSync(output, "utf8")).toBe("caller-owned bytes");

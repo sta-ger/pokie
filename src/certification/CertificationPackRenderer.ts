@@ -1,5 +1,5 @@
 import fs from "fs";
-import {certificationSourceHash, dossierHash} from "./internal/acquireCertificationPack.js";
+import {certificationSourceHash, packHash} from "./internal/acquireCertificationPack.js";
 import {parseCertificationJson} from "./internal/parseCertificationJson.js";
 import {isManifestShape, isModeEntryShape} from "./internal/certificationPackBundleShapeGuards.js";
 import {computeCertificationPackContentHash} from "./computeCertificationPackContentHash.js";
@@ -8,14 +8,14 @@ import type {CertificationPackManifest} from "./CertificationPackManifest.js";
 import type {CertificationPackRendering} from "./CertificationPackRendering.js";
 import {CertificationPackBuildCancelledError} from "./CertificationPackBuildOptions.js";
 import {validateCertificationPack} from "./internal/validateCertificationPack.js";
-import {renderLocalDossierPdf} from "./internal/renderLocalDossierPdf.js";
+import {renderLocalPackPdf} from "./internal/renderLocalPackPdf.js";
 
 export const DEFAULT_CERTIFICATION_PACK_TEMPLATE: CertificationPackTemplate = {
-    schemaVersion: 1, title: "POKIE evidence dossier", introduction: "Independent assessment preparation", sections: CERTIFICATION_PACK_SECTIONS,
+    schemaVersion: 1, title: "POKIE evidence pack", introduction: "Independent assessment preparation", sections: CERTIFICATION_PACK_SECTIONS,
 };
 export function validateCertificationPackTemplate(value: unknown): asserts value is CertificationPackTemplate {
     const t = value as CertificationPackTemplate;
-    if (!t || typeof t !== "object" || Object.keys(t).sort().join(",") !== "introduction,schemaVersion,sections,title" || t.schemaVersion !== 1 || typeof t.title !== "string" || !t.title.trim() || typeof t.introduction !== "string" || t.title.length > 200 || t.introduction.length > 4000 || !Array.isArray(t.sections) || t.sections.length !== CERTIFICATION_PACK_SECTIONS.length || new Set(t.sections).size !== t.sections.length || !t.sections.every(s => CERTIFICATION_PACK_SECTIONS.includes(s))) throw new Error("Invalid dossier template v1: title, introduction and every mandatory section exactly once are required; executable syntax and resources are unsupported.");
+    if (!t || typeof t !== "object" || Object.keys(t).sort().join(",") !== "introduction,schemaVersion,sections,title" || t.schemaVersion !== 1 || typeof t.title !== "string" || !t.title.trim() || typeof t.introduction !== "string" || t.title.length > 200 || t.introduction.length > 4000 || !Array.isArray(t.sections) || t.sections.length !== CERTIFICATION_PACK_SECTIONS.length || new Set(t.sections).size !== t.sections.length || !t.sections.every(s => CERTIFICATION_PACK_SECTIONS.includes(s))) throw new Error("Invalid pack template v1: title, introduction and every mandatory section exactly once are required; executable syntax and resources are unsupported.");
 }
 export function loadCertificationPackTemplate(file: string): CertificationPackTemplate {
     certificationSourceHash(file);
@@ -40,15 +40,15 @@ function rows(value: unknown, prefix = ""): [string, string][] {
     return [[prefix, display(value)]];
 }
 export function certificationPackTables(manifest: CertificationPackManifest, template: CertificationPackTemplate = manifest.presentation.template): CertificationPackTable[] {
-    if (!isManifestShape(manifest) || manifest.schemaVersion !== 2 || !manifest.modes.length || !manifest.modes.every(isModeEntryShape) || computeCertificationPackContentHash(manifest) !== manifest.evidenceContentHash) throw new Error("Invalid canonical dossier manifest/content identity.");
-    validateCertificationPack(manifest.dossier, manifest);
+    if (!isManifestShape(manifest) || manifest.schemaVersion !== 2 || !manifest.modes.length || !manifest.modes.every(isModeEntryShape) || computeCertificationPackContentHash(manifest) !== manifest.evidenceContentHash) throw new Error("Invalid canonical pack manifest/content identity.");
+    validateCertificationPack(manifest.pack, manifest);
     validateCertificationPackTemplate(template);
-    const dossier = manifest.dossier;
+    const pack = manifest.pack;
     return template.sections.flatMap(section => {
-        const table: CertificationPackTable = {title: section, rows: rows(dossier[section])};
-        if (section === "identity") return [table, {title: "Artifact identities", rows: rows({evidenceContentHash: manifest.evidenceContentHash, game: manifest.game, artifactPokieVersion: manifest.artifactPokieVersion, templateHash: manifest.presentation.templateHash, templateArtifactHash: manifest.presentation.templateArtifactHash, renderedTemplateHash: dossierHash(template)})}];
-        if (section === "rules" && dossier.rules.definition) {
-            const definition = dossier.rules.definition;
+        const table: CertificationPackTable = {title: section, rows: rows(pack[section])};
+        if (section === "identity") return [table, {title: "Artifact identities", rows: rows({evidenceContentHash: manifest.evidenceContentHash, game: manifest.game, artifactPokieVersion: manifest.artifactPokieVersion, templateHash: manifest.presentation.templateHash, templateArtifactHash: manifest.presentation.templateArtifactHash, renderedTemplateHash: packHash(template)})}];
+        if (section === "rules" && pack.rules.definition) {
+            const definition = pack.rules.definition;
             const effective = definition.effective && typeof definition.effective === "object" && !Array.isArray(definition.effective) ? definition.effective : {};
             const authored = definition.authored && typeof definition.authored === "object" && !Array.isArray(definition.authored) ? definition.authored : {};
             return [
@@ -59,11 +59,11 @@ export function certificationPackTables(manifest: CertificationPackManifest, tem
             ];
         }
         if (section === "statistics") return [
-            {title: "Metric semantics", rows: dossier.statistics.semantics.map((value, index) => [String(index + 1), value] as const)},
+            {title: "Metric semantics", rows: pack.statistics.semantics.map((value, index) => [String(index + 1), value] as const)},
             ...manifest.modes.map(mode => ({title: `Exact mode ${mode.modeName}`, rows: rows({betMode: mode.betMode, stake: mode.stake, libraryHash: mode.libraryHash, outcomeCount: mode.outcomeCount, ...mode.analysis, confidenceInterval95: "unavailable (exact source distribution)", convergence: "unavailable (not sampled)", seed: mode.sampleSeed, sampleCount: mode.sampleCount})})),
-            {title: section, rows: rows({...dossier.statistics, estimates: dossier.statistics.estimates.map(attachment => ({hash: attachment.hash, report: attachment.value}))})},
+            {title: section, rows: rows({...pack.statistics, estimates: pack.statistics.estimates.map(attachment => ({hash: attachment.hash, report: attachment.value}))})},
         ];
-        if (section === "reproduction") return [{title: section, rows: rows({...dossier.reproduction, recordings: dossier.reproduction.recordings.map(recording => ({hash: recording.hash, recording: recording.value}))})}];
+        if (section === "reproduction") return [{title: section, rows: rows({...pack.reproduction, recordings: pack.reproduction.recordings.map(recording => ({hash: recording.hash, recording: recording.value}))})}];
         if (section === "validation") return [table, {title: "Deep source validation", rows: rows(manifest.deepValidation.issues)}];
         return [table];
     });
@@ -86,10 +86,10 @@ export class CertificationPackRenderer implements CertificationPackRendering {
             case "markdown": return `# ${markdown(template.title)}\n\n${markdown(template.introduction)}\n\n${CERTIFICATION_PREPARATION_NOTICE}\n\n${tables.map(table => `## ${markdown(table.title)}\n\n| Field | Evidence |\n| --- | --- |\n${table.rows.map(([key, value]) => `| ${markdown(key)} | ${markdown(value)} |`).join("\n")}`).join("\n\n")}\n`;
             case "html": return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${html(template.title)}</title><style>body{font:14px sans-serif;margin:2em}table{border-collapse:collapse;width:100%;margin-bottom:2em}td,th{border:1px solid #999;padding:6px;text-align:left;overflow-wrap:anywhere}thead{display:table-header-group}tr{break-inside:avoid}td:first-child{width:32%}</style></head><body><h1>${html(template.title)}</h1><p>${html(template.introduction)}</p><p>${html(CERTIFICATION_PREPARATION_NOTICE)}</p>${tables.map(table => `<h2>${html(table.title)}</h2><table><thead><tr><th>Field</th><th>Evidence</th></tr></thead><tbody>${table.rows.map(([key, value]) => `<tr><td>${html(key)}</td><td>${html(value)}</td></tr>`).join("")}</tbody></table>`).join("")}</body></html>\n`;
             case "pdf": {
-                const pdf = await renderLocalDossierPdf(template, tables, signal);
+                const pdf = await renderLocalPackPdf(template, tables, signal);
                 return pdf;
             }
-            default: throw new Error(`Unsupported dossier format: ${String(format)}. YAML is optional and unimplemented.`);
+            default: throw new Error(`Unsupported pack format: ${String(format)}. YAML is optional and unimplemented.`);
         }
     }
 }

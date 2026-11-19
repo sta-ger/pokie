@@ -8,7 +8,7 @@ import type {CertificationPackInputs} from "./CertificationPack.js";
 // certDir; there is deliberately no fallback.
 export type CertificationPackVerifyOptions = {
     readonly templateFile?: string;
-    readonly dossier?: CertificationPackInputs;
+    readonly pack?: CertificationPackInputs;
     readonly signal?: AbortSignal;
     readonly sourceBundleDir: string;
 };

@@ -28,7 +28,7 @@ function wrap(text: string, width: number): string[] {
 function literal(text: string): string {
     return text.replace(/([\\()])/g, "\\$1");
 }
-export async function renderLocalDossierPdf(template: CertificationPackTemplate, tables: readonly CertificationPackTable[], signal?: AbortSignal): Promise<Buffer> {
+export async function renderLocalPackPdf(template: CertificationPackTemplate, tables: readonly CertificationPackTable[], signal?: AbortSignal): Promise<Buffer> {
     const pages: string[][] = [];
     let page: string[] = [];
     let section = "Preparation";
