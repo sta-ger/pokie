@@ -110,16 +110,18 @@ export function SimulationTab({
         validateInputOnChange: ["rounds"],
         validateInputOnBlur: ["rounds"],
     });
-
+    const formRef = useRef(form);
+    useEffect(() => {
+        formRef.current = form;
+    }, [form]);
 
     // Defaults the picker to the first real mode the moment the list becomes available -- SimulationTab
     // can mount before the project header's own outcome-source report necessarily has (see PlayTab's own
     // identical effect for why).
     useEffect(() => {
-        if (form.getValues().modeName === "" && availableModes !== undefined && availableModes.length > 0) {
-            form.setFieldValue("modeName", availableModes[0]);
+        if (formRef.current.getValues().modeName === "" && availableModes !== undefined && availableModes.length > 0) {
+            formRef.current.setFieldValue("modeName", availableModes[0]);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [availableModes]);
     const [fullReportOpened, {toggle: toggleFullReport, close: closeFullReport, open: openFullReport}] = useDisclosure(false);
     const [compareOpened, setCompareOpened] = useState(false);
@@ -153,20 +155,18 @@ export function SimulationTab({
         const seed = typeof recoveryRequest.seed === "string" ? recoveryRequest.seed : undefined;
         const workers = typeof recoveryRequest.workers === "number" ? recoveryRequest.workers : undefined;
         const modeName = typeof recoveryRequest.modeName === "string" ? recoveryRequest.modeName : undefined;
-        form.setValues({
+        formRef.current.setValues({
             rounds: rounds ?? DEFAULT_ROUNDS,
             seed: seed ?? "",
             workers: workers ?? 1,
             modeName: modeName ?? "",
         });
         setCapturedConvergence(recoveryRequest.convergence as StudioSimulationReportListEntry["convergence"]);
-        form.validateField("rounds");
+        formRef.current.validateField("rounds");
         // A retained-job action can arrive while this tab is still on Review.
         // Reconstructing hidden fields leaves that visible Retry without an
         // outcome. Show its explicit submission step instead of replaying work.
         setActiveStep(0);
-        // Mantine's uncontrolled form object is intentionally stable.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [recoveryRequest]);
 
 
@@ -186,6 +186,10 @@ export function SimulationTab({
     // the status *value*, not the progress object identity, so re-renders while already terminal
     // (e.g. the user manually flips back to Configure to look at defaults) never yank them back.
     const prevStatusRef = useRef<string | undefined>(undefined);
+    const recoveryRequestRef = useRef(recoveryRequest);
+    useEffect(() => {
+        recoveryRequestRef.current = recoveryRequest;
+    }, [recoveryRequest]);
     const workflowRef = useRef<HTMLDivElement>(null);
     const focusedControlRef = useRef<HTMLElement | undefined>(undefined);
     useLayoutEffect(() => {
@@ -209,14 +213,13 @@ export function SimulationTab({
         const nowTerminal = status === "completed" || status === "failed" || status === "cancelled" || status === "recovery-required";
         // On a tab remount an explicit card handoff takes precedence over
         // the previously completed job; a new execution's terminal still wins.
-        if (nowTerminal && (wasActive || (prevStatusRef.current === undefined && status === "completed" && recoveryRequest === undefined))) {
+        if (nowTerminal && (wasActive || (prevStatusRef.current === undefined && status === "completed" && recoveryRequestRef.current === undefined))) {
             setActiveStep(2);
             closeFullReport();
             setCompareOpened(false);
         }
         prevStatusRef.current = status;
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [progress?.status]);
+    }, [closeFullReport, progress?.status]);
 
     // Closes the full-report/compare disclosures when the *reviewed report itself* changes -- e.g.
     // clicking "Open" on a different Recent Runs entry while already on Review, which isn't a

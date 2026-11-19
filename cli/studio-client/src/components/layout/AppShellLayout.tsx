@@ -1,6 +1,6 @@
 import {Anchor, AppShell, Breadcrumbs, Burger, Group, Text, Title} from "@mantine/core";
 import {useDisclosure, useMediaQuery} from "@mantine/hooks";
-import {createContext, useContext, useEffect, useRef, type ReactNode} from "react";
+import {createContext, useCallback, useContext, useEffect, useRef, type ReactNode} from "react";
 
 export type StudioBreadcrumb = {label: string; onClick?: () => void; id?: string};
 
@@ -71,10 +71,10 @@ export function AppShellLayout({
     const isCompactWidth = useMediaQuery("(max-width: 61.99375em)");
     const burgerRef = useRef<HTMLButtonElement>(null);
 
-    const closeAndFocusBurger = (): void => {
+    const closeAndFocusBurger = useCallback((): void => {
         close();
         burgerRef.current?.focus({preventScroll: true});
-    };
+    }, [close]);
 
     useEffect(() => {
         if (!opened) {
@@ -87,8 +87,7 @@ export function AppShellLayout({
         };
         document.addEventListener("keydown", handleKeyDown);
         return () => document.removeEventListener("keydown", handleKeyDown);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [opened]);
+    }, [closeAndFocusBurger, opened]);
 
     return (
         <AppShell header={{height: 60}} navbar={{width: 260, breakpoint: "md", collapsed: {mobile: !opened}}} padding="md">

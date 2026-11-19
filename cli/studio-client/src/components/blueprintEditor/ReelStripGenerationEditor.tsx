@@ -1,6 +1,6 @@
 import {Alert, Badge, Button, Group, List, MultiSelect, NumberInput, Radio, Select, Switch, Table, Text, Textarea} from "@mantine/core";
 import {IconAlertTriangle, IconCircleCheck} from "@tabler/icons-react";
-import {useEffect, useRef, useState} from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 import {previewReelStripGeneration} from "../../api/apiClient";
 import type {ReelStripAnalysis, ReelStripGenerationDiagnostic, StudioReelStripGenerationReelView} from "../../api/types";
 import {asStringList} from "../../domain/asStringList";
@@ -896,7 +896,7 @@ export function ReelStripGenerationEditor({
     const [stop, setStop] = useState<number | string>(0);
     const [rows, setRows] = useState<number>(defaultRows);
     const [copySourceReelIndex, setCopySourceReelIndex] = useState<string | null>(null);
-    const resolveGuard = useDoubleSubmitGuard();
+    const {begin: beginResolve, end: endResolve} = useDoubleSubmitGuard();
 
     // A local staleness signal alongside `revision` -- reel switches and draft edits don't touch the
     // shared blueprint (so they never bump `revision`), but must still invalidate a Check & Preview
@@ -918,14 +918,14 @@ export function ReelStripGenerationEditor({
     // never be stuck waiting for it to settle before a brand new Check & preview is allowed to start.
     // Safe to call even when nothing is in flight (end() is idempotent) and safe against ever releasing a
     // *newer* request's own hold on the guard: checkAndPreview()'s own .then()/.catch() below only calls
-    // resolveGuard.end() for a request that's still current by the time it resolves, so a request that
+    // endResolve() for a request that's still current by the time it resolves, so a request that
     // was invalidated here (and already had the guard released for it) can never release it again later
     // out from under whatever request currently owns it.
-    function invalidatePendingPreview(): void {
+    const invalidatePendingPreview = useCallback((): void => {
         requestIdRef.current++;
         setPreview({status: "idle"});
-        resolveGuard.end();
-    }
+        endResolve();
+    }, [endResolve]);
 
     // Any blueprint change invalidates a previously shown preview -- it described the blueprint as it
     // was *before* this change, same contract the old flat editor already had. Never touches the current
@@ -933,8 +933,7 @@ export function ReelStripGenerationEditor({
     // to do with in-progress work on this reel, it only means that work needs re-checking.
     useEffect(() => {
         invalidatePendingPreview();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [revision]);
+    }, [invalidatePendingPreview, revision]);
 
     // A reel disappearing from the registry (fewer reels configured elsewhere, e.g. "Reels" reduced in
     // Layout) leaves nothing left to model -- back to Select reel, same "the previously selected item is
@@ -945,8 +944,7 @@ export function ReelStripGenerationEditor({
             setDraftEntry(undefined);
             setActiveStep(0);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [entries.length, selectedReelIndex]);
+    }, [entries, selectedReelIndex]);
 
     function selectReel(reelIndex: number): void {
         // `discardedReelIndex` is only set on the confirmed-switch-away-from-a-dirty-reel path below --
@@ -1015,17 +1013,17 @@ export function ReelStripGenerationEditor({
     // fired twice. It never means "wait for whatever fetch happens to still be running" -- once a
     // request is invalidated (invalidatePendingPreview() already released resolveGuard for it), a brand
     // new one must be allowed to start immediately, without waiting for the old, now-stale fetch to
-    // actually settle. That's why resolveGuard.end() below is only ever called from the non-stale branch
+    // actually settle. That's why endResolve() below is only ever called from the non-stale branch
     // of .then()/.catch() (the request that's still current when it resolves) rather than from a shared
     // .finally() -- a stale request must never release the guard a second time out from under whichever
     // newer request currently owns it.
     function checkAndPreview(): void {
-        if (selectedReelIndex === undefined || draftEntry === undefined || !resolveGuard.begin()) {
+        if (selectedReelIndex === undefined || draftEntry === undefined || !beginResolve()) {
             return;
         }
         const issues = validateDraftEntry(draftEntry, symbols);
         if (issues.length > 0) {
-            resolveGuard.end();
+            endResolve();
             setDraftIssues(issues);
             return;
         }
@@ -1046,7 +1044,7 @@ export function ReelStripGenerationEditor({
                 if (isStale()) {
                     return;
                 }
-                resolveGuard.end();
+                endResolve();
                 setPreview(result);
                 setStop(0);
                 setActiveStep(2);
@@ -1055,7 +1053,7 @@ export function ReelStripGenerationEditor({
                 if (isStale()) {
                     return;
                 }
-                resolveGuard.end();
+                endResolve();
                 setPreview({status: "error", message: errorMessage(error)});
             });
     }

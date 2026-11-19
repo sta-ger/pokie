@@ -101,10 +101,8 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
 
     const designRef = useRef<HTMLDivElement>(null);
     const projectsRef = useRef<HTMLDivElement>(null);
-    const panelRefs: Record<HomeTab, typeof designRef> = {design: designRef, projects: projectsRef};
     useEffect(() => {
-        panelRefs[activeTab].current?.focus();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        (activeTab === "design" ? designRef : projectsRef).current?.focus();
     }, [activeTab]);
 
     const [projectRegistryVersion, setProjectRegistryVersion] = useState(0);

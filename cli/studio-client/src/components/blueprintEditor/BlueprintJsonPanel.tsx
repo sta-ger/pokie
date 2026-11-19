@@ -26,8 +26,7 @@ export function BlueprintJsonPanel({
 
     useEffect(() => {
         onDraftDirtyChange?.(dirty);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [dirty]);
+    }, [dirty, onDraftDirtyChange]);
 
     return (
         <div>

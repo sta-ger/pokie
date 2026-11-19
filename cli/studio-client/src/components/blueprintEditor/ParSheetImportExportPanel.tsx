@@ -1,6 +1,6 @@
 import {Button, Stepper, Text} from "@mantine/core";
 import {IconAlertTriangle, IconCircleCheck} from "@tabler/icons-react";
-import {useEffect, useRef, useState, type ReactNode} from "react";
+import {useCallback, useEffect, useRef, useState, type ReactNode} from "react";
 import {exportParSheet, importParSheet, previewBlueprintBuild} from "../../api/apiClient";
 import {errorMessage} from "../../domain/errorMessage";
 import {describeBuildPreview, type BuildPreviewView} from "../../domain/interpret/Home";
@@ -116,33 +116,33 @@ export function ParSheetImportExportPanel({
     // changes) ----
     const [buildPreview, setBuildPreview] = useState<BuildPreviewView>({status: "idle"});
     const previewRequestIdRef = useRef(0);
-    const previewGuard = useDoubleSubmitGuard();
+    const {begin: beginPreview, end: endPreview} = useDoubleSubmitGuard();
 
     // Bumping the ref both marks any in-flight preview request stale (so its late response is ignored,
     // see runCanonicalPreview's own check) and frees the guard immediately, so a fresh preview can start
     // right away instead of waiting for that now-superseded request to settle.
-    function invalidatePreview(): void {
+    const invalidatePreview = useCallback((): void => {
         previewRequestIdRef.current++;
         setBuildPreview({status: "idle"});
-        previewGuard.end();
-    }
+        endPreview();
+    }, [endPreview]);
 
     // ---- Import ----
     const [importPath, setImportPath] = useState("");
     const [importView, setImportView] = useState<ParSheetImportView>({status: "idle"});
     const importRequestIdRef = useRef(0);
-    const importGuard = useDoubleSubmitGuard();
+    const {begin: beginImport, end: endImport} = useDoubleSubmitGuard();
 
     // Any change to which file is being imported invalidates whatever was previously shown/pending for
     // the *old* path -- same "an input that changes what a shown result even means" reasoning every other
     // tab in this app already follows (e.g. the Deployment tab's own invalidate() on a mode edit). The
     // canonical preview describes *this* import's blueprint, so it goes stale right along with it.
-    function invalidateImport(): void {
+    const invalidateImport = useCallback((): void => {
         importRequestIdRef.current++;
         setImportView({status: "idle"});
-        importGuard.end();
+        endImport();
         invalidatePreview();
-    }
+    }, [endImport, invalidatePreview]);
 
     function handleImportPathChange(value: string): void {
         setImportPath(value);
@@ -151,8 +151,8 @@ export function ParSheetImportExportPanel({
         }
     }
 
-    function runImportFor(path: string): void {
-        if (path.trim().length === 0 || !importGuard.begin()) {
+    const runImportFor = useCallback((path: string): void => {
+        if (path.trim().length === 0 || !beginImport()) {
             return;
         }
         const requestId = ++importRequestIdRef.current;
@@ -163,7 +163,7 @@ export function ParSheetImportExportPanel({
                 if (requestId !== importRequestIdRef.current) {
                     return;
                 }
-                importGuard.end();
+                endImport();
                 setImportView(describeParSheetImportResult(result));
                 if (result.status === "ok") {
                     setActiveStep(1);
@@ -173,10 +173,10 @@ export function ParSheetImportExportPanel({
                 if (requestId !== importRequestIdRef.current) {
                     return;
                 }
-                importGuard.end();
+                endImport();
                 setImportView({status: "error", message: errorMessage(error)});
             });
-    }
+    }, [beginImport, endImport, fetchImpl, invalidatePreview]);
 
     function runImport(): void {
         runImportFor(importPath);
@@ -197,8 +197,7 @@ export function ParSheetImportExportPanel({
             setImportPath(initialImportPath);
             runImportFor(initialImportPath);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [initialImportPath]);
+    }, [initialImportPath, runImportFor]);
 
     // Recovery is deliberately different from Home's fresh "Import Project" shortcut: a retained
     // write must show its captured input but never silently execute again.  Resetting the old import
@@ -211,8 +210,7 @@ export function ParSheetImportExportPanel({
         invalidateImport();
         setActiveStep(0);
         // This recovery path only responds to a new retained source path.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [initialImportFieldPath]);
+    }, [initialImportFieldPath, invalidateImport]);
 
     const importResult = importView.status === "ok" ? importView : undefined;
     const importOutcome = importResult ? describeParSheetImportOutcome(importResult) : undefined;
@@ -222,7 +220,7 @@ export function ParSheetImportExportPanel({
     // Home nav's own Build-from-Blueprint flow already shows; state/invalidatePreview declared above,
     // ahead of Import) ----
     function runCanonicalPreview(): void {
-        if (importResult === undefined || !previewGuard.begin()) {
+        if (importResult === undefined || !beginPreview()) {
             return;
         }
         const requestId = ++previewRequestIdRef.current;
@@ -232,14 +230,14 @@ export function ParSheetImportExportPanel({
                 if (requestId !== previewRequestIdRef.current) {
                     return;
                 }
-                previewGuard.end();
+                endPreview();
                 setBuildPreview(describeBuildPreview(result));
             })
             .catch((error: unknown) => {
                 if (requestId !== previewRequestIdRef.current) {
                     return;
                 }
-                previewGuard.end();
+                endPreview();
                 setBuildPreview({status: "error", message: errorMessage(error)});
             });
     }
@@ -264,7 +262,7 @@ export function ParSheetImportExportPanel({
     const [exportPath, setExportPath] = useState(() => parSheetExportDefaultPath(blueprintPath) ?? "");
     const [exportView, setExportView] = useState<ParSheetExportView>({status: "idle"});
     const exportRequestIdRef = useRef(0);
-    const exportGuard = useDoubleSubmitGuard();
+    const {begin: beginExport, end: endExport} = useDoubleSubmitGuard();
     const revisionRef = useRef(revision);
     useEffect(() => {
         revisionRef.current = revision;
@@ -278,19 +276,18 @@ export function ParSheetImportExportPanel({
         setActiveStep(3);
     }, [initialExportPath]);
 
-    function invalidateExport(): void {
+    const invalidateExport = useCallback((): void => {
         exportRequestIdRef.current++;
         setExportView({status: "idle"});
         setExportOutcome(undefined);
-        exportGuard.end();
-    }
+        endExport();
+    }, [endExport]);
 
     // The current blueprint changed elsewhere in the form (an edit, New/Load, a JSON apply) -- any
     // previously shown/pending export result described the blueprint as it was *before* this change.
     useEffect(() => {
         invalidateExport();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [revision]);
+    }, [invalidateExport, revision]);
 
     function handleExportPathChange(value: string): void {
         setExportPath(value);
@@ -300,7 +297,7 @@ export function ParSheetImportExportPanel({
     }
 
     function runExport(): void {
-        if (exportPath.trim().length === 0 || !exportGuard.begin()) {
+        if (exportPath.trim().length === 0 || !beginExport()) {
             return;
         }
         const requestId = ++exportRequestIdRef.current;
@@ -313,7 +310,7 @@ export function ParSheetImportExportPanel({
                 if (isStale()) {
                     return;
                 }
-                exportGuard.end();
+                endExport();
                 setExportView(describeParSheetExportResult(result));
                 setExportOutcome(describeParSheetExportOutcome(result));
             })
@@ -321,7 +318,7 @@ export function ParSheetImportExportPanel({
                 if (isStale()) {
                     return;
                 }
-                exportGuard.end();
+                endExport();
                 setExportView({status: "error", message: errorMessage(error)});
             });
     }

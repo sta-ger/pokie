@@ -1,7 +1,7 @@
 import {Alert, Anchor, Badge, Button, Group, List, NumberInput, Progress, SegmentedControl, Select, Table, Text, Textarea, TextInput} from "@mantine/core";
 import {useForm} from "@mantine/form";
 import {useMediaQuery} from "@mantine/hooks";
-import {useEffect, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {buildReplayDownloadUrl} from "../../api/apiClient";
 import type {OutcomeSourceReplayDescriptorView, RoundArtifact, StudioRuntimeSessionView, StudioSimulationReportListEntry} from "../../api/types";
 import {
@@ -217,6 +217,14 @@ export function ReplayTab({
     const confirm = useConfirm();
     const isPhoneWidth = useMediaQuery("(max-width: 48em)");
     const form = useForm<FindFormValues>({mode: "uncontrolled", initialValues: {round: 1, seed: ""}});
+    const formRef = useRef(form);
+    useEffect(() => {
+        formRef.current = form;
+    }, [form]);
+    const onLoadExpectedFromPasteRef = useRef(onLoadExpectedFromPaste);
+    useEffect(() => {
+        onLoadExpectedFromPasteRef.current = onLoadExpectedFromPaste;
+    }, [onLoadExpectedFromPaste]);
     const [selectedMode, setSelectedMode] = useState<string | null>(null);
     useEffect(() => {
         if (selectedMode === null && availableModes !== undefined && availableModes.length > 0) {
@@ -246,16 +254,14 @@ export function ReplayTab({
         if (recoveryRequest === undefined) return;
         if (recoveryRequest.recording) {
             setFindMethod("artifact");
-            onLoadExpectedFromPaste(JSON.stringify(recoveryRequest.recording));
+            onLoadExpectedFromPasteRef.current(JSON.stringify(recoveryRequest.recording));
             setLoadedForMethod("artifact");
             setJobLoaded(false);
         }
         const round = typeof recoveryRequest.round === "number" ? recoveryRequest.round : undefined;
         const seed = typeof recoveryRequest.seed === "string" ? recoveryRequest.seed : undefined;
-        if (round !== undefined || seed !== undefined) form.setValues({...(round === undefined ? {} : {round}), ...(seed === undefined ? {} : {seed})});
+        if (round !== undefined || seed !== undefined) formRef.current.setValues({...(round === undefined ? {} : {round}), ...(seed === undefined ? {} : {seed})});
         if (typeof recoveryRequest.modeName === "string") setSelectedMode(recoveryRequest.modeName);
-        // Mantine's uncontrolled form object is intentionally stable.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [recoveryRequest]);
     const [pending, setPending] = useState<ReplayLoadTarget>();
     const [artifactText, setArtifactText] = useState("");

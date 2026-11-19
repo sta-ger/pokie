@@ -69,6 +69,8 @@ export function WholeSequencesEditor({
     const errors = validateBlueprintReelSequences(candidate);
     const latest = useRef(identity);
     const previousSource = useRef(authored);
+    const initialReelSequences = useRef(blueprint.reelSequences);
+    const initialModeDrafts = useRef(modeDrafts);
     useEffect(() => {
         if (previousSource.current !== authored && modeDrafts.current.wholeSequenceDraft?.dirty === false) {
             // An applied source update (for example a symbol rename) is authoritative when there
@@ -85,11 +87,10 @@ export function WholeSequencesEditor({
         setPreviewIdentity(undefined);
     }, [identity]);
     useEffect(() => {
-        const retained = modeDrafts.current.wholeSequenceDraft;
-        if (retained?.base === JSON.stringify(blueprint.reelSequences)) setDraft(clone(retained.definitions));
+        const retained = initialModeDrafts.current.current.wholeSequenceDraft;
+        if (retained?.base === JSON.stringify(initialReelSequences.current)) setDraft(clone(retained.definitions));
         setReady(true);
         // The owning editor remounts on wholesale replacement; ordinary revisions keep local edits.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     useEffect(() => {
         if (!ready) return;

@@ -346,8 +346,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
         return () => {
             cancelled = true;
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [fetchImpl, projectRoot]);
 
     function runValidate(): void {
         if (bundleDir.trim().length === 0 || !validateGuard.begin()) {

@@ -77,10 +77,18 @@ export function NewBlueprintDialog({
     const choiceRef = useRef<HTMLButtonElement>(null);
     const seedRef = useRef<HTMLInputElement>(null);
     const loadPathRef = useRef<HTMLInputElement>(null);
+    const isDirtyRef = useRef(isDirty);
+    const onCloseRef = useRef(onClose);
+    useEffect(() => {
+        isDirtyRef.current = isDirty;
+    }, [isDirty]);
+    useEffect(() => {
+        onCloseRef.current = onClose;
+    }, [onClose]);
 
     useEffect(() => {
         if (opened) {
-            setStep(isDirty ? "confirmDirty" : "choose");
+            setStep(isDirtyRef.current ? "confirmDirty" : "choose");
             setSavingToProceed(false);
             setSaveAsPath("");
             setLoadPath("");
@@ -92,7 +100,6 @@ export function NewBlueprintDialog({
         // Only re-seeds this dialog's own steps/forms the moment it actually opens -- `isDirty` moving
         // afterward (a Save this same dialog just triggered) must not re-run this and clobber the step
         // the save-success effect below is about to advance to.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [opened]);
 
     // Mantine's modal autofocus runs after this component's effects. Each step has a useful first
@@ -132,9 +139,8 @@ export function NewBlueprintDialog({
     // handleLoad's own success branch already committed the wholesale replace.
     useEffect(() => {
         if (step === "load" && loadView.status === "ok") {
-            onClose();
+            onCloseRef.current();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [step, loadView]);
 
     const runGenerate = (mintFreshSeed: boolean): void => {

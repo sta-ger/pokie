@@ -1,6 +1,6 @@
 import {Button, Group, Modal, ScrollArea, Stack, Text, UnstyledButton} from "@mantine/core";
 import {IconArrowUp, IconFile, IconFolder} from "@tabler/icons-react";
-import {useEffect, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {browseFilesystem} from "../../api/apiClient";
 import type {StudioFsBrowseView} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -40,14 +40,17 @@ export function PathBrowseModal({opened, onClose, onSelect, kind, initialPath, t
     const fetchImpl = useStudioApi();
     const [browsePath, setBrowsePath] = useState<string | undefined>(undefined);
     const [view, setView] = useState<{status: "loading"} | {status: "loaded"; data: StudioFsBrowseView}>({status: "loading"});
-
+    const initialPathRef = useRef(initialPath);
+    useEffect(() => {
+        initialPathRef.current = initialPath;
+    }, [initialPath]);
     useEffect(() => {
         if (opened) {
-            setBrowsePath(initialPath.trim().length > 0 ? initialPath : undefined);
+            const path = initialPathRef.current;
+            setBrowsePath(path.trim().length > 0 ? path : undefined);
         }
         // Only re-seeds the browsed location the moment the modal actually opens -- once opened,
         // navigating around must not keep snapping back to the field's current value.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [opened]);
 
     useEffect(() => {

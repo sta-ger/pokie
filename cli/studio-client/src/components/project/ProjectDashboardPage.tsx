@@ -806,13 +806,13 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             selectReport(simulation.job.id, false);
             refreshReports();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [simulation.job, selectReport]);
+    }, [refreshReports, selectReport, simulation.job]);
 
     // Explicit Configure submissions own this report/compare reset.
     // Validate before clearing a retained result or invalidating its in-flight
     // reads. Only an accepted configuration clears the previous run-again notice.
     // Retry uses the hook's retained request and its same rounds preflight.
+    const runSimulation = simulation.run;
     const startRun = useCallback(
         (rounds: number, seed: string | undefined, workers: number, modeName?: string, convergence?: StudioSimulationReportListEntry["convergence"]) => {
             if (simulationRestorationMessage !== undefined) return;
@@ -828,10 +828,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             setSelectedReportId(undefined);
             setCompareDetail({status: "empty"});
             setRunAgainNotice(undefined);
-            simulation.run(rounds, seed, workers, modeName, "simulation", convergence);
+            runSimulation(rounds, seed, workers, modeName, "simulation", convergence);
         },
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [consumeSimulationRecovery, simulation.run, simulationRestorationMessage],
+        [consumeSimulationRecovery, runSimulation, simulationRestorationMessage],
     );
 
     // Also clears once the *previous* blocking simulation reaches a terminal state on its own (completes,
@@ -1037,15 +1036,15 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // one continuing that exact comparison (the artifact Load step's own "Continue to Reproduce") --
     // otherwise a stale `expectedReplay` from an earlier artifact-compare attempt would produce a bogus
     // match/mismatch banner on a later, unrelated Recreate from seed / Recent Simulation reproduction.
+    const runReplayJob = replay.run;
     const runReplay = useCallback(
         (round: number, seed: string | undefined, simulationId?: string, keepExpected?: boolean, modeName?: string, outcomeSource?: import("../../api/types").OutcomeSourceReplayDescriptorView, recording?: import("../../api/types").ReplayDescriptor) => {
             if (!keepExpected) {
                 clearExpectedReplay();
             }
-            replay.run(round, seed, simulationId, modeName, outcomeSource, recording);
+            runReplayJob(round, seed, simulationId, modeName, outcomeSource, recording);
         },
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [replay.run, clearExpectedReplay],
+        [clearExpectedReplay, runReplayJob],
     );
 
     // Returns the fetch's own promise (rather than swallowing a failure) so ReplayTab's "Inspect" click
@@ -1054,12 +1053,13 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // showing (or nothing at all), no error, no indication anything went wrong. Also surfaces the
     // failure through replayListError -- the same state the "Recent replays" section right below this
     // list already displays -- since there's no other error slot naturally reachable from this click.
+    const selectExistingReplay = replay.selectExisting;
     const onInspectStored = useCallback(
         (id: string): Promise<void> => {
             clearExpectedReplay();
             return getReplay(fetchImpl, id)
                 .then((job) => {
-                    replay.selectExisting(job);
+                    selectExistingReplay(job);
                     setReplayListError(undefined);
                 })
                 .catch((error: unknown) => {
@@ -1067,8 +1067,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     throw error;
                 });
         },
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [fetchImpl, clearExpectedReplay, replay.selectExisting],
+        [clearExpectedReplay, fetchImpl, selectExistingReplay],
     );
 
     // Computed whenever the user has actually requested a comparison (expectedReplay left "empty") and
@@ -1179,7 +1178,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         setContextRefreshGeneration(next);
     };
 
-    useEffect(() => {
+    const resetProjectState = useCallback(() => {
         if (projectKey === undefined) {
             return;
         }
@@ -1223,9 +1222,15 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         deployment.resetForProjectSwitch();
         deployment.refreshTargets();
         deployment.refreshProjectModes();
-        // Deliberately keyed only on projectKey -- these refreshers should run once per newly-loaded
-        // project, not every time one of their own (stable, useCallback-memoized) references changes.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [deployment, projectKey, refreshRecentSpins, refreshReplayList, refreshReports, replay, runValidate, simulation]);
+    const resetProjectStateRef = useRef(resetProjectState);
+    useEffect(() => {
+        resetProjectStateRef.current = resetProjectState;
+    }, [resetProjectState]);
+    // Deliberately keyed only on projectKey -- these refreshers should run once per newly-loaded
+    // project, not every time one of their own (stable, useCallback-memoized) references changes.
+    useEffect(() => {
+        resetProjectStateRef.current();
     }, [projectKey]);
 
     const hasActiveOperation =

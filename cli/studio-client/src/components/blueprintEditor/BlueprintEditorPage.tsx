@@ -193,7 +193,7 @@ export function BlueprintEditorPage({
     const importedParBlueprintRevisionRef = useRef<number | undefined>(undefined);
     const loadGuard = useDoubleSubmitGuard();
     const saveGuard = useDoubleSubmitGuard();
-    const validateGuard = useDoubleSubmitGuard();
+    const {begin: beginValidate, end: endValidate, isBlocked: isValidateBlocked} = useDoubleSubmitGuard();
     const [advancedOpened, {toggle: toggleAdvanced, open: openAdvanced}] = useDisclosure(Boolean(initialParSheetPath || recoveryRequest !== undefined));
     // useDisclosure's own initial value above only ever covers a fresh mount -- Projects -> Design (both
     // under the same `/home/:tab` route, see HomePage's own routing doc comment) never remounts this page,
@@ -207,8 +207,7 @@ export function BlueprintEditorPage({
         if (initialParSheetPath || recoveryRequest !== undefined) {
             openAdvanced();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [initialParSheetPath, recoveryRequest]);
+    }, [initialParSheetPath, openAdvanced, recoveryRequest]);
     const [newDialogOpened, {open: openNewDialog, close: closeNewDialog}] = useDisclosure(false);
     // A single-level "undo" for the New flow's own Blank/Generate random replace -- see
     // handleChooseBlank/handleUseRandomBlueprint below for where this is captured, and
@@ -241,6 +240,10 @@ export function BlueprintEditorPage({
     // formGeneration but is deliberately NOT treated as clean -- it's still an unsaved edit, just a
     // wholesale one.
     const cleanRevisionRef = useRef(editor.state.revision);
+    const editorRevisionRef = useRef(editor.state.revision);
+    useEffect(() => {
+        editorRevisionRef.current = editor.state.revision;
+    }, [editor.state.revision]);
     const nextFormGenerationIsClean = useRef(false);
     // Whether the JSON-mode textarea currently holds a typed edit that was never "Apply JSON"-ed --
     // reported up by BlueprintJsonPanel's own dirty derivation (live text vs. editor.state.jsonText).
@@ -252,47 +255,44 @@ export function BlueprintEditorPage({
     const [sequenceDraftDirty, setSequenceDraftDirty] = useState(false);
     const [jsonDraftDirty, setJsonDraftDirty] = useState(false);
     const jsonDraftDirtyRef = useRef(false);
-    const reportJsonDraftDirty = (dirty: boolean): void => {
+    const reportJsonDraftDirty = useCallback((dirty: boolean): void => {
         jsonDraftDirtyRef.current = dirty;
         setJsonDraftDirty(dirty);
-    };
+    }, []);
     // Save success mutates cleanRevisionRef from an async callback, which (being a ref) doesn't itself
     // trigger a re-render -- this forces one so `isDirty` below gets recomputed against whatever
     // editor.state.revision *actually* is by then (which may have moved past what was saved, if the user
     // kept editing during the round-trip -- markClean must never just report "not dirty").
-    const [, forceRerenderAfterMarkClean] = useState(0);
+    const [cleanRevisionVersion, forceRerenderAfterMarkClean] = useState(0);
     const markClean = (revisionThatWasPersisted: number): void => {
         cleanRevisionRef.current = revisionThatWasPersisted;
         forceRerenderAfterMarkClean((n) => n + 1);
     };
     useEffect(() => {
         if (nextFormGenerationIsClean.current) {
-            cleanRevisionRef.current = editor.state.revision;
+            cleanRevisionRef.current = editorRevisionRef.current;
             nextFormGenerationIsClean.current = false;
         }
         reportJsonDraftDirty(false);
         setSequenceDraftDirty(false);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [editor.formGeneration]);
-    // Refs must never be read during render (react-hooks/refs) -- reading cleanRevisionRef.current here,
-    // inside an effect with no dependency array, runs after every render instead, which for this
-    // component is effectively every meaningful state change anyway (a mutate/New/Load/Save/Build always
-    // re-renders); onDirtyChange is idempotent, so a few redundant calls with the same value are harmless.
+    }, [editor.formGeneration, reportJsonDraftDirty]);
+    // Refs must never be read during render (react-hooks/refs), so this effect reads
+    // cleanRevisionRef.current after commit. It runs when the revision or either draft marker changes;
+    // cleanRevisionVersion also advances on markClean, when the revision itself did not move.
     // `isDirty` mirrors the same computation into render-readable state -- the New flow's own dialog
     // needs it synchronously (to decide whether to gate behind a Save/Discard/Cancel confirm) rather
     // than only as a side-effecting callback.
     const [isDirty, setIsDirty] = useState(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
         const dirty = editor.state.revision !== cleanRevisionRef.current || jsonDraftDirty || sequenceDraftDirty;
         setIsDirty(dirty);
         onDirtyChange?.(dirty);
-    });
+    }, [cleanRevisionVersion, editor.state.revision, jsonDraftDirty, onDirtyChange, sequenceDraftDirty]);
 
     // A second, independent staleness signal alongside revision: incremented once per validate request
     // that actually starts, so a request whose *response* arrives after a *newer* validate request began
-    // is recognized as stale even in the (currently impossible, since validateGuard already serializes
-    // validate calls) case that guarantee ever changes.
+    // is recognized as stale even in the (currently impossible, since the validate guard already
+    // serializes validate calls) case that guarantee ever changes.
     const validateRequestIdRef = useRef(0);
     const validationAbortRef = useRef<AbortController | undefined>(undefined);
     const validationMountedRef = useRef(true);
@@ -320,21 +320,21 @@ export function BlueprintEditorPage({
         // A focus transfer to Create can commit a field's blur edit. Invalidate the rendered
         // result in that same batch, before the revision effect schedules the next check.
         setValidationView((previous) => {
-            if (guided && validateGuard.isBlocked()) {
+            if (guided && isValidateBlocked()) {
                 return {status: "loading"};
             }
             return previous.status === "ok" || previous.status === "invalid" ? {status: "stale"} : previous;
         });
         editor.mutate(mutate);
     };
-    const autoValidateTimer = useDebouncedCallbackTimer();
+    const {schedule: scheduleAutoValidate, cancel: cancelAutoValidate, isScheduled: isAutoValidateScheduled} = useDebouncedCallbackTimer();
 
     // Declared here (rather than down among the other handlers) so the auto-validate debounce inside the
     // revision-bump effect just below can call it directly -- an equivalent ref-indirection would only
     // obscure the same thing ESLint's own react-hooks/immutability rule is asking for: a function used by
     // an earlier-declared effect must itself be declared first.
     const handleValidate = (): void => {
-        if (!validateGuard.begin()) {
+        if (!beginValidate()) {
             return;
         }
         // Captured now, at request-send time -- compared against the *current* refs at response time, so
@@ -370,8 +370,8 @@ export function BlueprintEditorPage({
                 setValidationView(validation);
             })
             .finally(() => {
-                validateGuard.end();
-                // An edit can outlive the 600ms debounce while this request still owns validateGuard.
+                endValidate();
+                // An edit can outlive the 600ms debounce while this request still owns the validate guard.
                 // In that case the scheduled check already fired, observed the guard, and returned;
                 // re-run now so the edited revision does not remain permanently unvalidated. When the
                 // debounce is still pending it remains the single owner of that follow-up instead.
@@ -380,7 +380,7 @@ export function BlueprintEditorPage({
                     guided &&
                     isVisible &&
                     requestedRevision !== editor.getCurrentState().revision &&
-                    !autoValidateTimer.isScheduled()
+                    !isAutoValidateScheduled()
                 ) {
                     handleValidateRef.current();
                 }
@@ -482,13 +482,13 @@ export function BlueprintEditorPage({
         // Typing can outlast the debounce while an older check is still in flight. Keep its busy
         // boundary visible until the current revision's follow-up settles; the old result is discarded.
         setValidationView((prev) => {
-            if (guided && isVisible && validateGuard.isBlocked()) {
+            if (guided && isVisible && isValidateBlocked()) {
                 return {status: "loading"};
             }
             return guided && (prev.status === "ok" || prev.status === "invalid" || prev.status === "stale") ? {status: "stale"} : {status: "idle"};
         });
         if (!guided || !isVisible) {
-            autoValidateTimer.cancel();
+            cancelAutoValidate();
             return undefined;
         }
         if (isInitialMount && initialPath) {
@@ -501,10 +501,9 @@ export function BlueprintEditorPage({
                 savePersistedBlueprintDraft(editor.state.blueprint, importedFromParSheetPath, parConversionEvidence);
             }
         }
-        autoValidateTimer.schedule(handleValidate, AUTO_VALIDATE_DEBOUNCE_MS);
-        return autoValidateTimer.cancel;
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [editor.state.revision, isVisible]);
+        scheduleAutoValidate(() => handleValidateRef.current(), AUTO_VALIDATE_DEBOUNCE_MS);
+        return cancelAutoValidate;
+    }, [cancelAutoValidate, draftRecoveryDismissed, editor.state.blueprint, editor.state.revision, guided, importedFromParSheetPath, initialPath, isValidateBlocked, isVisible, parConversionEvidence, persistedDraft, scheduleAutoValidate]);
 
     // Cancel the unsubmitted guided action on unmount as well as on draft replacement.
     useEffect(() => cancelDeferredGuidedSave, [cancelDeferredGuidedSave]);
@@ -613,8 +612,7 @@ export function BlueprintEditorPage({
                 clearTimeout(sourceCheckTimerRef.current);
             }
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [guided]);
+    }, [fetchImpl, guided]);
 
     // Captures whatever's in the editor right now, right before a New-flow replace (Blank or Generate
     // random) overwrites it -- what handleUndoReplace restores from. `wasClean` records whether *this*
@@ -640,7 +638,7 @@ export function BlueprintEditorPage({
         }
     }, [editor.state.revision]);
 
-    const resetDraftIdentity = (): void => {
+    const resetDraftIdentity = useCallback((): void => {
         draftIdentityRef.current += 1;
         setDraftIdentity(draftIdentityRef.current);
         workspaceOpenRequestIdRef.current += 1;
@@ -665,7 +663,7 @@ export function BlueprintEditorPage({
         importedParBlueprintRevisionRef.current = undefined;
         setBuildOutDir(undefined);
         setRecoveredDestination(undefined);
-    };
+    }, [cancelDeferredGuidedSave]);
 
     // New -> Blank: the New flow's minimal option (see NewBlueprintDialog's own doc comment) -- same
     // wholesale-replace bookkeeping New always did, now reached through the dialog's dirty-confirm gate
@@ -905,28 +903,29 @@ export function BlueprintEditorPage({
         }
     };
 
+    const handleLoadRef = useRef(handleLoad);
+    useEffect(() => {
+        handleLoadRef.current = handleLoad;
+    });
     useEffect(() => {
         if (initialPath && recoveryRequest?.blueprint === undefined) {
-            handleLoad(initialPath);
+            handleLoadRef.current(initialPath);
         }
         // A retained Design card can navigate to Home without remounting this
-        // permanently mounted editor.  Treat its captured source exactly like
+        // permanently mounted editor. Treat its captured source exactly like
         // an initial load so recovery reconstructs the visible form.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialPath, recoveryRequest]);
 
-    useEffect(() => {
-        if (recoveryRequest?.blueprint === undefined) return undefined;
-        let cancelled = false;
+    const applyRecoveryRequest = useCallback((request: NonNullable<typeof recoveryRequest>, isCancelled: () => boolean): void => {
         const replaceDraft = (): void => {
-            if (cancelled) return;
+            if (isCancelled()) return;
             resetDraftIdentity();
             // Captured job content is a recoverable draft, not a confirmed disk baseline.
             nextFormGenerationIsClean.current = false;
-            editor.loadFrom(recoveryRequest.blueprint);
-            setBlueprintPath(typeof recoveryRequest.sourcePath === "string" ? recoveryRequest.sourcePath : undefined);
+            editor.loadFrom(request.blueprint);
+            setBlueprintPath(typeof request.sourcePath === "string" ? request.sourcePath : undefined);
             setBuildOutDir(initialBuildOutDir);
-            setRecoveredDestination(typeof recoveryRequest.destinationPath === "string" ? recoveryRequest.destinationPath : undefined);
+            setRecoveredDestination(typeof request.destinationPath === "string" ? request.destinationPath : undefined);
             setUndoSnapshot(undefined);
             setDraftRecoveryDismissed(true);
         };
@@ -935,11 +934,19 @@ export function BlueprintEditorPage({
         } else {
             replaceDraft();
         }
+    }, [confirm, editor, initialBuildOutDir, jsonDraftDirty, recoveryGuardedByNavigation, resetDraftIdentity, sequenceDraftDirty]);
+    const applyRecoveryRequestRef = useRef(applyRecoveryRequest);
+    useEffect(() => {
+        applyRecoveryRequestRef.current = applyRecoveryRequest;
+    }, [applyRecoveryRequest]);
+    useEffect(() => {
+        if (recoveryRequest?.blueprint === undefined) return undefined;
+        const cancellation = {cancelled: false};
+        applyRecoveryRequestRef.current(recoveryRequest, () => cancellation.cancelled);
         return () => {
-            cancelled = true;
+            cancellation.cancelled = true;
         };
         // The recovery request identifies one replacement; edits while a confirmation is open must not retrigger it.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [recoveryRequest]);
 
     const runSave = (path: string, overwrite: boolean): void => {

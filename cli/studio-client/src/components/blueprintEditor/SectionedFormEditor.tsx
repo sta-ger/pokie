@@ -2,7 +2,7 @@ import {ExistingMechanicsFieldset} from "./ExistingMechanicsFieldset";
 import {FreeGamesFieldset} from "./FreeGamesFieldset";
 import {BetModesEditor} from "./BetModesEditor";
 import {Tabs} from "@mantine/core";
-import {useEffect, useRef, useState} from "react";
+import {useEffect, useMemo, useRef, useState} from "react";
 import type {ValidationIssue} from "../../api/types";
 import {
     BLUEPRINT_SECTIONS,
@@ -74,14 +74,14 @@ export function SectionedFormEditor({
     const reelsTabRef = useRef<HTMLButtonElement>(null);
     const paytableTabRef = useRef<HTMLButtonElement>(null);
     const betsTabRef = useRef<HTMLButtonElement>(null);
-    const tabRefs: Record<BlueprintSectionId, typeof basicsTabRef> = {
+    const tabRefs = useMemo<Record<BlueprintSectionId, typeof basicsTabRef>>(() => ({
         basics: basicsTabRef,
         layout: layoutTabRef,
         symbols: symbolsTabRef,
         reels: reelsTabRef,
         paytable: paytableTabRef,
         bets: betsTabRef,
-    };
+    }), []);
 
     // Fires exactly once per *new* invalid result (keyed on validationView's own identity -- a fresh
     // object every time setValidationView runs, including a re-validate that's still invalid), never on
@@ -98,8 +98,7 @@ export function SectionedFormEditor({
         }
         activateSection(firstErrorSection.id);
         tabRefs[firstErrorSection.id].current?.focus();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [validationView]);
+    }, [tabRefs, validationView]);
 
     const errors: ValidationIssue[] = validationView.status === "invalid" ? validationView.errors : [];
     const warnings: ValidationIssue[] =

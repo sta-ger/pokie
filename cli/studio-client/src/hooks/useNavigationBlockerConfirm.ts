@@ -30,6 +30,14 @@ export function useNavigationBlockerConfirm(
 ) {
     const blocker = useBlocker(shouldBlock);
     const openedBlockerRef = useRef<typeof blocker | undefined>(undefined);
+    const confirmModalRef = useRef(confirmModal);
+    const onLeaveRef = useRef(onLeave);
+    useEffect(() => {
+        confirmModalRef.current = confirmModal;
+    }, [confirmModal]);
+    useEffect(() => {
+        onLeaveRef.current = onLeave;
+    }, [onLeave]);
 
     useEffect(() => {
         if (blocker.state !== "blocked") {
@@ -46,7 +54,7 @@ export function useNavigationBlockerConfirm(
         // not Mantine modal options.  Passing them through the modal spread
         // forwards unknown attributes into the portal DOM and makes an
         // otherwise valid navigation confirmation emit a React diagnostic.
-        const {controlIds, operation: suppliedOperation, ...modalProps} = confirmModal;
+        const {controlIds, operation: suppliedOperation, ...modalProps} = confirmModalRef.current;
         const operation = suppliedOperation ?? "navigation-blocker";
         modals.openConfirmModal({
             ...modalProps,
@@ -65,7 +73,7 @@ export function useNavigationBlockerConfirm(
             },
             onConfirm: () => {
                 openedBlockerRef.current = undefined;
-                onLeave?.();
+                onLeaveRef.current?.();
                 blocker.proceed();
             },
             onCancel: () => {
@@ -73,7 +81,6 @@ export function useNavigationBlockerConfirm(
                 blocker.reset();
             },
         });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [blocker]);
 
     return blocker;

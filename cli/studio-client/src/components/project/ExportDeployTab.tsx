@@ -1151,6 +1151,10 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
     const [featureOwnedOutcomeLibraryJobId, setFeatureOwnedOutcomeLibraryJobId] = useState<string | undefined>();
     const outcomeLibraryGuard = useDoubleSubmitGuard();
     const outcomeLibraryPollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    const pollOutcomeLibraryGenerationRef = useRef(pollOutcomeLibraryGeneration);
+    useEffect(() => {
+        pollOutcomeLibraryGenerationRef.current = pollOutcomeLibraryGeneration;
+    });
     useEffect(() => () => {
         if (outcomeLibraryPollTimer.current !== undefined) clearTimeout(outcomeLibraryPollTimer.current);
     }, []);
@@ -1188,7 +1192,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                 if (newest.status === "queued" || newest.status === "running" || newest.status === "cancelling") {
                     const progressSnapshots = [outcomeLibraryProgressSnapshot("start", newest)];
                     setOutcomeLibraryRun({status: "running", job: newest, ...(newest.browserRequestId === undefined ? {} : {browserRequestId: newest.browserRequestId}), progressSnapshots});
-                    pollOutcomeLibraryGeneration(newest.id, newest.browserRequestId, progressSnapshots);
+                    pollOutcomeLibraryGenerationRef.current(newest.id, newest.browserRequestId, progressSnapshots);
                     return;
                 }
                 if (newest.status === "completed" && newest.result?.status === "ok") {
@@ -1208,10 +1212,8 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         return () => {
             cancelled = true;
         };
-        // The discovery request must stay mount-scoped; depending on the
-        // polling function would rediscover and restart the same durable job
-        // after every state update it applies.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        // The discovery request must stay mount-scoped; the polling function
+        // is read through a ref so its new identity cannot restart discovery.
     }, [fetchImpl]);
     useEffect(() => {
         let cancelled = false;

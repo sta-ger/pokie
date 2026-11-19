@@ -39,12 +39,12 @@ export function usePlaySession(onRoundRecorded?: () => void) {
     // spin/reset does not undo the already-settled round on the server, so replacing that round with an
     // error-only screen would make a recoverable failure look as though the result had vanished.
     const activeSessionRef = useRef<StudioRuntimeSessionView | undefined>(undefined);
-    const newSessionGuard = useDoubleSubmitGuard();
-    const spinGuard = useDoubleSubmitGuard();
+    const {begin: beginNewSession, end: endNewSession} = useDoubleSubmitGuard();
+    const {begin: beginSpin, end: endSpin} = useDoubleSubmitGuard();
 
     const newSession = useCallback(
         (seed?: string, modeName?: string, checkpoint?: unknown) => {
-            if (!newSessionGuard.begin()) {
+            if (!beginNewSession()) {
                 return;
             }
             const requestId = ++requestIdRef.current;
@@ -83,20 +83,19 @@ export function usePlaySession(onRoundRecorded?: () => void) {
                         setSession({status: "error", message: errorMessage(error), subject, ...(previousSession === undefined ? {} : {previousSession})});
                     }
                 })
-                .finally(() => newSessionGuard.end());
+                .finally(() => endNewSession());
         },
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [fetchImpl],
+        [beginNewSession, endNewSession, fetchImpl],
     );
 
     // Shared by spin()/findAnyWin()/findSymbolWin() below -- all three are the same "call an action
     // against sessionId, describe whatever PlaySpinResultView comes back" shape, gated by the same
-    // spinGuard so a user can't fire two of Play's own scenario actions against the same session at once
-    // (see spinGuard's own declaration above).
+    // beginSpin/endSpin guard so a user can't fire two of Play's own scenario actions against the same
+    // session at once.
     const runSpinAction = useCallback(
         (subject: string, action: (sid: string) => Promise<Parameters<typeof describePlaySpinResult>[0]>) => {
             const activeSessionId = activeSessionIdRef.current;
-            if (activeSessionId === undefined || !spinGuard.begin()) {
+            if (activeSessionId === undefined || !beginSpin()) {
                 return;
             }
             const requestId = ++requestIdRef.current;
@@ -133,10 +132,9 @@ export function usePlaySession(onRoundRecorded?: () => void) {
                         setSession({status: "error", message: errorMessage(error), subject, ...(previousSession === undefined ? {} : {previousSession})});
                     }
                 })
-                .finally(() => spinGuard.end());
+                .finally(() => endSpin());
         },
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [fetchImpl, onRoundRecorded],
+        [beginSpin, endSpin, onRoundRecorded],
     );
 
     const spin = useCallback((bet?: number, mode?: string, delivery: "stepwise" | "composite" = "stepwise") => {
@@ -153,7 +151,6 @@ export function usePlaySession(onRoundRecorded?: () => void) {
             if ((result.status === "ok" || ((result.status === "error" || result.status === "blocked") && result.retryDisposition === "rejected" && !result.committedProgress)) && pendingSpinRef.current === intent) pendingSpinRef.current = undefined;
             return result;
         }));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [runSpinAction, fetchImpl]);
 
     // Studio Play's "Find any win" scenario control -- repeats real, authoritative spins server-side (see
@@ -161,7 +158,6 @@ export function usePlaySession(onRoundRecorded?: () => void) {
     // through the exact same RoundSummary chain a plain Spin does.
     const findAnyWin = useCallback(() => {
         runSpinAction("Find any win", (sid) => findAnyWinPlaySession(fetchImpl, sid));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [runSpinAction, fetchImpl]);
 
     // Studio Play's "Find symbol win" scenario control -- same real, authoritative search as findAnyWin()
@@ -171,7 +167,6 @@ export function usePlaySession(onRoundRecorded?: () => void) {
         (symbolId: string) => {
             runSpinAction("Find symbol win", (sid) => findSymbolWinPlaySession(fetchImpl, sid, symbolId));
         },
-        // eslint-disable-next-line react-hooks/exhaustive-deps
         [runSpinAction, fetchImpl],
     );
 
@@ -180,7 +175,6 @@ export function usePlaySession(onRoundRecorded?: () => void) {
     // search as findAnyWin() above.
     const findFreeGames = useCallback(() => {
         runSpinAction("Find free games", (sid) => findFreeGamesPlaySession(fetchImpl, sid));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [runSpinAction, fetchImpl]);
 
     // Called from ProjectDashboardPage's own projectKey effect -- a genuinely different project must
