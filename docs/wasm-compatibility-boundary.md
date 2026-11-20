@@ -17,7 +17,7 @@ not define a second product route.
 
 **Scope:** Blueprint/PAR artifact production, integrity-checked resolution, portable runtime API,
 and explicit package portability advisory. A legacy compatible sidecar remains readable for migration but is
-not runnable until rebuilt as a artifact.
+not runnable until rebuilt as a WASM build.
 
 ## Current execution and mechanics
 
@@ -57,7 +57,7 @@ arithmetic view agrees with that definition. Byte count, SHA-256,
 configuration hash, component identity, imports, export signatures, memory layout,
 serialization and operation declarations are checked before session publication.
 Exact executable reconstruction rejects internally rehashed code/model mismatches.
-ABI 2 artifacts must be regenerated; no user artifact migration is introduced.
+ABI 2 builds must be regenerated; no user build migration is introduced.
 
 The header retains a separate i32 stop per reel (address at byte 44), screen at
 48, result records at 52, component count at 72 and payout at 80. ABI 3 adds the
@@ -66,7 +66,7 @@ image. Limits remain 64 reels, 64 evaluation rows, 1024 evaluation cells, 128
 symbols, 1024 paylines, 65536 stops per reel, 262144 total arithmetic stops and
 8 MiB evaluator memory. Feature draws have a finite 262144-draw mathematical-step
 limit; exhaustion fails and rolls back rather than truncating a distribution.
-The 64 KiB small-artifact limit is not a size promise for every supported model.
+The 64 KiB small-build limit is not a size promise for every supported model.
 
 Blueprint is canonical. Supported PAR intermediates and complete declared package
 models use model-preserving extraction; absence of Node builtins is advisory and
@@ -285,9 +285,9 @@ maps every mandatory family separately from arbitrary custom callbacks.
 
 ## Studio browser ownership
 
-`pokie game.wasm` opens Project Studio, including Home/recent/registered reopening. `inspect` remains explicit CLI inspection. `/api/project/wasm/artifact` delivers a matching byte/sidecar pair scoped to the active Project generation. Integrity and compatibility checks run before admission, in browser loading, at Worker initialization and before publication. Same-path replacement invalidates an active Play session and stale job output. No package loader handles a failed WASM artifact.
+`pokie game.wasm` opens Project Studio, including Home/recent/registered reopening. `inspect` remains explicit CLI inspection. `/api/project/wasm/artifact` delivers a matching byte/sidecar pair scoped to the active Project generation. Integrity and compatibility checks run before admission, in browser loading, at Worker initialization and before publication. Same-path replacement invalidates an active Play session and stale job output. No package loader handles a failed WASM build.
 
-`PokieWasmWorkerClient` correlates requests and progress with Project, generation, artifact and job identities. The Vite module Worker is emitted with installed Studio assets, including dynamic simulation imports. Both public browser exports keep filesystem code in the Node connector. Worker load/error/messageerror/malformed response/trap failures settle requests and release the Worker. Long loops yield to the Worker event loop; Studio active cancellation uses termination, so it can interrupt initialization and long execution. Progress retains only the latest accepted prefix; cancelled/failed jobs publish no completed report.
+`PokieWasmWorkerClient` correlates requests and progress with Project, generation, build and job identities. The Vite module Worker is emitted with installed Studio assets, including dynamic simulation imports. Both public browser exports keep filesystem code in the Node connector. Worker load/error/messageerror/malformed response/trap failures settle requests and release the Worker. Long loops yield to the Worker event loop; Studio active cancellation uses termination, so it can interrupt initialization and long execution. Progress retains only the latest accepted prefix; cancelled/failed jobs publish no completed report.
 
 A tab owns its Workers; `StudioJobService` owns durable jobs and downloads. Reload/pagehide disposes owned Workers and reports cancellation. A lost owner expires to `recovery-required` with an explicit retry; another tab discovers that job rather than resubmitting it. Play retains one idle session Worker until reset, replacement, pagehide or connection loss. Checkpoint restore creates and validates a replacement before releasing a valid session. Restore controls require `runtime.serialize`; Play/Simulation require `runtime.play`; Replay requires `runtime.replay`; detail view requires `artifact.inspect`. The combined `wasm.runtime.execute` supported action is never required to grant an individual operation. Unsupported adaptive stopping or multiple simulation Workers fail before admission.
 
