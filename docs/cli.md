@@ -33,7 +33,7 @@ npx --package @fromstan/pokie pokie sim game.wasm --rounds 6 --workers 1 --seed 
 npx --package @fromstan/pokie pokie replay game.wasm --round 6 --seed demo
 ```
 
-WASM builds also support deterministic `pokie sim game.wasm --rounds <number> --seed <seed>` and `pokie replay game.wasm --round <number> --seed <seed>` through the portable runtime; neither command materializes a game package. `pokie serve game.wasm` is intentionally unavailable because the portable component interface does not declare the local HTTP/server connector required by the dev server. It validates the build link and returns the normal supported action diagnostic before loading a package or allocating a server.
+WASM builds also support deterministic `pokie sim game.wasm --rounds <number> --seed <seed>` and `pokie replay game.wasm --round <number> --seed <seed>` through the portable runtime; neither command creates a game package. `pokie serve game.wasm` is intentionally unavailable because the portable component interface does not declare the local HTTP/server connector required by the dev server. It validates the build link and returns the normal supported action diagnostic before loading a package or allocating a server.
 
 Use the same explicit seed for comparisons: run, sim and replay have different WASM defaults
 (`pokie-wasm-cli`, `pokie-wasm-simulation`, `pokie-wasm-replay`). `replay --round N` plays through N rounds,
@@ -1129,7 +1129,7 @@ Exit code is non-zero (and nothing is written) if there are any error-level diag
 
 ### `pokie par export <config.json>`
 
-Loads `<config.json>` (a `GameBlueprint`, same as [`pokie build`](#pokie-build-project)), validates it, materializes
+Loads `<config.json>` (a `GameBlueprint`, same as [`pokie build`](#pokie-build-project)), validates it, prepares
 its reel source into the workbook's literal snapshot, and writes a `.par.xlsx` workbook to `--out <file>` (default:
 `<config.json>` with `.blueprint.json`/`.json` replaced by `.par.xlsx`). On any error, nothing is written — see
 the atomicity guarantee above.
@@ -1285,7 +1285,7 @@ support `libraryPath` or streamed `outcomesPath` with `libraryId`; Stake descrip
 Relative paths resolve against the descriptor directory. Project recognition errors propagate before descriptor
 fallback; generation flags (`--exact`, seeded `--sample`) require a recognized generation source.
 Defaults follow `build`: a sibling `outcomeLibrary` or `stakeAdapter` directory, or `parWorkbook.xlsx` file.
-These differ from historical artifact-command defaults (`outcomelibrary`, `stakeengine`, and a source-named
+These differ from historical build-command defaults (`outcomelibrary`, `stakeengine`, and a source-named
 `.par.xlsx` file). Use `--out` when a workflow requires one of those physical paths.
 
 ## `pokie build <config.json> --target stakeAdapter [--out <dir>] [--dry-run]`
@@ -1569,7 +1569,7 @@ Exit code is non-zero if any issue is `error`-severity; warnings and info are pr
 The first step of the [Provably Fair](provably-fair.md) commit-reveal flow: reads a secret `serverSeed` from a
 plain text file and calls `computeFairnessServerSeedCommitment` to build the `FairnessServerSeedCommitment` that
 gets published to the player immediately, before `clientSeed`/`nonce` are even solicited. The written/printed
-artifact is structurally incapable of carrying the raw `serverSeed` — `FairnessServerSeedCommitment` only ever
+a round record is structurally incapable of carrying the raw `serverSeed` — `FairnessServerSeedCommitment` only ever
 has `serverSeedHash` — so nothing about this command's own output ever needs to be redacted.
 
 **Seed file normalization** (shared byte-for-byte with `reveal` below, via one internal
@@ -2139,7 +2139,7 @@ Options:
  printed to the console; `--out` additionally saves the JSON diff to disk. It refuses an existing destination or
  either input path. When an input is an Outcome library folder or Stake Engine export, it also refuses destinations
  inside that source directory (including symlink aliases), so choose a new unused path (or inspect and remove an old
- diff artifact yourself) before retrying.
+ diff the round record yourself) before retrying.
 
 The human-readable summary looks like:
 
@@ -2284,7 +2284,7 @@ const setDiff = setDiffer.diff(leftSet, rightSet); // leftSet/rightSet: Simulati
 
 ### Diffing outcome library folders and Stake Engine exports
 
-When both paths resolve to an Outcome library folder or Stake Engine export, `pokie diff` uses each artifact's
+When both paths resolve to an Outcome library folder or Stake Engine export, `pokie diff` uses each round record's
 reader and exact per-mode analysis. Native folders, Stake exports, and a native/Stake pair are all
 supported. Its JSON is intentionally composable with the report form: `changed`, `perMode`, and
 `onlyInLeft`/`onlyInRight` make changed metrics and added/removed modes explicit.
@@ -2364,7 +2364,7 @@ pokie replay./outcome-library --seed recorded-seed --round 7 --mode base --out r
 ```
 
 The returned descriptor includes `outcomeSource` with the game, library id/hash, mode, selection algorithm,
-outcome id, artifact, screen, stake and payout. Do not substitute a default mode: a missing seed or mode
+outcome id, round record, screen, stake and payout. Do not substitute a default mode: a missing seed or mode
 is rejected. The CLI reconstructs from the current folder; for an exact comparison with a saved recorded round,
 the exported `replayOutcomeSourceProject(..., recordedDescriptor)` API requires the complete origin
 and fails closed for omissions or mismatches, telling the caller to restore the original round record or folder. Package
@@ -3342,7 +3342,7 @@ Home offers one editable design path, including loading an existing Blueprint. P
  Missing project locations remain visible with recovery guidance. **Open** resolves it through the shared project interface:
  game packages use `loadPokieGame`, WASM uses the portable integrity-checked runtime, and legacy
  sidecar-only components retain their inspection view. **Import Project**
- previews/validates a target path before registration. A PAR workbook can open its artifact workspace for
+ previews/validates a target path before registration. A PAR workbook can open its build workspace for
  supported conversions, or import/apply its model into Design Game for editing. PAR export belongs in the
  saved workspace’s Build/Export.
 
@@ -3488,7 +3488,7 @@ same primitives `ReplayRecorder` itself uses), while WASM uses its portable runt
 shells out to `pokie replay` or reimplements either runtime's logic.
 
 Replay has no single sequential order shared by every source — a live spin has nothing to reproduce, a pasted
-artifact validates before it can (optionally) reproduce, and a fresh seed/round or simulation round has no prior
+a round record validates before it can (optionally) reproduce, and a fresh seed/round or simulation round has no prior
 result to compare against at all — so `ReplayTab.tsx` doesn't force any of this through a `Stepper`. Instead it
 renders one page: a **source choice** (a segmented control), that source's own configuration/load controls, then —
 once something's loaded — a card showing what's loaded, an action bar for whatever's actually available
@@ -3507,7 +3507,7 @@ The source choice offers four methods:
  are for). **Load** stages it as the round/seed to reproduce.
 - **Replay record** — paste a replay record JSON (as produced by this same tab's own Export) into a textarea;
  **Validate & load** posts it to `POST /api/project/replays/inspect-artifact` (see below), which applies the exact
- same round/seed validation `POST /api/project/replays` itself would. A structurally invalid nested artifact is
+ same round/seed validation `POST /api/project/replays` itself would. A structurally invalid nested round record is
  reported back as non-fatal warnings rather than blocking outright — round/seed alone are enough to attempt a
  reproduction. Or pick one directly from a **Recent Replays** list to both load it and mark it as the "expected"
  side for comparison.
@@ -3524,7 +3524,7 @@ For a loaded **Replay record** record, the loaded card first runs it through a r
 (`describeReplayReproducibility`): reproducing forward from round 1 is only a *verifiable* match of the original
 result when the record's seed and game id/version provenance are known and match the currently loaded project, and
 — whenever the record carries a round record at all — its `stateBefore`/`stateAfter` and a `debug.reelStops` RNG
-trace are present to check a fresh reproduction against. An artifact missing any of these (e.g. an import that only
+trace are present to check a fresh reproduction against. A round record missing any of these (e.g. an import that only
 kept the round-level result, or a hand-trimmed record) disables **Reproduce** with a specific reason and
 remediation (add the missing field) rather than silently running an unverifiable replay.
 
@@ -3551,7 +3551,7 @@ Analysis sample vs. a Recent Simulation reproduction — credits, bet, win), the
 Advanced disclosure with debug data/raw before-after state/the full session JSON.
 For every other method, once a round has actually been reproduced, a video-slot round's full `RoundRecordJson`
 (see [Round Records](round-records.md)) renders through the same `RoundRecordInspector` component every
-other artifact-viewing tab uses, plus — whenever an "expected" artifact is loaded (a pasted/picked Replay record)
+other round-record view uses, plus — whenever an "expected" round record is loaded (a pasted/picked Replay record)
 — a match/mismatch comparison banner covering **screen**, **wins**, **totalPayout**, **steps**, **featureEvents**,
 **state** (the before/after transition), and **rngReelStops** (an explicit `debug.reelStops` field only) as
 independent dimensions, each `match`/`mismatch`/`unavailable` (a dimension missing or malformed on either side is
@@ -3596,7 +3596,7 @@ grouped by kind (`ExportDeployTargets.ts`):
  These outputs are local outputs; building a Stake export is not remote delivery.
 - **Remote deployment** — a GUI over the `pokie` package's own [External Adapter SDK](external-connector-sdk.md):
  `StudioDeploymentService` (`cli/studio/deployment/StudioDeploymentService.ts`) never projects a `RoundRecord`,
- generates an artifact, or validates compatibility/output itself; every one of those steps is delegated straight
+ generates an output, or validates compatibility/output itself; every one of those steps is delegated straight
  to `ExternalExportService.deploy()`, the SDK's own single orchestrator. Studio ships no private RGS
  integration of its own — Publish is only ever offered once a project has registered a real
  `ExternalExportTarget` (see the SDK doc above); until then, this group shows only a placeholder card
@@ -3819,7 +3819,7 @@ client, even for a load/validation failure.
  service then reports selector containment, mode/provenance, source-read, compatibility and target failures in
  the returned run view, with the matching repair/rebuild/reselect recovery. `404 {"error": "Unknown deployment
  target \"...\"."}` for an unknown `targetId`. Otherwise always `200` with the SDK's own
- `ExternalExportResult`, mirrored field-for-field (every generated artifact's `content` decoded to a plain
+ `ExternalExportResult`, mirrored field-for-field (every generated file's `content` decoded to a plain
  string) — a domain-level pipeline failure (incompatible content, a failed projector, an unwritable output
  directory,...) is carried in that DTO's own stage-by-stage issue arrays, never a 4xx/5xx, the same "only a
  malformed request throws" convention every other Project Dashboard route follows. `409 {"error": "No active
@@ -4006,7 +4006,7 @@ variants or per-symbol weights. WASM preserves `reelSequences` and eligible sele
 
 ## Package extraction preview and save
 
-Use the artifact route; there is no top-level `export` command:
+Use the build route; there is no top-level `export` command:
 
 ```sh
 pokie build ./custom-package --target blueprint --out ./editable.json --dry-run
@@ -4110,7 +4110,7 @@ Existing report/report-set results add `comparisonKind: "simulation-statistics"`
 Outcome Library, outcome-source project and Stake analysis results add
 `comparisonKind: "aggregate-analysis"`. Existing fields, thresholds, availability
 rules and per-mode semantics remain. Consumers should allow additive fields.
-Exact aggregate artifact statistics are not sampled simulation samples and
+Exact aggregate round-record statistics are not sampled simulation samples and
 neither kind establishes definition equality.
 
 `pokie validate SOURCE` includes the shared advanced declared-model report in
@@ -4152,7 +4152,7 @@ supported search can prove infeasibility; errors and exhaustion retain distinct 
 
 Optimization uses the shared engine: `pokie optimize SOURCE --policy request.json --format json`
 prints a review without changing source; `--progress` writes phase/count JSON to stderr. To save an
-independent same-type artifact use `--out NEW_OR_EMPTY_DESTINATION`. For explicit authored
+independent same-type output use `--out NEW_OR_EMPTY_DESTINATION`. For explicit authored
 Blueprint/PAR/declared-package apply, capture the preview outside the source tree in `review.json`,
 inspect it, then run `pokie optimize SOURCE --policy request.json --apply review.json`.
 The latter reruns the request and checks reviewed source, request and candidate revisions before
@@ -4185,7 +4185,7 @@ retain their separate documented domains). No UInt64 payout guarantee is implied
 
 New conversions use new/empty destinations, preserve source bytes and publish complete
 outputs. The ordinary direct Stake library exporter also permits a recognized prior
-export rebuild; artifact operations reject occupied outputs and evidence
+export rebuild; build operations reject occupied outputs and evidence
 companions. Retired direct Studio Stake routes remain retired in favor of prepared
 output preview/build and pollable jobs.
 

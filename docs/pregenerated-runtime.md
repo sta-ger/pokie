@@ -4,7 +4,7 @@
 
 `pregenerated/` is the runtime counterpart to [Weighted Outcome Library](weighted-outcome-library.md): instead of
 running a game's own calculation path, it draws one already-computed [`RoundRecord`](round-records.md) from a
-`WeightedOutcomeLibrary`, proportional to each outcome's weight, and materializes it into a served round —
+`WeightedOutcomeLibrary`, proportional to each outcome's weight, and turns it into a served round —
 stamped with which library/outcome produced it and the runtime-only facts (round/session/request ids, wallet
 balances, transactions) that only exist because a real round was played. This is the first vertical slice built
 directly on top of a `WeightedOutcomeLibrary` as *content*, rather than as an analysis input.

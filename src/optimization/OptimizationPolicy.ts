@@ -46,7 +46,7 @@ export type OptimizationStatus =
 export type OptimizationDiagnostic = {path: string; message: string};
 /** Live exact-evaluation telemetry; never authority for a candidate or publication. */
 export type OptimizationWorkProgress = {
-    stage: "Enumerating reel stops" | "Materializing outcomes" | "Verifying executable";
+    stage: "Enumerating reel stops" | "Generating outcomes" | "Verifying executable";
     current: string;
     /** Absent when deduplicated outcome population is not yet known. */
     total?: string;

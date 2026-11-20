@@ -255,7 +255,7 @@ pure comparison boundary. These are exported from the generated package root
 for ESM imports and `require()` consumers. Source readers run on the server, not in the browser. They do
 not construct sessions, advance continuations, repair tables, call custom
 `getConfigHash`, or consume a session's RNG. Authored reel generation uses the
-existing deterministic materializer and its own generation RNG. Existing config
+existing deterministic generator and its own generation RNG. Existing config
 hashes and payout engines are unchanged.
 
 Inputs may be paths, resolved projects, caller-owned `PokieGame` objects, or

@@ -196,12 +196,12 @@ async function measureGame(
                 onValidationWork?.(Number(count));
                 onProgress?.({stage: "Enumerating reel stops", current: count.toString(), total: total.toString(), unit: "raw draws"});
             },
-            onPostEnumeration: () => onProgress?.({stage: "Materializing outcomes", current: "0", unit: "outcomes"}),
-            onPostEnumerationProgress: count => onProgress?.({stage: "Materializing outcomes", current: count.toString(), unit: "outcomes"}),
+            onPostEnumeration: () => onProgress?.({stage: "Generating outcomes", current: "0", unit: "outcomes"}),
+            onPostEnumerationProgress: count => onProgress?.({stage: "Generating outcomes", current: count.toString(), unit: "outcomes"}),
             now: () => new Date(0),
         });
         if (result.diagnostics.strategy !== "exact") throw new OptimizationUnsupportedError("Sampled analysis cannot prove an exact target.");
-        onProgress?.({stage: "Materializing outcomes", current: String(result.library.outcomes.length), total: String(result.library.outcomes.length), unit: "outcomes"});
+        onProgress?.({stage: "Generating outcomes", current: String(result.library.outcomes.length), total: String(result.library.outcomes.length), unit: "outcomes"});
         return selectLibraryMetrics([...result.library.outcomes], "optimization", targets, policy);
     } finally {
         if (game.release) await releaseOwnedRuntime(() => game.release!());
@@ -610,8 +610,8 @@ async function verifyWasmExecutable(
                 onValidationWork?.(Number(count));
                 onProgress?.({stage: "Enumerating reel stops", current: count.toString(), total: total.toString(), unit: "raw draws"});
             },
-            onPostEnumeration: () => onProgress?.({stage: "Materializing outcomes", current: "0", unit: "outcomes"}),
-            onPostEnumerationProgress: count => onProgress?.({stage: "Materializing outcomes", current: count.toString(), unit: "outcomes"}),
+            onPostEnumeration: () => onProgress?.({stage: "Generating outcomes", current: "0", unit: "outcomes"}),
+            onPostEnumerationProgress: count => onProgress?.({stage: "Generating outcomes", current: count.toString(), unit: "outcomes"}),
             now: () => new Date(0),
         });
     } finally {

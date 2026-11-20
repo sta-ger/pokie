@@ -300,7 +300,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         const details = report.errors.map((issue) => `  - ${issue.code}: ${issue.message}`).join("\n");
         throw new BlueprintMaterializationError(
             "verify",
-            `Blueprint "${blueprintPath}" materialized to "${stagingDir}" but failed verification:\n${details}`,
+            `Blueprint "${blueprintPath}" prepared at "${stagingDir}" but failed verification:\n${details}`,
         );
     }
 
