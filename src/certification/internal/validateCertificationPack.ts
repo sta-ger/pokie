@@ -1,6 +1,6 @@
 import {parseCertificationJson} from "./parseCertificationJson.js";
 import {CERTIFICATION_PREPARATION_NOTICE, CERTIFICATION_METRIC_SEMANTICS, type CertificationPack} from "../CertificationPack.js";
-import type {CertificationPackManifest} from "../CertificationPackManifest.js";
+import type {CertificationPackIndex} from "../CertificationPackIndex.js";
 import {validateAuditRoundRecording} from "../../replay/AuditRoundReplay.js";
 import {validatePackReport, packHash} from "./acquireCertificationPack.js";
 import {sha256OfBytes} from "./sha256OfBytes.js";
@@ -15,7 +15,7 @@ function hash(value: unknown): void {
     if (typeof value !== "string" || !(/^sha256:[a-f0-9]{64}$/).test(value)) throw new Error("Invalid pack SHA-256 identity.");
 }
 /** Closed sections, integrity-bound payloads, and cross-section invariants. Live authority comparison is separate. */
-export function validateCertificationPack(value: unknown, manifest: CertificationPackManifest): asserts value is CertificationPack {
+export function validateCertificationPack(value: unknown, manifest: CertificationPackIndex): asserts value is CertificationPack {
     closed(value, ["schemaVersion", "identity", "rules", "statistics", "validation", "reproduction", "support"]);
     if (value.schemaVersion !== 1) throw new Error("Unsupported pack version; expected 1. Legacy sample-only bundles are not launch packs.");
     closed(value.identity, ["runtimeVersion", "modelHash", "modelArtifactHash", "sourceLibraryManifestHash", "sourceLibraryManifest", "sourceRevision", "candidateRevision"]);

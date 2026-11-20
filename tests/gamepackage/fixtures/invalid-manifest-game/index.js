@@ -1,5 +1,5 @@
 module.exports = {
-    getManifest() {
+    getInfo() {
         return {id: "", name: "Invalid Manifest Game", version: ""};
     },
     createSession() {

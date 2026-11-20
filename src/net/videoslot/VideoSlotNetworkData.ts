@@ -15,7 +15,7 @@ export type VideoSlotInitialNetworkData<T extends string | number | symbol = str
     VideoSlotRoundNetworkData<T>;
 
 export type VideoSlotRoundNetworkData<T extends string | number | symbol = string> = {
-    boundedMechanics?: import("../../session/videoslot/authored/BoundedMechanics.js").BoundedMechanicObservation;
+    boundedMechanics?: import("../../session/videoslot/authored/FeatureChains.js").FeatureChainObservation;
     modifiers?: import("../../session/videoslot/modifiers/ScreenModifiers.js").ScreenModifierObservation<T>;
     holdAndWin?: ReturnType<typeof import("./observeVideoSlotFeatures.js").observeVideoSlotFeatures<T>>["holdAndWin"];
     jackpot?: ReturnType<typeof import("./observeVideoSlotFeatures.js").observeVideoSlotFeatures<T>>["jackpot"];

@@ -72,7 +72,7 @@ export function writeDescriptorPackage(
         `// Fixture source: ${JSON.stringify(path.resolve(root))}
 const model = ${JSON.stringify(model)};
 module.exports = {
-    getManifest() { return model.manifest; },
+    getInfo() { return model.manifest; },
     createSession() { throw new Error("Model extraction must not create a session"); },
     ${
     options.legacy
@@ -189,7 +189,7 @@ function createConfig() {
     return free;
 }
 module.exports = {
-    getManifest() { return manifest; },
+    getInfo() { return manifest; },
     getModelDescriptor() { return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model: {
         manifest, reels: 3, rows: 1, symbols, wilds: [], scatters: ["S"], paylines: [[0, 0, 0]],
         paytable: payouts, reelStrips: strips, availableBets: stakes, mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: grants}}

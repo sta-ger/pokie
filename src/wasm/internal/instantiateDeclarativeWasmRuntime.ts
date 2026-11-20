@@ -10,7 +10,7 @@ import {observeVideoSlotFeatures} from "../../net/videoslot/observeVideoSlotFeat
 import {stableSlotMathJson} from "../math/SharedSlotMath.js";
 import {clonePokieWasmHostState} from "./clonePokieWasmHostState.js";
 import type {DeclarativeWasmModel} from "../DeclarativeWasmModel.js";
-import type {PokieWasmComponentManifest} from "../../project/wasm/PokieWasmComponentManifest.js";
+import type {PokieWasmComponentInfo} from "../../project/wasm/PokieWasmComponentInfo.js";
 import {createAuthoredSession} from "../../generated/createAuthoredSession.js";
 import {SessionRuntime} from "../../runtime/SessionRuntime.js";
 import {validateLogicalRound} from "../../runtime/LogicalRound.js";
@@ -35,7 +35,7 @@ function plainRoundId(command: SessionCommand, sequence: number, selections: Pok
 /** Portable orchestration of the same public session decorators used by generated Node games.
  * A settled checkpoint is authoritative; rebuilding never consumes the host or replays a prefix.
  */
-export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, manifest: PokieWasmComponentManifest, initialHost: PokieWasmHost): PokieWasmRuntime {
+export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, manifest: PokieWasmComponentInfo, initialHost: PokieWasmHost): PokieWasmRuntime {
     const blueprint = copy(model.features.blueprint);
     let host = initialHost;
     let disposed = false;

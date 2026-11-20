@@ -1,9 +1,9 @@
-import type {PokieGameManifest} from "@fromstan/pokie";
+import type {PokieGameInfo} from "@fromstan/pokie";
 import type {GamePackagePreparationPhase} from "./GamePackagePreparationError.js";
 
 export type PreparationResult = {
     projectRoot: string;
-    manifest: PokieGameManifest;
+    manifest: PokieGameInfo;
     createdFiles: string[];
     // Every phase that ran to completion, in order -- always ["create", "dependencies", "build",
     // "verify"] on success, since GamePackagePreparer.prepare() throws GamePackagePreparationError

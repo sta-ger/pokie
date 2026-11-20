@@ -1,7 +1,7 @@
 import type {FormatConversionPlan, ValidationIssue} from "@fromstan/pokie";
 
 // A per-mode provenance summary read straight off each loaded WeightedOutcomeLibrary — never recomputed
-// or Stake-specific; the same fields StakeEngineManifestModeEntry itself carries, shown *before* a real
+// or Stake-specific; the same fields StakeEngineInfoModeEntry itself carries, shown *before* a real
 // export so the user can see what they're about to send without committing to a write.
 export type StudioStakeEngineExportModeSummary = {
     readonly modeName: string;

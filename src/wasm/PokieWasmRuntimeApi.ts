@@ -1,5 +1,5 @@
 import {POKIE_VERSION} from "../PokieVersion.js";
-import type {PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
+import type {PokieWasmComponentInfo} from "../project/wasm/PokieWasmComponentInfo.js";
 
 /** Version implemented by every direct portable POKIE WASM runtime entry point. */
 export const POKIE_WASM_RUNTIME_VERSION = POKIE_VERSION;
@@ -174,7 +174,7 @@ export type PokieWasmReplayResult = {
     readonly stateAfter: PokieWasmSessionState;
 };
 export type PokieWasmRuntime = {
-    readonly manifest: PokieWasmComponentManifest;
+    readonly manifest: PokieWasmComponentInfo;
     getDiagnostics(): PokieWasmRuntimeDiagnostics;
     getBetModes?(): readonly import("../gamepackage/BetMode.js").BetMode[];
     createSession(seed: string, options?: {readonly credits?: number} & PokieWasmTraceOptions): PokieWasmRuntimeSession;

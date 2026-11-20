@@ -74,13 +74,13 @@ export function resolveOutcomeLibraryRuntimeModeIdentity(game: PokieGame, mode: 
     if (resolvedMode === undefined) {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-unsupported",
-            `"${game.getManifest().id}" declares executable bet modes without one declared default. Rebuild the package with exactly one runtime default.`,
+            `"${game.getInfo().id}" declares executable bet modes without one declared default. Rebuild the package with exactly one runtime default.`,
         );
     }
     if (!declaredModes.some((entry) => entry.id === resolvedMode)) {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-unsupported",
-            `"${game.getManifest().id}" does not declare executable bet mode "${resolvedMode}". Use a declared runtime mode or omit runtime selection.`,
+            `"${game.getInfo().id}" does not declare executable bet mode "${resolvedMode}". Use a declared runtime mode or omit runtime selection.`,
         );
     }
     return {mode: resolvedMode, selectBetMode: true};
@@ -532,7 +532,7 @@ export function prepareOutcomeLibraryGeneration(request: OutcomeLibraryGeneratio
     assertIndependentGridEnumerationSupported(request.game);
     const identifiedRequest = resolveOutcomeLibraryGenerationIdentity(request);
     if (typeof identifiedRequest.game.createExactEnumerationSession !== "function") {
-        throw new WeightedOutcomeLibraryGenerationError("weighted-outcome-library-generation-unsupported", `"${request.game.getManifest().id}" does not implement createExactEnumerationSession(); its outcome space cannot be exactly enumerated.`);
+        throw new WeightedOutcomeLibraryGenerationError("weighted-outcome-library-generation-unsupported", `"${request.game.getInfo().id}" does not implement createExactEnumerationSession(); its outcome space cannot be exactly enumerated.`);
     }
     return prepareOutcomeLibraryGenerationFromEstimate(estimateExactOutcomeSpaceSize(identifiedRequest.game), identifiedRequest);
 }

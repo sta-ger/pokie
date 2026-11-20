@@ -16,12 +16,12 @@ export const POKIE_WASM_ADAPTER = "@fromstan/pokie/wasm";
 // docs/wasm-compatibility-boundary.md. This type remains the single versioned declaration shape for POKIE
 // and third-party component builders.
 //
-// Read alongside PokieWasmComponentManifestValidator (shape) and assessWasmComponentCompatibility
+// Read alongside PokieWasmComponentInfoValidator (shape) and assessWasmComponentCompatibility
 // (schemaVersion match against POKIE_WASM_CONTRACT_VERSION) -- this type is deliberately just the data shape;
 // validation and compatibility are each their own, separately testable step, the same split
 // ExternalExportTargetDescriptorValidator/ExternalExportCompatibilityValidator draw for
 // ExternalExportTarget.
-export type PokieWasmComponentManifest = {
+export type PokieWasmComponentInfo = {
     // Which version of POKIE's own WASM component contract (see POKIE_WASM_CONTRACT_VERSION) this manifest was
     // authored against -- compared major-only (see assessWasmComponentCompatibility).
     readonly schemaVersion: string;

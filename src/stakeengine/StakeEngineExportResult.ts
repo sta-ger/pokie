@@ -1,5 +1,5 @@
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
-import type {StakeEngineManifest} from "./StakeEngineManifest.js";
+import type {StakeEngineInfo} from "./StakeEngineInfo.js";
 import type {PublishedDirectoryOwnership} from "./internal/publishDirectoryAtomically.js";
 
 // The result of StakeEngineExporter.exportToDirectory. "files" is [] and "manifest" is undefined if and only if
@@ -8,7 +8,7 @@ import type {PublishedDirectoryOwnership} from "./internal/publishDirectoryAtomi
 export type StakeEngineExportResult = {
     readonly outDir: string;
     readonly files: readonly string[];
-    readonly manifest: StakeEngineManifest | undefined;
+    readonly manifest: StakeEngineInfo | undefined;
     readonly issues: readonly ValidationIssue[];
     /** Present only when this invocation atomically installed outDir. */
     readonly publication?: PublishedDirectoryOwnership;

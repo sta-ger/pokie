@@ -1,4 +1,4 @@
-import type {PokieGameManifest} from "../../gamepackage/PokieGameManifest.js";
+import type {PokieGameInfo} from "../../gamepackage/PokieGameInfo.js";
 
 // "exact": every reachable reel-stop tuple in the space was actually swept -- the library's own weights are
 // the true combinatorial counts, not an estimate. "bounded-coverage": the caller explicitly opted into
@@ -22,7 +22,7 @@ export type OutcomeLibraryGeneratorDiagnostics = {
     // so the exact same sample can be reproduced later. "exact" generation uses no randomness at all.
     readonly seed?: string;
     readonly pokieVersion: string;
-    readonly game: PokieGameManifest;
+    readonly game: PokieGameInfo;
     readonly configHash?: string;
     /**
      * The resolved exact-space cap that selected this run's strategy.  This

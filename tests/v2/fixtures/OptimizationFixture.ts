@@ -43,7 +43,7 @@ function config() {
  const lines = new p.CustomLinesDefinitions(); data.paylines.forEach((line,i) => lines.setLineDefinition(String(i), line)); c.setLinesDefinitions(lines);
  const table = new p.Paytable(data.availableBets); for (const [symbol, amounts] of Object.entries(data.paytable)) for (const [count, amount] of Object.entries(amounts)) table.setPayoutForSymbol(symbol, Number(count), amount); c.setPaytable(table); return c;
 }
-module.exports = {getManifest: () => data.manifest, getConfigHash: () => p.computeGameBlueprintHash(data),
+module.exports = {getInfo: () => data.manifest, getConfigHash: () => p.computeGameBlueprintHash(data),
  createSession() { const c = config(); return new p.VideoSlotSession(c, new p.SymbolsCombinationsGenerator(c, new p.SeededRandomNumberGenerator(1))); },
  createExactEnumerationSession(forced) { return new p.VideoSlotSession(config(), forced); }};
 `;

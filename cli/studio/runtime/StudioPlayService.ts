@@ -281,7 +281,7 @@ export class StudioPlayService {
             return this.fail(error, projectRoot);
         }
 
-        const manifest = game.getManifest();
+        const manifest = game.getInfo();
         const wallet = new InMemoryWallet();
         const sessionRepository = new InMemorySessionRepository();
         const transactionalWallet = isTransactionalWalletPort(wallet) ? wallet : new TransactionalWalletAdapter(wallet);

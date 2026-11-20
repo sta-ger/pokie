@@ -1,7 +1,7 @@
-import type {GameBlueprintManifest} from "./GameBlueprint.js";
+import type {GameBlueprintInfo} from "./GameBlueprint.js";
 
 export type GeneratedGamePackage = {
     projectRoot: string;
-    manifest: GameBlueprintManifest;
+    manifest: GameBlueprintInfo;
     createdFiles: string[];
 };

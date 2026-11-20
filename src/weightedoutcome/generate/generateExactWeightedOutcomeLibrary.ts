@@ -235,7 +235,7 @@ type PreparedGeneration = {
 
 function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedGeneration {
     const {game} = options;
-    const manifest = game.getManifest();
+    const manifest = game.getInfo();
     const request = prepareOutcomeLibraryGeneration(adaptLegacyOutcomeLibraryGenerationRequest(options));
     // prepareOutcomeLibraryGeneration has already failed closed for this case; retain the local narrowing
     // because the executable session is consumed below as part of this function's runtime boundary.
@@ -420,7 +420,7 @@ async function *streamExactWeightedOutcomesInternal(
     useExternalStaging: boolean,
 ): AsyncGenerator<WeightedOutcomeInput, OutcomeLibraryGeneratorDiagnostics> {
     const {game} = options;
-    const manifest = game.getManifest();
+    const manifest = game.getInfo();
     const prepared = prepare(options);
 
     const origin: RoundRecordOrigin = {

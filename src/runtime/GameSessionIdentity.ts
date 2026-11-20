@@ -8,7 +8,7 @@ export type GameSessionIdentity = {
 };
 
 export function resolveGameSessionIdentity(game: PokieGame): GameSessionIdentity {
-    const manifest = game.getManifest();
+    const manifest = game.getInfo();
     const compatibility = game.getSessionCompatibility?.();
     if (game.getSessionCompatibility !== undefined && (typeof game.getSessionCompatibility !== "function" || compatibility === undefined || compatibility === null ||
         typeof compatibility.version !== "string" || !compatibility.version.trim() || typeof compatibility.stateSchemaVersion !== "string" || !compatibility.stateSchemaVersion.trim())) {

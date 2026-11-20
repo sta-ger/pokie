@@ -1,4 +1,4 @@
-import type {OutcomeLibraryFolderManifest} from "../weightedoutcome/folder/OutcomeLibraryFolderManifest.js";
+import type {OutcomeLibraryFolderIndex} from "../weightedoutcome/folder/OutcomeLibraryFolderIndex.js";
 import type {MathDefinitionSnapshot} from "../diff/MathDefinitionDiff.js";
 import type {SimulationReport} from "../reporting/SimulationReport.js";
 import type {AuditRoundRecording} from "../replay/AuditRoundRecording.js";
@@ -42,7 +42,7 @@ export type CertificationPack = {
         readonly modelHash: string | null;
         readonly modelArtifactHash: string | null;
         readonly sourceLibraryManifestHash: string;
-        readonly sourceLibraryManifest: OutcomeLibraryFolderManifest;
+        readonly sourceLibraryManifest: OutcomeLibraryFolderIndex;
         readonly sourceRevision: string | null;
         readonly candidateRevision: string | null;
     };

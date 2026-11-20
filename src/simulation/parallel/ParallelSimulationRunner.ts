@@ -3,7 +3,7 @@ import {createOptimizationSimulationGame} from "../../optimization/internal/crea
 import {setSimulationModelIdentity} from "../SessionFeatureAnalyticsObserver.js";
 import {loadPokieGame} from "../../gamepackage/loadPokieGame.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
-import type {PokieGameManifest} from "../../gamepackage/PokieGameManifest.js";
+import type {PokieGameInfo} from "../../gamepackage/PokieGameInfo.js";
 import type {JackpotStatisticsSnapshot} from "../../session/JackpotStatisticsSnapshot.js";
 import {FixedBetModeForNextSimulationRoundSetting} from "../FixedBetModeForNextSimulationRoundSetting.js";
 import type {SimulationBreakdownComponent} from "../SimulationBreakdownComponent.js";
@@ -81,7 +81,7 @@ export type ParallelSimulationRunOptions = {
 };
 
 export type ParallelSimulationResult = {
-    manifest: PokieGameManifest;
+    manifest: PokieGameInfo;
     configHash?: string;
     statistics: SimulationStatistics;
     breakdown?: Record<string, SimulationBreakdownComponent>;
@@ -190,7 +190,7 @@ export class ParallelSimulationRunner {
 
             observedPrefix = accumulator.getStatistics();
             return {
-                manifest: game.getManifest(),
+                manifest: game.getInfo(),
                 configHash: game.getConfigHash?.(),
                 statistics: observedPrefix,
                 breakdown,

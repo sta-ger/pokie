@@ -6,5 +6,5 @@ export function isPokieGame(value: unknown): value is PokieGame {
     }
 
     const candidate = value as Partial<PokieGame>;
-    return typeof candidate.getManifest === "function" && typeof candidate.createSession === "function";
+    return typeof candidate.getInfo === "function" && typeof candidate.createSession === "function";
 }

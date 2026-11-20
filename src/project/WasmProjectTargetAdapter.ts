@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import {assessWasmComponentCompatibility} from "./wasm/assessWasmComponentCompatibility.js";
 import {satisfiesMinimumSemverLite} from "./wasm/internal/compareSemverLite.js";
-import type {PokieWasmComponentManifest} from "./wasm/PokieWasmComponentManifest.js";
+import type {PokieWasmComponentInfo} from "./wasm/PokieWasmComponentInfo.js";
 import {ProjectTargetMalformedError} from "./ProjectTargetMalformedError.js";
 import type {ProjectTargetTypeAdapter} from "./ProjectTargetTypeAdapter.js";
 import {ProjectTargetUnsupportedError} from "./ProjectTargetUnsupportedError.js";
@@ -11,14 +11,14 @@ import {describeUnsupportedCanonicalWasmRuntimeContract, readIntegrityBoundCanon
 import {POKIE_WASM_RUNTIME_VERSION} from "../wasm/PokieWasmRuntimeApi.js";
 
 // The sidecar file a ".wasm" file must be paired with for this adapter to ever recognize it -- e.g.
-// "game.wasm" needs a "game.wasm.pokie-wasm.json" next to it declaring a PokieWasmComponentManifest. Exported
+// "game.wasm" needs a "game.wasm.pokie-wasm.json" next to it declaring a PokieWasmComponentInfo. Exported
 // so readWasmComponentManifest can re-read the exact same file a resolved "wasm" project was recognized from,
 // without duplicating this naming rule a second time.
-export function wasmComponentManifestSidecarPath(wasmFilePath: string): string {
+export function wasmComponentInfoCompanionPath(wasmFilePath: string): string {
     return `${wasmFilePath}.pokie-wasm.json`;
 }
 
-// Recognizes a ".wasm" file carrying a sidecar PokieWasmComponentManifest (see
+// Recognizes a ".wasm" file carrying a sidecar PokieWasmComponentInfo (see
 // docs/wasm-compatibility-boundary.md). Canonical components are integrity-checked against their module bytes;
 // that grants canonical identity, after which ProjectCapabilities derives only their declared operations.
 // Legacy sidecar-only components remain metadata-only.
@@ -26,7 +26,7 @@ export function wasmComponentManifestSidecarPath(wasmFilePath: string): string {
 //   - no sidecar file at all -> undefined (not recognized; ProjectTargetResolver's own WASM_FILE_EXTENSION
 //     fallback reports the missing POKIE component contract diagnostic, so an ordinary ".wasm" file is
 //     never treated as a runnable POKIE artifact).
-//   - sidecar present but its JSON is unreadable, or PokieWasmComponentManifestValidator rejects its shape ->
+//   - sidecar present but its JSON is unreadable, or PokieWasmComponentInfoValidator rejects its shape ->
 //     throws ProjectTargetMalformedError (the manifest signaled intent to be this type and failed a deeper
 //     read, the same convention TsPackageProjectTargetAdapter/OutcomeLibraryProjectTargetAdapter use).
 //   - sidecar present, well-shaped, but assessWasmComponentCompatibility rejects its schemaVersion -> throws
@@ -49,7 +49,7 @@ export class WasmProjectTargetAdapter implements ProjectTargetTypeAdapter {
             return undefined;
         }
 
-        const sidecarPath = wasmComponentManifestSidecarPath(resolvedPath);
+        const sidecarPath = wasmComponentInfoCompanionPath(resolvedPath);
         let raw: string;
         try {
             raw = await fs.promises.readFile(sidecarPath, "utf-8");
@@ -76,7 +76,7 @@ export class WasmProjectTargetAdapter implements ProjectTargetTypeAdapter {
             const isShapeIssue = diagnostic.issues.some((issue) => issue.code.startsWith("wasm-component-manifest-"));
             if (isShapeIssue) {
                 throw new ProjectTargetMalformedError(
-                    describeWasmSidecarFailure(resolvedPath, sidecarPath, "malformed", `it does not satisfy PokieWasmComponentManifest's own shape: ${summary}`),
+                    describeWasmSidecarFailure(resolvedPath, sidecarPath, "malformed", `it does not satisfy PokieWasmComponentInfo's own shape: ${summary}`),
                     {targetType: "wasm", stage: "WASM component sidecar", recovery: "Repair the compatible POKIE WASM component sidecar, then inspect it again."},
                 );
             }
@@ -86,7 +86,7 @@ export class WasmProjectTargetAdapter implements ProjectTargetTypeAdapter {
             );
         }
 
-        const typedManifest = manifest as PokieWasmComponentManifest;
+        const typedManifest = manifest as PokieWasmComponentInfo;
         if (typedManifest.minPokieVersion !== undefined && !satisfiesMinimumSemverLite(this.pokieVersion, typedManifest.minPokieVersion)) {
             throw new ProjectTargetUnsupportedError(
                 `POKIE ${this.pokieVersion} cannot run "${resolvedPath}": it requires POKIE ${typedManifest.minPokieVersion} or newer. Update POKIE or rebuild the artifact for this runtime.`,
@@ -120,6 +120,6 @@ export class WasmProjectTargetAdapter implements ProjectTargetTypeAdapter {
         }
 
         const {component} = typedManifest;
-        return `compatible PokieWasmComponentManifest ("${path.basename(sidecarPath)}", component "${component.id}" v${component.version})`;
+        return `compatible PokieWasmComponentInfo ("${path.basename(sidecarPath)}", component "${component.id}" v${component.version})`;
     }
 }

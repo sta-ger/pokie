@@ -1,4 +1,4 @@
-import type {FormatConversionPlan, StakeEngineManifest, ValidationIssue} from "@fromstan/pokie";
+import type {FormatConversionPlan, StakeEngineInfo, ValidationIssue} from "@fromstan/pokie";
 
 // POST /api/project/stakeengine/export's own DTO — mirrors the planner's no-overwrite destination
 // contract exactly. A conflict is terminal for this prepared plan; callers must choose a new output
@@ -8,7 +8,7 @@ export type StudioStakeEngineExportView =
           readonly status: "ok";
           readonly outDir: string;
           readonly files: readonly string[];
-          readonly manifest: StakeEngineManifest;
+          readonly manifest: StakeEngineInfo;
           readonly warnings: readonly ValidationIssue[];
           readonly plan: FormatConversionPlan;
       }

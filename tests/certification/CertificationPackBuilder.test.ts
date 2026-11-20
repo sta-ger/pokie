@@ -6,7 +6,7 @@ import path from "path";
 import {
     CertificationPackBuildCancelledError,
     CertificationPackBuilder,
-    CertificationPackManifest,
+    CertificationPackIndex,
     CertificationPackModeSampleInput,
     CertificationPackValidating,
     CertificationPackSampleRecord,
@@ -68,7 +68,7 @@ describe("CertificationPackBuilder", () => {
 
         expect(result.issues.filter((issue) => issue.severity === "error")).toEqual([]);
         expect(result.manifest).toBeDefined();
-        const manifest = result.manifest as CertificationPackManifest;
+        const manifest = result.manifest as CertificationPackIndex;
 
         expect(manifest.game).toEqual(writeResult.manifest!.game);
         expect(manifest.artifactPokieVersion).toBe(writeResult.manifest!.artifactPokieVersion);

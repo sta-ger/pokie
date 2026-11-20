@@ -148,16 +148,16 @@ describe("Package delivery identity", () => {
                 assert.throws(() => require('pokie'), {code:'MODULE_NOT_FOUND'});
                 for (const file of ['./private-slot/dist/index.js', './generated/dist/index.js']) {
                     const exports = require(file); const game = exports.default ?? exports;
-                    assert.equal(game.getManifest().id, 'private-slot'); assert.ok(game.createSession({seed:'native'}));
+                    assert.equal(game.getInfo().id, 'private-slot'); assert.ok(game.createSession({seed:'native'}));
                 }
                 const loaded = await loadPokieGameRuntime('./generated');
-                try { assert.equal(loaded.game.getManifest().id, 'private-slot'); assert.ok(loaded.game.createSession({seed:'generated-native'})); }
+                try { assert.equal(loaded.game.getInfo().id, 'private-slot'); assert.ok(loaded.game.createSession({seed:'generated-native'})); }
                 finally { await loaded.release(); }
                 const fs = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
                 const isolated = fs.mkdtempSync(path.join(os.tmpdir(), 'external-consumer-'));
                 try {
                     fs.writeFileSync(path.join(isolated, 'package.json'), JSON.stringify({private:true, pokie:{entry:'./game.cjs'}}));
-                    fs.writeFileSync(path.join(isolated, 'game.cjs'), "const runtime = require('@fromstan/pokie'); module.exports = {getManifest(){return {id:'external',name:'External',version:'1'};}, createSession(){return new runtime.SeededRandomNumberGenerator('external');}};");
+                    fs.writeFileSync(path.join(isolated, 'game.cjs'), "const runtime = require('@fromstan/pokie'); module.exports = {getInfo(){return {id:'external',name:'External',version:'1'};}, createSession(){return new runtime.SeededRandomNumberGenerator('external');}};");
                     process.chdir(os.tmpdir());
                     for (const [load, release] of [[loadPokieGame, releasePokieGame], [require('${identity}').loadPokieGame, require('${identity}').releasePokieGame]]) {
                         const game = await load(isolated); assert.equal(game.createSession().getRandomInt(0,100), new ESM('external').getRandomInt(0,100));

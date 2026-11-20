@@ -26,7 +26,7 @@ import type {StakeEngineExportResult} from "./StakeEngineExportResult.js";
 import type {StakeEngineExportValidating} from "./StakeEngineExportValidating.js";
 import {StakeEngineExportValidator} from "./StakeEngineExportValidator.js";
 import type {StakeEngineIndex} from "./StakeEngineIndex.js";
-import {STAKE_ENGINE_MANIFEST_SCHEMA_VERSION, type StakeEngineManifest, type StakeEngineManifestModeEntry} from "./StakeEngineManifest.js";
+import {STAKE_ENGINE_INFO_SCHEMA_VERSION, type StakeEngineInfo, type StakeEngineInfoModeEntry} from "./StakeEngineInfo.js";
 import {StakeEngineRoundEventsProjector} from "./StakeEngineRoundEventsProjector.js";
 import type {StakeEngineRoundEventsProjecting} from "./StakeEngineRoundEventsProjecting.js";
 
@@ -37,7 +37,7 @@ type BuiltMode = {
     readonly booksFileName: string;
     readonly csvContent: string;
     readonly booksBuffer: Buffer;
-    readonly manifestEntry: StakeEngineManifestModeEntry;
+    readonly manifestEntry: StakeEngineInfoModeEntry;
 };
 
 type ModeBuildResult = {
@@ -152,8 +152,8 @@ export class StakeEngineExporter<T extends string | number = string> implements 
             ];
 
             const firstOutcome = modes[0].library.outcomes[0];
-            const manifest: StakeEngineManifest = {
-                schemaVersion: STAKE_ENGINE_MANIFEST_SCHEMA_VERSION,
+            const manifest: StakeEngineInfo = {
+                schemaVersion: STAKE_ENGINE_INFO_SCHEMA_VERSION,
                 generatedBy: GENERATED_BY,
                 pokieVersion: this.pokieVersion,
                 generatedAt: this.now().toISOString(),
@@ -189,7 +189,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
         outDir: string,
         builtModes: readonly BuiltMode[],
         index: StakeEngineIndex,
-        manifest: StakeEngineManifest,
+        manifest: StakeEngineInfo,
         options: StakeEngineExportOptions | undefined,
         destinationOwnership: PublishDirectoryAtomicallyOwnership,
     ): {readonly publication: PublishedDirectoryOwnership; readonly cleanupWarning?: ValidationIssue} {
@@ -327,7 +327,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
         }
 
         const firstOutcome = mode.library.outcomes[0];
-        const manifestEntry: StakeEngineManifestModeEntry = {
+        const manifestEntry: StakeEngineInfoModeEntry = {
             name: mode.modeName,
             betMode: firstOutcome.artifact.betMode,
             stake: firstOutcome.artifact.stake,

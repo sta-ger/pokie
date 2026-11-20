@@ -1,5 +1,5 @@
 import fs from "fs";
-import {readRecognizedStakeEngineManifest} from "./readRecognizedStakeEngineManifest.js";
+import {readRecognizedStakeEngineManifest} from "./readRecognizedStakeEngineInfo.js";
 
 // StakeEngineExporter now replaces its whole output directory atomically (build into a fresh temp sibling
 // directory, then swap it into place — see StakeEngineExporter.swapDirectoryIntoPlace) so that a re-export never

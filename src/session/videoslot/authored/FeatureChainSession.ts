@@ -15,16 +15,16 @@ import {CascadingSpinResolver} from "../cascade/CascadingSpinResolver.js";
 import {ValueWinComponent} from "../winevaluation/ValueWinComponent.js";
 import {WinningValue} from "../WinningValue.js";
 import {WinEvaluationResult} from "../winevaluation/WinEvaluationResult.js";
-import {resolveCollectionTransition, resolveRespinTransition, type BoundedMechanics, type BoundedMechanicObservation, type BoundedMechanicsProviding} from "./BoundedMechanics.js";
+import {resolveCollectionTransition, resolveRespinTransition, type FeatureChains, type FeatureChainObservation, type FeatureChainsProviding} from "./FeatureChains.js";
 
-export type BoundedSessionState = {base: unknown; value: number; remaining: number; executed: number; entryBet: number; bonus?: WeightedBonusState};
+export type FeatureChainSessionState = {base: unknown; value: number; remaining: number; executed: number; entryBet: number; bonus?: WeightedBonusState};
 
 /** One accepted play updates the collection exactly once, on the final screen after cascading.
  * Respins pay each accepted subround; cascade stages are delivery-only after this transaction.
  */
-export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator implements SessionStateRestoring, BoundedMechanicsProviding, WeightedBonusProviding {
+export class FeatureChainSession extends AbstractVideoSlotSessionDecorator implements SessionStateRestoring, FeatureChainsProviding, WeightedBonusProviding {
     private bonus?: WeightedBonusState;
-    private readonly rules: BoundedMechanics;
+    private readonly rules: FeatureChains;
     private readonly config: VideoSlotConfigRepresenting;
     private readonly generator: SymbolsCombinationsGenerator;
     private readonly calculator: VideoSlotWinCalculator;
@@ -32,12 +32,12 @@ export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator i
     private remaining = 0;
     private executed = 0;
     private entryBet = 0;
-    private observation?: BoundedMechanicObservation;
+    private observation?: FeatureChainObservation;
     private cascade?: CascadeResult;
     private evaluation = new WinEvaluationResult();
     private screen?: string[][];
 
-    constructor(config: VideoSlotConfigRepresenting, generator: SymbolsCombinationsGenerator, rules: BoundedMechanics, calculator = new VideoSlotWinCalculator(config)) {
+    constructor(config: VideoSlotConfigRepresenting, generator: SymbolsCombinationsGenerator, rules: FeatureChains, calculator = new VideoSlotWinCalculator(config)) {
         const issues = validateAuthoredMechanics({mechanics: rules, symbols: config.getAvailableSymbols(), reels: config.getReelsNumber(), rows: config.getReelsSymbolsNumber(), screenGeometry: config.getScreenGeometry?.()});
         if (issues.length) throw new Error(issues.map(issue => issue.message).join("; "));
         const frozen = cloneSessionData(rules);
@@ -72,7 +72,7 @@ export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator i
         return {tableId: table.id, model: weightedBonusModel(table), selections, completed: this.bonus.completed, incomplete: selections - this.bonus.completed, outcomes: table.outcomes.map((outcome, index) => ({id: outcome.id, weight: outcome.weight, probability: outcome.weight / total, count: this.bonus!.counts[index], frequency: selections ? this.bonus!.counts[index] / selections : 0, uncovered: outcome.weight > 0 && this.bonus!.counts[index] === 0}))};
     }
 
-    public getBoundedMechanicObservation(): BoundedMechanicObservation | undefined {
+    public getFeatureChainObservation(): FeatureChainObservation | undefined {
         if (!this.stepResultValid) return undefined;
         const {collection, respins, cascade} = this.rules;
         return cloneSessionData(this.observation ?? {
@@ -85,7 +85,7 @@ export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator i
         return this.stepResultValid ? this.evaluation : new WinEvaluationResult();
     }
     public getPayoutAmount(): number | undefined {
-        if (this.constructor !== BoundedVideoSlotSession) return undefined;
+        if (this.constructor !== FeatureChainSession) return undefined;
         return this.getWinAmount();
     }
 
@@ -240,16 +240,16 @@ export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator i
         return {kind: "bounded-mechanics", rules: cloneSessionData(this.rules), bets: this.getAvailableBets(), base: this.rules.weightedBonus && base.kind === "seeded-video-slot" ? {...base, reels: this.getReelsNumber(), rows: this.getReelsSymbolsNumber(), symbols: this.getAvailableSymbols()} : base};
     }
     public isSessionStateRestorable(): boolean {
-        return this.constructor === BoundedVideoSlotSession && isSessionStateRestorable(this.baseSession);
+        return this.constructor === FeatureChainSession && isSessionStateRestorable(this.baseSession);
     }
-    public toSessionState(): BoundedSessionState {
+    public toSessionState(): FeatureChainSessionState {
         return {base: (this.baseSession as VideoSlotSession).toSessionState(), value: this.value, remaining: this.remaining, executed: this.executed, entryBet: this.entryBet, ...(this.bonus ? {bonus: cloneSessionData(this.bonus)} : {})};
     }
     public validateSessionState(value: unknown): void {
         validateExecutableState(value, this.getSessionStateSchema(), undefined, !isSessionStateRestorable(this.baseSession));
-        (this.baseSession as VideoSlotSession).validateSessionState((value as BoundedSessionState).base);
+        (this.baseSession as VideoSlotSession).validateSessionState((value as FeatureChainSessionState).base);
     }
-    public fromSessionState(value: BoundedSessionState): this {
+    public fromSessionState(value: FeatureChainSessionState): this {
         this.validateSessionState(value);
         (this.baseSession as VideoSlotSession).fromSessionState(value.base as ReturnType<VideoSlotSession["toSessionState"]>);
         this.value = value.value;

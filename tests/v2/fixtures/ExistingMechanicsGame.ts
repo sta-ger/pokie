@@ -77,7 +77,7 @@ export async function assertWorkflowRejections(blueprint: api.GameBlueprint, dir
     session.setCreditsAmount(0);
     const statistics = new api.AggregateSimulationRunner(session, 3).run().getStatistics();
     expect(statistics).toMatchObject({rounds: 0, totalBet: 0, totalPayout: 0});
-    const report = new api.SimulationReportBuilder().build({manifest: game.getManifest(), requestedRounds: 3, statistics, durationMs: 1});
+    const report = new api.SimulationReportBuilder().build({manifest: game.getInfo(), requestedRounds: 3, statistics, durationMs: 1});
     expect(report).toMatchObject({requestedRounds: 3, rounds: 0, totalBet: 0, totalWin: 0});
     expect(session.toSessionState()).toEqual(before);
 

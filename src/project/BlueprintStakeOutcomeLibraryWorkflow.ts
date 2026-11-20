@@ -183,7 +183,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
             // strategy, publication identity and destination safety.  The managed
             // planner only translates this resolved request to its generic view.
             const preparedRequest = prepareOutcomeLibraryGeneration({
-                libraryId: game.getManifest().id,
+                libraryId: game.getInfo().id,
                 game,
                 pokieVersion: this.pokieVersion,
                 configHash,
@@ -292,8 +292,8 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                 configHash,
                 generation,
                 compatibility: {
-                    gameId: game.getManifest().id,
-                    gameVersion: game.getManifest().version,
+                    gameId: game.getInfo().id,
+                    gameVersion: game.getInfo().version,
                     configHash,
                     pokieVersion: this.pokieVersion,
                     generation: generation.sampled === undefined
@@ -314,7 +314,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         const prepared = await this.prepare(source, options);
         try {
             const request = prepareOutcomeLibraryGeneration({
-                libraryId: prepared.game.getManifest().id,
+                libraryId: prepared.game.getInfo().id,
                 game: prepared.game,
                 pokieVersion: this.pokieVersion,
                 configHash: prepared.configHash,
@@ -356,7 +356,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         const modes = declaredModes && declaredModes.length > 0 ? declaredModes : [{id: "base"}];
         const generated = modes.map((mode) => {
             const stream = generateStreamingWeightedOutcomeLibrary({
-                libraryId: `${game.getManifest().id}-${mode.id}`,
+                libraryId: `${game.getInfo().id}-${mode.id}`,
                 game,
                 pokieVersion: this.pokieVersion,
                 configHash,
@@ -393,7 +393,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         const result = await this.writer.writeToDirectory(
             generated.map(({mode, stream}) => ({
                 modeName: mode.id,
-                libraryId: `${game.getManifest().id}-${mode.id}`,
+                libraryId: `${game.getInfo().id}-${mode.id}`,
                 outcomes: stream.outcomes,
                 getGenerator: stream.getDiagnostics,
             })),

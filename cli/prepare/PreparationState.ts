@@ -1,4 +1,4 @@
-import type {PokieGameManifest} from "@fromstan/pokie";
+import type {PokieGameInfo} from "@fromstan/pokie";
 import type {GamePackagePreparationPhase} from "./GamePackagePreparationError.js";
 
 // Persisted at `<projectRoot>/.pokie-prepare-state.json` by GamePackagePreparer after every phase it
@@ -7,7 +7,7 @@ import type {GamePackagePreparationPhase} from "./GamePackagePreparationError.js
 // tool's own making* -- safe to pick up from the last completed phase -- rather than an unrelated,
 // pre-existing directory that must never be silently written into.
 export type PreparationState = {
-    manifest: PokieGameManifest;
+    manifest: PokieGameInfo;
     createdFiles: string[];
     phasesCompleted: GamePackagePreparationPhase[];
 };

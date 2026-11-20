@@ -1,7 +1,7 @@
 import {generatedMechanicsGame, replayModesBlueprint} from "../v2/fixtures/ExistingMechanicsGame.js";
 import {transactionalRoundGame} from "../v2/fixtures/TransactionalRoundGame.js";
 import {createOverscanGame} from "../v2/fixtures/OverscanGame.js";
-import {GameSessionHandling, loadPokieGame, PokieGame, PokieGameContext, PokieGameManifest, ReplayRecorder, ReplayDescriptor, SessionRuntime, AuditRoundReplay, AuditReplayError, ConvertableToSessionState, captureAuditBoundary, SessionCommand, validateAuditReplayDescriptor} from "@fromstan/pokie";
+import {GameSessionHandling, loadPokieGame, PokieGame, PokieGameContext, PokieGameInfo, ReplayRecorder, ReplayDescriptor, SessionRuntime, AuditRoundReplay, AuditReplayError, ConvertableToSessionState, captureAuditBoundary, SessionCommand, validateAuditReplayDescriptor} from "@fromstan/pokie";
 import path from "path";
 import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
 
@@ -37,9 +37,9 @@ function createFakeSession(): GameSessionHandling & {getSymbolsCombination(): {t
     };
 }
 
-function createFakeGame(manifest: PokieGameManifest): PokieGame & {createdWith?: PokieGameContext} {
+function createFakeGame(manifest: PokieGameInfo): PokieGame & {createdWith?: PokieGameContext} {
     return {
-        getManifest: () => manifest,
+        getInfo: () => manifest,
         createSession(context) {
             this.createdWith = context;
             return createFakeSession();
@@ -48,7 +48,7 @@ function createFakeGame(manifest: PokieGameManifest): PokieGame & {createdWith?:
 }
 
 describe("ReplayRecorder", () => {
-    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+    const manifest: PokieGameInfo = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     it("throws for a non-positive round", () => {
         const recorder = new ReplayRecorder();
@@ -112,7 +112,7 @@ describe("ReplayRecorder", () => {
 
     it("returns a null screen when the session does not expose getSymbolsCombination()", () => {
         const game: PokieGame = {
-            getManifest: () => manifest,
+            getInfo: () => manifest,
             createSession: () => {
                 let credits = 1000;
                 const bet = 1;
@@ -151,7 +151,7 @@ describe("ReplayRecorder", () => {
 
     it("fails explicitly instead of fabricating an unreachable target round", () => {
         const stoppingGame: PokieGame = {
-            getManifest: () => manifest,
+            getInfo: () => manifest,
             createSession: () => {
                 let played = false;
                 return {

@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
-import {OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION} from "../../weightedoutcome/folder/OutcomeLibraryFolderManifest.js";
-import type {ProjectTargetManifestRecognition} from "./ProjectTargetManifestRecognition.js";
+import {OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION} from "../../weightedoutcome/folder/OutcomeLibraryFolderIndex.js";
+import type {ProjectTargetInfoRecognition} from "./ProjectTargetInfoRecognition.js";
 
 // A recognition check for ProjectTargetResolver's outcomeLibrary adapter — deliberately not a structural
 // validation pass (OutcomeLibraryFolderValidator already owns that, against an already-recognized bundle
@@ -13,8 +13,8 @@ import type {ProjectTargetManifestRecognition} from "./ProjectTargetManifestReco
 // signal on its own. But a manifest.json that fails to parse as JSON, or that does declare a "schemaVersion"
 // yet doesn't match this bundle's required shape (wrong schemaVersion, non-array "modes", non-object "game"),
 // has already signalled intent to be an outcome-library bundle manifest and gotten the shape wrong — that's
-// "malformed", not "unrelated" (see ProjectTargetManifestRecognition's own doc comment).
-export function recognizeOutcomeLibraryFolderDirectory(libraryDir: string): ProjectTargetManifestRecognition {
+// "malformed", not "unrelated" (see ProjectTargetInfoRecognition's own doc comment).
+export function recognizeOutcomeLibraryFolderDirectory(libraryDir: string): ProjectTargetInfoRecognition {
     if (!fs.existsSync(libraryDir) || !fs.statSync(libraryDir).isDirectory()) {
         return {kind: "unrelated"};
     }

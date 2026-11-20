@@ -6,7 +6,7 @@ import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 import {WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION} from "../WeightedOutcomeLibrary.js";
 import {computeOnlineWeightedOutcomeLibraryAnalysis} from "./internal/computeOnlineWeightedOutcomeLibraryAnalysis.js";
 import {streamModeOutcomesToTempFile} from "./internal/streamModeOutcomesToTempFile.js";
-import {OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION, type OutcomeLibraryFolderManifest, type OutcomeLibraryFolderManifestModeEntry} from "./OutcomeLibraryFolderManifest.js";
+import {OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION, type OutcomeLibraryFolderIndex, type OutcomeLibraryFolderIndexModeEntry} from "./OutcomeLibraryFolderIndex.js";
 import {OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION, type OutcomeLibraryFolderModeIndex} from "./OutcomeLibraryFolderModeIndex.js";
 import type {OutcomeLibraryFolderModeInput} from "./OutcomeLibraryFolderModeInput.js";
 import type {OutcomeLibraryFolderWriteResult} from "./OutcomeLibraryFolderWriteResult.js";
@@ -111,9 +111,9 @@ export class OutcomeLibraryFolderWriter<T extends string | number = string> impl
         fs.mkdirSync(stagingDir, {recursive: true});
         try {
             const issues: ValidationIssue[] = [...upfrontIssues];
-            const manifestEntries: OutcomeLibraryFolderManifestModeEntry[] = [];
+            const manifestEntries: OutcomeLibraryFolderIndexModeEntry[] = [];
             let firstMode: {readonly provenanceKey: ModeProvenanceKey; readonly firstOutcome: unknown} | undefined;
-            let gameManifest: OutcomeLibraryFolderManifest["game"] | undefined;
+            let gameManifest: OutcomeLibraryFolderIndex["game"] | undefined;
             let configHash: string | undefined;
             let artifactPokieVersion: string | undefined;
             let completed = BigInt(0);
@@ -166,7 +166,7 @@ export class OutcomeLibraryFolderWriter<T extends string | number = string> impl
                 const current = provenanceKeyOf(result.built.firstOutcome as never);
                 if (firstMode === undefined) {
                     firstMode = {provenanceKey: current, firstOutcome: result.built.firstOutcome};
-                    gameManifest = (result.built.firstOutcome as {artifact: {origin: {game: OutcomeLibraryFolderManifest["game"]}}}).artifact.origin.game;
+                    gameManifest = (result.built.firstOutcome as {artifact: {origin: {game: OutcomeLibraryFolderIndex["game"]}}}).artifact.origin.game;
                     configHash = (result.built.firstOutcome as {artifact: {origin: {configHash?: string}}}).artifact.origin.configHash;
                     artifactPokieVersion = current.pokieVersion;
                 } else if (
@@ -222,7 +222,7 @@ export class OutcomeLibraryFolderWriter<T extends string | number = string> impl
                 const indexFile = `index_${mode.modeName}.json`;
                 const firstOutcome = built.firstOutcome as {artifact: {betMode: string; stake: number}};
                 const generator = mode.generator ?? mode.getGenerator?.();
-                const manifestEntry: OutcomeLibraryFolderManifestModeEntry = {
+                const manifestEntry: OutcomeLibraryFolderIndexModeEntry = {
                     modeName: mode.modeName,
                     betMode: firstOutcome.artifact.betMode,
                     stake: firstOutcome.artifact.stake,
@@ -274,7 +274,7 @@ export class OutcomeLibraryFolderWriter<T extends string | number = string> impl
 
             const orderedManifestEntries = orderManifestEntries(manifestEntries, options?.manifestModeOrder);
             const relativeFiles = [...orderedManifestEntries.flatMap((entry) => [entry.indexFile, entry.outcomesFile]), "manifest.json"];
-            const manifest: OutcomeLibraryFolderManifest = {
+            const manifest: OutcomeLibraryFolderIndex = {
                 schemaVersion: OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION,
                 generatedBy: options?.generatedBy ?? "pokie outcomelibrary build",
                 pokieVersion: this.pokieVersion,
@@ -429,9 +429,9 @@ function assertNotCancelled(options: OutcomeLibraryFolderWriteOptions | undefine
 }
 
 function orderManifestEntries(
-    entries: readonly OutcomeLibraryFolderManifestModeEntry[],
+    entries: readonly OutcomeLibraryFolderIndexModeEntry[],
     requestedOrder: readonly string[] | undefined,
-): readonly OutcomeLibraryFolderManifestModeEntry[] {
+): readonly OutcomeLibraryFolderIndexModeEntry[] {
     if (requestedOrder === undefined) return entries;
     const rank = new Map(requestedOrder.map((modeName, index) => [modeName, index]));
     return [...entries].sort((left, right) => (rank.get(left.modeName) ?? Number.MAX_SAFE_INTEGER) - (rank.get(right.modeName) ?? Number.MAX_SAFE_INTEGER));

@@ -13,7 +13,7 @@ import {resolveSafeCertificationPackFilePath} from "./internal/resolveSafeCertif
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import {computeCertificationPackContentHash} from "./computeCertificationPackContentHash.js";
 import {computeCertificationSampleRecordHash} from "./computeCertificationSampleRecordHash.js";
-import {CERTIFICATION_PACK_MANIFEST_SCHEMA_VERSION, type CertificationPackModeEntry} from "./CertificationPackManifest.js";
+import {CERTIFICATION_PACK_INDEX_SCHEMA_VERSION, type CertificationPackModeEntry} from "./CertificationPackIndex.js";
 import type {CertificationPackValidating} from "./CertificationPackValidating.js";
 import {isModeEntryShape, isManifestShape, isNonEmptyString, isSampleRecordShape, MODE_NAME_PATTERN} from "./internal/certificationPackBundleShapeGuards.js";
 import {sha256OfBytes} from "./internal/sha256OfBytes.js";
@@ -90,17 +90,17 @@ export class CertificationPackValidator implements CertificationPackValidating {
                 {
                     code: "certification-pack-bundle-manifest-malformed",
                     severity: "error",
-                    message: `"${manifestPath}" does not match the expected CertificationPackManifest shape.`,
+                    message: `"${manifestPath}" does not match the expected CertificationPackIndex shape.`,
                 },
             ];
         }
 
-        if (parsed.schemaVersion !== CERTIFICATION_PACK_MANIFEST_SCHEMA_VERSION) {
+        if (parsed.schemaVersion !== CERTIFICATION_PACK_INDEX_SCHEMA_VERSION) {
             return [
                 {
                     code: "certification-pack-bundle-manifest-schema-version-unsupported",
                     severity: "error",
-                    message: `"${manifestPath}" has schemaVersion ${String(parsed.schemaVersion)}, expected ${CERTIFICATION_PACK_MANIFEST_SCHEMA_VERSION}.`,
+                    message: `"${manifestPath}" has schemaVersion ${String(parsed.schemaVersion)}, expected ${CERTIFICATION_PACK_INDEX_SCHEMA_VERSION}.`,
                 },
             ];
         }
@@ -358,7 +358,7 @@ export class CertificationPackValidator implements CertificationPackValidating {
         }
     }
 
-    private validateFilesInventory(certDir: string, manifest: import("./CertificationPackManifest.js").CertificationPackManifest, issues: ValidationIssue[]): void {
+    private validateFilesInventory(certDir: string, manifest: import("./CertificationPackIndex.js").CertificationPackIndex, issues: ValidationIssue[]): void {
         const expected = new Set<string>(["manifest.json", ...manifest.modes.map((modeEntry) => modeEntry.samplesFile), ...(Array.isArray(manifest.presentation.formats) ? manifest.presentation.formats.map(certificationPackFileName) : [])]);
         const seen = new Set<string>();
 

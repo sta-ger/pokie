@@ -7,7 +7,7 @@ import path from "path";
 import type {StakeEngineExactSource} from "../StakeEngineExactSource.js";
 import {StakeEngineExportCancelledError, type StakeEngineExportOptions} from "../StakeEngineExporting.js";
 import type {StakeEngineExportResult} from "../StakeEngineExportResult.js";
-import type {StakeEngineManifest} from "../StakeEngineManifest.js";
+import type {StakeEngineInfo} from "../StakeEngineInfo.js";
 import {StakeEngineStandaloneValidator} from "../standalone/StakeEngineStandaloneValidator.js";
 import type {StakeEngineStandaloneFileResult, StakeEngineStandaloneBookLineResult, StakeEngineStandaloneBundle} from "../standalone/StakeEngineStandaloneBundle.js";
 import {decompressZstdSync} from "./zstd.js";
@@ -48,7 +48,7 @@ export function validateExactStakeSource(source: StakeEngineExactSource): void {
         const manifestFile = file("pokie-manifest.json", bytes => JSON.parse(bytes.toString("utf8")));
         issues.push(...new StakeEngineImportValidator().validate({...bundle, manifest: manifestFile}));
         if (!issues.some(issue => issue.severity === "error") && manifestFile.status === "ok") {
-            const manifest = manifestFile.value as StakeEngineManifest;
+            const manifest = manifestFile.value as StakeEngineInfo;
             const importer = new StakeEngineRoundEventsImporter();
             for (const mode of bundle.modeFiles) {
                 const metadata = manifest.modes.find(entry => entry.name === mode.modeName)!;
@@ -84,7 +84,7 @@ export function publishExactStakeSource(source: StakeEngineExactSource, outDir: 
     assertArtifactDestinationAvailable(outDir, "directory");
     const ownership = options?.destinationOwnership ?? capturePublishDirectoryOwnership(outDir);
     const files = Object.keys(source.files);
-    const manifest = source.files["pokie-manifest.json"] === undefined ? undefined : JSON.parse(Buffer.from(source.files["pokie-manifest.json"], "base64").toString("utf8")) as StakeEngineManifest;
+    const manifest = source.files["pokie-manifest.json"] === undefined ? undefined : JSON.parse(Buffer.from(source.files["pokie-manifest.json"], "base64").toString("utf8")) as StakeEngineInfo;
     const {publication} = publishDirectoryAtomically({
         outDir, ownership,
         beforeCommit: cancelled,

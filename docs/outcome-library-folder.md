@@ -44,17 +44,17 @@ ever has to hold a whole mode's outcomes in memory at once:
 
 ```
 <libraryDir>/
- manifest.json # OutcomeLibraryFolderManifest
+ manifest.json # OutcomeLibraryFolderIndex
  index_<modeName>.json # OutcomeLibraryFolderModeIndex, one per mode
  outcomes_<modeName>.jsonl # one canonical-JSON WeightedOutcome<T> per line, one per mode
 ```
 
 `manifest.json` carries the "who/what version/when" provenance stamp every generated-artifact manifest in this
 codebase uses (`schemaVersion`/`generatedBy`/`pokieVersion`/`generatedAt`, matching
-[`StakeEngineManifest`](stake-engine-export.md)'s own convention), plus one entry per mode:
+[`StakeEngineInfo`](stake-engine-export.md)'s own convention), plus one entry per mode:
 
 ```ts
-type OutcomeLibraryFolderManifestModeEntry = {
+type OutcomeLibraryFolderIndexModeEntry = {
  modeName: string;
  betMode: string;
  stake: number;
@@ -78,7 +78,7 @@ outcome source.
 The manifest also carries two distinct, deliberately-never-conflated pokie-version fields:
 
 ```ts
-type OutcomeLibraryFolderManifest = {
+type OutcomeLibraryFolderIndex = {
  //...
  pokieVersion: string; // which package release built *this folder index* (ran the Outcome Library build)
  artifactPokieVersion: string; // which package release *computed* the outcomes themselves
@@ -87,7 +87,7 @@ type OutcomeLibraryFolderManifest = {
 ```
 
 `pokieVersion` is the same "who generated this file" stamp every manifest in this codebase carries
-(`StakeEngineManifest`'s own convention). `artifactPokieVersion` is read straight off the first outcome's own
+(`StakeEngineInfo`'s own convention). `artifactPokieVersion` is read straight off the first outcome's own
 `artifact.provenance.pokieVersion` (guaranteed identical across every outcome, by the writer's own homogeneity
 checks) and cross-checked, in deep validation, against every outcome's own origin. The two are never required
 to match: a folder can legitimately be repacked by a newer or different package release than the one that
@@ -139,7 +139,7 @@ Each outcome's own JSONL line is written in the same canonically-sorted-by-id or
 
 ```ts
 interface OutcomeLibraryFolderReading<T extends string | number = string> {
- readManifest(libraryDir: string): Promise<OutcomeLibraryFolderManifest>;
+ readManifest(libraryDir: string): Promise<OutcomeLibraryFolderIndex>;
  readModeIndex(libraryDir: string, modeName: string): Promise<OutcomeLibraryFolderModeIndex>;
  iterateModeOutcomes(libraryDir: string, modeName: string): AsyncIterable<WeightedOutcome<T>>;
  readOutcomeById(libraryDir: string, modeName: string, id: string): Promise<WeightedOutcome<T> | undefined>;

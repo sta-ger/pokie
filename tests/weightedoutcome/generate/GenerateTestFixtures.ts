@@ -25,7 +25,7 @@ export function buildFixtureConfig(): VideoSlotConfig<string> {
 
 export function buildFixtureGame(config: VideoSlotConfig<string> = buildFixtureConfig()): PokieGame {
     return {
-        getManifest: () => ({id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"}),
+        getInfo: () => ({id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"}),
         createSession: () => new VideoSlotSession<string>(config),
         createExactEnumerationSession: (combinationsGenerator: SymbolsCombinationsGenerating) => new VideoSlotSession<string>(config, combinationsGenerator),
     };
@@ -37,7 +37,7 @@ export function buildFixtureGame(config: VideoSlotConfig<string> = buildFixtureC
 export function buildAlternateFixtureGame(): PokieGame {
     const config = buildFixtureConfig();
     return {
-        getManifest: () => ({id: "fixture-slot-alternate", name: "Fixture Slot (alternate)", version: "1.0.0"}),
+        getInfo: () => ({id: "fixture-slot-alternate", name: "Fixture Slot (alternate)", version: "1.0.0"}),
         createSession: () => new VideoSlotSession<string>(config),
         createExactEnumerationSession: (combinationsGenerator: SymbolsCombinationsGenerating) => new VideoSlotSession<string>(config, combinationsGenerator),
     };
@@ -48,7 +48,7 @@ export function buildAlternateFixtureGame(): PokieGame {
 export function buildUnplayableFixtureGame(): PokieGame {
     const config = buildFixtureConfig();
     return {
-        getManifest: () => ({id: "fixture-slot-unplayable", name: "Fixture Slot (unplayable)", version: "1.0.0"}),
+        getInfo: () => ({id: "fixture-slot-unplayable", name: "Fixture Slot (unplayable)", version: "1.0.0"}),
         createSession: () => new VideoSlotSession<string>(config),
         createExactEnumerationSession: (combinationsGenerator: SymbolsCombinationsGenerating) => {
             const emptyCreditsConfig = new GameSessionConfig();
@@ -63,7 +63,7 @@ export function buildUnplayableFixtureGame(): PokieGame {
 export function buildUnsupportedFixtureGame(): PokieGame {
     const config = buildFixtureConfig();
     return {
-        getManifest: () => ({id: "fixture-slot-unsupported", name: "Fixture Slot (unsupported)", version: "1.0.0"}),
+        getInfo: () => ({id: "fixture-slot-unsupported", name: "Fixture Slot (unsupported)", version: "1.0.0"}),
         createSession: () => new VideoSlotSession<string>(config),
     };
 }

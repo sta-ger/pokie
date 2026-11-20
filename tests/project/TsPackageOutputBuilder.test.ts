@@ -113,7 +113,7 @@ describe("TsPackageOutputBuilder", () => {
         expect(fs.lstatSync(path.join(destinationDir, "node_modules", "@fromstan", "pokie")).isSymbolicLink()).toBe(true);
         const game = await loadPokieGame(destinationDir);
         try {
-            expect(game).toMatchObject({getManifest: expect.any(Function)});
+            expect(game).toMatchObject({getInfo: expect.any(Function)});
         } finally {
             await releasePokieGame(game);
         }

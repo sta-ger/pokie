@@ -5,10 +5,10 @@ import {collectPokieWasmReplay, validatePokieWasmReplayInitialCredits, type Poki
 import {instantiatePokieWasm, SeededPokieWasmHost} from "./PokieWasmRuntime.js";
 import {BoundedPokieWasmTraceCollector, type PokieWasmHost, type PokieWasmHostState, type PokieWasmRuntime, type PokieWasmRestorableState, type PokieWasmRound} from "./PokieWasmRuntimeApi.js";
 import {readCanonicalPokieWasmModule, sha256CanonicalWasmBytes} from "./PokieWasmCanonicalModule.js";
-import type {PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
+import type {PokieWasmComponentInfo} from "../project/wasm/PokieWasmComponentInfo.js";
 
 export type PokieWasmWorkerRequest =
-    | {readonly id: string; readonly type: "instantiate"; readonly bytes: Uint8Array; readonly manifest: PokieWasmComponentManifest; readonly draws?: readonly number[]; readonly seed?: string; readonly credits?: number; readonly traceCapacity?: number}
+    | {readonly id: string; readonly type: "instantiate"; readonly bytes: Uint8Array; readonly manifest: PokieWasmComponentInfo; readonly draws?: readonly number[]; readonly seed?: string; readonly credits?: number; readonly traceCapacity?: number}
     | {readonly id: string; readonly type: "optimize"; readonly request: unknown; readonly blueprint: import("../generated/GameBlueprint.js").GameBlueprint}
     | {readonly id: string; readonly type: "view"}
     | {readonly id: string; readonly type: "simulate"; readonly rounds: number; readonly seed: string; readonly mode?: string; readonly bet?: number}

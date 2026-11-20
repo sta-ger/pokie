@@ -8,7 +8,7 @@ const {
 // The Studio half of the Studio/browser runner. The examples fixture imports the same public factory,
 // so a featured round is one game contract and one seed rather than two coincidentally similar games.
 module.exports = {
-    getManifest() {
+    getInfo() {
         return {id: STUDIO_FIXTURE_GAME_ID, name: "Studio Fixture Game", version: "1.0.0"};
     },
     getSessionCommandCapabilities() {

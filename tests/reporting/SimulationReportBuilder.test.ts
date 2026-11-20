@@ -1,12 +1,12 @@
-import {PokieGameManifest} from "../../src/gamepackage/PokieGameManifest.js";
+import {PokieGameInfo} from "../../src/gamepackage/PokieGameInfo.js";
 import {SimulationReportBuilder} from "../../src/reporting/SimulationReportBuilder.js";
 import {SimulationAccumulator} from "../../src/simulation/SimulationAccumulator.js";
 
 describe("SimulationReportBuilder", () => {
-    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+    const manifest: PokieGameInfo = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     test("maps manifest id/name/version into the report's game field, dropping other manifest fields", () => {
-        const fullManifest: PokieGameManifest = {...manifest, description: "A fruity slot", author: "sta-ger"};
+        const fullManifest: PokieGameInfo = {...manifest, description: "A fruity slot", author: "sta-ger"};
         const accumulator = new SimulationAccumulator();
         accumulator.addRound(1, 0);
         const builder = new SimulationReportBuilder();
@@ -777,7 +777,7 @@ describe("SimulationReportBuilder", () => {
 });
 
 describe("SimulationReportBuilder new metrics (volatility/distribution/averageBet/averagePayout/targetRtp)", () => {
-    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+    const manifest: PokieGameInfo = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     test("passes volatility and payoutHistogram straight through from statistics -- no new math, just surfaced", () => {
         const accumulator = new SimulationAccumulator();

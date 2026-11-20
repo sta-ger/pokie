@@ -19,7 +19,7 @@ import {
     ParallelSimulationRunner,
     ParallelSimulationRunOptions,
     PreGeneratedRoundReplayDescriptor,
-    PokieGameManifest,
+    PokieGameInfo,
     PokieProject,
     resolveOutcomeLibraryModeName,
     SecureWeightedOutcomeRandomSource,
@@ -556,7 +556,7 @@ export class StudioSimulationService {
         }
 
         let modeName: string;
-        let manifestGame: PokieGameManifest;
+        let manifestGame: PokieGameInfo;
         try {
             const manifest = await this.outcomeLibraryReader.readManifest(project.rootPath);
             if (manifest.modes.length === 0) {

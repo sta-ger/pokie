@@ -12,7 +12,7 @@ A game package is a regular npm package that depends on `@fromstan/pokie` and ex
 ## The interface
 
 ```ts
-type PokieGameManifest = {
+type PokieGameInfo = {
  id: string;
  name: string;
  version: string;
@@ -26,13 +26,13 @@ type PokieGameContext = {
 };
 
 interface PokieGame {
- getManifest(): PokieGameManifest;
+ getInfo(): PokieGameInfo;
  createSession(context?: PokieGameContext): GameSessionHandling;
  getSessionSerializer?(): GameSessionSerializing;
 }
 ```
 
-- `getManifest()` — static metadata about the game (id, display name, version,...), independent of any session.
+- `getInfo()` — static metadata about the game (id, display name, version,...), independent of any session.
 - `createSession(context?)` — returns a **fresh** `GameSessionHandling` (e.g. a `VideoSlotSession`) ready to play.
  Called once per simulation run, per player session, or per replay. `context.seed`, if provided, is meant to be
  passed to a `SeededRandomNumberGenerator` (see [Reels & Symbol Sequences](reels-and-sequences.md#rngs)) so the
@@ -134,7 +134,7 @@ The entry module's **default export** must be a `PokieGame`:
 import {PokieGame, VideoSlotConfig, VideoSlotSession} from "@fromstan/pokie";
 
 const game: PokieGame = {
- getManifest() {
+ getInfo() {
  return {id: "sample-slot", name: "Sample Slot", version: "1.0.0"};
  },
  createSession(context) {
@@ -170,7 +170,7 @@ relative dependencies. If a long-lived host keeps the returned game/session, cal
 after its final session is destroyed (or use `loadPokieGameRuntime()` for an explicit `{game, release}` lease).
 
 It rejects if `package.json` has no `pokie.entry` field, or if the entry module's default export fails
-`PokieGameContractValidationRule` — missing `getManifest()`/`createSession()`, `getManifest()` throwing, or a
+`PokieGameContractValidationRule` — missing `getInfo()`/`createSession()`, `getInfo()` throwing, or a
 manifest with a missing/empty `id`, `name`, or `version`. The rejection error lists every failing check by code
 (e.g. `pokie-game-manifest-invalid-version`), not just the first one.
 
@@ -187,7 +187,7 @@ if (!isPokieGame(candidate)) {
 }
 ```
 
-For a fuller check — including that `getManifest()` doesn't throw and returns a well-formed manifest (non-empty
+For a fuller check — including that `getInfo()` doesn't throw and returns a well-formed manifest (non-empty
 `id`/`name`/`version`) — use `PokieGameContractValidationRule`, which implements the same `ValidationRule`/
 `ValidationResult` pattern used by the win evaluation pipeline's [validation rules](paytable-and-wins.md#aggregation-policy):
 
@@ -209,7 +209,7 @@ if (result.hasErrors()) {
 
 ## Headless runtime interface
 
-`PokieGame` also defines the headless runtime compatibility ports `getSessionCompatibility()` and `validateSessionState()`. Generated and code-first packages use the same `SessionRuntime` / repository command semantics; see [game-session.md](game-session.md#headless-commands-and-repository-ownership) and [serialization.md](serialization.md#executable-repository-records). Existing packages exposing only `getManifest()` and `createSession(context)` need no rewrite for live
+`PokieGame` also defines the headless runtime compatibility ports `getSessionCompatibility()` and `validateSessionState()`. Generated and code-first packages use the same `SessionRuntime` / repository command semantics; see [game-session.md](game-session.md#headless-commands-and-repository-ownership) and [serialization.md](serialization.md#executable-repository-records). Existing packages exposing only `getInfo()` and `createSession(context)` need no rewrite for live
 Play: direct repository commands, serve and Studio capture command/schema trusted source from the trusted
 constructed object when it is primed. Save the initial record with the selected game and pass its committed
 revision to `primeSession()`; serve and Studio do this automatically. Those captures remain `live-only`
@@ -287,7 +287,7 @@ getModelDescriptor(): PackageModelDescriptor {
 ```
 
 `model` contains the effective, representable `GameBlueprint` data; it can be partial for
-inspection. `getManifest()` is trusted for game identity and must agree with a descriptor's
+inspection. `getInfo()` is trusted for game identity and must agree with a descriptor's
 manifest. npm package name/version do not become game identity. Contract versions are independent
 of the game's package version. Generated CommonJS and recompilable TypeScript entrypoints expose
 the same descriptor without a Blueprint JSON file or historical build-info sidecar.

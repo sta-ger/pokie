@@ -18,7 +18,7 @@ import {
     releasePokieGame,
     PokieDevServer,
     PokieGame,
-    PokieGameManifest,
+    PokieGameInfo,
     PokieSessionState,
     SessionRepository,
     SessionStateRestoring,
@@ -114,9 +114,9 @@ function createFakeSession(): GameSessionHandling & SessionStateRestoring & Conv
     };
 }
 
-function createFakeGame(manifest: PokieGameManifest): PokieGame & {createdWith?: unknown} {
+function createFakeGame(manifest: PokieGameInfo): PokieGame & {createdWith?: unknown} {
     return {
-        getManifest: () => manifest,
+        getInfo: () => manifest,
         ...fixtureCodec,
         createSession(context) {
             this.createdWith = context;
@@ -153,9 +153,9 @@ function createFakeSessionWithSelectableBet(): GameSessionHandling & {getSymbols
     };
 }
 
-function createFakeGameWithSelectableBet(manifest: PokieGameManifest): PokieGame {
+function createFakeGameWithSelectableBet(manifest: PokieGameInfo): PokieGame {
     return {
-        getManifest: () => manifest,
+        getInfo: () => manifest,
         ...fixtureCodec,
         createSession: () => createFakeSessionWithSelectableBet(),
     };
@@ -176,9 +176,9 @@ function createCustomSerializerWithRoundOnlyField(): GameSessionSerializing {
     };
 }
 
-function createFakeGameWithCustomSerializer(manifest: PokieGameManifest): PokieGame {
+function createFakeGameWithCustomSerializer(manifest: PokieGameInfo): PokieGame {
     return {
-        getManifest: () => manifest,
+        getInfo: () => manifest,
         ...fixtureCodec,
         createSession: () => createFakeSession(),
         getSessionSerializer: () => createCustomSerializerWithRoundOnlyField(),
@@ -243,9 +243,9 @@ function createFakeFreeGamesSession(initialCredits = 0): FakeFreeGamesSession {
     };
 }
 
-function createFakeFreeGamesGame(manifest: PokieGameManifest): PokieGame & {lastSession?: FakeFreeGamesSession} {
+function createFakeFreeGamesGame(manifest: PokieGameInfo): PokieGame & {lastSession?: FakeFreeGamesSession} {
     return {
-        getManifest: () => manifest,
+        getInfo: () => manifest,
         ...fixtureCodec,
         createSession() {
             const session = createFakeFreeGamesSession();
@@ -256,10 +256,10 @@ function createFakeFreeGamesGame(manifest: PokieGameManifest): PokieGame & {last
 }
 
 function createRealFreeGamesGame(
-    manifest: PokieGameManifest,
+    manifest: PokieGameInfo,
 ): PokieGame & {lastSession?: VideoSlotWithFreeGamesSession} {
     return {
-        getManifest: () => manifest,
+        getInfo: () => manifest,
         getSessionCommandCapabilities: () => ({bets: [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100]}),
         getSessionStateSchema: () => ({kind: "free-games", base: {kind: "seeded-video-slot", reels: 5, symbols: ["A", "K", "Q", "J", "10", "9", "W", "S"]}}),
         createSession() {
@@ -310,7 +310,7 @@ describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
             const created = await postJson(`${url}/sessions`),
                 sessionId = created.body.sessionId as string;
             expect(created.status).toBe(201);
-            expect(Object.keys(game).sort()).toEqual(["createSession", "getManifest"]);
+            expect(Object.keys(game).sort()).toEqual(["createSession", "getInfo"]);
             expect(await wallet.getBalance(sessionId)).toBe(1000);
             const played = await postJson(`${url}/sessions/${sessionId}/spin`, {requestId: "retry"});
             expect(played.status).toBe(200);
@@ -413,7 +413,7 @@ describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
     it("serves an unchanged CJS GameSession subclass, retains restrictions and refuses reconstruction after loss", async () => {
         const game = publicRuntime.roundGame(),
             repository = new InMemorySessionRepository();
-        expect(Object.keys(game).sort()).toEqual(["createSession", "getManifest"]);
+        expect(Object.keys(game).sort()).toEqual(["createSession", "getInfo"]);
         const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: repository});
         const address = await server.start(),
             url = `http://${address.host}:${address.port}`;
@@ -458,8 +458,8 @@ describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
     });
 
     it("creates, reads and spins an unchanged package, then refuses continuation after live-state loss", async () => {
-        const game: PokieGame = {getManifest: () => ({id: "unchanged", name: "Unchanged", version: "1"}), createSession: () => new GameSession()};
-        expect(Object.keys(game).sort()).toEqual(["createSession", "getManifest"]);
+        const game: PokieGame = {getInfo: () => ({id: "unchanged", name: "Unchanged", version: "1"}), createSession: () => new GameSession()};
+        expect(Object.keys(game).sort()).toEqual(["createSession", "getInfo"]);
         const repository = new InMemorySessionRepository();
         const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: repository});
         const address = await server.start();
@@ -494,7 +494,7 @@ describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
         }
     });
 
-    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+    const manifest: PokieGameInfo = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
     let game: PokieGame & {createdWith?: unknown};
     let server: PokieDevServer;
     let baseUrl: string;
@@ -739,7 +739,7 @@ describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
 });
 
 describe("PokieDevServer (replaceable session storage: DI, restart, unknown sessions)", () => {
-    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+    const manifest: PokieGameInfo = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     it("restores session state through a shared SessionRepository across independent server instances (simulated restart)", async () => {
         const game = createFakeGame(manifest);
@@ -1281,7 +1281,7 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
     });
 
     describe('"full" against a session that isn\'t video-slot shaped — an honest availability diagnostic, never a fabricated artifact', () => {
-        const manifest: PokieGameManifest = {id: "non-video-slot", name: "Non Video Slot", version: "1.0.0"};
+        const manifest: PokieGameInfo = {id: "non-video-slot", name: "Non Video Slot", version: "1.0.0"};
         let server: PokieDevServer;
         let baseUrl: string;
 
@@ -1309,7 +1309,7 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
     });
 
     describe("reading a legacy partial session record — never fabricates capturePolicy/roundRecord on the way back out", () => {
-        const manifest: PokieGameManifest = {id: "legacy-game", name: "Legacy Game", version: "1.0.0"};
+        const manifest: PokieGameInfo = {id: "legacy-game", name: "Legacy Game", version: "1.0.0"};
         let server: PokieDevServer;
         let baseUrl: string;
         let sessionRepository: InMemorySessionRepository;
@@ -1481,9 +1481,9 @@ function createCustomSerializerWithDebugData(): GameSessionSerializing {
     };
 }
 
-function createFakeGameWithDebugSerializer(manifest: PokieGameManifest): PokieGame {
+function createFakeGameWithDebugSerializer(manifest: PokieGameInfo): PokieGame {
     return {
-        getManifest: () => manifest,
+        getInfo: () => manifest,
         ...fixtureCodec,
         createSession: () => createFakeSession(),
         getSessionSerializer: () => createCustomSerializerWithDebugData(),
@@ -1491,7 +1491,7 @@ function createFakeGameWithDebugSerializer(manifest: PokieGameManifest): PokieGa
 }
 
 describe("PokieDevServer (public/internal response split)", () => {
-    const manifest: PokieGameManifest = {id: "split-game", name: "Split Game", version: "1.0.0"};
+    const manifest: PokieGameInfo = {id: "split-game", name: "Split Game", version: "1.0.0"};
 
     describe("legacy game package (no getSessionSerializer): internal data is state-only", () => {
         let server: PokieDevServer;
@@ -1979,7 +1979,7 @@ function createRacingSessionRepository(real: InMemorySessionRepository): Version
 }
 
 describe("PokieDevServer (optimistic locking / session versioning)", () => {
-    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+    const manifest: PokieGameInfo = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     it("returns 409 with a clear error when a spin's session version goes stale before it can save", async () => {
         const game = createFakeGame(manifest);
@@ -2210,7 +2210,7 @@ describe("PokieDevServer logical recovery and capability (controller-owned HTTP 
     });
 
     it("base sessions advertise and execute the same capability on create, spin and restore", async () => {
-        const game: PokieGame = {getManifest: () => ({id: "base-capability", name: "Base", version: "1"}), createSession: () => new GameSession(),
+        const game: PokieGame = {getInfo: () => ({id: "base-capability", name: "Base", version: "1"}), createSession: () => new GameSession(),
             getSessionStateSchema: () => ({kind: "base"}), getSessionCommandCapabilities: () => ({bets: new GameSession().getAvailableBets()}),
             validateSessionState: state => new GameSession().validateSessionState(state)};
         const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0});

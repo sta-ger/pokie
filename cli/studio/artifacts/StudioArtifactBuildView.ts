@@ -1,4 +1,4 @@
-import type {FormatConversionPlan, OutputFormat, ProjectType, StakeEngineManifest} from "@fromstan/pokie";
+import type {FormatConversionPlan, OutputFormat, ProjectType, StakeEngineInfo} from "@fromstan/pokie";
 
 // POST /api/project/artifacts/build's own DTO -- mirrors BuildOutputBuilderRegistry.build()'s own outcomes
 // exactly, the same ones "pokie build <project> --target <target>" itself can hit: a successful build's
@@ -24,7 +24,7 @@ export type StudioArtifactBuildView =
           readonly parConversion?: import("@fromstan/pokie").BuildOutputResult["parConversion"];
           readonly preflight?: {readonly estimatedItemCount?: string; readonly estimatedBytes?: string; readonly complexityWarning?: string};
           /** Exact Stake publication evidence for the goal-oriented Stake card. */
-          readonly stakeManifest?: StakeEngineManifest;
+          readonly stakeManifest?: StakeEngineInfo;
           readonly stakeFiles?: readonly string[];
           /** Compatibility and ownership facts for the prerequisite selected at preflight. */
           readonly stakePrerequisiteProvenance?: {

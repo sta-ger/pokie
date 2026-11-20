@@ -80,7 +80,7 @@ function cascadeGame(onCalculate: () => void, options: api.CascadeResolverOption
             return this;
         }
     }
-    return {getConfigHash: () => `cascade-model-v1:${JSON.stringify({options, terminalWins})}`, getManifest: () => ({id: "cascade-delivery", name: "Cascade", version: "1"}), supportsLogicalRoundDelivery: () => true,
+    return {getConfigHash: () => `cascade-model-v1:${JSON.stringify({options, terminalWins})}`, getInfo: () => ({id: "cascade-delivery", name: "Cascade", version: "1"}), supportsLogicalRoundDelivery: () => true,
         getSessionStateSchema: () => ({kind: "custom"}), getSessionCommandCapabilities: () => ({bets: [1]}),
         validateSessionState: value => {
             const state = value as {base: unknown; win: number};

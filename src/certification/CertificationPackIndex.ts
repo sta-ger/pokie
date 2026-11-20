@@ -1,14 +1,14 @@
 import type {CertificationPack, CertificationPackFormat, CertificationPackTemplate} from "./CertificationPack.js";
-import type {PokieGameManifest} from "../gamepackage/PokieGameManifest.js";
+import type {PokieGameInfo} from "../gamepackage/PokieGameInfo.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import type {WeightedOutcomeLibraryAnalysis} from "../weightedoutcome/WeightedOutcomeLibraryAnalysis.js";
 
 // Tracks this type's own shape (not the pokie package version), same convention as
-// OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION/STAKE_ENGINE_MANIFEST_SCHEMA_VERSION.
-export const CERTIFICATION_PACK_MANIFEST_SCHEMA_VERSION = 2;
+// OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION/STAKE_ENGINE_INFO_SCHEMA_VERSION.
+export const CERTIFICATION_PACK_INDEX_SCHEMA_VERSION = 2;
 
 // One mode's certification evidence: the same libraryHash/outcomeCount/totalWeight/analysis an
-// OutcomeLibraryFolderManifestModeEntry already carries — read straight off the source bundle's own manifest.json
+// OutcomeLibraryFolderIndexModeEntry already carries — read straight off the source bundle's own manifest.json
 // and embedded verbatim, never recomputed — plus this mode's own sampled-draws provenance.
 export type CertificationPackModeEntry = {
     readonly modeName: string;
@@ -35,19 +35,19 @@ export type CertificationPackDeepValidation = {
 };
 
 // POKIE's own provenance for a "pokie certification build" run — same "who/what version/when + files
-// inventory" convention as OutcomeLibraryFolderManifest/StakeEngineManifest, deliberately built *on top of* an
+// inventory" convention as OutcomeLibraryFolderIndex/StakeEngineInfo, deliberately built *on top of* an
 // existing Outcome Library Bundle rather than introducing any new outcome-selection or metrics-calculation
 // logic: every hash/metric here is either read verbatim off the source bundle's own manifest.json, or produced
 // by drawing samples through OutcomeLibraryFolderReading.drawOutcome (the same weighted-draw algorithm the
 // pre-generated runtime itself uses).
-export type CertificationPackManifest = {
+export type CertificationPackIndex = {
     readonly pack: CertificationPack;
     readonly presentation: {readonly template: CertificationPackTemplate; readonly templateHash: string; readonly templateArtifactHash: string | null; readonly formats: readonly CertificationPackFormat[]};
     readonly schemaVersion: number;
     readonly generatedBy: string;
     readonly pokieVersion: string;
     readonly generatedAt: string;
-    readonly game: PokieGameManifest;
+    readonly game: PokieGameInfo;
     readonly configHash?: string;
     readonly artifactPokieVersion: string;
     // Where the source Outcome Library Bundle was read from at *build* time — purely informational (a

@@ -1,5 +1,5 @@
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
-import type {CertificationPackManifest} from "./CertificationPackManifest.js";
+import type {CertificationPackIndex} from "./CertificationPackIndex.js";
 import type {PublishedDirectoryOwnership} from "../stakeengine/internal/publishDirectoryAtomically.js";
 
 // The result of CertificationPackBuilding.buildFromBundle. "manifest" is undefined if and only if
@@ -11,7 +11,7 @@ export type CertificationPackBuildResult = {
     /** SHA-256 of exact published bytes; content identity is separate and deterministic. */
     readonly artifactHashes?: Readonly<Record<string, string>>;
     readonly files: readonly string[];
-    readonly manifest: CertificationPackManifest | undefined;
+    readonly manifest: CertificationPackIndex | undefined;
     readonly issues: readonly ValidationIssue[];
     /** Present only when this invocation atomically installed outDir. */
     readonly publication?: PublishedDirectoryOwnership;

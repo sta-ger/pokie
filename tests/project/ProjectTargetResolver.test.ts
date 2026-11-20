@@ -7,7 +7,7 @@ import {ProjectTargetMalformedError} from "../../src/project/ProjectTargetMalfor
 import {ProjectTargetResolver} from "../../src/project/ProjectTargetResolver.js";
 import type {ProjectTargetTypeAdapter} from "../../src/project/ProjectTargetTypeAdapter.js";
 import {ProjectTargetUnsupportedError} from "../../src/project/ProjectTargetUnsupportedError.js";
-import {POKIE_WASM_CONTRACT_VERSION} from "../../src/project/wasm/PokieWasmComponentManifest.js";
+import {POKIE_WASM_CONTRACT_VERSION} from "../../src/project/wasm/PokieWasmComponentInfo.js";
 import {createCanonicalWasmFixture} from "../fixtures/wasm/createCanonicalWasmFixture.js";
 
 const SAMPLE_BLUEPRINT = {
@@ -237,12 +237,12 @@ describe("ProjectTargetResolver", () => {
         expect(await resolver.resolve(workbookFile)).toBeUndefined();
     });
 
-    it("rejects an ordinary .wasm file with no PokieWasmComponentManifest sidecar as unsupported", async () => {
+    it("rejects an ordinary .wasm file with no PokieWasmComponentInfo sidecar as unsupported", async () => {
         const wasmFile = path.join(workDir, "game.wasm");
         fs.writeFileSync(wasmFile, WASM_BINARY);
 
         await expect(resolver.resolve(wasmFile)).rejects.toThrow(ProjectTargetUnsupportedError);
-        await expect(resolver.resolve(wasmFile)).rejects.toThrow(/no compatible PokieWasmComponentManifest sidecar/);
+        await expect(resolver.resolve(wasmFile)).rejects.toThrow(/no compatible PokieWasmComponentInfo sidecar/);
     });
 
     it("resolves a package directory named .wasm by its directory contents, not its suffix", async () => {
@@ -253,7 +253,7 @@ describe("ProjectTargetResolver", () => {
         await expect(resolver.resolve(packageDirectory)).resolves.toMatchObject({type: "tsPackage", rootPath: packageDirectory});
     });
 
-    it("resolves a .wasm file with a compatible PokieWasmComponentManifest sidecar as a wasm project, read-only", async () => {
+    it("resolves a .wasm file with a compatible PokieWasmComponentInfo sidecar as a wasm project, read-only", async () => {
         const wasmFile = path.join(workDir, "game.wasm");
         fs.writeFileSync(wasmFile, WASM_BINARY);
         fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify(SAMPLE_WASM_COMPONENT_MANIFEST));
@@ -308,7 +308,7 @@ describe("ProjectTargetResolver", () => {
         fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify({...SAMPLE_WASM_COMPONENT_MANIFEST, host: undefined}));
 
         await expect(resolver.resolve(wasmFile)).rejects.toThrow(ProjectTargetMalformedError);
-        await expect(resolver.resolve(wasmFile)).rejects.toThrow(/does not satisfy PokieWasmComponentManifest's own shape/);
+        await expect(resolver.resolve(wasmFile)).rejects.toThrow(/does not satisfy PokieWasmComponentInfo's own shape/);
     });
 
     it("throws ProjectTargetUnsupportedError for a well-shaped but schemaVersion-incompatible manifest sidecar", async () => {

@@ -41,7 +41,7 @@ export type StudioHomeRecentProjectView = RecentProjectEntry & {
     unavailableReason?: string;
 };
 
-export type PokieGameManifest = {
+export type PokieGameInfo = {
     id: string;
     name: string;
     version: string;
@@ -122,7 +122,7 @@ export type ProjectDashboardContext =
     | {
           status: "loaded";
           projectRoot: string;
-          game: PokieGameManifest;
+          game: PokieGameInfo;
           type?: StudioProjectType;
           capabilities?: StudioProjectCapability[];
           origin?: StudioProjectOrigin;
@@ -422,7 +422,7 @@ export type StudioBuildPreviewView =
     | ({
           status: "ok";
           warnings: ValidationIssue[];
-          manifest: PokieGameManifest;
+          manifest: PokieGameInfo;
           reels: number;
           rows: number;
           symbolsCount: number;
@@ -439,7 +439,7 @@ export type StudioBuildResult =
     | {
           status: "ok";
           projectRoot: string;
-          manifest: PokieGameManifest;
+          manifest: PokieGameInfo;
           createdFiles: string[];
           buildInfo: GameBuildInfo;
           warnings: ValidationIssue[];
@@ -811,7 +811,7 @@ export type StudioSimulationReportListEntry = {
 // kept as their own client-side copies here, same convention as every other type in this file. Deeply
 // readonly to match the server's own guarantee (a RoundRecord is deep-frozen at build time).
 export type RoundRecordOrigin = {
-    readonly game: PokieGameManifest;
+    readonly game: PokieGameInfo;
     readonly pokieVersion: string;
     readonly configHash?: string;
 };
@@ -875,7 +875,7 @@ export type RoundRecordJson = RoundRecord & {readonly hash: string};
 // Mirrors PreGeneratedRoundReplayDescriptor. It travels with ordinary outcome-library Play and
 // Sample results so consumers can hand the exact recorded seed/round/mode/provenance to `pokie replay`.
 export type OutcomeSourceReplayDescriptorView = {
-    game?: PokieGameManifest;
+    game?: PokieGameInfo;
     libraryId: string;
     libraryHash: string;
     modeName: string;
@@ -1312,7 +1312,7 @@ export type StudioOutcomeLibraryRegistryView =
 export type StudioCertificationSourceValidateView = {status: "ok"; errors: ValidationIssue[]; warnings: ValidationIssue[]} | {status: "load-error"; error: string};
 
 // Mirrors pokie's own CertificationPackModeEntry/CertificationPackDeepValidation/
-// CertificationPackManifest (src/certification/CertificationPackManifest.ts) --
+// CertificationPackIndex (src/certification/CertificationPackIndex.ts) --
 // every hash/metric here is read verbatim off the source outcome-library bundle's own manifest, never
 // recomputed by Studio.
 export type CertificationPackModeEntry = {
@@ -1332,14 +1332,14 @@ export type CertificationPackModeEntry = {
 
 export type CertificationPackDeepValidation = {ranAt: string; issues: ValidationIssue[]};
 
-export type CertificationPackManifest = {
+export type CertificationPackIndex = {
     pack?: CertificationPack;
     presentation?: {template: CertificationPackTemplate; templateHash: string; templateArtifactHash: string | null; formats: readonly CertificationPackFormat[]};
     schemaVersion: number;
     generatedBy: string;
     pokieVersion: string;
     generatedAt: string;
-    game: PokieGameManifest;
+    game: PokieGameInfo;
     configHash?: string;
     artifactPokieVersion: string;
     sourceLibraryDir: string;
@@ -1355,7 +1355,7 @@ export type CertificationPackManifest = {
 // CertificationPackBuilder's own "no partial bundle" contract: `manifest` is present iff
 // `status` is "ok".
 export type StudioCertificationBuildView =
-    | {status: "ok"; manifest: CertificationPackManifest; files: string[]; artifactHashes?: Record<string, string>; warnings: ValidationIssue[]}
+    | {status: "ok"; manifest: CertificationPackIndex; files: string[]; artifactHashes?: Record<string, string>; warnings: ValidationIssue[]}
     | {status: "error"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
     | {status: "load-error"; error: string};
 
@@ -1448,10 +1448,10 @@ export type StudioStakeEngineExportMigrationView = {
     message: string;
 };
 
-// Mirrors pokie's own StakeEngineManifest/StakeEngineManifestModeEntry
-// (src/stakeengine/StakeEngineManifest.ts) — every hash/metric here is read verbatim off the export
+// Mirrors pokie's own StakeEngineInfo/StakeEngineInfoModeEntry
+// (src/stakeengine/StakeEngineInfo.ts) — every hash/metric here is read verbatim off the export
 // result's own manifest, never recomputed by Studio.
-export type StakeEngineManifestModeEntry = {
+export type StakeEngineInfoModeEntry = {
     name: string;
     betMode: string;
     stake: number;
@@ -1463,14 +1463,14 @@ export type StakeEngineManifestModeEntry = {
     weights: string;
 };
 
-export type StakeEngineManifest = {
+export type StakeEngineInfo = {
     schemaVersion: number;
     generatedBy: string;
     pokieVersion: string;
     generatedAt: string;
-    game: PokieGameManifest;
+    game: PokieGameInfo;
     configHash?: string;
-    modes: StakeEngineManifestModeEntry[];
+    modes: StakeEngineInfoModeEntry[];
     files: string[];
 };
 
@@ -1481,7 +1481,7 @@ export type StakeEngineManifest = {
 // `true` when `outDir` is recognized as a prior Stake Engine export's own output — resubmitting with
 // `overwrite: true` can never succeed otherwise, so the UI must never offer that action when it's `false`.
 export type StudioStakeEngineExportView =
-    | {status: "ok"; outDir: string; files: string[]; manifest: StakeEngineManifest; warnings: ValidationIssue[]; plan: StudioArtifactConversionPlan}
+    | {status: "ok"; outDir: string; files: string[]; manifest: StakeEngineInfo; warnings: ValidationIssue[]; plan: StudioArtifactConversionPlan}
     | {status: "conflict"; outDir: string; overwritable: boolean; error: string; plan: StudioArtifactConversionPlan}
     | {status: "unavailable"; error: string; plan: StudioArtifactConversionPlan}
     | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]; plan: StudioArtifactConversionPlan}
@@ -1534,7 +1534,7 @@ export type StudioArtifactBuildView =
           sourceType: StudioProjectType;
           plan: StudioArtifactConversionPlan;
           preflight?: {estimatedItemCount?: string; estimatedBytes?: string; complexityWarning?: string};
-          stakeManifest?: StakeEngineManifest;
+          stakeManifest?: StakeEngineInfo;
           stakeFiles?: string[];
           stakePrerequisiteProvenance?: {route: "reuse" | "generate" | "publish"; selectedPrerequisiteLocation?: string; disposition: "borrowed" | "owned" | "transient" | "none"; sourceGameId?: string; sourceGameVersion?: string; sourceConfigurationHash?: string; sourcePokieVersion?: string; generationSemantics?: "exact" | "boundedSample"; sampleCount?: string; sampleSeed?: string; maxExactOutcomeSpaceSize?: string; compatibilityPolicyVersion?: string};
           importedBlueprintPath?: string;

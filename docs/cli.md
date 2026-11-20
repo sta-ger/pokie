@@ -2564,7 +2564,7 @@ is killed (e.g. `Ctrl+C`) — that's expected for a server.
 
 ### `GET /game`
 
-`200 <PokieGameManifest>` — the loaded game's `getManifest()` output as-is (`id`, `name`, `version`, and
+`200 <PokieGameInfo>` — the loaded game's `getInfo()` output as-is (`id`, `name`, `version`, and
 `description`/`author` if the game provides them).
 
 ### `POST /sessions`

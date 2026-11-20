@@ -75,13 +75,13 @@ publishes the module last, with owned-file cleanup on cancellation/failure.
 Legacy metadata-only components remain inspection-only. Play, serialize, replay
 and inspect declarations remain independent operation checks.
 
-## The interface — `PokieWasmComponentManifest`
+## The interface — `PokieWasmComponentInfo`
 
 A WASM component built against POKIE declares itself via a sidecar JSON manifest (see "Resolution" below for
-where that file lives) shaped as `PokieWasmComponentManifest`:
+where that file lives) shaped as `PokieWasmComponentInfo`:
 
 ```ts
-type PokieWasmComponentManifest = {
+type PokieWasmComponentInfo = {
  schemaVersion: string; // which version of *this* contract the manifest targets
  component: {id: string; version: string};
  minPokieVersion?: string; // lowest POKIE release accepted by the resolver and portable runtime
@@ -114,7 +114,7 @@ type PokieWasmComponentManifest = {
  union, so a component author can declare ids a generic POKIE check simply never looks at.
 
 `POKIE_WASM_CONTRACT_VERSION` (currently `"1.0.0"`) is the version of this interface the running POKIE package
-understands. `PokieWasmComponentManifestValidator` checks a manifest's own shape (every field present and
+understands. `PokieWasmComponentInfoValidator` checks a manifest's own shape (every field present and
 correctly typed); `assessWasmComponentCompatibility` runs that validator first, then checks the manifest's own
 `schemaVersion` against `POKIE_WASM_CONTRACT_VERSION` — **major-only**: a manifest with an equal-or-lower
 minor/patch on the same major is compatible, a differing major is not. Shape and compatibility are deliberately
@@ -132,7 +132,7 @@ outcomes:
 | Sidecar state | Result |
 |---|---|
 | No sidecar at all | `resolve()` throws `ProjectTargetUnsupportedError` naming exactly where a sidecar was looked for — an ordinary `.wasm` file is never silently treated as unrecognized *or* as a valid POKIE target. |
-| Sidecar present, but unreadable JSON or fails `PokieWasmComponentManifestValidator`'s shape check | `resolve()` throws `ProjectTargetMalformedError` — the manifest signaled intent to be this type and failed a deeper read, the same convention `TsPackageProjectTargetAdapter`/`OutcomeLibraryProjectTargetAdapter` use for their own manifests. |
+| Sidecar present, but unreadable JSON or fails `PokieWasmComponentInfoValidator`'s shape check | `resolve()` throws `ProjectTargetMalformedError` — the manifest signaled intent to be this type and failed a deeper read, the same convention `TsPackageProjectTargetAdapter`/`OutcomeLibraryProjectTargetAdapter` use for their own manifests. |
 | Sidecar present, well-shaped, but `assessWasmComponentCompatibility` rejects its `schemaVersion` | `resolve()` throws `ProjectTargetUnsupportedError` naming exactly which interface version was declared vs. required — a clear incompatibility diagnostic. |
 | Sidecar present, well-shaped, and compatible | Resolves as a `"wasm"` `PokieProject`. |
 

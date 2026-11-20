@@ -10,13 +10,13 @@ export type ProjectType =
     // package.json contract findPokieProjectRoot/loadPokieGame read (see gamepackage/readPokiePackageConfig.ts).
     | "tsPackage"
     // A pre-built outcome-library bundle directory — "pokie outcomelibrary build"'s own output (see
-    // weightedoutcome/folder/OutcomeLibraryFolderManifest.ts).
+    // weightedoutcome/folder/OutcomeLibraryFolderIndex.ts).
     | "outcomeLibrary"
     // A Stake Engine export directory — "pokie stakeengine export"'s own output (see
     // stakeengine/isRecognizedStakeEngineExportDirectory.ts).
     | "stakeAdapter"
-    // A WASM component project type: a ".wasm" file paired with a sidecar PokieWasmComponentManifest
-    // WasmProjectTargetAdapter recognizes as contract-compatible (see project/wasm/PokieWasmComponentManifest.ts
+    // A WASM component project type: a ".wasm" file paired with a sidecar PokieWasmComponentInfo
+    // WasmProjectTargetAdapter recognizes as contract-compatible (see project/wasm/PokieWasmComponentInfo.ts
     // and docs/wasm-compatibility-boundary.md). Integrity-bound canonical artifacts grant canonical identity and
     // only their independently declared portable operations; WASM_RUNTIME_EXECUTE_CAPABILITY means the complete
     // play/serialize/replay bundle, not integrity alone. Legacy sidecar-only files are the only inspection-only

@@ -1,8 +1,8 @@
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
-import type {CertificationPackManifest} from "./CertificationPackManifest.js";
+import type {CertificationPackIndex} from "./CertificationPackIndex.js";
 import {sha256OfBytes} from "./internal/sha256OfBytes.js";
 
-export type CertificationPackContentHashInput = Omit<CertificationPackManifest, "generatedAt" | "sourceLibraryDir" | "evidenceContentHash">;
+export type CertificationPackContentHashInput = Omit<CertificationPackIndex, "generatedAt" | "sourceLibraryDir" | "evidenceContentHash">;
 
 // Deterministic identity for a certification/evidence bundle's own CONTENT — every genuinely meaningful field
 // (schemaVersion, pokieVersion, game/configHash/artifactPokieVersion, the source bundle's own manifest hash,

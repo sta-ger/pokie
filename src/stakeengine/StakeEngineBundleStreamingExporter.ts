@@ -17,7 +17,7 @@ import type {StakeEngineEvent} from "./StakeEngineEvent.js";
 import {StakeEngineExportCancelledError, type StakeEngineExportOptions} from "./StakeEngineExporting.js";
 import type {StakeEngineExportResult} from "./StakeEngineExportResult.js";
 import type {StakeEngineIndex} from "./StakeEngineIndex.js";
-import {STAKE_ENGINE_MANIFEST_SCHEMA_VERSION, type StakeEngineManifest, type StakeEngineManifestModeEntry} from "./StakeEngineManifest.js";
+import {STAKE_ENGINE_INFO_SCHEMA_VERSION, type StakeEngineInfo, type StakeEngineInfoModeEntry} from "./StakeEngineInfo.js";
 import type {StakeEngineBundleStreamingExporting} from "./StakeEngineBundleStreamingExporting.js";
 import {StakeEngineRoundEventsProjector} from "./StakeEngineRoundEventsProjector.js";
 import type {StakeEngineRoundEventsProjecting} from "./StakeEngineRoundEventsProjecting.js";
@@ -99,8 +99,8 @@ type ModeProvenanceKey = {
 };
 
 type BuiltMode = {
-    readonly manifestEntry: StakeEngineManifestModeEntry;
-    readonly provenance: {readonly game: StakeEngineManifest["game"]; readonly configHash?: string; readonly pokieVersion: string};
+    readonly manifestEntry: StakeEngineInfoModeEntry;
+    readonly provenance: {readonly game: StakeEngineInfo["game"]; readonly configHash?: string; readonly pokieVersion: string};
 };
 
 // Exports one or more Stake modes directly from a canonical outcome-library bundle (see
@@ -171,9 +171,9 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
         fs.mkdirSync(stagingDir, {recursive: true});
         try {
             const issues: ValidationIssue[] = [...upfrontIssues];
-            const manifestEntries: StakeEngineManifestModeEntry[] = [];
+            const manifestEntries: StakeEngineInfoModeEntry[] = [];
             let reference: ModeProvenanceKey | undefined;
-            let gameManifest: StakeEngineManifest["game"] | undefined;
+            let gameManifest: StakeEngineInfo["game"] | undefined;
             let configHash: string | undefined;
             let completed = BigInt(0);
 
@@ -219,8 +219,8 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
                 modes: manifestEntries.map((entry) => ({name: entry.name, cost: entry.cost, events: entry.events, weights: entry.weights})),
             };
             const relativeFiles = [...manifestEntries.flatMap((entry) => [entry.weights, entry.events]), "index.json", "pokie-manifest.json"];
-            const manifest: StakeEngineManifest = {
-                schemaVersion: STAKE_ENGINE_MANIFEST_SCHEMA_VERSION,
+            const manifest: StakeEngineInfo = {
+                schemaVersion: STAKE_ENGINE_INFO_SCHEMA_VERSION,
                 generatedBy: GENERATED_BY,
                 pokieVersion: this.pokieVersion,
                 generatedAt: this.now().toISOString(),
@@ -355,7 +355,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
 
         let completed = BigInt(0);
         let sawError = false;
-        let firstArtifact: {betMode: string; stake: number; payoutMultiplier: number; provenance: {game: StakeEngineManifest["game"]; configHash?: string; pokieVersion: string}} | undefined;
+        let firstArtifact: {betMode: string; stake: number; payoutMultiplier: number; provenance: {game: StakeEngineInfo["game"]; configHash?: string; pokieVersion: string}} | undefined;
 
         try {
             for await (const outcome of this.reader.iterateModeOutcomes(mode.libraryDir, mode.libraryModeName)) {

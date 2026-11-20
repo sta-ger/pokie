@@ -41,7 +41,7 @@ export class ConsumerWinCalculator implements VideoSlotWinCalculating<string> {
 
 export function extensionGame(): PokieGame {
     return {
-        getManifest: () => ({id: "consumer", name: "Consumer extension", version: "1"}),
+        getInfo: () => ({id: "consumer", name: "Consumer extension", version: "1"}),
         getSessionCompatibility: () => ({version: "math-1", stateSchemaVersion: "1"}),
         getSessionCommandCapabilities: () => ({bets: [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100]}),
         getSessionStateSchema: () => ({kind: "seeded-video-slot"}),
@@ -94,7 +94,7 @@ export class LegacyRoundSession extends GameSession {
 
 export function legacyRoundGame(): PokieGame {
     return {
-        getManifest: () => ({id: "legacy-round", name: "Legacy round", version: "1"}),
+        getInfo: () => ({id: "legacy-round", name: "Legacy round", version: "1"}),
         createSession: () => new LegacyRoundSession(),
     };
 }

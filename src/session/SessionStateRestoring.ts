@@ -5,7 +5,7 @@ import type {ScreenGeometry} from "./videoslot/coordinates/ScreenGeometry.js";
 import type {GameSessionHandling} from "./GameSessionHandling.js";
 
 export type SessionStateSchema =
-    | {readonly kind: "bounded-mechanics"; readonly rules: import("./videoslot/authored/BoundedMechanics.js").BoundedMechanics; readonly bets: readonly number[]; readonly base: SessionStateSchema}
+    | {readonly kind: "bounded-mechanics"; readonly rules: import("./videoslot/authored/FeatureChains.js").FeatureChains; readonly bets: readonly number[]; readonly base: SessionStateSchema}
     | {readonly kind: "base" | "custom"}
     | {readonly kind: "seeded-video-slot"; readonly rngCodec?: "portable-host"; readonly modifiers?: ScreenModifiers<string | number>; readonly rows?: number; readonly wilds?: readonly (string | number)[]; readonly weightedReels?: readonly {reelIndex: number; variants: readonly WeightedSequenceVariant<string | number>[]}[]; readonly reels?: number; readonly symbols?: readonly (string | number)[]; readonly screenGeometry?: ScreenGeometry}
     | {readonly kind: "free-games"; readonly base: SessionStateSchema}

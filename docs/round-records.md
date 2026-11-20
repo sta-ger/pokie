@@ -42,7 +42,7 @@ type RoundRecordFeatureEventInput = {
 };
 
 type RoundRecordProvenance = {
- readonly game: Readonly<PokieGameManifest>; // id/name/version/description?/author? — reused, not duplicated
+ readonly game: Readonly<PokieGameInfo>; // id/name/version/description?/author? — reused, not duplicated
  readonly pokieVersion: string;
  readonly configHash?: string; // e.g. computeBlueprintHash() output, for a "pokie build"-generated game
 };
@@ -129,7 +129,7 @@ import {buildRoundRecordFromSession} from "@fromstan/pokie";
 session.play();
 const artifact = buildRoundRecordFromSession(session, {
  roundId: "round-42",
- provenance: {game: game.getManifest(), pokieVersion: "2.0.0"},
+ provenance: {game: game.getInfo(), pokieVersion: "2.0.0"},
 });
 ```
 
@@ -147,7 +147,7 @@ import {buildRoundRecord} from "@fromstan/pokie";
 
 const artifact = buildRoundRecord({
  roundId: "round-42",
- provenance: {game: game.getManifest(), pokieVersion: "2.0.0"},
+ provenance: {game: game.getInfo(), pokieVersion: "2.0.0"},
  betMode: "base",
  stake: 5,
  steps: cascadeResult.getCascadeSteps().map((step) => ({

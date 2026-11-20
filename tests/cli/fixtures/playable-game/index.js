@@ -36,7 +36,7 @@ function buildFixedSymbolsSequences(config) {
 }
 
 module.exports = {
-    getManifest() {
+    getInfo() {
         return {id: "playable-game", name: "Playable Game", version: "1.0.0"};
     },
     getSessionCommandCapabilities() {

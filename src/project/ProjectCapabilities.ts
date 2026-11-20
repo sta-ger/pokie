@@ -27,7 +27,7 @@ import {
     POKIE_WASM_RUNTIME_SERIALIZE_DECLARATION,
     describeUnsupportedCanonicalWasmRuntimeContract,
 } from "../wasm/PokieWasmCanonicalModule.js";
-import type {PokieWasmComponentManifest} from "./wasm/PokieWasmComponentManifest.js";
+import type {PokieWasmComponentInfo} from "./wasm/PokieWasmComponentInfo.js";
 
 // The fixed set of ProjectCapability ids a resolved PokieProject carries — resolved once, by
 // PROJECT_TYPE_CAPABILITIES below, and stamped onto the PokieProject instance itself (see PokieProject.ts) so
@@ -35,7 +35,7 @@ import type {PokieWasmComponentManifest} from "./wasm/PokieWasmComponentManifest
 // a second time.
 export type ProjectCapabilities = readonly ProjectCapability[];
 
-export function wasmProjectCapabilities(manifest: Pick<PokieWasmComponentManifest, "artifact" | "serialization" | "host" | "capabilities">): ProjectCapabilities {
+export function wasmProjectCapabilities(manifest: Pick<PokieWasmComponentInfo, "artifact" | "serialization" | "host" | "capabilities">): ProjectCapabilities {
     if (manifest.artifact === undefined || describeUnsupportedCanonicalWasmRuntimeContract(manifest) !== undefined) {
         return [WASM_MANIFEST_READ_CAPABILITY];
     }

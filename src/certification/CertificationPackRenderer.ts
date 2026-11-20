@@ -4,7 +4,7 @@ import {parseCertificationJson} from "./internal/parseCertificationJson.js";
 import {isManifestShape, isModeEntryShape} from "./internal/certificationPackBundleShapeGuards.js";
 import {computeCertificationPackContentHash} from "./computeCertificationPackContentHash.js";
 import {CERTIFICATION_PACK_SECTIONS, CERTIFICATION_PREPARATION_NOTICE, type CertificationPackFormat, type CertificationPackTemplate} from "./CertificationPack.js";
-import type {CertificationPackManifest} from "./CertificationPackManifest.js";
+import type {CertificationPackIndex} from "./CertificationPackIndex.js";
 import type {CertificationPackRendering} from "./CertificationPackRendering.js";
 import {CertificationPackBuildCancelledError} from "./CertificationPackBuildOptions.js";
 import {validateCertificationPack} from "./internal/validateCertificationPack.js";
@@ -39,7 +39,7 @@ function rows(value: unknown, prefix = ""): [string, string][] {
     }
     return [[prefix, display(value)]];
 }
-export function certificationPackTables(manifest: CertificationPackManifest, template: CertificationPackTemplate = manifest.presentation.template): CertificationPackTable[] {
+export function certificationPackTables(manifest: CertificationPackIndex, template: CertificationPackTemplate = manifest.presentation.template): CertificationPackTable[] {
     if (!isManifestShape(manifest) || manifest.schemaVersion !== 2 || !manifest.modes.length || !manifest.modes.every(isModeEntryShape) || computeCertificationPackContentHash(manifest) !== manifest.evidenceContentHash) throw new Error("Invalid canonical pack manifest/content identity.");
     validateCertificationPack(manifest.pack, manifest);
     validateCertificationPackTemplate(template);
@@ -76,7 +76,7 @@ function markdown(value: string): string {
 }
 
 export class CertificationPackRenderer implements CertificationPackRendering {
-    public async render(manifest: CertificationPackManifest, format: CertificationPackFormat, inputTemplate?: CertificationPackTemplate, signal?: AbortSignal): Promise<string | Buffer> {
+    public async render(manifest: CertificationPackIndex, format: CertificationPackFormat, inputTemplate?: CertificationPackTemplate, signal?: AbortSignal): Promise<string | Buffer> {
         if (signal?.aborted) throw new CertificationPackBuildCancelledError();
         const template = inputTemplate ?? manifest.presentation.template;
         const tables = certificationPackTables(manifest, template);

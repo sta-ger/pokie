@@ -1,6 +1,6 @@
 import type {SessionCommand} from "../runtime/SessionCommand.js";
 import type {PokieGame} from "../gamepackage/PokieGame.js";
-import type {PokieGameManifest} from "../gamepackage/PokieGameManifest.js";
+import type {PokieGameInfo} from "../gamepackage/PokieGameInfo.js";
 import type {PreGeneratedRoundReplayDescriptor} from "../pregenerated/PreGeneratedRoundReplayDescriptor.js";
 
 export type ReplayRecordingOptions = {
@@ -18,7 +18,7 @@ export type ReplayRecordingOptions = {
 // native libraries have no game-model session to replay, and creating one here would regenerate math.
 export type PreGeneratedReplayRecordingOptions = {
     sessionId: string;
-    game: PokieGameManifest;
+    game: PokieGameInfo;
     replay: PreGeneratedRoundReplayDescriptor;
     totalBet: number;
     credits?: number;

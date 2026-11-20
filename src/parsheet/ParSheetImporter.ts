@@ -10,8 +10,8 @@ import {AvailableBetsSheetMapper} from "./mapping/AvailableBetsSheetMapper.js";
 import type {AvailableBetsSheetMapping} from "./mapping/AvailableBetsSheetMapping.js";
 import {BetModesSheetMapper} from "./mapping/BetModesSheetMapper.js";
 import type {BetModesSheetMapping} from "./mapping/BetModesSheetMapping.js";
-import {ManifestSheetMapper} from "./mapping/ManifestSheetMapper.js";
-import type {ManifestSheetMapping} from "./mapping/ManifestSheetMapping.js";
+import {InfoSheetMapper} from "./mapping/InfoSheetMapper.js";
+import type {InfoSheetMapping} from "./mapping/InfoSheetMapping.js";
 import {MechanicsSheetMapper} from "./mapping/MechanicsSheetMapper.js";
 import type {MechanicsSheetMapping} from "./mapping/MechanicsSheetMapping.js";
 import type {ParSheetProvenance} from "./mapping/ParSheetProvenance.js";
@@ -46,7 +46,7 @@ const BLUEPRINT_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/;
 type ConversionFact = NonNullable<ParSheetImportResult["conversionEvidence"]>["facts"][number];
 
 export class ParSheetImporter implements ParSheetImporting {
-    private readonly manifestMapper: ManifestSheetMapping;
+    private readonly manifestMapper: InfoSheetMapping;
     private readonly symbolsMapper: SymbolsSheetMapping;
     private readonly reelStripsMapper: ReelStripsSheetMapping;
     private readonly paytableMapper: PaytableSheetMapping;
@@ -61,7 +61,7 @@ export class ParSheetImporter implements ParSheetImporting {
     private readonly reelSequencesMapper: ReelSequencesSheetMapping;
 
     constructor(
-        manifestMapper: ManifestSheetMapping = new ManifestSheetMapper(),
+        manifestMapper: InfoSheetMapping = new InfoSheetMapper(),
         symbolsMapper: SymbolsSheetMapping = new SymbolsSheetMapper(),
         reelStripsMapper: ReelStripsSheetMapping = new ReelStripsSheetMapper(),
         paytableMapper: PaytableSheetMapping = new PaytableSheetMapper(),
@@ -352,7 +352,7 @@ function conversionFactKindForIssue(issue: ValidationIssue): ConversionFact["kin
         : "diagnostic";
 }
 
-// ManifestSheetMapper intentionally supplies a structurally usable model even
+// InfoSheetMapper intentionally supplies a structurally usable model even
 // for a hand-edited workbook with missing cells (the validator then describes
 // why that model is invalid).  Preserve each such materialization as an
 // explicit conversion fact: users must never have to infer a default from a

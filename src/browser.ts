@@ -66,7 +66,7 @@ export * from "./session/SessionStateRestoring.js";
 export * from "./runtime/RuntimeCommandError.js";
 export type {PokieGame} from "./gamepackage/PokieGame.js";
 export type {PokieGameContext} from "./gamepackage/PokieGameContext.js";
-export type {PokieGameManifest} from "./gamepackage/PokieGameManifest.js";
+export type {PokieGameInfo} from "./gamepackage/PokieGameInfo.js";
 export type {GameSessionHandling} from "./session/GameSessionHandling.js";
 export type {PokieSessionState} from "./server/session/PokieSessionState.js";
 export type {SessionRepository} from "./server/session/SessionRepository.js";
@@ -97,9 +97,9 @@ export * from "./session/videoslot/modifiers/ScreenModifierEngine.js";
 export * from "./session/videoslot/modifiers/validateScreenModifiers.js";
 export * from "./session/videoslot/modifiers/ScreenModifierHandling.js";
 
-export * from "./session/videoslot/authored/BoundedMechanics.js";
-export * from "./session/videoslot/authored/BoundedVideoSlotSession.js";
+export * from "./session/videoslot/authored/FeatureChains.js";
+export * from "./session/videoslot/authored/FeatureChainSession.js";
 export * from "./net/videoslot/cascade/CascadeSessionSerializer.js";
 
 export * from "./session/videoslot/authored/WeightedBonus.js";
-export * from "./session/videoslot/authored/BoundedVideoSlotSession.js";
+export * from "./session/videoslot/authored/FeatureChainSession.js";

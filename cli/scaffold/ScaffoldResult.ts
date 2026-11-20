@@ -1,8 +1,8 @@
-import {PokieGameManifest} from "@fromstan/pokie";
+import {PokieGameInfo} from "@fromstan/pokie";
 
 export type ScaffoldResult = {
     projectRoot: string;
-    manifest: PokieGameManifest;
+    manifest: PokieGameInfo;
     createdFiles: string[];
     updatedFiles: string[];
     skippedFiles: string[];

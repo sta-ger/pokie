@@ -20,7 +20,7 @@ export type OptimizationSimulationRecipe = {
 export function createOptimizationSimulationGame(recipe: OptimizationSimulationRecipe): PokieGame {
     const releases = new Set<() => void>();
     return {
-        getManifest: () => ({id: "optimization-population", name: "Optimization population", version: "1"}),
+        getInfo: () => ({id: "optimization-population", name: "Optimization population", version: "1"}),
         getConfigHash: () => recipe.modelId,
         release: () => {
             for (const dispose of releases) {

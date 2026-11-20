@@ -3,7 +3,7 @@ import {projectOutcomeSourceSimulationReport} from "../../src/reporting/projectO
 import type {OutcomeSourceSimulationReport} from "../../src/project/simulateOutcomeSourceProject.js";
 import {Command} from "commander";
 import {
-    CERTIFICATION_PREPARATION_NOTICE, CertificationPackRenderer, CertificationPackValidator, loadCertificationPackTemplate, type CertificationPackManifest, type CertificationPackTemplate,
+    CERTIFICATION_PREPARATION_NOTICE, CertificationPackRenderer, CertificationPackValidator, loadCertificationPackTemplate, type CertificationPackIndex, type CertificationPackTemplate,
     HtmlSimulationReportRenderer,
     isSimulationReportSet,
     MarkdownSimulationReportRenderer,
@@ -115,7 +115,7 @@ export class ReportCommand implements CliCommandHandling {
             throw new Error(describeWasmUnsupportedOperation("create a simulation report"));
         }
 
-        let parsed: SimulationReport | SimulationReportSet | CertificationPackManifest;
+        let parsed: SimulationReport | SimulationReportSet | CertificationPackIndex;
         try {
             parsed = this.readReportJson(reportPath);
         } catch (error) {
@@ -247,7 +247,7 @@ export class ReportCommand implements CliCommandHandling {
         return {reportPath: resultRef.reportPath!, format: resultRef.format!, out: resultRef.out, template: resultRef.template};
     }
 
-    private readReportJson(reportPath: string): SimulationReport | SimulationReportSet | CertificationPackManifest {
+    private readReportJson(reportPath: string): SimulationReport | SimulationReportSet | CertificationPackIndex {
         let contents: string;
         try {
             contents = this.readFile(reportPath);
@@ -262,7 +262,7 @@ export class ReportCommand implements CliCommandHandling {
             throw new Error(`"${reportPath}" is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
         }
 
-        if (parsed && typeof parsed === "object" && "pack" in parsed) return parsed as CertificationPackManifest;
+        if (parsed && typeof parsed === "object" && "pack" in parsed) return parsed as CertificationPackIndex;
 
         // Historical sampled outcome reports are not static outcome-source analyses.
         if (typeof parsed === "object" && parsed !== null && "libraryId" in parsed && !("rounds" in parsed)) {

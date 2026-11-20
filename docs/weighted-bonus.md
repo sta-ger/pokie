@@ -96,7 +96,7 @@ retain their existing explicit operations.
 
 Generated CJS and recompilable TypeScript, public package descriptors, Blueprint
 and real XLSX interchange preserve the complete table and ordered identities.
-Direct library construction uses `BoundedVideoSlotSession` with
+Direct library construction uses `FeatureChainSession` with
 `{weightedBonus: table}`; it shares the existing rollback, progression, settlement
 and RNG owner. `validateWeightedBonus` is also available for data-only checks.
 `selectWeightedBonus` is the pure selection boundary for a validated definition

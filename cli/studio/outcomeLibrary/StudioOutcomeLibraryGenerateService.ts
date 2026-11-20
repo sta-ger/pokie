@@ -2,7 +2,7 @@ import {
     GenerateExactWeightedOutcomeLibraryResult,
     loadPokieGame,
     releasePokieGame,
-    OutcomeLibraryFolderManifest,
+    OutcomeLibraryFolderIndex,
     OutcomeLibraryFolderModeInput,
     OutcomeLibraryFolderReader,
     OutcomeLibraryFolderValidator,
@@ -276,7 +276,7 @@ export class StudioOutcomeLibraryGenerateService {
             }
             this.preflightSnapshots.set(preflightToken, {
                 binding: {
-                    requestKey: generationRequestKey(request), gameId: game.getManifest().id, gameVersion: game.getManifest().version,
+                    requestKey: generationRequestKey(request), gameId: game.getInfo().id, gameVersion: game.getInfo().version,
                     ...(resolvedConfigHash === undefined ? {} : {configHash: resolvedConfigHash}), destination: boundDestination,
                     requiresBounded: preparedRequest.preflight.requiresSampledOptIn,
                 },
@@ -286,7 +286,7 @@ export class StudioOutcomeLibraryGenerateService {
             });
             return {
                 status: "ok",
-                game: game.getManifest(),
+                game: game.getInfo(),
                 reelsNumber: estimate.reelsNumber,
                 reelsSymbolsNumber: estimate.reelsSymbolsNumber,
                 reelSizes: estimate.reelSizes,
@@ -400,8 +400,8 @@ export class StudioOutcomeLibraryGenerateService {
                         projectRoot,
                     ));
                     if (
-                        game.getManifest().id !== binding.gameId ||
-                        game.getManifest().version !== binding.gameVersion ||
+                        game.getInfo().id !== binding.gameId ||
+                        game.getInfo().version !== binding.gameVersion ||
                         game.getConfigHash?.() !== binding.configHash ||
                         preparedRequest.preflight.destination?.path !== binding.destination ||
                         preparedRequest.preflight.requiresSampledOptIn !== binding.requiresBounded
@@ -536,7 +536,7 @@ export class StudioOutcomeLibraryGenerateService {
             }
             const binding = snapshot?.binding;
             const loadedConfigHash = game.getConfigHash?.();
-            if (binding !== undefined && (binding.requestKey !== generationRequestKey(request) || binding.destination !== preparedRequest.preflight.destination?.path || binding.gameId !== game.getManifest().id || binding.gameVersion !== game.getManifest().version || binding.configHash !== loadedConfigHash)) {
+            if (binding !== undefined && (binding.requestKey !== generationRequestKey(request) || binding.destination !== preparedRequest.preflight.destination?.path || binding.gameId !== game.getInfo().id || binding.gameVersion !== game.getInfo().version || binding.configHash !== loadedConfigHash)) {
                 return {status: "conflict", error: "The source, configuration, destination, or generation settings changed after the check. Refresh the displayed check before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
             }
             const requestedGeneration = requestedGenerationFor(preparedRequest.preflight);
@@ -875,9 +875,9 @@ export class StudioOutcomeLibraryGenerateService {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error)};
         }
         try {
-            const currentGame = game.getManifest();
+            const currentGame = game.getInfo();
 
-            const discovered: {libraryDir: string; manifest: OutcomeLibraryFolderManifest}[] = [];
+            const discovered: {libraryDir: string; manifest: OutcomeLibraryFolderIndex}[] = [];
             for (const libraryDir of this.discoverBundleDirs(projectRoot)) {
                 const resolved = resolveProjectDirectory(projectRoot, libraryDir, this.realpath);
                 if (resolved.status === "error") {
@@ -887,7 +887,7 @@ export class StudioOutcomeLibraryGenerateService {
                     continue;
                 }
 
-                let manifest: OutcomeLibraryFolderManifest;
+                let manifest: OutcomeLibraryFolderIndex;
                 try {
                     manifest = await this.bundleReader.readManifest(resolved.resolvedPath);
                 } catch (error) {
@@ -904,7 +904,7 @@ export class StudioOutcomeLibraryGenerateService {
             }
 
             const currentConfigHash = game.getConfigHash?.();
-            const classify = (manifest: OutcomeLibraryFolderManifest): "compatible" | "stale" | "wrong" => {
+            const classify = (manifest: OutcomeLibraryFolderIndex): "compatible" | "stale" | "wrong" => {
                 if (manifest.game.id !== currentGame.id) {
                     return "wrong";
                 }
@@ -920,7 +920,7 @@ export class StudioOutcomeLibraryGenerateService {
                 return "compatible";
             };
 
-        type ModeCandidate = {libraryDir: string; manifest: OutcomeLibraryFolderManifest; entry: OutcomeLibraryFolderManifest["modes"][number]};
+        type ModeCandidate = {libraryDir: string; manifest: OutcomeLibraryFolderIndex; entry: OutcomeLibraryFolderIndex["modes"][number]};
         const latestByMode = new Map<string, ModeCandidate>();
         for (const {libraryDir, manifest} of discovered) {
             for (const entry of manifest.modes) {
@@ -1035,7 +1035,7 @@ export class StudioOutcomeLibraryGenerateService {
         if (expectedInputBindingHash !== undefined && computeBuildInputHash([canonicalLocation]) !== expectedInputBindingHash) {
             throw new Error("The managed Blueprint input changed after the check. Refresh the displayed check before generating.");
         }
-        const manifest = game.getManifest();
+        const manifest = game.getInfo();
         if (
             manifest.id !== snapshot.binding.gameId ||
             manifest.version !== snapshot.binding.gameVersion ||
@@ -1285,7 +1285,7 @@ export class StudioOutcomeLibraryGenerateService {
         destinationSyntax: string,
         projectRoot: string,
     ): OutcomeLibraryGenerationRequest {
-        const manifest = game.getManifest();
+        const manifest = game.getInfo();
         const modeIdentity = resolveOutcomeLibraryRuntimeModeIdentity(game, request.mode);
         const sample = resolveSample(request);
         // Transport requests deliberately cannot carry lifecycle capabilities.

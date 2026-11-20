@@ -288,7 +288,7 @@ mode must belong to those lists. Each subsequent round retains the validated lis
 and captured recovery snapshots; successful play and recovery never broaden them back to model supported actions.
 A record claiming durable recovery without declarations is `incompatible-state`;
 a live-only record without saved trusted source is `restoration-unsupported`. Forged selections are
-`corrupt-state`. Existing `getManifest()`/`createSession()` packages remain playable through their primed
+`corrupt-state`. Existing `getInfo()`/`createSession()` packages remain playable through their primed
 live session without adding methods. Initial capture marks them `live-only` when either declaration is
 absent; trusted live schema checks never authorize reconstruction. Initial creation and direct session
 callers retain their constructor defaults.

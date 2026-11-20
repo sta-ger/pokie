@@ -15,7 +15,7 @@ import {WeightedSymbolsSequence} from "../session/videoslot/combinations/Weighte
 import {SymbolsCombinationsGenerator} from "../session/videoslot/combinations/SymbolsCombinationsGenerator.js";
 import {SeededRandomNumberGenerator} from "../session/videoslot/combinations/SeededRandomNumberGenerator.js";
 import {VideoSlotWinCalculator} from "../session/videoslot/wincalculator/VideoSlotWinCalculator.js";
-import {BoundedVideoSlotSession} from "../session/videoslot/authored/BoundedVideoSlotSession.js";
+import {FeatureChainSession} from "../session/videoslot/authored/FeatureChainSession.js";
 import {VideoSlotWithHoldAndWinSession} from "../session/videoslot/holdandwin/VideoSlotWithHoldAndWinSession.js";
 import {SymbolSetHoldAndWinCollector} from "../session/videoslot/holdandwin/SymbolSetHoldAndWinCollector.js";
 import {MinimumCountHoldAndWinTrigger} from "../session/videoslot/holdandwin/MinimumCountHoldAndWinTrigger.js";
@@ -65,7 +65,7 @@ export function createAuthoredSession(blueprint: GameBlueprint, random: SeededRa
     const {cascade, respins, collection, weightedBonus} = blueprint.mechanics ?? {};
     const bounded = {...(cascade ? {cascade} : {}), ...(respins ? {respins} : {}), ...(collection ? {collection} : {}), ...(weightedBonus ? {weightedBonus} : {})};
     let session: VideoSlotSessionHandling;
-    if (Object.keys(bounded).length) session = new BoundedVideoSlotSession(config, generator, bounded, calculator);
+    if (Object.keys(bounded).length) session = new FeatureChainSession(config, generator, bounded, calculator);
     else if (resolved instanceof VideoSlotWithFreeGamesConfig) session = new VideoSlotWithFreeGamesSession(resolved, forcedGenerator ?? generator, calculator);
     else session = new VideoSlotSession(resolved, forcedGenerator ?? generator, calculator);
     const hold = blueprint.mechanics?.holdAndWin;

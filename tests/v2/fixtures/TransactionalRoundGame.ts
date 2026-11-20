@@ -79,7 +79,7 @@ export function transactionalRoundGame(onCalculate?: () => void, failure?: "calc
     }
     return {
         supportsLogicalRoundDelivery: () => true,
-        getManifest: () => ({id: "reference-round", name: "Reference round", version: "1"}),
+        getInfo: () => ({id: "reference-round", name: "Reference round", version: "1"}),
         getSessionStateSchema: () => ({kind: "custom"}),
         getSessionCommandCapabilities: () => ({bets: [0.05, 7.5, 1e-7], modes: ["base", "double"]}),
         validateSessionState: validate,

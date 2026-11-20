@@ -1,6 +1,6 @@
 import {isPositiveSafeInteger} from "../../pregenerated/internal/isPositiveSafeInteger.js";
 import type {ValidationIssue} from "../../validation/ValidationIssue.js";
-import type {CertificationPackManifest, CertificationPackModeEntry} from "../CertificationPackManifest.js";
+import type {CertificationPackIndex, CertificationPackModeEntry} from "../CertificationPackIndex.js";
 import type {CertificationPackSampleRecord} from "../CertificationPackSampleRecord.js";
 
 // Shared, deliberately strict runtime shape guards for a candidate (possibly hand-crafted, possibly tampered)
@@ -213,11 +213,11 @@ const MANIFEST_KEYS = new Set([
 // Top-level shape check only — does NOT deeply validate every "modes" entry (use isModeEntryShape per entry) or
 // every "files" entry; callers that need per-element correctness check those separately, so a single malformed
 // mode/sample/file never has to invalidate an otherwise well-formed manifest's other entries.
-export function isManifestShape(value: unknown): value is CertificationPackManifest {
+export function isManifestShape(value: unknown): value is CertificationPackIndex {
     if (typeof value !== "object" || value === null || !hasOnlyAllowedKeys(value, MANIFEST_KEYS)) {
         return false;
     }
-    const manifest = value as Partial<Record<keyof CertificationPackManifest, unknown>>;
+    const manifest = value as Partial<Record<keyof CertificationPackIndex, unknown>>;
     return (
         typeof manifest.schemaVersion === "number" &&
         typeof manifest.pack === "object" && manifest.pack !== null &&

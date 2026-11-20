@@ -924,7 +924,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                     ? {
                         roundId,
                         origin: {
-                            game: this.game.getManifest(),
+                            game: this.game.getInfo(),
                             pokieVersion: this.pokieVersion,
                             // Only ever set when the loaded game actually exposes its own authoritative
                             // config hash (see PokieGame.getConfigHash's own doc comment) — never invented

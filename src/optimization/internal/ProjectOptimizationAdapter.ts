@@ -19,7 +19,7 @@ import {releaseSimulationGame} from "../../simulation/parallel/internal/releaseS
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import type {PokieProject} from "../../project/PokieProject.js";
 import {readWasmComponentManifest} from "../../project/readWasmComponentManifest.js";
-import type {PokieWasmComponentManifest} from "../../project/wasm/PokieWasmComponentManifest.js";
+import type {PokieWasmComponentInfo} from "../../project/wasm/PokieWasmComponentInfo.js";
 import {resolveCanonicalWasmGameModel} from "../../project/WasmOutputBuilder.js";
 import {computeBlueprintHash} from "../../parsheet/computeBlueprintHash.js";
 import {ParSheetImporter} from "../../parsheet/ParSheetImporter.js";
@@ -402,7 +402,7 @@ export async function acquireOptimizationAdapter(
     let blueprint: GameBlueprint;
     let contract: DeclaredPackageTuningContract | undefined;
     let wasmContract: CanonicalWasmTuningContract | undefined;
-    let wasmManifest: PokieWasmComponentManifest | undefined;
+    let wasmManifest: PokieWasmComponentInfo | undefined;
     if (project.type === "blueprint") blueprint = readJson(project.rootPath) as GameBlueprint;
     else if (project.type === "parWorkbook") {
         const imported = await new ParSheetImporter().importFromFile(project.rootPath);
@@ -658,7 +658,7 @@ async function verifyWasmExecutable(
 function selectStake(game: PokieGame, stake: number): PokieGame {
     return {
         ...game,
-        getManifest: () => game.getManifest(),
+        getInfo: () => game.getInfo(),
         getConfigHash: () => game.getConfigHash!(),
         createSession: (context) => {
             const session = game.createSession(context);

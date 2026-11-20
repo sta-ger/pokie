@@ -1,8 +1,8 @@
 import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 import {isValidSemverLite} from "./internal/compareSemverLite.js";
-import {POKIE_WASM_ADAPTER, type PokieWasmComponentManifest} from "./PokieWasmComponentManifest.js";
+import {POKIE_WASM_ADAPTER, type PokieWasmComponentInfo} from "./PokieWasmComponentInfo.js";
 
-// An PokieWasmComponentManifest's own static type guarantees nothing about a value that actually arrives at
+// An PokieWasmComponentInfo's own static type guarantees nothing about a value that actually arrives at
 // runtime -- always deserialized from a sidecar JSON file (see WasmProjectTargetAdapter) -- so every field is
 // read through this loosened view, the same runtime-guard idiom RoundRecordValidator/
 // ExternalExportTargetDescriptorValidator use for the identical reason.
@@ -16,27 +16,27 @@ function isNonEmptyStringArray(value: unknown): value is readonly string[] {
     return Array.isArray(value) && value.every((entry) => isNonEmptyString(entry));
 }
 
-// Validates a PokieWasmComponentManifest's own shape only -- independent of whether it's actually compatible
+// Validates a PokieWasmComponentInfo's own shape only -- independent of whether it's actually compatible
 // with this POKIE build's own contract version (see assessWasmComponentCompatibility for that, separate,
 // step) -- the same "shape vs. compatibility are two different questions" split
 // ExternalExportTargetDescriptorValidator/ExternalExportCompatibilityValidator draw for
 // ExternalExportTarget. Never throws.
-export class PokieWasmComponentManifestValidator {
+export class PokieWasmComponentInfoValidator {
     public validate(manifest: unknown): ValidationIssue[] {
         try {
-            return this.validateInternal((typeof manifest === "object" && manifest !== null ? manifest : {}) as Loose<PokieWasmComponentManifest>);
+            return this.validateInternal((typeof manifest === "object" && manifest !== null ? manifest : {}) as Loose<PokieWasmComponentInfo>);
         } catch (error) {
             return [
                 {
                     code: "wasm-component-manifest-malformed",
                     severity: "error",
-                    message: `PokieWasmComponentManifest could not be validated: ${error instanceof Error ? error.message : String(error)}`,
+                    message: `PokieWasmComponentInfo could not be validated: ${error instanceof Error ? error.message : String(error)}`,
                 },
             ];
         }
     }
 
-    private validateInternal(manifest: Loose<PokieWasmComponentManifest>): ValidationIssue[] {
+    private validateInternal(manifest: Loose<PokieWasmComponentInfo>): ValidationIssue[] {
         const issues: ValidationIssue[] = [];
 
         if (!isNonEmptyString(manifest.schemaVersion) || !isValidSemverLite(manifest.schemaVersion)) {
@@ -48,7 +48,7 @@ export class PokieWasmComponentManifestValidator {
             });
         }
 
-        this.validateComponent(manifest.component as Loose<PokieWasmComponentManifest["component"]> | undefined, issues);
+        this.validateComponent(manifest.component as Loose<PokieWasmComponentInfo["component"]> | undefined, issues);
 
         if (
             manifest.minPokieVersion !== undefined &&
@@ -62,9 +62,9 @@ export class PokieWasmComponentManifestValidator {
             });
         }
 
-        this.validateSerialization(manifest.serialization as Loose<PokieWasmComponentManifest["serialization"]> | undefined, issues);
-        this.validateHost(manifest.host as Loose<PokieWasmComponentManifest["host"]> | undefined, issues);
-        this.validateArtifact(manifest.artifact as Loose<NonNullable<PokieWasmComponentManifest["artifact"]>> | undefined, issues);
+        this.validateSerialization(manifest.serialization as Loose<PokieWasmComponentInfo["serialization"]> | undefined, issues);
+        this.validateHost(manifest.host as Loose<PokieWasmComponentInfo["host"]> | undefined, issues);
+        this.validateArtifact(manifest.artifact as Loose<NonNullable<PokieWasmComponentInfo["artifact"]>> | undefined, issues);
 
         if (!isNonEmptyStringArray(manifest.capabilities)) {
             issues.push({
@@ -78,7 +78,7 @@ export class PokieWasmComponentManifestValidator {
         return issues;
     }
 
-    private validateComponent(component: Loose<PokieWasmComponentManifest["component"]> | undefined, issues: ValidationIssue[]): void {
+    private validateComponent(component: Loose<PokieWasmComponentInfo["component"]> | undefined, issues: ValidationIssue[]): void {
         if (typeof component !== "object" || component === null) {
             issues.push({
                 code: "wasm-component-manifest-component-invalid",
@@ -106,7 +106,7 @@ export class PokieWasmComponentManifestValidator {
         }
     }
 
-    private validateSerialization(serialization: Loose<PokieWasmComponentManifest["serialization"]> | undefined, issues: ValidationIssue[]): void {
+    private validateSerialization(serialization: Loose<PokieWasmComponentInfo["serialization"]> | undefined, issues: ValidationIssue[]): void {
         if (typeof serialization !== "object" || serialization === null) {
             issues.push({
                 code: "wasm-component-manifest-serialization-invalid",
@@ -128,7 +128,7 @@ export class PokieWasmComponentManifestValidator {
         });
     }
 
-    private validateHost(host: Loose<PokieWasmComponentManifest["host"]> | undefined, issues: ValidationIssue[]): void {
+    private validateHost(host: Loose<PokieWasmComponentInfo["host"]> | undefined, issues: ValidationIssue[]): void {
         if (typeof host !== "object" || host === null) {
             issues.push({
                 code: "wasm-component-manifest-host-invalid",
@@ -156,7 +156,7 @@ export class PokieWasmComponentManifestValidator {
         }
     }
 
-    private validateArtifact(artifact: Loose<NonNullable<PokieWasmComponentManifest["artifact"]>> | undefined, issues: ValidationIssue[]): void {
+    private validateArtifact(artifact: Loose<NonNullable<PokieWasmComponentInfo["artifact"]>> | undefined, issues: ValidationIssue[]): void {
         // Undefined intentionally denotes the documented legacy inspection
         // compatibility case.  Once an artifact block is supplied it must be
         // complete, so a partial integrity claim is never trusted.

@@ -1,4 +1,4 @@
-import {GameSessionHandling, isPokieGame, PokieGame, PokieGameContractValidationRule, PokieGameManifest} from "@fromstan/pokie";
+import {GameSessionHandling, isPokieGame, PokieGame, PokieGameContractValidationRule, PokieGameInfo} from "@fromstan/pokie";
 
 function createStubSession(): GameSessionHandling {
     return {
@@ -13,19 +13,19 @@ function createStubSession(): GameSessionHandling {
     };
 }
 
-function createValidGame(manifest: PokieGameManifest = {id: "demo", name: "Demo", version: "1.0.0"}): PokieGame {
+function createValidGame(manifest: PokieGameInfo = {id: "demo", name: "Demo", version: "1.0.0"}): PokieGame {
     return {
-        getManifest: () => manifest,
+        getInfo: () => manifest,
         createSession: () => createStubSession(),
     };
 }
 
 describe("isPokieGame", () => {
-    it("returns true for an object implementing getManifest()/createSession()", () => {
+    it("returns true for an object implementing getInfo()/createSession()", () => {
         expect(isPokieGame(createValidGame())).toBe(true);
     });
 
-    it.each<unknown>([undefined, null, 42, "game", {}, {getManifest: () => undefined}, {createSession: () => undefined}])(
+    it.each<unknown>([undefined, null, 42, "game", {}, {getInfo: () => undefined}, {createSession: () => undefined}])(
         "returns false for %p",
         (value) => {
             expect(isPokieGame(value)).toBe(false);
@@ -42,9 +42,9 @@ describe("PokieGameContractValidationRule", () => {
         expect(issues[0]).toMatchObject({code: "pokie-game-missing-contract-methods", severity: "error"});
     });
 
-    it("reports an error when getManifest() throws", () => {
+    it("reports an error when getInfo() throws", () => {
         const game: PokieGame = {
-            getManifest: () => {
+            getInfo: () => {
                 throw new Error("boom");
             },
             createSession: () => createStubSession(),

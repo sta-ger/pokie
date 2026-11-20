@@ -4,7 +4,7 @@
 // gets the shape wrong", and the two now behave differently: TsPackageProjectTargetAdapter/
 // OutcomeLibraryProjectTargetAdapter report "unrelated" as a normal non-match (recognize() resolves undefined)
 // but "malformed" as a ProjectTargetMalformedError (recognize() throws) — see that class's own doc comment.
-export type ProjectTargetManifestRecognition =
+export type ProjectTargetInfoRecognition =
     | {readonly kind: "recognized"}
     | {readonly kind: "unrelated"}
     | {readonly kind: "malformed"; readonly reason: string};

@@ -1,7 +1,7 @@
 import {assertCanonicalWasmGameModel, compileCanonicalWasmBuild, type CanonicalWasmGameModel} from "./DeclarativeWasmModel.js";
 import {assessWasmComponentCompatibility} from "../project/wasm/assessWasmComponentCompatibility.js";
 import {satisfiesMinimumSemverLite} from "../project/wasm/internal/compareSemverLite.js";
-import {POKIE_WASM_ABI_VERSION, POKIE_WASM_ADAPTER, type PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
+import {POKIE_WASM_ABI_VERSION, POKIE_WASM_ADAPTER, type PokieWasmComponentInfo} from "../project/wasm/PokieWasmComponentInfo.js";
 import {POKIE_WASM_RUNTIME_VERSION} from "./PokieWasmRuntimeApi.js";
 
 export const POKIE_WASM_IMPORT_MODULE = "pokie";
@@ -56,7 +56,7 @@ export type CanonicalPokieWasmModule = {
  * artifact that asks for a different serializer, RNG protocol, or service
  * would otherwise be accepted and run with invented host behaviour.
  */
-export function describeUnsupportedCanonicalWasmRuntimeContract(manifest: Pick<PokieWasmComponentManifest, "serialization" | "host">): string | undefined {
+export function describeUnsupportedCanonicalWasmRuntimeContract(manifest: Pick<PokieWasmComponentInfo, "serialization" | "host">): string | undefined {
     if (manifest.serialization.session !== POKIE_WASM_SESSION_SERIALIZATION ||
         manifest.serialization.play !== POKIE_WASM_PLAY_SERIALIZATION ||
         ![POKIE_WASM_STATE_SERIALIZATION, "pokie.state.v4"].includes(manifest.serialization.state)) {
@@ -71,12 +71,12 @@ export function describeUnsupportedCanonicalWasmRuntimeContract(manifest: Pick<P
     return undefined;
 }
 
-export function assertSupportedCanonicalWasmRuntimeContract(manifest: Pick<PokieWasmComponentManifest, "serialization" | "host">): void {
+export function assertSupportedCanonicalWasmRuntimeContract(manifest: Pick<PokieWasmComponentInfo, "serialization" | "host">): void {
     const reason = describeUnsupportedCanonicalWasmRuntimeContract(manifest);
     if (reason !== undefined) throw new Error(`POKIE WASM artifact cannot execute: ${reason}.`);
 }
 
-export function hasCanonicalWasmOperationDeclaration(manifest: Pick<PokieWasmComponentManifest, "capabilities">, declaration: string): boolean {
+export function hasCanonicalWasmOperationDeclaration(manifest: Pick<PokieWasmComponentInfo, "capabilities">, declaration: string): boolean {
     return manifest.capabilities.includes(declaration);
 }
 
@@ -101,7 +101,7 @@ export async function sha256CanonicalWasmBytes(bytes: BufferSource): Promise<str
 }
 
 /** Ensures that all embedded declarations exactly bind to the sidecar. */
-export function assertCanonicalWasmDescriptorMatchesManifest(descriptor: CanonicalPokieWasmComponentDescriptor, manifest: PokieWasmComponentManifest): void {
+export function assertCanonicalWasmDescriptorMatchesInfo(descriptor: CanonicalPokieWasmComponentDescriptor, manifest: PokieWasmComponentInfo): void {
     const artifact = manifest.artifact;
     if (artifact === undefined || descriptor.schemaVersion !== manifest.schemaVersion || descriptor.component.id !== manifest.component.id ||
         descriptor.component.version !== manifest.component.version || descriptor.minPokieVersion !== manifest.minPokieVersion ||
@@ -280,7 +280,7 @@ export function readCanonicalPokieWasmModule(bytes: BufferSource): CanonicalPoki
  * Reads and validates the portable executable boundary used by file
  * resolution, manifest readback, and direct browser-safe instantiation.
  */
-export async function readIntegrityBoundCanonicalPokieWasmArtifact(bytes: BufferSource, manifest: PokieWasmComponentManifest): Promise<CanonicalPokieWasmModule> {
+export async function readIntegrityBoundCanonicalPokieWasmArtifact(bytes: BufferSource, manifest: PokieWasmComponentInfo): Promise<CanonicalPokieWasmModule> {
     const compatibility = assessWasmComponentCompatibility(manifest);
     if (!compatibility.compatible) {
         throw new Error(`POKIE WASM manifest is incompatible: ${compatibility.issues.map((issue) => issue.message).join(" ")}`);
@@ -305,7 +305,7 @@ export async function readIntegrityBoundCanonicalPokieWasmArtifact(bytes: Buffer
     if (await sha256CanonicalWasmBytes(canonical.modelBytes) !== artifact.configurationHash) {
         throw new Error("POKIE WASM embedded game configuration hash does not match its manifest.");
     }
-    assertCanonicalWasmDescriptorMatchesManifest(canonical.descriptor, manifest);
+    assertCanonicalWasmDescriptorMatchesInfo(canonical.descriptor, manifest);
     // The immutable module declaration is the authoritative source for a
     // runnable artifact.  Bind the sidecar to it before rejecting a runtime
     // contract: otherwise an edited sidecar can obscure the useful integrity

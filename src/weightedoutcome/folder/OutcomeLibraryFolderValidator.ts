@@ -11,7 +11,7 @@ import {WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION} from "../WeightedOutcomeLibrary
 import {computeOnlineWeightedOutcomeLibraryAnalysis} from "./internal/computeOnlineWeightedOutcomeLibraryAnalysis.js";
 import {iterateOutcomesJsonl} from "./internal/iterateOutcomesJsonl.js";
 import {readAndVerifyOutcomeAtByteRangeFromFileDescriptor} from "./internal/readOutcomeAtByteRange.js";
-import {OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION, type OutcomeLibraryFolderManifest, type OutcomeLibraryFolderManifestModeEntry} from "./OutcomeLibraryFolderManifest.js";
+import {OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION, type OutcomeLibraryFolderIndex, type OutcomeLibraryFolderIndexModeEntry} from "./OutcomeLibraryFolderIndex.js";
 import {OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION, type OutcomeLibraryFolderIndexEntry, type OutcomeLibraryFolderModeIndex} from "./OutcomeLibraryFolderModeIndex.js";
 import type {OutcomeLibraryFolderValidateOptions, OutcomeLibraryFolderValidating} from "./OutcomeLibraryFolderValidating.js";
 
@@ -87,7 +87,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
         return issues;
     }
 
-    private readManifest(libraryDir: string, issues: ValidationIssue[]): OutcomeLibraryFolderManifest | undefined {
+    private readManifest(libraryDir: string, issues: ValidationIssue[]): OutcomeLibraryFolderIndex | undefined {
         const manifestPath = path.join(libraryDir, "manifest.json");
         if (!fs.existsSync(manifestPath)) {
             issues.push({code: "outcome-library-folder-manifest-missing", severity: "error", message: `"${libraryDir}" has no manifest.json.`});
@@ -127,7 +127,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
             return undefined;
         }
 
-        const manifest = parsed as OutcomeLibraryFolderManifest;
+        const manifest = parsed as OutcomeLibraryFolderIndex;
         if (manifest.schemaVersion !== OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION) {
             issues.push({
                 code: "outcome-library-folder-manifest-schema-version-unsupported",
@@ -163,7 +163,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
         const seenNames = new Map<string, string>();
 
         rawModes.forEach((rawEntry, position) => {
-            const entry = rawEntry as Partial<OutcomeLibraryFolderManifestModeEntry> | null;
+            const entry = rawEntry as Partial<OutcomeLibraryFolderIndexModeEntry> | null;
             if (typeof entry !== "object" || entry === null) {
                 issues.push({
                     code: "outcome-library-folder-manifest-mode-field-invalid",
@@ -293,7 +293,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
     // entry that isn't itself a safe filename. Only runs against modes whose own fields already validated
     // cleanly (validateManifestModeEntries runs first) — an inconsistent files list on top of an already-broken
     // modes array would only add noise, not a new diagnosis.
-    private validateManifestFiles(manifest: OutcomeLibraryFolderManifest, issues: ValidationIssue[]): boolean {
+    private validateManifestFiles(manifest: OutcomeLibraryFolderIndex, issues: ValidationIssue[]): boolean {
         if (!Array.isArray(manifest.files) || manifest.files.length === 0 || manifest.files.some((file) => typeof file !== "string" || file.trim().length === 0)) {
             issues.push({
                 code: "outcome-library-folder-manifest-files-invalid",
@@ -373,8 +373,8 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
 
     private async validateMode(
         libraryDir: string,
-        manifest: OutcomeLibraryFolderManifest,
-        modeEntry: OutcomeLibraryFolderManifestModeEntry,
+        manifest: OutcomeLibraryFolderIndex,
+        modeEntry: OutcomeLibraryFolderIndexModeEntry,
         deep: boolean,
         issues: ValidationIssue[],
         options?: OutcomeLibraryFolderValidateOptions,
@@ -763,8 +763,8 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
     // difference there as corruption.
     private async validateModeDeep(
         outcomesPath: string,
-        manifest: OutcomeLibraryFolderManifest,
-        modeEntry: OutcomeLibraryFolderManifestModeEntry,
+        manifest: OutcomeLibraryFolderIndex,
+        modeEntry: OutcomeLibraryFolderIndexModeEntry,
         index: OutcomeLibraryFolderModeIndex,
         issues: ValidationIssue[],
         options: OutcomeLibraryFolderValidateOptions | undefined,

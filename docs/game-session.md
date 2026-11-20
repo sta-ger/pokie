@@ -222,7 +222,7 @@ The selected game's `getSessionStateSchema()` declares the codec before reconstr
 `base`. A custom schema also requires `PokieGame.validateSessionState(state, context)`, and its session
 must capture and restore the complete model and executable state. Packages without a declaration can
 keep a primed live session but cannot promise durable reconstruction. An unchanged
-`getManifest()`/`createSession()` package uses the primed object's captured supported bets, modes and schema
+`getInfo()`/`createSession()` package uses the primed object's captured supported bets, modes and schema
 as process-local trusted source. Serve and Studio Play/scenario searches use this same handler path. Such records
 remain `live-only`; losing the object returns `restoration-unsupported` before construction or recovery writes.
 For durable recovery or construction-free retries after live-state loss, declare

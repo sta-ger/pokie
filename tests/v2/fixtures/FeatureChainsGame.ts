@@ -1,5 +1,5 @@
-import type {GameBlueprint, AUTHORED_BOUNDED_MECHANIC_CATALOG} from "../../../src/index.js";
-export function boundedBlueprint(id: typeof AUTHORED_BOUNDED_MECHANIC_CATALOG[number] = "collection"): GameBlueprint {
+import type {GameBlueprint, AUTHORED_FEATURE_CHAIN_CATALOG} from "../../../src/index.js";
+export function boundedBlueprint(id: typeof AUTHORED_FEATURE_CHAIN_CATALOG[number] = "collection"): GameBlueprint {
     return {
         manifest: {id: `bounded-${id}`, name: `Bounded ${id}`, version: "1.0.0"}, reels: 3, rows: 1,
         symbols: ["A", "B", "C"], wilds: [], scatters: [], availableBets: [0.05, 7.5, 1e-7],

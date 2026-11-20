@@ -308,7 +308,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
             Reflect.deleteProperty(model, "reelStripGeneration");
             const extraction = await this.extraction.extract(
                 {
-                    getManifest: () => model.manifest,
+                    getInfo: () => model.manifest,
                     getModelDescriptor: () => ({
                         descriptorVersion: 1,
                         blueprintSchemaVersion: 1,

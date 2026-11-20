@@ -13,10 +13,10 @@ import {describeUnsupportedProjectOperation} from "./describeUnsupportedProjectO
 
 // What simulateOutcomeSourceProject reports: the same rounds/hitCount/rtp/maxWin/... a "pokie sim" run against a
 // loadable game package reports (see SimulationAccumulator.getStatistics), plus the drawn library's own identity
-// -- never a PokieGameManifest, since a resolved "outcomeLibrary" project has no loadable game behind it to ask
+// -- never a PokieGameInfo, since a resolved "outcomeLibrary" project has no loadable game behind it to ask
 // for one (see this module's own doc comment on why sampling never touches loadPokieGame).
 export type OutcomeSourceSimulationReport = {
-    readonly game?: import("../gamepackage/PokieGameManifest.js").PokieGameManifest;
+    readonly game?: import("../gamepackage/PokieGameInfo.js").PokieGameInfo;
     readonly libraryId: string;
     readonly libraryHash: string;
     readonly modeName: string;

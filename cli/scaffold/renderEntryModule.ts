@@ -1,6 +1,6 @@
-import {PokieGameManifest} from "@fromstan/pokie";
+import {PokieGameInfo} from "@fromstan/pokie";
 
-export function renderEntryModule(manifest: PokieGameManifest): string {
+export function renderEntryModule(manifest: PokieGameInfo): string {
     return `import {
     PokieGame,
     PokieGameContext,
@@ -16,7 +16,7 @@ export function renderEntryModule(manifest: PokieGameManifest): string {
 const manifest = ${JSON.stringify(manifest, null, 4)};
 
 const game: PokieGame = {
-    getManifest() {
+    getInfo() {
         return manifest;
     },
     getSessionStateSchema() {

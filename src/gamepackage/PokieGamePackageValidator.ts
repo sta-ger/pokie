@@ -59,7 +59,7 @@ export class PokieGamePackageValidator implements PokieGamePackageValidating {
         }
 
         try {
-            const manifest = candidate.getManifest();
+            const manifest = candidate.getInfo();
             if (typeof manifest !== "object" || manifest === null) {
                 return null;
             }

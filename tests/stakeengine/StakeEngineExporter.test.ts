@@ -10,7 +10,7 @@ import {
     StakeEngineExportCancelledError,
     StakeEngineExporter,
     StakeEngineIndex,
-    StakeEngineManifest,
+    StakeEngineInfo,
     StakeEngineRoundEventsProjecting,
     StakeEngineRoundEventsProjector,
     WeightedOutcomeLibrary,
@@ -98,7 +98,7 @@ describe("StakeEngineExporter", () => {
             ],
         });
 
-        const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "pokie-manifest.json"), "utf-8")) as StakeEngineManifest;
+        const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "pokie-manifest.json"), "utf-8")) as StakeEngineInfo;
         expect(manifest.generatedBy).toBe("pokie stakeengine export");
         expect(manifest.pokieVersion).toBe("1.3.0");
         expect(manifest.files).toEqual(result.files);

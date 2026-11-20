@@ -1,6 +1,6 @@
 import {compileCanonicalWasmBuild} from "../../../src/wasm/DeclarativeWasmModel.js";
 import crypto from "crypto";
-import type {PokieWasmComponentManifest} from "../../../src/project/wasm/PokieWasmComponentManifest.js";
+import type {PokieWasmComponentInfo} from "../../../src/project/wasm/PokieWasmComponentInfo.js";
 import {compileSharedSlotBuild, stableSlotMathJson} from "../../../src/wasm/math/SharedSlotMath.js";
 import {resolveSharedSlotMathModel} from "../../../src/generated/resolveSharedSlotMathModel.js";
 import type {GameBlueprint} from "../../../src/generated/GameBlueprint.js";
@@ -23,7 +23,7 @@ type CanonicalWasmFixtureOptions = {
 
 
 /** Production lowering only. Modified executables are rejection fixtures, never success evidence. */
-export function createCanonicalWasmFixture(options: CanonicalWasmFixtureOptions = {}): {readonly bytes: Uint8Array<ArrayBuffer>; readonly manifest: PokieWasmComponentManifest} {
+export function createCanonicalWasmFixture(options: CanonicalWasmFixtureOptions = {}): {readonly bytes: Uint8Array<ArrayBuffer>; readonly manifest: PokieWasmComponentInfo} {
     const component = {id: options.id ?? "portable-fixture", version: "1.0.0"};
     const capabilities = options.capabilities ?? ["runtime.play", "runtime.serialize", "runtime.replay"];
     const serialization = options.serialization ?? {session: "pokie.session.v2", play: "pokie.play.v2", state: options.blueprint ? "pokie.state.v4" : "pokie.state.v3"};

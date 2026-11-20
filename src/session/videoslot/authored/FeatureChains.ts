@@ -14,19 +14,19 @@ export type AuthoredCollection = {
     reset: "zero" | "subtract-threshold";
     payout: number;
 };
-export type BoundedMechanics = {weightedBonus?: import("./WeightedBonus.js").WeightedBonus; cascade?: AuthoredCascade; respins?: AuthoredRespins; collection?: AuthoredCollection};
-export type BoundedMechanicObservation = {
+export type FeatureChains = {weightedBonus?: import("./WeightedBonus.js").WeightedBonus; cascade?: AuthoredCascade; respins?: AuthoredRespins; collection?: AuthoredCollection};
+export type FeatureChainObservation = {
     weightedBonus?: import("./WeightedBonus.js").WeightedBonusObservation;
     collection?: {value: number; cap: number; threshold: number; contribution: number; triggered: boolean; reset: AuthoredCollection["reset"]; payout: number};
     respins?: {remaining: number; executed: number; granted: number; limit: number};
     cascade?: {winningCascades: number; evaluatedSteps: number};
 };
-export interface BoundedMechanicsProviding {
-    getBoundedMechanicObservation(): BoundedMechanicObservation | undefined;
+export interface FeatureChainsProviding {
+    getFeatureChainObservation(): FeatureChainObservation | undefined;
 }
 
 /** One accepted mathematical play, shared by execution and checkpoint validation. */
-export function resolveRespinTransition(rule: AuthoredRespins, remaining: number, executed: number, triggerCount: number): NonNullable<BoundedMechanicObservation["respins"]> {
+export function resolveRespinTransition(rule: AuthoredRespins, remaining: number, executed: number, triggerCount: number): NonNullable<FeatureChainObservation["respins"]> {
     if (!Number.isSafeInteger(remaining) || remaining < 0 || remaining > Math.min(rule.grant, rule.maxRespins - executed) ||
         !Number.isSafeInteger(executed) || executed < 0 || executed > rule.maxRespins) throw new Error("Invalid respins prior transition counters.");
     if (remaining > 0 && (rule.retrigger === "none" ? remaining + executed !== rule.grant :
@@ -44,7 +44,7 @@ export function resolveRespinTransition(rule: AuthoredRespins, remaining: number
 }
 
 /** Collection advances once on the final accepted screen, including losing plays. */
-export function resolveCollectionTransition(rule: AuthoredCollection, value: number, count: number): NonNullable<BoundedMechanicObservation["collection"]> {
+export function resolveCollectionTransition(rule: AuthoredCollection, value: number, count: number): NonNullable<FeatureChainObservation["collection"]> {
     if (!Number.isFinite(value) || value < 0 || value > rule.cap ||
         value >= rule.threshold && (rule.reset === "zero" || value > rule.cap - rule.threshold) ||
         !Number.isSafeInteger(count) || count < 0) throw new Error("Invalid collection prior transition.");

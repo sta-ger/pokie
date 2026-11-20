@@ -61,7 +61,7 @@ export function auditCascadeGame(onCalculate: () => void, options: api.CascadeRe
             return this;
         }
     }
-    return {getConfigHash: () => `cascade-model-v1:${JSON.stringify(options)}`, getManifest: () => ({id: "cascade-delivery", name: "Cascade", version: "1"}), supportsLogicalRoundDelivery: () => true,
+    return {getConfigHash: () => `cascade-model-v1:${JSON.stringify(options)}`, getInfo: () => ({id: "cascade-delivery", name: "Cascade", version: "1"}), supportsLogicalRoundDelivery: () => true,
         getSessionStateSchema: () => ({kind: "custom"}), getSessionCommandCapabilities: () => ({bets: [1]}),
         validateSessionState: value => {
             const state = value as {base: unknown; win: number};

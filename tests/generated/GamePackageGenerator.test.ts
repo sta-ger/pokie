@@ -728,7 +728,7 @@ describe("GamePackageGenerator", () => {
         const result = generator.generate(blueprint, cwd);
         const game = require(path.join(result.projectRoot, "dist", "index.js")) as PokieGame;
 
-        expect(game.getManifest()).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
+        expect(game.getInfo()).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
 
         const session = game.createSession();
         session.setBet(1);

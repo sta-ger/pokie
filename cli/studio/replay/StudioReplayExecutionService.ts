@@ -22,7 +22,7 @@ import {
     OutcomeLibraryFolderReading,
     PokieGame,
     PokieGameContext,
-    PokieGameManifest,
+    PokieGameInfo,
     PokieJsonRoundRecordProjector,
     PokieProject,
     PokieSessionState,
@@ -408,7 +408,7 @@ export class StudioReplayExecutionService {
             }
 
             this.markRunning(record);
-            const manifest = game.getManifest();
+            const manifest = game.getInfo();
             record.game = {id: manifest.id, name: manifest.name, version: manifest.version};
             record.configHash = game.getConfigHash?.();
 
@@ -674,7 +674,7 @@ export class StudioReplayExecutionService {
         }
 
         let modeName: string;
-        let manifestGame: PokieGameManifest;
+        let manifestGame: PokieGameInfo;
         try {
             const manifest = await this.outcomeLibraryReader.readManifest(project.rootPath);
             if (manifest.modes.length === 0) {
@@ -842,7 +842,7 @@ export class StudioReplayExecutionService {
     // determinism is what makes the Studio UI's match/mismatch comparison meaningful.
     private buildArtifact(
         session: ReturnType<PokieGame["createSession"]>,
-        manifest: ReturnType<PokieGame["getManifest"]>,
+        manifest: ReturnType<PokieGame["getInfo"]>,
         record: StudioReplayJobRecord,
         result: Extract<SessionCommandResult, {status: "played"}>,
         debug: Record<string, unknown> | undefined,

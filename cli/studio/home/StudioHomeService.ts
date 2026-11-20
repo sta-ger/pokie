@@ -112,7 +112,7 @@ export class StudioHomeService {
             await this.rememberRecentProject(dashboard.projectRoot, dashboard.game.name, options);
             this.assertOpenProjectCurrent(options);
         } else if (options.recordRecentProject !== false && (dashboard.status === "outcome-source" || dashboard.status === "artifact")) {
-            // Neither an outcome source nor an exchange-only artifact carries a PokieGameManifest to name itself
+            // Neither an outcome source nor an exchange-only artifact carries a PokieGameInfo to name itself
             // with (see ProjectDashboardContext's own doc comment) -- the resolved project's own
             // directory/file name is the only stable identity available here, same fallback Overview
             // already uses for an unresolved name elsewhere.

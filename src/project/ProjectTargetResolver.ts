@@ -13,7 +13,7 @@ import {ProjectTargetUnsupportedError} from "./ProjectTargetUnsupportedError.js"
 import {ProjectTargetMalformedError} from "./ProjectTargetMalformedError.js";
 import {StakeAdapterProjectTargetAdapter} from "./StakeAdapterProjectTargetAdapter.js";
 import {TsPackageProjectTargetAdapter} from "./TsPackageProjectTargetAdapter.js";
-import {WasmProjectTargetAdapter, wasmComponentManifestSidecarPath} from "./WasmProjectTargetAdapter.js";
+import {WasmProjectTargetAdapter, wasmComponentInfoCompanionPath} from "./WasmProjectTargetAdapter.js";
 import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js";
 import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
 import {OutcomeLibraryFolderReader} from "../weightedoutcome/folder/OutcomeLibraryFolderReader.js";
@@ -28,7 +28,7 @@ const WASM_FILE_EXTENSION = ".wasm";
 
 // The default, fixed set of per-ProjectType adapters ProjectTargetResolver registers when constructed without
 // an explicit list — one per resolvable ProjectType, including "wasm" via WasmProjectTargetAdapter. That
-// adapter only ever recognizes a ".wasm" file paired with a sidecar PokieWasmComponentManifest it can validate
+// adapter only ever recognizes a ".wasm" file paired with a sidecar PokieWasmComponentInfo it can validate
 // and confirm contract-compatible (see its own doc comment and docs/wasm-compatibility-boundary.md) — an
 // ordinary ".wasm" file with no such sidecar is simply not recognized by it, the same as before this adapter
 // existed. But unlike a genuinely unrelated unrecognized path, resolve() still special-cases that one
@@ -127,7 +127,7 @@ export class ProjectTargetResolver implements ProjectResolving {
             }
             if (stat.isFile() && path.extname(resolvedPath).toLowerCase() === WASM_FILE_EXTENSION) {
                 throw new ProjectTargetUnsupportedError(
-                    describeWasmSidecarFailure(resolvedPath, wasmComponentManifestSidecarPath(resolvedPath), "missing"),
+                    describeWasmSidecarFailure(resolvedPath, wasmComponentInfoCompanionPath(resolvedPath), "missing"),
                     {targetType: "wasm"},
                 );
             }
@@ -161,7 +161,7 @@ export class ProjectTargetResolver implements ProjectResolving {
     private async capabilitiesFor(type: PokieProject["type"], rootPath: string) {
         if (type === "stakeAdapter" && recognizesNativeStakeTuningManifest(rootPath)) return NATIVE_STAKE_PROJECT_CAPABILITIES;
         if (type !== "wasm") return PROJECT_TYPE_CAPABILITIES[type];
-        const raw = await fs.promises.readFile(wasmComponentManifestSidecarPath(rootPath), "utf-8");
+        const raw = await fs.promises.readFile(wasmComponentInfoCompanionPath(rootPath), "utf-8");
         return wasmProjectCapabilities(JSON.parse(raw) as Parameters<typeof wasmProjectCapabilities>[0]);
     }
 
@@ -207,7 +207,7 @@ export class ProjectTargetResolver implements ProjectResolving {
             if (type === "tsPackage") {
                 const game = await loadPokieGame(rootPath);
                 try {
-                    const manifest = game.getManifest();
+                    const manifest = game.getInfo();
                     const configurationHash = game.getConfigHash?.();
                     return {
                         ...(configurationHash === undefined ? {} : {configurationHash}),

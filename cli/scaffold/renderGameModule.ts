@@ -1,13 +1,13 @@
-import {PokieGameManifest} from "@fromstan/pokie";
+import {PokieGameInfo} from "@fromstan/pokie";
 
-export function renderGameModule(manifest: PokieGameManifest, className: string): string {
-    return `import {PokieGame, PokieGameContext, PokieGameManifest, VideoSlotSessionSerializer, validateExecutableState} from "@fromstan/pokie";
+export function renderGameModule(manifest: PokieGameInfo, className: string): string {
+    return `import {PokieGame, PokieGameContext, PokieGameInfo, VideoSlotSessionSerializer, validateExecutableState} from "@fromstan/pokie";
 import {create${className}Session} from "./${className}Session.js";
 
-const manifest: PokieGameManifest = ${JSON.stringify(manifest, null, 4)};
+const manifest: PokieGameInfo = ${JSON.stringify(manifest, null, 4)};
 
 export const ${className}Game: PokieGame = {
-    getManifest() {
+    getInfo() {
         return manifest;
     },
     getSessionStateSchema() {

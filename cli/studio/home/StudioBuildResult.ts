@@ -1,4 +1,4 @@
-import type {GameBlueprintManifest, GameBuildInfo, ValidationIssue} from "@fromstan/pokie";
+import type {GameBlueprintInfo, GameBuildInfo, ValidationIssue} from "@fromstan/pokie";
 
 // POST /api/home/projects/build's own DTO. "load-error"/"invalid" mirror StudioBuildPreviewView's own
 // (a failing build never even reaches GamePackageGenerator in those cases); "error" covers
@@ -13,7 +13,7 @@ export type StudioBuildResult =
     | {
           status: "ok";
           projectRoot: string;
-          manifest: GameBlueprintManifest;
+          manifest: GameBlueprintInfo;
           createdFiles: string[];
           buildInfo: GameBuildInfo;
           warnings: ValidationIssue[];

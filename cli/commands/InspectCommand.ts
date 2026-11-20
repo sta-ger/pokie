@@ -130,7 +130,7 @@ export class InspectCommand implements CliCommandHandling {
         }
     }
 
-    private async printWasmManifest(project: PokieProject): Promise<import("@fromstan/pokie").PokieWasmComponentManifest> {
+    private async printWasmManifest(project: PokieProject): Promise<import("@fromstan/pokie").PokieWasmComponentInfo> {
         const manifestRead = await readWasmComponentManifest(project);
         if (!manifestRead.supported) {
             throw new Error(manifestRead.diagnostic.message);

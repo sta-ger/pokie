@@ -13,4 +13,4 @@ export const AUTHORED_MECHANIC_CATALOG = [
 export const AUTHORED_MODIFIER_CATALOG = ["expanding", "sticky", "restricted", "multiplier", "transform", "reel"] as const;
 
 /** Bounded variants compose with each other; existing progression/modifier decorators are rejected. */
-export const AUTHORED_BOUNDED_MECHANIC_CATALOG = ["cascade", "respins", "collection", "cascade-collection", "respins-collection", "cascade-respins", "cascade-respins-collection"] as const;
+export const AUTHORED_FEATURE_CHAIN_CATALOG = ["cascade", "respins", "collection", "cascade-collection", "respins-collection", "cascade-respins", "cascade-respins-collection"] as const;

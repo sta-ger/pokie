@@ -5,7 +5,7 @@ import {compileCanonicalWasmBuild} from "../wasm/DeclarativeWasmModel.js";
 import {readWasmComponentManifest} from "../project/readWasmComponentManifest.js";
 import {ProjectTargetResolver} from "../project/ProjectTargetResolver.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
-import type {PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
+import type {PokieWasmComponentInfo} from "../project/wasm/PokieWasmComponentInfo.js";
 import {digest, inventory, paytablePaths, readJson} from "./internal/optimizationData.js";
 
 /** Package authors explicitly opt in; a descriptor or executable capability alone is insufficient. */
@@ -26,7 +26,7 @@ export type CanonicalWasmTuningContract = {
     modelHash: string;
     moduleHash: string;
 };
-export function compileBoundTuningWasm(blueprint: GameBlueprint, manifest: PokieWasmComponentManifest): Uint8Array {
+export function compileBoundTuningWasm(blueprint: GameBlueprint, manifest: PokieWasmComponentInfo): Uint8Array {
     if (!manifest.artifact) throw new Error("Missing canonical WASM provenance.");
     const {sha256: _hash, bytes: _bytes, ...artifact} = manifest.artifact;
     return compileCanonicalWasmBuild(resolveCanonicalWasmGameModel(blueprint), {

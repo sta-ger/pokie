@@ -7,7 +7,7 @@ module.exports = {
     default: {
         __esModule: true,
         default: {
-            getManifest() {
+            getInfo() {
                 return {id: "nested-default-game", name: "Nested Default Game", version: "1.0.0"};
             },
             createSession() {

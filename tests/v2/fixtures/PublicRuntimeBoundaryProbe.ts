@@ -13,9 +13,9 @@ export async function probe(host: Api, guest: Api, legacyGame: typeof legacyComp
     for (const composition of ["free-games", "bet-modes", "bet-free", "free-bet"] as const) {
         for (const opaque of [false, true]) await playLive(host, legacyGame(composition, opaque));
     }
-    await playLive(host, {getManifest: () => ({id: "default-free", name: "Default", version: "1"}), createSession: () => new guest.VideoSlotWithFreeGamesSession()});
+    await playLive(host, {getInfo: () => ({id: "default-free", name: "Default", version: "1"}), createSession: () => new guest.VideoSlotWithFreeGamesSession()});
     const opaqueGame: PokieGame = {
-        getManifest: () => ({id: "opaque-rng", name: "Opaque RNG", version: "1"}),
+        getInfo: () => ({id: "opaque-rng", name: "Opaque RNG", version: "1"}),
         createSession: () => {
             let draws = 0;
             const config = new guest.VideoSlotConfig();
@@ -54,7 +54,7 @@ function modeGame(api: Api, declared: boolean, modesOuter = false, rngApi = api)
     const baseSchema = {kind: "seeded-video-slot" as const};
     const modeSchema = {kind: "bet-modes" as const, base: baseSchema};
     return {
-        getManifest: () => ({id: "nested-modes", name: "Nested modes", version: "1"}),
+        getInfo: () => ({id: "nested-modes", name: "Nested modes", version: "1"}),
         ...(declared ? {
             getSessionCommandCapabilities: () => capabilities,
             getSessionStateSchema: () => modesOuter ? modeSchema : {kind: "free-games" as const, base: modeSchema},
@@ -71,7 +71,7 @@ function modeGame(api: Api, declared: boolean, modesOuter = false, rngApi = api)
 }
 
 async function playLive(api: Api, game: PokieGame): Promise<void> {
-    assert.deepEqual(Object.keys(game).sort(), ["createSession", "getManifest"]);
+    assert.deepEqual(Object.keys(game).sort(), ["createSession", "getInfo"]);
     const session = game.createSession();
     const repository = new api.InMemorySessionRepository(),
         wallet = new api.InMemoryWallet();

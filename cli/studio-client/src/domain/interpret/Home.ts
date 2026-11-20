@@ -1,4 +1,4 @@
-import type {BuildDestinationPreview, GameBuildInfo, PokieGameManifest, StudioBuildPreviewView, StudioBuildResult, ValidationIssue} from "../../api/types";
+import type {BuildDestinationPreview, GameBuildInfo, PokieGameInfo, StudioBuildPreviewView, StudioBuildResult, ValidationIssue} from "../../api/types";
 
 // Pure view-model transforms for the Home nav — same role as interpretProjectDashboard.ts/
 // interpretReplay.ts: main.ts/dom.ts consume these instead of branching on the raw API DTOs
@@ -14,7 +14,7 @@ export type BuildPreviewView =
     | ({
           status: "ok";
           warnings: ValidationIssue[];
-          manifest: PokieGameManifest;
+          manifest: PokieGameInfo;
           reels: number;
           rows: number;
           symbolsCount: number;
@@ -45,7 +45,7 @@ export type BuildProjectView =
     | {
           status: "ok";
           projectRoot: string;
-          manifest: PokieGameManifest;
+          manifest: PokieGameInfo;
           createdFiles: string[];
           buildInfo: GameBuildInfo;
           warnings: ValidationIssue[];
@@ -70,7 +70,7 @@ export function describeBuildResult(result: StudioBuildResult): BuildProjectView
 // prior success vanish.
 export type BuiltBlueprintSnapshot = {
     blueprint: unknown;
-    manifest: PokieGameManifest;
+    manifest: PokieGameInfo;
     projectRoot: string;
     buildInfo: GameBuildInfo;
     warnings: ValidationIssue[];

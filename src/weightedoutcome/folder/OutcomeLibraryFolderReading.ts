@@ -1,7 +1,7 @@
 import type {WeightedOutcomeRandomSource} from "../../pregenerated/WeightedOutcomeRandomSource.js";
 import type {WeightedOutcome} from "../WeightedOutcome.js";
 import type {WeightedOutcomeLibrary} from "../WeightedOutcomeLibrary.js";
-import type {OutcomeLibraryFolderManifest} from "./OutcomeLibraryFolderManifest.js";
+import type {OutcomeLibraryFolderIndex} from "./OutcomeLibraryFolderIndex.js";
 import type {OutcomeLibraryFolderModeIndex} from "./OutcomeLibraryFolderModeIndex.js";
 
 // Three genuinely different ways to read a bundle, none of which materialize more than they have to:
@@ -11,7 +11,7 @@ import type {OutcomeLibraryFolderModeIndex} from "./OutcomeLibraryFolderModeInde
 //   runtime) that needs a full in-memory WeightedOutcomeLibrary anyway — the one shared path both of those
 //   integration points call, so they can never end up disagreeing about what a bundle contains.
 export interface OutcomeLibraryFolderReading<T extends string | number = string> {
-    readManifest(libraryDir: string): Promise<OutcomeLibraryFolderManifest>;
+    readManifest(libraryDir: string): Promise<OutcomeLibraryFolderIndex>;
 
     readModeIndex(libraryDir: string, modeName: string): Promise<OutcomeLibraryFolderModeIndex>;
 

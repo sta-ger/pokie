@@ -1,16 +1,16 @@
-import type {GameBlueprintManifest} from "../../generated/GameBlueprint.js";
+import type {GameBlueprintInfo} from "../../generated/GameBlueprint.js";
 import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 import type {SheetGrid} from "../SheetGrid.js";
-import type {ManifestSheetMapping, ManifestSheetValue} from "./ManifestSheetMapping.js";
+import type {InfoSheetMapping, InfoSheetValue} from "./InfoSheetMapping.js";
 import {cellToNumber, cellToText, isBlankRow, resolveColumnIndexes} from "./sheetCellParsing.js";
 
 const COLUMNS = ["Key", "Value"];
 const KNOWN_KEYS = ["Id", "Name", "Version", "Description", "Author", "Reels", "Rows"];
 
-export class ManifestSheetMapper implements ManifestSheetMapping {
+export class InfoSheetMapper implements InfoSheetMapping {
     public readonly sheetName = "Manifest";
 
-    public fromRows(rows: SheetGrid): {value: ManifestSheetValue; issues: ValidationIssue[]} {
+    public fromRows(rows: SheetGrid): {value: InfoSheetValue; issues: ValidationIssue[]} {
         const issues: ValidationIssue[] = [];
         const [header, ...dataRows] = rows;
         const columns = resolveColumnIndexes(header ?? [], COLUMNS, this.sheetName, issues);
@@ -49,7 +49,7 @@ export class ManifestSheetMapper implements ManifestSheetMapping {
             }
         }
 
-        const manifest: GameBlueprintManifest = {
+        const manifest: GameBlueprintInfo = {
             id: values.get("Id") ?? "",
             name: values.get("Name") ?? "",
             version: values.get("Version") ?? "",
@@ -76,7 +76,7 @@ export class ManifestSheetMapper implements ManifestSheetMapping {
         };
     }
 
-    public toRows(manifest: GameBlueprintManifest, reels: number, rows: number): SheetGrid {
+    public toRows(manifest: GameBlueprintInfo, reels: number, rows: number): SheetGrid {
         return [
             COLUMNS,
             ["Id", manifest.id],

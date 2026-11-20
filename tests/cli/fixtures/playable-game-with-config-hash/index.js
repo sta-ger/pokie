@@ -41,7 +41,7 @@ function buildFixedSymbolsSequences(config) {
 // "playable-game"'s exact RoundRecordProvenance shape (no configHash); this fixture exists so
 // hash-provenance tests don't risk changing that fixture's observed behavior.
 module.exports = {
-    getManifest() {
+    getInfo() {
         return {id: "playable-game-with-config-hash", name: "Playable Game With Config Hash", version: "1.0.0"};
     },
     getSessionCommandCapabilities() {

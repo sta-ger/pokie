@@ -209,7 +209,7 @@ export async function loadProjectDashboardContext(
                 return {
                     status: "loaded",
                     projectRoot: resolvedRoot,
-                    game: game.getManifest(),
+                    game: game.getInfo(),
                     type: identity?.type,
                     capabilities: identity?.capabilities,
                     origin: identity?.origin,

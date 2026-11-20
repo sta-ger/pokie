@@ -1,4 +1,4 @@
-import {OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION} from "../weightedoutcome/folder/OutcomeLibraryFolderManifest.js";
+import {OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION} from "../weightedoutcome/folder/OutcomeLibraryFolderIndex.js";
 import {recognizeOutcomeLibraryFolderDirectory} from "./internal/isOutcomeLibraryFolderDirectory.js";
 import {ProjectTargetMalformedError} from "./ProjectTargetMalformedError.js";
 import type {ProjectTargetTypeAdapter} from "./ProjectTargetTypeAdapter.js";

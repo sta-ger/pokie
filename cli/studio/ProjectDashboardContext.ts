@@ -1,4 +1,4 @@
-import type {OutcomeSourceProjectReport, PokieGameManifest, PokieProject, ProjectType, WasmProductContractView} from "@fromstan/pokie";
+import type {OutcomeSourceProjectReport, PokieGameInfo, PokieProject, ProjectType, WasmProductContractView} from "@fromstan/pokie";
 import type {StudioProjectOrigin} from "./StudioProjectRegistryEntry.js";
 
 // The Project Dashboard's own read model — richer than StudioContext (which only ever carries
@@ -33,7 +33,7 @@ export type ProjectDashboardContext =
     | {
           status: "loaded";
           projectRoot: string;
-          game: PokieGameManifest;
+          game: PokieGameInfo;
           type?: ProjectType;
           capabilities?: readonly string[];
           origin?: StudioProjectOrigin;

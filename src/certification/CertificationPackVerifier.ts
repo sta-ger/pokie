@@ -9,13 +9,13 @@ import {SeededWeightedOutcomeRandomSource} from "../pregenerated/SeededWeightedO
 import type {WeightedOutcomeRandomSource} from "../pregenerated/WeightedOutcomeRandomSource.js";
 import {resolveSafeCertificationPackFilePath} from "./internal/resolveSafeCertificationPackFilePath.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
-import type {OutcomeLibraryFolderManifest} from "../weightedoutcome/folder/OutcomeLibraryFolderManifest.js";
+import type {OutcomeLibraryFolderIndex} from "../weightedoutcome/folder/OutcomeLibraryFolderIndex.js";
 import type {OutcomeLibraryFolderModeIndex} from "../weightedoutcome/folder/OutcomeLibraryFolderModeIndex.js";
 import {OutcomeLibraryFolderReader} from "../weightedoutcome/folder/OutcomeLibraryFolderReader.js";
 import type {OutcomeLibraryFolderReading} from "../weightedoutcome/folder/OutcomeLibraryFolderReading.js";
 import {OutcomeLibraryFolderValidator} from "../weightedoutcome/folder/OutcomeLibraryFolderValidator.js";
 import type {OutcomeLibraryFolderValidating} from "../weightedoutcome/folder/OutcomeLibraryFolderValidating.js";
-import type {CertificationPackManifest, CertificationPackModeEntry} from "./CertificationPackManifest.js";
+import type {CertificationPackIndex, CertificationPackModeEntry} from "./CertificationPackIndex.js";
 import {CertificationPackValidator} from "./CertificationPackValidator.js";
 import type {CertificationPackValidating} from "./CertificationPackValidating.js";
 import type {CertificationPackVerifying} from "./CertificationPackVerifying.js";
@@ -132,7 +132,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
         }
         const sourceLibraryDir = options.sourceLibraryDir;
 
-        let manifest: CertificationPackManifest;
+        let manifest: CertificationPackIndex;
         try {
             const parsed: unknown = parseCertificationJson(fs.readFileSync(path.join(certDir, "manifest.json"), "utf-8"));
             if (!isManifestShape(parsed)) {
@@ -160,7 +160,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
         const issues: ValidationIssue[] = [...structuralIssues];
 
         if (!resolveSafeCertificationPackFilePath(sourceLibraryDir, "manifest.json")) return [...issues, {code: "certification-pack-source-unsafe", severity: "error", message: "Explicit source manifest is missing or symlinked."}];
-        let sourceManifest: OutcomeLibraryFolderManifest;
+        let sourceManifest: OutcomeLibraryFolderIndex;
         try {
             sourceManifest = await this.reader.readManifest(sourceLibraryDir);
         } catch (error) {
@@ -237,7 +237,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
     private async verifyModeAgainstLiveBundle(
         certDir: string,
         sourceLibraryDir: string,
-        sourceManifest: OutcomeLibraryFolderManifest,
+        sourceManifest: OutcomeLibraryFolderIndex,
         modeEntry: CertificationPackModeEntry,
         issues: ValidationIssue[],
         signal?: AbortSignal,

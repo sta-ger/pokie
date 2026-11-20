@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import {buildPackageJsonPatch, PackageJsonLike, PokieGameManifest, renderTsconfig} from "@fromstan/pokie";
+import {buildPackageJsonPatch, PackageJsonLike, PokieGameInfo, renderTsconfig} from "@fromstan/pokie";
 import {deriveManifestDefaults} from "./deriveManifestDefaults.js";
 import {GamePackageMergeConflictError, PackageJsonFieldConflict} from "./GamePackageMergeConflictError.js";
 import {GamePackageMergeOverrides, GamePackageMerging} from "./GamePackageMerging.js";
@@ -57,7 +57,7 @@ export class GamePackageMerger implements GamePackageMerging {
         const versionOverride = overrides?.version?.trim();
         const version = this.firstNonBlank(versionOverride, existingPkg.version, DEFAULT_VERSION);
 
-        const manifest: PokieGameManifest = {
+        const manifest: PokieGameInfo = {
             id: derived.id,
             name: this.firstNonBlank(nameOverride, derived.name),
             version,

@@ -4,7 +4,7 @@ import {
     GameSessionHandling,
     ParallelSimulationRunner,
     PokieGame,
-    PokieGameManifest,
+    PokieGameInfo,
     SimulationCancelledError,
     SimulationConvergenceOptions,
     SimulationWorkerCoordinator,
@@ -27,7 +27,7 @@ beforeAll(() => {
 });
 afterAll(() => restoreTemporaryDirectory());
 
-const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+const manifest: PokieGameInfo = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
 function runtimeSnapshotsForPackage(packageName: string): string[] {
     return fs
@@ -81,7 +81,7 @@ function hashCode(value: string): number {
 function createFakeGame(): PokieGame & {createdWith: (PokieGameContext | undefined)[]} {
     const createdWith: (PokieGameContext | undefined)[] = [];
     return {
-        getManifest: () => manifest,
+        getInfo: () => manifest,
         createSession(context) {
             createdWith.push(context);
             return createFakeSession(context?.seed as string | undefined);
@@ -435,7 +435,7 @@ describe("ParallelSimulationRunner betModeId (workers=1, in-process)", () => {
     function createBetModeAwareFakeGame(): PokieGame & {selectedModesSeen: string[]} {
         const selectedModesSeen: string[] = [];
         return {
-            getManifest: () => manifest,
+            getInfo: () => manifest,
             selectedModesSeen,
             createSession() {
                 let credits = 1_000_000;
@@ -507,7 +507,7 @@ describe("ParallelSimulationRunner betModeId (workers=1, in-process)", () => {
     // report for a plain base-game run silently mislabeled with the requested mode.
     test("betModeId against a game/session that doesn't support bet modes at all fails clearly, not silently as base", async () => {
         const game: PokieGame = {
-            getManifest: () => manifest,
+            getInfo: () => manifest,
             createSession: () => createFakeSession(),
         };
         const runner = new ParallelSimulationRunner("/fake/root", 20, {
@@ -527,7 +527,7 @@ describe("ParallelSimulationRunner convergence (workers=1, in-process)", () => {
     // checkIntervalRounds/stableChecks), rather than depending on a real distribution's variance.
     function createConstantPayoutFakeGame(): PokieGame {
         return {
-            getManifest: () => manifest,
+            getInfo: () => manifest,
             createSession: () => {
                 let credits = 1_000_000;
                 return {

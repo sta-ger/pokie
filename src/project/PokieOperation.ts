@@ -51,7 +51,7 @@ export const STAKE_ENGINE_DIFF_OPERATION: PokieOperation = "stakeEngine.diff";
 export const PAR_IMPORT_OPERATION: PokieOperation = "par.import";
 export const PAR_EXPORT_OPERATION: PokieOperation = "par.export";
 export const WASM_EXPORT_OPERATION: PokieOperation = "wasm.export";
-// Reads back a resolved "wasm" project's own PokieWasmComponentManifest (see readWasmComponentManifest) —
+// Reads back a resolved "wasm" project's own PokieWasmComponentInfo (see readWasmComponentManifest) —
 // requires WASM_MANIFEST_READ_CAPABILITY. Both legacy and canonical components expose metadata; canonical
 // execution is separately gated by its declared per-operation capability, while WASM_RUNTIME_EXECUTE_CAPABILITY
 // denotes only the complete play/serialize/replay bundle.

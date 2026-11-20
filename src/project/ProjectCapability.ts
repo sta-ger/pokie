@@ -61,7 +61,7 @@ export const PAR_WORKBOOK_EXCHANGE_CAPABILITY: ProjectCapability = "parWorkbook.
 // than source inputs for another conversion.
 export const WASM_EXPORT_CAPABILITY: ProjectCapability = "wasm.export";
 
-// A project whose own WASM component manifest (see project/wasm/PokieWasmComponentManifest.ts) can be read
+// A project whose own WASM component manifest (see project/wasm/PokieWasmComponentInfo.ts) can be read
 // back, metadata-only, via readWasmComponentManifest — what "wasm.inspect" requires. Only a "wasm" project
 // grants it, and only once WasmProjectTargetAdapter has already confirmed the manifest is contract-compatible
 // at resolution time (see that adapter's own doc comment). Deliberately distinct from WASM_EXPORT_CAPABILITY

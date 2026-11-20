@@ -16,8 +16,8 @@ import {AvailableBetsSheetMapper} from "./mapping/AvailableBetsSheetMapper.js";
 import type {AvailableBetsSheetMapping} from "./mapping/AvailableBetsSheetMapping.js";
 import {BetModesSheetMapper} from "./mapping/BetModesSheetMapper.js";
 import type {BetModesSheetMapping} from "./mapping/BetModesSheetMapping.js";
-import {ManifestSheetMapper} from "./mapping/ManifestSheetMapper.js";
-import type {ManifestSheetMapping} from "./mapping/ManifestSheetMapping.js";
+import {InfoSheetMapper} from "./mapping/InfoSheetMapper.js";
+import type {InfoSheetMapping} from "./mapping/InfoSheetMapping.js";
 import {MechanicsSheetMapper} from "./mapping/MechanicsSheetMapper.js";
 import type {MechanicsSheetMapping} from "./mapping/MechanicsSheetMapping.js";
 import {PaylinesSheetMapper} from "./mapping/PaylinesSheetMapper.js";
@@ -149,7 +149,7 @@ function removeSharedWeights(blueprint: GameBlueprint): GameBlueprint {
 
 export class ParSheetExporter implements ParSheetExporting {
     private readonly pokieVersion: string;
-    private readonly manifestMapper: ManifestSheetMapping;
+    private readonly manifestMapper: InfoSheetMapping;
     private readonly symbolsMapper: SymbolsSheetMapping;
     private readonly reelStripsMapper: ReelStripsSheetMapping;
     private readonly paytableMapper: PaytableSheetMapping;
@@ -166,7 +166,7 @@ export class ParSheetExporter implements ParSheetExporting {
 
     constructor(
         pokieVersion: string,
-        manifestMapper: ManifestSheetMapping = new ManifestSheetMapper(),
+        manifestMapper: InfoSheetMapping = new InfoSheetMapper(),
         symbolsMapper: SymbolsSheetMapping = new SymbolsSheetMapper(),
         reelStripsMapper: ReelStripsSheetMapping = new ReelStripsSheetMapper(),
         paytableMapper: PaytableSheetMapping = new PaytableSheetMapper(),

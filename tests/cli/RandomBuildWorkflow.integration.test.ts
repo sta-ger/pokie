@@ -62,8 +62,8 @@ describe("CLI workflow (integration): first-class random game generation", () =>
             expect(fs.existsSync(path.join(projectRoot, "dist", "index.js"))).toBe(true);
 
             // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const game = require(path.join(projectRoot, "dist", "index.js")) as {getManifest(): {id: string}};
-            expect(game.getManifest().id).toBe("my-random-game");
+            const game = require(path.join(projectRoot, "dist", "index.js")) as {getInfo(): {id: string}};
+            expect(game.getInfo().id).toBe("my-random-game");
 
             await expectInconclusiveArtifactValidation([projectRoot]);
         } finally {

@@ -93,7 +93,7 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
             release = loaded?.release;
             if (cancelled()) return result;
             const game = loaded?.game ?? (input as PokieGame);
-            const manifest = detachPackageModelData(game.getManifest()) as GameBlueprint["manifest"];
+            const manifest = detachPackageModelData(game.getInfo()) as GameBlueprint["manifest"];
             if (
                 new GameBlueprintValidator()
                     .validate({manifest})
@@ -109,7 +109,7 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
             result.source.gameVersion = manifest.version;
             if (!game.getModelDescriptor) {
                 result.model = {manifest};
-                this.recordFields(manifest, "manifest", "getManifest", result.fields);
+                this.recordFields(manifest, "manifest", "getInfo", result.fields);
                 if (game.getSessionCommandCapabilities) {
                     const capabilities = detachPackageModelData(game.getSessionCommandCapabilities()) as {
                         bets: number[];
@@ -222,12 +222,12 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                     .filter(issue => issue.severity === "error" && issue.code.startsWith("blueprint-manifest"));
                 if (manifestErrors.length > 0) throw new Error(`manifest: ${manifestErrors.map(issue => issue.message).join("; ")}`);
                 if (computeGameBlueprintHash({manifest: model.manifest} as GameBlueprint) !==
-                    computeGameBlueprintHash({manifest} as GameBlueprint)) throw new Error("manifest: descriptor differs from getManifest identity/data");
+                    computeGameBlueprintHash({manifest} as GameBlueprint)) throw new Error("manifest: descriptor differs from getInfo identity/data");
             }
             model.manifest = manifest;
             result.model = model;
             this.recordFields(model, "", "public model descriptor", result.fields);
-            for (const field of result.fields) if (field.path === "manifest" || field.path.startsWith("manifest.")) field.authority = "getManifest";
+            for (const field of result.fields) if (field.path === "manifest" || field.path.startsWith("manifest.")) field.authority = "getInfo";
             const known = new Set([
                 "manifest",
                 "reels",

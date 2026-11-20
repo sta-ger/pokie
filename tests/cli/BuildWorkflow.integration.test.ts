@@ -71,7 +71,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         expect(fs.lstatSync(path.join(outDir, "node_modules", "@fromstan", "pokie")).isSymbolicLink()).toBe(true);
         // No blueprint/build-info/creation-seed metadata of any kind is left in a newly built package.
         expect(fs.readdirSync(path.join(outDir, "src"))).toEqual(["index.ts"]);
-        await expect(loadPokieGame(outDir)).resolves.toMatchObject({getManifest: expect.any(Function)});
+        await expect(loadPokieGame(outDir)).resolves.toMatchObject({getInfo: expect.any(Function)});
 
         await expectInconclusiveArtifactValidation([outDir]);
 

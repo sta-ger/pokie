@@ -8,7 +8,7 @@ import {
     OutcomeLibraryFolderWriter,
     OutcomeSourceSimulationResult,
     PokieGame,
-    PokieGameManifest,
+    PokieGameInfo,
     PokieProject,
     PROJECT_TYPE_CAPABILITIES,
     ProjectResolving,
@@ -120,9 +120,9 @@ function createFakeSession(): GameSessionHandling {
     };
 }
 
-function createFakeGame(manifest: PokieGameManifest): PokieGame & {createdWith?: unknown} {
+function createFakeGame(manifest: PokieGameInfo): PokieGame & {createdWith?: unknown} {
     return {
-        getManifest: () => manifest,
+        getInfo: () => manifest,
         createSession(context) {
             this.createdWith = context;
             return createFakeSession();
@@ -131,7 +131,7 @@ function createFakeGame(manifest: PokieGameManifest): PokieGame & {createdWith?:
 }
 
 describe("SimCommand", () => {
-    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+    const manifest: PokieGameInfo = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     it("has the expected name and description", () => {
         const command = new SimCommand();
@@ -430,9 +430,9 @@ describe("SimCommand", () => {
         (console.log as jest.Mock).mockRestore();
     });
 
-    function createFreeGamesAwareFakeGame(theManifest: PokieGameManifest): PokieGame {
+    function createFreeGamesAwareFakeGame(theManifest: PokieGameInfo): PokieGame {
         return {
-            getManifest: () => theManifest,
+            getInfo: () => theManifest,
             createSession() {
                 let credits = 1000;
                 const bet = 1;
@@ -493,11 +493,11 @@ describe("SimCommand", () => {
 });
 
 describe("SimCommand --mode", () => {
-    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+    const manifest: PokieGameInfo = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     function createBetModeAwareFakeGame(): PokieGame {
         return {
-            getManifest: () => manifest,
+            getInfo: () => manifest,
             createSession() {
                 let credits = 1_000_000;
                 const bet = 1;
@@ -709,7 +709,7 @@ describe("SimCommand --mode (integration, real generated package)", () => {
 // blended/"overall" number across modes.
 describe("SimCommand --mode all (integration, real generated package)", () => {
     jest.setTimeout(PACKAGE_EXTRACTION_TEST_TIMEOUT);
-    const manifest: PokieGameManifest = {id: "deterministic-game", name: "Deterministic Game", version: "0.1.0"};
+    const manifest: PokieGameInfo = {id: "deterministic-game", name: "Deterministic Game", version: "0.1.0"};
     let cwd: string;
 
     beforeEach(() => {
@@ -837,7 +837,7 @@ describe("SimCommand --mode all (integration, real generated package)", () => {
         const stakeMultipliers: Record<string, number> = {base: 1, ante: 1.25, "buy-10": 50, "buy-20": 100};
 
         return {
-            getManifest: () => manifest,
+            getInfo: () => manifest,
             getBetModes: () => declaredModes,
             createSession() {
                 let credits = 1_000_000;
@@ -1097,7 +1097,7 @@ describe("SimCommand (integration, real game with an explicit custom category)",
 // whatever runtime path that boundary hands back -- never the caller's own raw packageRoot -- which is
 // also what lets a resolved Blueprint reach a real materialized runtime instead of a raw blueprint file.
 describe("SimCommand runtime package materialization boundary", () => {
-    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+    const manifest: PokieGameInfo = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     it("runs ordinary collector-free 10000-round WASM simulation with aggregate-only JSON output", async () => {
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-compact-sim-"));
@@ -1216,7 +1216,7 @@ describe("SimCommand runtime package materialization boundary", () => {
     });
 
     it.each([
-        ["missing", undefined, /no compatible PokieWasmComponentManifest sidecar.*Add a valid compatible sidecar.*never loads or executes/i],
+        ["missing", undefined, /no compatible PokieWasmComponentInfo sidecar.*Add a valid compatible sidecar.*never loads or executes/i],
         ["malformed", "{", /sidecar.*malformed.*not valid JSON.*Repair the malformed sidecar.*never loads or executes/i],
         ["incompatible", JSON.stringify({schemaVersion: "2.0.0", component: {id: "runtime-boundary", version: "1.0.0"}, serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"}, host: {rng: "pokie.rng.v1", services: []}, capabilities: []}), /not compatible with this POKIE build.*Update the incompatible sidecar.*never loads or executes/i],
     ])("preserves the %s WASM sidecar diagnostic without runtime preparation", async (_kind, sidecar, expectedDiagnostic) => {

@@ -4,16 +4,16 @@ import type {PokieProject} from "./PokieProject.js";
 import type {UnsupportedProjectOperationDiagnostic} from "./UnsupportedProjectOperationDiagnostic.js";
 import {describeUnsupportedProjectOperation} from "./describeUnsupportedProjectOperation.js";
 import {assessWasmComponentCompatibility} from "./wasm/assessWasmComponentCompatibility.js";
-import type {PokieWasmComponentManifest} from "./wasm/PokieWasmComponentManifest.js";
-import {wasmComponentManifestSidecarPath} from "./WasmProjectTargetAdapter.js";
+import type {PokieWasmComponentInfo} from "./wasm/PokieWasmComponentInfo.js";
+import {wasmComponentInfoCompanionPath} from "./WasmProjectTargetAdapter.js";
 import {describeWasmSidecarFailure} from "./WasmProductContract.js";
 import {readIntegrityBoundCanonicalPokieWasmArtifact, type CanonicalPokieWasmModule} from "../wasm/PokieWasmCanonicalModule.js";
 
-export type WasmComponentManifestReadResult =
-    | {readonly supported: true; readonly manifest: PokieWasmComponentManifest; readonly canonical?: CanonicalPokieWasmModule}
+export type WasmComponentInfoReadResult =
+    | {readonly supported: true; readonly manifest: PokieWasmComponentInfo; readonly canonical?: CanonicalPokieWasmModule}
     | {readonly supported: false; readonly diagnostic: UnsupportedProjectOperationDiagnostic};
 
-// Reads back a resolved "wasm" project's own PokieWasmComponentManifest -- the read-only access
+// Reads back a resolved "wasm" project's own PokieWasmComponentInfo -- the read-only access
 // WASM_MANIFEST_READ_CAPABILITY actually grants (see ProjectCapabilities.ts): metadata only, never the
 // ".wasm" bytes themselves, and never anything resembling loading/instantiating/executing the component --
 // Canonical POKIE WASM components execute through the portable runtime while this reader re-reads and re-validates
@@ -24,13 +24,13 @@ export type WasmComponentManifestReadResult =
 // has genuinely changed on disk (moved/deleted/edited) since `project` was resolved -- an already-resolved
 // "wasm" project is a promise the manifest was compatible at resolution time, not a guarantee it still is at
 // read time.
-export async function readWasmComponentManifest(project: PokieProject): Promise<WasmComponentManifestReadResult> {
+export async function readWasmComponentManifest(project: PokieProject): Promise<WasmComponentInfoReadResult> {
     const diagnostic = describeUnsupportedProjectOperation(project, WASM_INSPECT_OPERATION);
     if (diagnostic !== undefined) {
         return {supported: false, diagnostic};
     }
 
-    const sidecarPath = wasmComponentManifestSidecarPath(project.rootPath);
+    const sidecarPath = wasmComponentInfoCompanionPath(project.rootPath);
     let raw: string;
     try {
         raw = await fs.promises.readFile(sidecarPath, "utf-8");
@@ -58,7 +58,7 @@ export async function readWasmComponentManifest(project: PokieProject): Promise<
         ));
     }
 
-    const typedManifest = manifest as PokieWasmComponentManifest;
+    const typedManifest = manifest as PokieWasmComponentInfo;
     let canonical: CanonicalPokieWasmModule | undefined;
     if (typedManifest.artifact !== undefined) {
         const bytes = await fs.promises.readFile(project.rootPath);

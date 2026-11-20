@@ -1,4 +1,4 @@
-import type {PokieGameManifest} from "../../gamepackage/PokieGameManifest.js";
+import type {PokieGameInfo} from "../../gamepackage/PokieGameInfo.js";
 import type {JackpotStatisticsSnapshot} from "../../session/JackpotStatisticsSnapshot.js";
 import type {SimulationAccumulatorSnapshot} from "../SimulationAccumulatorSnapshot.js";
 import type {SimulationBreakdownComponent} from "../SimulationBreakdownComponent.js";
@@ -11,7 +11,7 @@ import type {SimulationStopReason} from "../SimulationStopReason.js";
 // result.
 export type SimulationWorkerResult = {
     workerIndex: number;
-    manifest: PokieGameManifest;
+    manifest: PokieGameInfo;
     /** Authoritative identity of the resolved runtime model, when supplied by the game. */
     configHash?: string;
     accumulator: SimulationAccumulatorSnapshot;

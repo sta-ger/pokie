@@ -1,6 +1,6 @@
 import {GameBlueprint} from "../../src/generated/GameBlueprint.js";
 import {validateAuthoredMechanics} from "../../src/generated/validateAuthoredMechanics.js";
-import {boundedBlueprint} from "../v2/fixtures/BoundedMechanicsGame.js";
+import {boundedBlueprint} from "../v2/fixtures/FeatureChainsGame.js";
 import {GameBlueprintValidator} from "../../src/generated/GameBlueprintValidator.js";
 
 function validBlueprint(): GameBlueprint {

@@ -23,7 +23,7 @@ import {
     isWasmComponentFile,
     StakeProjectionExportService,
     type PreparedStakeProjectionOperation,
-    wasmComponentManifestSidecarPath,
+    wasmComponentInfoCompanionPath,
 } from "@fromstan/pokie";
 import path from "path";
 import fs from "fs";
@@ -910,7 +910,7 @@ export class StudioArtifactBuildService {
             // no partially published component may survive failed Studio
             // registration or post-writer cancellation.
             await Promise.all([
-                ...(plan.target.kind === "wasm" ? [fs.promises.rm(wasmComponentManifestSidecarPath(result.outputPath), {force: true})] : []),
+                ...(plan.target.kind === "wasm" ? [fs.promises.rm(wasmComponentInfoCompanionPath(result.outputPath), {force: true})] : []),
                 fs.promises.rm(`${result.outputPath}.pokie`, {recursive: true, force: true}),
             ]).catch(() => undefined);
         }

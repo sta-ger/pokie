@@ -78,8 +78,8 @@ describe("CLI workflow (integration): pokie init (in-place, non-interactive) pro
         expect(pkg.scripts?.start).toBe("pokie dev .");
 
         // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const game = require(path.join(projectRoot, "dist", "index.js")) as {getManifest(): {id: string}};
-        expect(game.getManifest().id).toBe("sample-slot");
+        const game = require(path.join(projectRoot, "dist", "index.js")) as {getInfo(): {id: string}};
+        expect(game.getInfo().id).toBe("sample-slot");
 
         await expectInconclusiveArtifactValidation([projectRoot]);
 
@@ -266,8 +266,8 @@ describe("CLI workflow (integration): pokie init resolves \"pokie\" through the 
         }
 
         // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const game = require(path.join(projectRoot, "dist", "index.js")) as {getManifest(): {id: string}};
-        expect(game.getManifest().id).toBe("sample-slot");
+        const game = require(path.join(projectRoot, "dist", "index.js")) as {getInfo(): {id: string}};
+        expect(game.getInfo().id).toBe("sample-slot");
 
         await expectInconclusiveArtifactValidation([projectRoot]);
     });

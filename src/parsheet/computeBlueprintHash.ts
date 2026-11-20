@@ -1,7 +1,7 @@
 import {PAR_SEQUENCE_CONTEXT, PAR_SEQUENCE_SAMPLING} from "./mapping/ReelSequencesSheetMapper.js";
 import crypto from "crypto";
 import type {BetMode} from "../gamepackage/BetMode.js";
-import type {GameBlueprint, GameBlueprintManifest, GameBlueprintMechanics, GameBlueprintWinModel} from "../generated/GameBlueprint.js";
+import type {GameBlueprint, GameBlueprintInfo, GameBlueprintMechanics, GameBlueprintWinModel} from "../generated/GameBlueprint.js";
 
 // A sha256 hash of exactly the GameBlueprint fields "pokie par export"/"pokie par import" can
 // represent (see ParSheetExporter's "no lossy export" preflight — reelStripGeneration/symbolWeights
@@ -16,7 +16,7 @@ import type {GameBlueprint, GameBlueprintManifest, GameBlueprintMechanics, GameB
 //
 // An empty optional array (e.g. `wilds: []`) and an omitted one hash identically, and likewise an
 // empty optional manifest string (`description: ""`) and an omitted one — because ParSheetImporter
-// never reconstructs an empty array/string for an optional field (see e.g. ManifestSheetMapper's own
+// never reconstructs an empty array/string for an optional field (see e.g. InfoSheetMapper's own
 // "blank cell means omit the field" rule), so a source blueprint that used `[]`/`""` instead of
 // omitting the field would otherwise report a false "edited" mismatch on an untouched round trip too.
 //
@@ -112,7 +112,7 @@ function setIfNonEmptyArray<T>(canonical: Record<string, unknown>, key: string, 
     }
 }
 
-function canonicalizeManifest(manifest: GameBlueprintManifest): Record<string, unknown> {
+function canonicalizeManifest(manifest: GameBlueprintInfo): Record<string, unknown> {
     const canonical: Record<string, unknown> = {id: manifest.id, name: manifest.name, version: manifest.version};
     if (manifest.description) {
         canonical.description = manifest.description;

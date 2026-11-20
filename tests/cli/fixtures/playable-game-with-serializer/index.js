@@ -42,7 +42,7 @@ function buildFixedSymbolsSequences(config) {
 // tests assert "playable-game"'s exact narrow-DTO response shape; this fixture exists so
 // rich-payload tests don't risk changing that fixture's observed behavior.
 module.exports = {
-    getManifest() {
+    getInfo() {
         return {id: "playable-game-with-serializer", name: "Playable Game With Serializer", version: "1.0.0"};
     },
     getSessionCommandCapabilities() {

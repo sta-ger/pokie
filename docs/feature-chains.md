@@ -1,9 +1,9 @@
 # Authored cascades, respins and collections
 
 `mechanics.cascade`, `mechanics.respins` and `mechanics.collection` are finite
-interfaces, implemented by `BoundedVideoSlotSession` using the existing slot,
+interfaces, implemented by `FeatureChainSession` using the existing slot,
 cascade evaluator, grid transformer and runtime command boundaries. The seven
-nonempty combinations are listed in `AUTHORED_BOUNDED_MECHANIC_CATALOG`.
+nonempty combinations are listed in `AUTHORED_FEATURE_CHAIN_CATALOG`.
 
 ```json
 {
@@ -183,7 +183,7 @@ drafts until explicit Apply/Save. Building and PAR conversion do not implicitly
 save the authored source. Supported intermediate conversions remain owned by
 `build SOURCE --target TARGET`; there is no top-level export command.
 
-Library users can construct `BoundedVideoSlotSession(config, seededGenerator,
+Library users can construct `FeatureChainSession(config, seededGenerator,
 rules, statelessCalculator)` directly. Generated packages provide matching
 configuration hashes, descriptors, serializers and state schemas. Browser users
 can import the bounded interfaces/session and cascade serializer from

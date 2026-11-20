@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import {buildPackageJsonPatch, PokieGameManifest, renderTsconfig} from "@fromstan/pokie";
+import {buildPackageJsonPatch, PokieGameInfo, renderTsconfig} from "@fromstan/pokie";
 import {deriveManifestDefaults} from "./deriveManifestDefaults.js";
 import {GamePackageCreateOverrides, GamePackageCreating} from "./GamePackageCreating.js";
 import {renderGameModule} from "./renderGameModule.js";
@@ -38,7 +38,7 @@ export class GamePackageCreator implements GamePackageCreating {
         const derived = deriveManifestDefaults(idOverride && idOverride.length > 0 ? idOverride : trimmedName);
         const nameOverride = overrides?.name?.trim();
         const versionOverride = overrides?.version?.trim();
-        const manifest: PokieGameManifest = {
+        const manifest: PokieGameInfo = {
             id: derived.id,
             name: nameOverride && nameOverride.length > 0 ? nameOverride : derived.name,
             version: versionOverride && versionOverride.length > 0 ? versionOverride : DEFAULT_VERSION,

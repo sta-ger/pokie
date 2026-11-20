@@ -5,7 +5,7 @@ import {describeProjectActionError} from "./projectActionError";
 // recovery. Recognition can fail before a typed Project exists, so do not use
 // a pathname or stale preview's type as authority for preserving the diagnostic.
 export function isWasmProjectDiagnostic(message: string): boolean {
-    return (/\b(?:WASM (?:target|component|artifact|manifest|module|sidecar|runtime|Project)|PokieWasmComponentManifest)\b/i).test(message)
+    return (/\b(?:WASM (?:target|component|artifact|manifest|module|sidecar|runtime|Project)|PokieWasmComponentInfo)\b/i).test(message)
         // The resolver's rejection envelope also covers minimum runtime,
         // serialization and host-service failures without a WASM keyword.
         || (/^POKIE (?:\S+ )?cannot run "[^"]+\.wasm": /i).test(message);

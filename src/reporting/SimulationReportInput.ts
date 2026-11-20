@@ -1,4 +1,4 @@
-import type {PokieGameManifest} from "../gamepackage/PokieGameManifest.js";
+import type {PokieGameInfo} from "../gamepackage/PokieGameInfo.js";
 import type {JackpotStatisticsSnapshot} from "../session/JackpotStatisticsSnapshot.js";
 import type {SimulationBreakdownComponent} from "../simulation/SimulationBreakdownComponent.js";
 import type {SimulationConvergenceOutcome} from "../simulation/SimulationConvergenceOutcome.js";
@@ -6,7 +6,7 @@ import type {SimulationStatistics} from "../simulation/SimulationStatistics.js";
 import type {SimulationStopReason} from "../simulation/SimulationStopReason.js";
 
 export type SimulationReportInput = {
-    manifest: PokieGameManifest;
+    manifest: PokieGameInfo;
     requestedRounds: number;
     seed?: string;
     statistics: SimulationStatistics;

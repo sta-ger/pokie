@@ -1,12 +1,12 @@
-import type {PokieGameManifest} from "../gamepackage/PokieGameManifest.js";
+import type {PokieGameInfo} from "../gamepackage/PokieGameInfo.js";
 import type {OutcomeLibraryGeneratorDiagnostics} from "../weightedoutcome/generate/OutcomeLibraryGeneratorDiagnostics.js";
 import type {StakeEngineImportSourceProvenance} from "./StakeEngineImportSourceProvenance.js";
 
 // Tracks this type's own shape (not the pokie package version) — same convention as
 // WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION/ROUND_RECORD_SCHEMA_VERSION/GAME_BLUEPRINT_SCHEMA_VERSION.
-export const STAKE_ENGINE_MANIFEST_SCHEMA_VERSION = 1;
+export const STAKE_ENGINE_INFO_SCHEMA_VERSION = 1;
 
-export type StakeEngineManifestModeEntry = {
+export type StakeEngineInfoModeEntry = {
     readonly name: string;
     readonly betMode: string;
     readonly stake: number;
@@ -27,15 +27,15 @@ export type StakeEngineManifestModeEntry = {
 // "files" doubles as a manifest, same convention as GameBuildInfo.files: the exact set of paths (relative to
 // the export directory) this run generated. A later "pokie stakeengine export" into the same directory reads
 // it back to decide whether re-running is a safe rebuild — see assertSafeToRebuildStakeEngineExport.
-export type StakeEngineManifest = {
+export type StakeEngineInfo = {
     readonly schemaVersion: number;
     readonly generatedBy: string;
     readonly pokieVersion: string;
     readonly generatedAt: string;
-    readonly game: PokieGameManifest;
+    readonly game: PokieGameInfo;
     readonly configHash?: string;
     /** Exact Stake source bytes retained by a public import -> re-export. */
     readonly sourceProvenance?: StakeEngineImportSourceProvenance;
-    readonly modes: readonly StakeEngineManifestModeEntry[];
+    readonly modes: readonly StakeEngineInfoModeEntry[];
     readonly files: readonly string[];
 };

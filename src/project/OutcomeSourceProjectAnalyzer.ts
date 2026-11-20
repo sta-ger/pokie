@@ -15,7 +15,7 @@ import type {PokieProject} from "./PokieProject.js";
 // reader -- never loadPokieGame, never a re-derived/regenerated game-model calculation (see
 // CanonicalOutcomeSourceDescriptor's own doc comment). A native bundle's exact per-mode analysis is read
 // straight off its own manifest.json (embedded there at build time -- see
-// OutcomeLibraryFolderManifestModeEntry.analysis), never recomputed and never requiring a full outcomes-file
+// OutcomeLibraryFolderIndexModeEntry.analysis), never recomputed and never requiring a full outcomes-file
 // read, which is what keeps this analyzer honoring OutcomeLibraryFolderReading's own documented streaming
 // behavior even against a very large bundle. A Stake Engine outcome directory carries no such precomputed
 // analysis, so StakeEngineStandaloneAnalyzer must read every mode's own CSV/books first -- matching that

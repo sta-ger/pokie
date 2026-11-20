@@ -33,7 +33,7 @@ import {PROJECT_TYPE_CAPABILITIES} from "./ProjectCapabilities.js";
 import {StakeAdapterOutputBuilder} from "./StakeAdapterOutputBuilder.js";
 import {TsPackageOutputBuilder} from "./TsPackageOutputBuilder.js";
 import {WasmOutputBuilder, resolveCanonicalWasmGameModel} from "./WasmOutputBuilder.js";
-import {wasmComponentManifestSidecarPath} from "./WasmProjectTargetAdapter.js";
+import {wasmComponentInfoCompanionPath} from "./WasmProjectTargetAdapter.js";
 import {BlueprintStakeOutcomeLibraryWorkflow} from "./BlueprintStakeOutcomeLibraryWorkflow.js";
 import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing} from "./ManagedOutcomeProjectService.js";
 import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
@@ -442,7 +442,7 @@ export class BuildOutputBuilderRegistry {
         try {
             assertPreparedOutputDestinationAvailable(sourcePath, destinationPath, builder.destinationKind);
             if (target === "wasm") {
-                assertPreparedOutputDestinationAvailable(sourcePath, wasmComponentManifestSidecarPath(destinationPath), "file");
+                assertPreparedOutputDestinationAvailable(sourcePath, wasmComponentInfoCompanionPath(destinationPath), "file");
             }
             return {available: true};
         } catch (error) {
@@ -662,7 +662,7 @@ export class BuildOutputBuilderRegistry {
             assertBuildNotCancelled(options);
             const currentDestination = this.checkDestination(target, destinationPath, source.rootPath);
             if (!currentDestination.available) throw new BuildConflictError(currentDestination.message ?? "The destination is unavailable.");
-            if (target === "wasm") await publication.publish(wasmComponentManifestSidecarPath(terminalPath), wasmComponentManifestSidecarPath(destinationPath), options);
+            if (target === "wasm") await publication.publish(wasmComponentInfoCompanionPath(terminalPath), wasmComponentInfoCompanionPath(destinationPath), options);
             await publication.publish(terminalPath, destinationPath, options);
             // The temporary Blueprint is only an execution allocation.  Once
             // the selected terminal writer succeeds, retain an inspectable
@@ -800,7 +800,7 @@ export class BuildOutputBuilderRegistry {
         if (target === "wasm") {
             await Promise.all([
                 fs.promises.rm(outputPath, {force: true}),
-                fs.promises.rm(wasmComponentManifestSidecarPath(outputPath), {force: true}),
+                fs.promises.rm(wasmComponentInfoCompanionPath(outputPath), {force: true}),
                 fs.promises.rm(`${outputPath}.pokie`, {recursive: true, force: true}),
             ]).catch(() => undefined);
             return;

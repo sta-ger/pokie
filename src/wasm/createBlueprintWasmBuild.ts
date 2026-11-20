@@ -4,10 +4,10 @@ import {resolveResolvedCanonicalWasmGameModel} from "./resolveResolvedCanonicalW
 import {sha256CanonicalWasmBytes, type CanonicalPokieWasmComponentDescriptor} from "./PokieWasmCanonicalModule.js";
 import {stableSlotMathJson} from "./math/SharedSlotMath.js";
 import {POKIE_WASM_RUNTIME_VERSION} from "./PokieWasmRuntimeApi.js";
-import {POKIE_WASM_ABI_VERSION, POKIE_WASM_ADAPTER, POKIE_WASM_CONTRACT_VERSION, type PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
+import {POKIE_WASM_ABI_VERSION, POKIE_WASM_ADAPTER, POKIE_WASM_CONTRACT_VERSION, type PokieWasmComponentInfo} from "../project/wasm/PokieWasmComponentInfo.js";
 
 /** Compile in memory; publication and authored-file authority stay with the caller. */
-export async function createBlueprintWasmBuild(blueprint: GameBlueprint): Promise<{bytes: Uint8Array<ArrayBuffer>; manifest: PokieWasmComponentManifest}> {
+export async function createBlueprintWasmBuild(blueprint: GameBlueprint): Promise<{bytes: Uint8Array<ArrayBuffer>; manifest: PokieWasmComponentInfo}> {
     const model = resolveResolvedCanonicalWasmGameModel(blueprint);
     const configurationHash = await sha256CanonicalWasmBytes(new TextEncoder().encode(stableSlotMathJson(model)));
     const descriptor: CanonicalPokieWasmComponentDescriptor = {
@@ -18,6 +18,6 @@ export async function createBlueprintWasmBuild(blueprint: GameBlueprint): Promis
         artifact: {format: "pokie.wasm.v1", abiVersion: POKIE_WASM_ABI_VERSION, adapter: POKIE_WASM_ADAPTER, configurationHash},
     };
     const bytes = compileCanonicalWasmBuild(model, descriptor);
-    const manifest: PokieWasmComponentManifest = {...descriptor, artifact: {...descriptor.artifact, adapter: POKIE_WASM_ADAPTER, sha256: await sha256CanonicalWasmBytes(bytes), bytes: bytes.length}};
+    const manifest: PokieWasmComponentInfo = {...descriptor, artifact: {...descriptor.artifact, adapter: POKIE_WASM_ADAPTER, sha256: await sha256CanonicalWasmBytes(bytes), bytes: bytes.length}};
     return {bytes, manifest};
 }

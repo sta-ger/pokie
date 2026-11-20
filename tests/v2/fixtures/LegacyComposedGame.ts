@@ -26,7 +26,7 @@ class LegacySnapshotDecorator extends LegacyDecorator {
 /** Deliberately unchanged package contract: no new codec/capability declarations. */
 export function legacyComposedGame(composition: LegacyComposition, opaque: boolean): PokieGame {
     return {
-        getManifest: () => ({id: "legacy-composition", name: "Legacy composition", version: "1"}),
+        getInfo: () => ({id: "legacy-composition", name: "Legacy composition", version: "1"}),
         createSession: () => {
             const config = new VideoSlotConfig();
             config.setScatterSymbols(["A"]);

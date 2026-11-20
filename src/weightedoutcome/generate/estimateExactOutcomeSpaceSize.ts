@@ -23,7 +23,7 @@ export function estimateExactOutcomeSpaceSize(game: PokieGame): OutcomeSpaceEsti
     if (typeof game.createExactEnumerationSession !== "function") {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-unsupported",
-            `"${game.getManifest().id}" does not implement createExactEnumerationSession(); its outcome space cannot be exactly enumerated.`,
+            `"${game.getInfo().id}" does not implement createExactEnumerationSession(); its outcome space cannot be exactly enumerated.`,
         );
     }
 

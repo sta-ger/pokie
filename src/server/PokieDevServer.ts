@@ -192,7 +192,7 @@ export class PokieDevServer implements PokieDevServerHandling {
         });
 
         if (options.preGeneratedOutcomeLibrary !== undefined) {
-            this.assertLibraryMatchesGameManifest(options.preGeneratedOutcomeLibrary, game.getManifest());
+            this.assertLibraryMatchesGameManifest(options.preGeneratedOutcomeLibrary, game.getInfo());
             this.preGeneratedOutcomeLibrary = options.preGeneratedOutcomeLibrary;
             this.preGeneratedLibraryHash = computeWeightedOutcomeLibraryHash(options.preGeneratedOutcomeLibrary);
             this.preGeneratedSessionRepository = options.preGeneratedSessionRepository ?? new InMemoryPreGeneratedSessionRepository();
@@ -288,7 +288,7 @@ export class PokieDevServer implements PokieDevServerHandling {
         }
 
         if (method === "GET" && url.pathname === "/game") {
-            this.sendJson(res, 200, this.game.getManifest());
+            this.sendJson(res, 200, this.game.getInfo());
             return;
         }
 
@@ -608,7 +608,7 @@ export class PokieDevServer implements PokieDevServerHandling {
     }
 
     private preGeneratedGameSummary(): {id: string; name: string; version: string} {
-        const manifest = this.game.getManifest();
+        const manifest = this.game.getInfo();
         return {id: manifest.id, name: manifest.name, version: manifest.version};
     }
 
@@ -733,7 +733,7 @@ export class PokieDevServer implements PokieDevServerHandling {
         win: number | undefined,
         serializedPayload: Record<string, unknown> | undefined,
     ): PokieDevSessionResponse {
-        const manifest = this.game.getManifest();
+        const manifest = this.game.getInfo();
         const game = {id: manifest.id, name: manifest.name, version: manifest.version};
 
         // Rich path: the loaded game provided a serializer (see PokieGame.getSessionSerializer).

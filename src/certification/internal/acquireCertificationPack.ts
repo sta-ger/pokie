@@ -14,7 +14,7 @@ import {toCanonicalJson} from "../../json/toCanonicalJson.js";
 import {AuditRoundReplay, validateAuditRoundRecording} from "../../replay/AuditRoundReplay.js";
 import type {SimulationReport} from "../../reporting/SimulationReport.js";
 import {validateSimulationReportExtensions, validateSimulationStatisticsForReport} from "../../reporting/validateSimulationReportExtensions.js";
-import type {OutcomeLibraryFolderManifest} from "../../weightedoutcome/folder/OutcomeLibraryFolderManifest.js";
+import type {OutcomeLibraryFolderIndex} from "../../weightedoutcome/folder/OutcomeLibraryFolderIndex.js";
 import {CERTIFICATION_METRIC_SEMANTICS, CERTIFICATION_PREPARATION_NOTICE, type CertificationPack, type CertificationPackInputs} from "../CertificationPack.js";
 import {CertificationPackBuildCancelledError} from "../CertificationPackBuildOptions.js";
 import {sha256OfBytes} from "./sha256OfBytes.js";
@@ -50,7 +50,7 @@ export function stableDefinition(snapshot: MathDefinitionSnapshot): MathDefiniti
     return result;
 }
 
-export function validatePackReport(value: unknown, modelHash: string | null, source: OutcomeLibraryFolderManifest): asserts value is SimulationReport {
+export function validatePackReport(value: unknown, modelHash: string | null, source: OutcomeLibraryFolderIndex): asserts value is SimulationReport {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Expected a canonical simulation report.");
     const report = value as SimulationReport;
     if (report.schemaVersion !== 1) throw new Error("Unsupported or legacy report version; regenerate a canonical v1 report from the selected runtime.");
@@ -78,7 +78,7 @@ function readJson(file: string): {hash: string; raw: string; value: unknown} {
     return {hash: sha256OfBytes(bytes), raw: bytes.toString("utf8"), value: parseCertificationJson(bytes.toString("utf8"))};
 }
 
-export async function acquireCertificationPack(source: OutcomeLibraryFolderManifest, sourceLibraryManifestHash: string, providedInputs: CertificationPackInputs | undefined, signal?: AbortSignal, sourceLibraryDir?: string): Promise<CertificationPack> {
+export async function acquireCertificationPack(source: OutcomeLibraryFolderIndex, sourceLibraryManifestHash: string, providedInputs: CertificationPackInputs | undefined, signal?: AbortSignal, sourceLibraryDir?: string): Promise<CertificationPack> {
     const inputs = providedInputs ?? {};
     const check = (): void => {
         if (signal?.aborted) throw new CertificationPackBuildCancelledError();

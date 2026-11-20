@@ -1,5 +1,5 @@
 import fs from "fs";
-import {readRecognizedStakeEngineManifest} from "./internal/readRecognizedStakeEngineManifest.js";
+import {readRecognizedStakeEngineManifest} from "./internal/readRecognizedStakeEngineInfo.js";
 
 // Reports whether `outDir` is recognized as a previous "pokie stakeengine export" run's own output (via that
 // run's own pokie-manifest.json) — the exact same recognition check assertSafeToReplaceStakeEngineExportDirectory

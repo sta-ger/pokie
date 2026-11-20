@@ -7,7 +7,7 @@
 // into "base". A plain hand-rolled session (not VideoSlotSession) is used deliberately, to show the
 // contract works for any GameSessionHandling, not just video slots.
 module.exports = {
-    getManifest() {
+    getInfo() {
         return {id: "playable-game-with-bonus-round", name: "Playable Game With Bonus Round", version: "1.0.0"};
     },
     createSession() {

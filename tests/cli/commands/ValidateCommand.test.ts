@@ -410,7 +410,7 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
                     errors: [{
                         code: expected.code,
                         severity: "error",
-                        message: "PokieGame.getManifest() threw: ResolverClass failed at /private/runtime/game.ts",
+                        message: "PokieGame.getInfo() threw: ResolverClass failed at /private/runtime/game.ts",
                     }],
                     warnings: [],
                     suggestions: ["Export an object implementing PokieGame as the entry module's default export."],
@@ -432,7 +432,7 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
                 project: {kind: "package", path: "./broken-game"},
                 errors: [expect.objectContaining(expected)],
             });
-            expect(JSON.stringify(report)).not.toMatch(/PokieGame|getManifest|ResolverClass|private\/runtime|threw:/);
+            expect(JSON.stringify(report)).not.toMatch(/PokieGame|getInfo|ResolverClass|private\/runtime|threw:/);
             (console.log as jest.Mock).mockClear();
         }
     });
@@ -546,7 +546,7 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
             host: {rng: "pokie.rng.v1", services: []},
             capabilities: [],
         }), "cannot validate WASM game logic"],
-        ["missing", undefined, "no compatible PokieWasmComponentManifest sidecar"],
+        ["missing", undefined, "no compatible PokieWasmComponentInfo sidecar"],
         ["malformed", "{ not JSON", "sidecar at"],
         ["incompatible", JSON.stringify({
             schemaVersion: "2.0.0",

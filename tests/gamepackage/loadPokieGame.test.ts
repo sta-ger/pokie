@@ -134,7 +134,7 @@ export const hostPaths = () => [fileURLToPath(import.meta.url), require.resolve(
         fs.mkdirSync(game);
         fs.writeFileSync(path.join(game, "package.json"), JSON.stringify({name: "unchanged-game", pokie: {entry: "game.cjs"}}));
         fs.writeFileSync(path.join(game, "game.cjs"), `const runtime = require('@fromstan/pokie');
-module.exports = {getManifest: () => ({id: 'unchanged-game', name: runtime.hostProbe().join(':'), version: '1.0.0'}),
+module.exports = {getInfo: () => ({id: 'unchanged-game', name: runtime.hostProbe().join(':'), version: '1.0.0'}),
  createSession: () => ({root: __dirname, paths: runtime.hostPaths(), lazy: () => runtime.hostProbe()})};`);
         const script = path.join(host, "probe.cjs");
         fs.writeFileSync(script, `const assert = require('node:assert/strict'), fs = require('fs'), path = require('path');
@@ -149,7 +149,7 @@ const phase = name => { timings[name] = Math.round(performance.now() - started);
  const first = await runtime.loadPokieGameRuntime(game);
  phase('first acquisition');
  const firstSession = first.game.createSession();
- assert.equal(first.game.getManifest().name, 'function:function:before');
+ assert.equal(first.game.getInfo().name, 'function:function:before');
  const roots = await runtime.resolvePokieGameDependencyRoots(game);
  assert.equal(roots['@fromstan/pokie'], installation);
  assert.equal((await runtime.resolvePokieGameDependencyRoots(installation, false))['missing-host-optional'], null);
@@ -167,7 +167,7 @@ const phase = name => { timings[name] = Math.round(performance.now() - started);
  const second = await runtime.loadPokieGameRuntime(detached);
  phase('edited acquisition');
  const secondSession = second.game.createSession();
- assert.equal(second.game.getManifest().name, 'function:function:after');
+ assert.equal(second.game.getInfo().name, 'function:function:after');
  assert.deepEqual(firstSession.lazy(), ['function', 'function', 'before']);
  for (const session of [firstSession, secondSession]) {
    assert.equal(path.dirname(session.root), temporaryRoot);
@@ -184,7 +184,7 @@ const phase = name => { timings[name] = Math.round(performance.now() - started);
  assert.equal(await runtime.packageExecutableRevision(game), before);
  for (let i = 0; i < 2; i++) {
    const restored = await runtime.loadPokieGame(game);
-   assert.equal(restored.getManifest().name, 'function:function:before');
+   assert.equal(restored.getInfo().name, 'function:function:before');
    await runtime.releasePokieGame(restored);
  }
  phase('repeated recovery');
@@ -257,7 +257,7 @@ describe("loadPokieGame", () => {
     it("loads a valid game package and returns its PokieGame export", async () => {
         const game = await loadPokieGame(path.join(isolatedFixturesRoot, "valid-game"));
         try {
-            expect(game.getManifest()).toEqual({id: "valid-game", name: "Valid Game", version: "1.0.0"});
+            expect(game.getInfo()).toEqual({id: "valid-game", name: "Valid Game", version: "1.0.0"});
             expect(typeof game.createSession).toBe("function");
         } finally {
             await releasePokieGame(game);
@@ -291,7 +291,7 @@ describe("loadPokieGame", () => {
     it("unwraps a double-nested default (as produced by Node's native ESM loader for a tsc esModuleInterop-compiled entry)", async () => {
         const game = await loadPokieGame(path.join(isolatedFixturesRoot, "nested-default-game"));
         try {
-            expect(game.getManifest()).toEqual({id: "nested-default-game", name: "Nested Default Game", version: "1.0.0"});
+            expect(game.getInfo()).toEqual({id: "nested-default-game", name: "Nested Default Game", version: "1.0.0"});
         } finally {
             await releasePokieGame(game);
         }
@@ -346,7 +346,7 @@ describe("loadPokieGame", () => {
             const distEntryPath = path.join(packageRoot, "dist", "index.js");
             fs.writeFileSync(
                 distEntryPath,
-                'module.exports = {getManifest() { return {id: "stale-source-game", name: "Stale Source Game", version: "1.0.0"}; }, createSession() { return {root: __dirname}; }};\n',
+                'module.exports = {getInfo() { return {id: "stale-source-game", name: "Stale Source Game", version: "1.0.0"}; }, createSession() { return {root: __dirname}; }};\n',
             );
 
             const buildTime = new Date(Date.now() - 60_000);
@@ -359,7 +359,7 @@ describe("loadPokieGame", () => {
             timings.acquisition = Date.now() - started;
             let snapshotDirectory: string;
             try {
-                expect(game.getManifest()).toEqual({id: "stale-source-game", name: "Stale Source Game", version: "1.0.0"});
+                expect(game.getInfo()).toEqual({id: "stale-source-game", name: "Stale Source Game", version: "1.0.0"});
                 snapshotDirectory = (game.createSession() as unknown as {root: string}).root;
                 expect(snapshotDirectory).not.toBe(path.dirname(distEntryPath));
                 expect(fs.existsSync(snapshotDirectory)).toBe(true);
@@ -425,19 +425,19 @@ it.each(["cjs", "esm"])("isolates direct/transitive %s code, lazy imports and li
         fs.writeFileSync(path.join(location, "package.json"), JSON.stringify({name, main: `index.${suffix}`, dependencies, peerDependencies: name === "nested" ? {direct: "1"} : {}}));
     }
     fs.writeFileSync(path.join(direct, `index.${suffix}`), format === "cjs" ? "module.exports = require('nested');" : "export {default} from 'nested';");
-    const game = `{getManifest: () => ({id: 'dependency-game', name: value, version: '1.0.0'}), createSession: () => ({}), lazy: async () => ${format === "cjs" ? "require('direct')" : "(await import('direct')).default"}}`;
+    const game = `{getInfo: () => ({id: 'dependency-game', name: value, version: '1.0.0'}), createSession: () => ({}), lazy: async () => ${format === "cjs" ? "require('direct')" : "(await import('direct')).default"}}`;
     fs.writeFileSync(entry, format === "cjs" ? `const value = require('direct'); module.exports = ${game};` : `import value from 'direct'; export default ${game};`);
     write("old");
     const original = format === "cjs" ? hostRequire(dependencyFile) : (await nativeImport(pathToFileURL(dependencyFile).href)).default;
     const cachedModule = hostRequire.cache[dependencyFile];
     const first = await load();
     try {
-        expect(first.game.getManifest()).toEqual(manifest("old"));
+        expect(first.game.getInfo()).toEqual(manifest("old"));
         write("current");
         const current = await load();
         try {
-            const fresh = JSON.parse(runNativeProbe(["--input-type=module", "-e", `console.log(JSON.stringify((await import(${JSON.stringify(pathToFileURL(entry).href)})).default.getManifest()))`]));
-            expect(current.game.getManifest()).toEqual(fresh);
+            const fresh = JSON.parse(runNativeProbe(["--input-type=module", "-e", `console.log(JSON.stringify((await import(${JSON.stringify(pathToFileURL(entry).href)})).default.getInfo()))`]));
+            expect(current.game.getInfo()).toEqual(fresh);
             expect(fresh).toEqual(manifest("current"));
             expect(await (first.game as unknown as {lazy(): Promise<string>}).lazy()).toBe("old");
         } finally {
@@ -450,7 +450,7 @@ it.each(["cjs", "esm"])("isolates direct/transitive %s code, lazy imports and li
         write("repaired");
         for (let attempt = 0; attempt < 2; attempt++) {
             const repaired = await load();
-            expect(repaired.game.getManifest()).toEqual(manifest("repaired"));
+            expect(repaired.game.getInfo()).toEqual(manifest("repaired"));
             await repaired.release();
         }
         expect(format === "cjs" ? hostRequire(dependencyFile) : (await nativeImport(pathToFileURL(dependencyFile).href)).default).toBe(original);

@@ -64,7 +64,7 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
         let requestKey: string | undefined;
         if (operationId) requestKey = JSON.stringify([disposition.sessionId, "request", operationId]);
         else if (logicalKeys.length && logicalKeys.every(key => key !== null)) requestKey = JSON.stringify([disposition.sessionId, "logical", logicalKeys]);
-        const inputs = JSON.stringify(toCanonicalJson({commands, disposition, ...(context ? {context} : {}), identity: resolveGameSessionIdentity(game), game: JSON.parse(JSON.stringify(game.getManifest())), stateSchema: JSON.parse(JSON.stringify(game.getSessionStateSchema()))}));
+        const inputs = JSON.stringify(toCanonicalJson({commands, disposition, ...(context ? {context} : {}), identity: resolveGameSessionIdentity(game), game: JSON.parse(JSON.stringify(game.getInfo())), stateSchema: JSON.parse(JSON.stringify(game.getSessionStateSchema()))}));
         const historical = requestKey ? history.operations.get(requestKey) : undefined;
         if (historical) {
             if (historical.inputs !== inputs) throw new AuditReplayError("audit-identity", "operation", "Retry conflicts with the original commands, disposition, context or model.");
@@ -210,7 +210,7 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
             throw new Error(`round must be a positive integer, got ${round}.`);
         }
 
-        const manifest = game.getManifest();
+        const manifest = game.getInfo();
         const session = existingSession ?? game.createSession(seed === undefined ? undefined : {seed});
         // A replay reconstructs a specific round, not risk of ruin — give the session a bankroll large
         // enough that reaching `round` is never cut short by running out of credits mid-replay.

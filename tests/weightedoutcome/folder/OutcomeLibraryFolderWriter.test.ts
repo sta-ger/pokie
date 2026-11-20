@@ -4,7 +4,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
-    OutcomeLibraryFolderManifest,
+    OutcomeLibraryFolderIndex,
     OutcomeLibraryFolderModeIndex,
     OutcomeLibraryFolderModeInput,
     OutcomeLibraryFolderWriteCancelledError,
@@ -86,7 +86,7 @@ describe("OutcomeLibraryFolderWriter", () => {
         );
         expect(new Set(fs.readdirSync(outDir))).toEqual(new Set(result.files));
 
-        const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "manifest.json"), "utf-8")) as OutcomeLibraryFolderManifest;
+        const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "manifest.json"), "utf-8")) as OutcomeLibraryFolderIndex;
         expect(manifest.generatedBy).toBe("pokie outcomelibrary build");
         expect(manifest.pokieVersion).toBe("1.3.0");
         // The fixture's own outcomes were computed by pokieVersion "1.3.0" too, but this is a genuinely
@@ -141,7 +141,7 @@ describe("OutcomeLibraryFolderWriter", () => {
         const result = await new OutcomeLibraryFolderWriter("1.3.0").writeToDirectory([mode], outDir);
 
         expect(result.issues).toEqual([]);
-        const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "manifest.json"), "utf-8")) as OutcomeLibraryFolderManifest;
+        const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "manifest.json"), "utf-8")) as OutcomeLibraryFolderIndex;
         expect(manifest.modes[0].analysis).toEqual(new WeightedOutcomeLibraryAnalyzer().analyze(buildOutcomeLibraryFolderTestLibrary("base-lib")));
         expect(fs.readdirSync(outDir).some((name) => name.startsWith(".analysis_") || name.startsWith(".entries_"))).toBe(false);
         expect(siblingLeftovers(outDir)).toEqual([]);
@@ -253,7 +253,7 @@ describe("OutcomeLibraryFolderWriter", () => {
         releaseDelayedStream?.();
 
         await expect(staleWriter).rejects.toBeInstanceOf(OutcomeLibraryFolderDestinationClaimedError);
-        const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "manifest.json"), "utf8")) as OutcomeLibraryFolderManifest;
+        const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "manifest.json"), "utf8")) as OutcomeLibraryFolderIndex;
         expect(manifest.modes.map((mode) => mode.modeName)).toEqual(["base", "ante"]);
     });
 

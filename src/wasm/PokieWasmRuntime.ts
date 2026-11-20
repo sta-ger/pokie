@@ -1,7 +1,7 @@
 import {ACTIVE_POKIE_WASM_TRACES as ACTIVE_TRACE_COLLECTORS} from "./internal/PokieWasmTraceOwnership.js";
 import {instantiateDeclarativeWasmRuntime} from "./internal/instantiateDeclarativeWasmRuntime.js";
 import {lowerSharedSlotMath, readSharedSlotMathResult} from "./math/SharedSlotMath.js";
-import type {PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
+import type {PokieWasmComponentInfo} from "../project/wasm/PokieWasmComponentInfo.js";
 import {SeededRandomNumberGenerator} from "../session/videoslot/combinations/SeededRandomNumberGenerator.js";
 import {
     POKIE_WASM_RUNTIME_PLAY_DECLARATION,
@@ -42,12 +42,12 @@ export class SeededPokieWasmHost implements PokieWasmHost {
 }
 
 /** Returns only portable metadata; no filesystem or package loading occurs here. */
-export function inspectPokieWasm(manifest: PokieWasmComponentManifest): PokieWasmComponentManifest {
-    return JSON.parse(JSON.stringify(manifest)) as PokieWasmComponentManifest;
+export function inspectPokieWasm(manifest: PokieWasmComponentInfo): PokieWasmComponentInfo {
+    return JSON.parse(JSON.stringify(manifest)) as PokieWasmComponentInfo;
 }
 
 /** Instantiates the canonical portable ABI and derives complete deterministic rounds from it. */
-export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieWasmComponentManifest, host: PokieWasmHost): Promise<PokieWasmRuntime> {
+export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieWasmComponentInfo, host: PokieWasmHost): Promise<PokieWasmRuntime> {
     const canonical = await readIntegrityBoundCanonicalPokieWasmArtifact(bytes, manifest);
     if (canonical.model.features) return instantiateDeclarativeWasmRuntime({...canonical.model, features: canonical.model.features}, manifest, host);
     const ordinaryModel = canonical.model;

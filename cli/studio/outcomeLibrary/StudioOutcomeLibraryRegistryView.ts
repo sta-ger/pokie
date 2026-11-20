@@ -1,4 +1,4 @@
-import type {OutcomeLibraryGenerationStrategy, PokieGameManifest} from "@fromstan/pokie";
+import type {OutcomeLibraryGenerationStrategy, PokieGameInfo} from "@fromstan/pokie";
 
 export type StudioOutcomeLibraryRegistryModeEntry = {
     readonly modeName: string;
@@ -47,8 +47,8 @@ export type StudioOutcomeLibraryRegistryView =
           // "wrong": the bundle belongs to an entirely different game id than the currently loaded build --
           // e.g. the conventional directory was populated by a different project.
           readonly buildStatus: "compatible" | "stale" | "wrong";
-          readonly game: PokieGameManifest;
-          readonly currentGame: PokieGameManifest;
+          readonly game: PokieGameInfo;
+          readonly currentGame: PokieGameInfo;
           readonly configHash?: string;
           readonly artifactPokieVersion: string;
           readonly currentPokieVersion: string;

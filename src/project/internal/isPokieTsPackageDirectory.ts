@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import {readPokiePackageConfig} from "../../gamepackage/readPokiePackageConfig.js";
-import type {ProjectTargetManifestRecognition} from "./ProjectTargetManifestRecognition.js";
+import type {ProjectTargetInfoRecognition} from "./ProjectTargetInfoRecognition.js";
 
 // A lightweight recognition check for ProjectTargetResolver's tsPackage adapter — reuses
 // readPokiePackageConfig, the same "pokie.entry" contract findPokieProjectRoot/loadPokieGame themselves read,
@@ -11,8 +11,8 @@ import type {ProjectTargetManifestRecognition} from "./ProjectTargetManifestReco
 // package. But a package.json that fails to parse as JSON, or that does declare a "pokie" field yet fails
 // readPokiePackageConfig's own validation (e.g. a missing/blank "pokie.entry"), has already signalled intent
 // to be a POKIE package and gotten the shape wrong — that's "malformed", not "unrelated" (see
-// ProjectTargetManifestRecognition's own doc comment).
-export function recognizePokieTsPackageDirectory(dir: string): ProjectTargetManifestRecognition {
+// ProjectTargetInfoRecognition's own doc comment).
+export function recognizePokieTsPackageDirectory(dir: string): ProjectTargetInfoRecognition {
     const packageJsonPath = path.join(dir, "package.json");
 
     let packageJsonContent: string;

@@ -1,21 +1,21 @@
 import {Button, NumberInput, Select, Stack, Text} from "@mantine/core";
-import type {BoundedMechanics} from "../../../../../src/session/videoslot/authored/BoundedMechanics";
+import type {FeatureChains} from "../../../../../src/session/videoslot/authored/FeatureChains";
 import type {BlueprintMutate} from "../../hooks/useBlueprintEditor";
 import {PageSection} from "../common/PageSection";
 import {asStringList} from "../../domain/asStringList";
 
 /** Values belong to the shared recoverable draft; saving/building remains explicit. */
-export function BoundedMechanicsFieldset({blueprint, mutate}: {blueprint: Record<string, unknown>; mutate: BlueprintMutate}) {
-    const mechanics = (blueprint.mechanics ?? {}) as BoundedMechanics;
+export function FeatureChainsFieldset({blueprint, mutate}: {blueprint: Record<string, unknown>; mutate: BlueprintMutate}) {
+    const mechanics = (blueprint.mechanics ?? {}) as FeatureChains;
     const symbols = asStringList(blueprint.symbols);
     const first = symbols[0] ?? "";
-    const set = <K extends keyof BoundedMechanics>(key: K, value: BoundedMechanics[K]): void => mutate(b => {
+    const set = <K extends keyof FeatureChains>(key: K, value: FeatureChains[K]): void => mutate(b => {
         const next = {...(b.mechanics as Record<string, unknown> ?? {})};
         if (value === undefined) Reflect.deleteProperty(next, key);
         else next[key] = value;
         b.mechanics = next;
     });
-    const defaults: Required<Omit<BoundedMechanics, "weightedBonus">> = {
+    const defaults: Required<Omit<FeatureChains, "weightedBonus">> = {
         cascade: {maxCascades: 20},
         respins: {trigger: {symbolId: first, minimumCount: 1}, grant: 3, retrigger: "none", maxRespins: 30},
         collection: {symbolId: first, contribution: 1, threshold: 10, cap: 10, reset: "zero", payout: 5},

@@ -1,9 +1,9 @@
-import type {GameBlueprintManifest} from "../../generated/GameBlueprint.js";
+import type {GameBlueprintInfo} from "../../generated/GameBlueprint.js";
 import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 import type {SheetGrid} from "../SheetGrid.js";
 
-export type ManifestSheetValue = {
-    manifest: GameBlueprintManifest;
+export type InfoSheetValue = {
+    manifest: GameBlueprintInfo;
     reels: number;
     rows: number;
 };
@@ -13,10 +13,10 @@ export type ManifestSheetValue = {
 // be a positive integer" itself — ParSheetImporter runs the assembled blueprint through the existing
 // GameBlueprintValidator for that, so this only reports problems unique to the spreadsheet shape
 // (an unrecognized or duplicated row key) that the validator has no way to see.
-export interface ManifestSheetMapping {
+export interface InfoSheetMapping {
     readonly sheetName: string;
 
-    fromRows(rows: SheetGrid): {value: ManifestSheetValue; issues: ValidationIssue[]};
+    fromRows(rows: SheetGrid): {value: InfoSheetValue; issues: ValidationIssue[]};
 
-    toRows(manifest: GameBlueprintManifest, reels: number, rows: number): SheetGrid;
+    toRows(manifest: GameBlueprintInfo, reels: number, rows: number): SheetGrid;
 }

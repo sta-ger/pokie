@@ -1,4 +1,4 @@
-export type PokieGameManifest = {
+export type PokieGameInfo = {
     id: string;
     name: string;
     version: string;

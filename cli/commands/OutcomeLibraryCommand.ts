@@ -550,7 +550,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             if (resolvedRequest.preflight.requiresSampledOptIn) {
                 throw new WeightedOutcomeLibraryGenerationError(
                     "weighted-outcome-library-generation-space-exceeded",
-                    `"${game.getManifest().id}"'s exact outcome space (${resolvedRequest.preflight.estimate.totalOutcomeSpaceSize} reel-stop combinations) exceeds ` +
+                    `"${game.getInfo().id}"'s exact outcome space (${resolvedRequest.preflight.estimate.totalOutcomeSpaceSize} reel-stop combinations) exceeds ` +
                     `maxOutcomeSpaceSize (${resolvedRequest.preflight.maxExactOutcomeSpaceSize}). Pass a larger maxOutcomeSpaceSize, or opt into an explicitly-labelled ` +
                     "bounded-coverage strategy with --sample <n> --seed <string>.",
                 );
@@ -806,7 +806,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             resolvedRequest = prepareOutcomeLibraryGenerationFromEstimate(this.estimateSpace(game), request);
         } catch (error) {
             if (error instanceof WeightedOutcomeLibraryGenerationError) {
-                console.error(`Cannot estimate "${game.getManifest().id}"'s exact outcome space (${error.getCode()}): ${error.message}`);
+                console.error(`Cannot estimate "${game.getInfo().id}"'s exact outcome space (${error.getCode()}): ${error.message}`);
                 return 1;
             }
             throw error;
@@ -816,7 +816,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         const {estimate} = preflight;
         const sample = preflight.sample;
         const report = {
-            game: game.getManifest(),
+            game: game.getInfo(),
             reelsNumber: estimate.reelsNumber,
             reelsSymbolsNumber: estimate.reelsSymbolsNumber,
             reelSizes: estimate.reelSizes,
@@ -892,7 +892,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             // particular, an omitted mode on a runtime package means its
             // declared default, not an unlabelled library which happens to
             // have played that default internally.
-            libraryId: options.libraryId ?? `${game.getManifest().id}${modeIdentity.mode !== undefined ? `-${modeIdentity.mode}` : ""}`,
+            libraryId: options.libraryId ?? `${game.getInfo().id}${modeIdentity.mode !== undefined ? `-${modeIdentity.mode}` : ""}`,
             game,
             pokieVersion: this.pokieVersion,
             generation,

@@ -1,4 +1,4 @@
-import type {GameBlueprintManifest} from "./GameBlueprint.js";
+import type {GameBlueprintInfo} from "./GameBlueprint.js";
 import type {GameBuildInfoReelStripGeneration} from "./GameBuildInfoReelStripGeneration.js";
 
 // Provenance for a single "pokie build" run — computed by buildGameBuildInfo() and returned as an
@@ -15,7 +15,7 @@ export type GameBuildInfo = {
     blueprintHash: string;
     source?: string;
     files?: string[];
-    game: GameBlueprintManifest;
+    game: GameBlueprintInfo;
     // Present only when the blueprint used reelStripGeneration: the original config that drove it
     // (including its seed) plus what actually happened per reel. Absent for literal reelStrips.
     reelStripGeneration?: GameBuildInfoReelStripGeneration;

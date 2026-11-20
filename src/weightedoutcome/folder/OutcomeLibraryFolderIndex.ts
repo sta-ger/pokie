@@ -1,12 +1,12 @@
-import type {PokieGameManifest} from "../../gamepackage/PokieGameManifest.js";
+import type {PokieGameInfo} from "../../gamepackage/PokieGameInfo.js";
 import type {OutcomeLibraryGeneratorDiagnostics} from "../generate/OutcomeLibraryGeneratorDiagnostics.js";
 import type {WeightedOutcomeLibraryAnalysis} from "../WeightedOutcomeLibraryAnalysis.js";
 
 // Tracks this type's own shape (not the pokie package version), same convention as
-// STAKE_ENGINE_MANIFEST_SCHEMA_VERSION/WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION.
+// STAKE_ENGINE_INFO_SCHEMA_VERSION/WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION.
 export const OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION = 1;
 
-export type OutcomeLibraryFolderManifestModeEntry = {
+export type OutcomeLibraryFolderIndexModeEntry = {
     readonly modeName: string;
     readonly betMode: string;
     readonly stake: number;
@@ -27,9 +27,9 @@ export type OutcomeLibraryFolderManifestModeEntry = {
 
 // POKIE's own provenance for a "pokie outcomelibrary build" run, written to "manifest.json" alongside each
 // mode's own small index and streaming outcomes file — same "who/what version/when" stamp convention as
-// StakeEngineManifest, and the same "files" inventory convention as StakeEngineManifest/GameBuildInfo (the
+// StakeEngineInfo, and the same "files" inventory convention as StakeEngineInfo/GameBuildInfo (the
 // exact set of paths this run generated, relative to the bundle directory).
-export type OutcomeLibraryFolderManifest = {
+export type OutcomeLibraryFolderIndex = {
     readonly schemaVersion: number;
     readonly generatedBy: string;
     // Which pokie release built *this bundle file* — i.e. ran "pokie outcomelibrary build". Deliberately never
@@ -37,7 +37,7 @@ export type OutcomeLibraryFolderManifest = {
     // pokie release than the one that originally computed its outcomes.
     readonly pokieVersion: string;
     readonly generatedAt: string;
-    readonly game: PokieGameManifest;
+    readonly game: PokieGameInfo;
     readonly configHash?: string;
     // Which pokie release *computed* the outcomes themselves — read from the first outcome's own
     // artifact.origin.pokieVersion (guaranteed identical across every outcome in every mode by the writer's
@@ -45,6 +45,6 @@ export type OutcomeLibraryFolderManifest = {
     // outcome's own provenance.pokieVersion. A distinct quantity from pokieVersion above — see that field's own
     // doc comment for why they're never required to match.
     readonly artifactPokieVersion: string;
-    readonly modes: readonly OutcomeLibraryFolderManifestModeEntry[];
+    readonly modes: readonly OutcomeLibraryFolderIndexModeEntry[];
     readonly files: readonly string[];
 };

@@ -4,7 +4,7 @@ import {VideoSlotConfig} from "../../session/videoslot/VideoSlotConfig.js";
 import {VideoSlotWithFreeGamesConfig} from "../../session/videoslot/VideoSlotWithFreeGamesConfig.js";
 import {VideoSlotSession} from "../../session/videoslot/VideoSlotSession.js";
 import {VideoSlotWithFreeGamesSession} from "../../session/videoslot/VideoSlotWithFreeGamesSession.js";
-import {BoundedVideoSlotSession} from "../../session/videoslot/authored/BoundedVideoSlotSession.js";
+import {FeatureChainSession} from "../../session/videoslot/authored/FeatureChainSession.js";
 import type {WeightedBonus} from "../../session/videoslot/authored/WeightedBonus.js";
 import {VideoSlotWinCalculator} from "../../session/videoslot/wincalculator/VideoSlotWinCalculator.js";
 import {WaysWinCalculator} from "../../session/videoslot/wincalculator/WaysWinCalculator.js";
@@ -84,7 +84,7 @@ export function createAnalysisSession(model: GameBlueprint, strips: string[][], 
         win?.type === "ways" || win?.type === "clusters" ? {aggregationPolicy: new SelectedEvaluatorGroupWinAggregationPolicy(win.type === "ways" ? "ways" : "cluster"), ...(win.type === "clusters" ? {minimumClusterSize: win.minimumClusterSize ?? 5} : {})} : {});
     const bounded = Object.fromEntries(Object.entries(model.mechanics ?? {}).filter(([key]) => ["cascade", "respins", "collection", "weightedBonus"].includes(key)));
     let session: VideoSlotSessionHandling<string>;
-    if (Object.keys(bounded).length) session = new BoundedVideoSlotSession(config, generator, bounded, calculator);
+    if (Object.keys(bounded).length) session = new FeatureChainSession(config, generator, bounded, calculator);
     else if (actualConfig instanceof VideoSlotWithFreeGamesConfig) session = new VideoSlotWithFreeGamesSession(actualConfig, generator, calculator);
     else session = new VideoSlotSession(config, generator, calculator);
     const hold = model.mechanics?.holdAndWin;

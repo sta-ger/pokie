@@ -1,4 +1,4 @@
-import type {FormatConversionPlan, OutcomeLibraryGenerationStrategy, PokieGameManifest} from "@fromstan/pokie";
+import type {FormatConversionPlan, OutcomeLibraryGenerationStrategy, PokieGameInfo} from "@fromstan/pokie";
 
 // The Studio Generate step's own "how big is this?" preview -- mirrors "pokie outcomelibrary generate
 // --estimate" exactly (see OutcomeLibraryCommand.executeEstimate): the same estimateExactOutcomeSpaceSize
@@ -9,7 +9,7 @@ import type {FormatConversionPlan, OutcomeLibraryGenerationStrategy, PokieGameMa
 export type StudioOutcomeLibraryGenerateEstimateView =
     | {
           readonly status: "ok";
-          readonly game: PokieGameManifest;
+          readonly game: PokieGameInfo;
           readonly reelsNumber: number;
           readonly reelsSymbolsNumber: number;
           readonly reelSizes: readonly number[];

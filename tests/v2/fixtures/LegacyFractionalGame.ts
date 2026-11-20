@@ -50,7 +50,7 @@ class LegacyFractionalSession extends GameSession {
 
 export function legacyFractionalGame(adjustment = 0.1, credits = 1): PokieGame {
     return {
-        getManifest: () => ({id: "legacy-fractional", name: "Legacy fractional", version: "1"}),
+        getInfo: () => ({id: "legacy-fractional", name: "Legacy fractional", version: "1"}),
         getConfigHash: () => `legacy-fractional:${adjustment}:${credits}`,
         getSessionStateSchema: () => ({kind: "custom"}),
         getSessionCommandCapabilities: () => ({bets: [1]}),

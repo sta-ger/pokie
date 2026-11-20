@@ -24,7 +24,7 @@ import {ScreenModifierEngine} from "../../session/videoslot/modifiers/ScreenModi
 import {observeVideoSlotFeatures} from "../../net/videoslot/observeVideoSlotFeatures.js";
 import {projectPublicFeatureEvent} from "../../artifact/PublicRoundRecordProjector.js";
 import {shouldSelectWeightedBonus, weightedBonusPayout, validateWeightedBonusObservation} from "../../session/videoslot/authored/WeightedBonus.js";
-import type {BoundedSessionState} from "../../session/videoslot/authored/BoundedVideoSlotSession.js";
+import type {FeatureChainSessionState} from "../../session/videoslot/authored/FeatureChainSession.js";
 import {WinningWay} from "../../session/videoslot/WinningWay.js";
 import {WinningCluster} from "../../session/videoslot/WinningCluster.js";
 import type {PokieWasmFeatureSessionState} from "../PokieWasmRuntimeApi.js";
@@ -37,7 +37,7 @@ import {SymbolsCombination} from "../../session/videoslot/combinations/SymbolsCo
 import {CascadeResult} from "../../session/videoslot/cascade/CascadeResult.js";
 import {CascadeStep} from "../../session/videoslot/cascade/CascadeStep.js";
 import {CascadeGridTransformer} from "../../session/videoslot/combinations/CascadeGridTransformer.js";
-import {resolveCollectionTransition, resolveRespinTransition, type BoundedMechanicObservation} from "../../session/videoslot/authored/BoundedMechanics.js";
+import {resolveCollectionTransition, resolveRespinTransition, type FeatureChainObservation} from "../../session/videoslot/authored/FeatureChains.js";
 import type {ScreenModifierObservation, ScreenModifierState} from "../../session/videoslot/modifiers/ScreenModifiers.js";
 import {stableSlotMathJson} from "../math/SharedSlotMath.js";
 import {ScreenProjection} from "../../session/videoslot/coordinates/ScreenProjection.js";
@@ -48,7 +48,7 @@ export type DeclarativeTransitionBalances = {collectionValue?: number; jackpotVa
 export function captureDeclarativeTransitionBalances(session: VideoSlotSessionHandling, blueprint: GameBlueprint): DeclarativeTransitionBalances {
     const balances: DeclarativeTransitionBalances = {};
     if (blueprint.mechanics?.freeGames) balances.freeGamesBank = (session as VideoSlotSessionHandling & FreeGamesStateDetermining).getFreeGamesBank();
-    if (blueprint.mechanics?.collection) balances.collectionValue = (session as VideoSlotSessionHandling & {toSessionState(): BoundedSessionState}).toSessionState().value;
+    if (blueprint.mechanics?.collection) balances.collectionValue = (session as VideoSlotSessionHandling & {toSessionState(): FeatureChainSessionState}).toSessionState().value;
     if (blueprint.mechanics?.jackpot) balances.jackpotValue = (session as VideoSlotSessionHandling & {getJackpotPools(): readonly JackpotPoolRepresenting[]}).getJackpotPools()[0].getValue();
     return balances;
 }
@@ -60,7 +60,7 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
     const last = artifacts[artifacts.length - 1];
     if (!last) throw new Error("Missing retained mathematical observation.");
     const event = (type: string) => last.featureEvents?.find(event => event.type === type)?.data;
-    const bounded = event("boundedMechanics") as BoundedMechanicObservation | undefined;
+    const bounded = event("boundedMechanics") as FeatureChainObservation | undefined;
     const modifiers = event("screenModifiers") as ScreenModifierObservation<string> | undefined;
     const mechanics = blueprint.mechanics;
     const boundedModel = !!(mechanics?.cascade || mechanics?.respins || mechanics?.collection || mechanics?.weightedBonus);
@@ -95,7 +95,7 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
             reels: blueprint.reels, rows: blueprint.rows, screenGeometry: blueprint.screenGeometry}).validateObservation(modifiers, native.modifierState!);
     }
     if (bounded) {
-        const state = (session as VideoSlotSessionHandling & {toSessionState(): BoundedSessionState}).toSessionState();
+        const state = (session as VideoSlotSessionHandling & {toSessionState(): FeatureChainSessionState}).toSessionState();
         const keys = ["cascade", "respins", "collection"].filter(key => !!Reflect.get(mechanics!, key));
         if (state.entryBet !== session.getBet()) throw new Error("Bounded bonus/collection/respins observation contradicts its accepted entry denomination.");
         const table = mechanics?.weightedBonus;
@@ -184,7 +184,7 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
         getSymbolsCombination: () => new SymbolsCombination().fromMatrix(finalScreen),
         getVisibleSymbolsCombination: () => new SymbolsCombination().fromMatrix(last.screen as string[][]),
         getScreenGeometry: () => blueprint.screenGeometry,
-        getBoundedMechanicObservation: () => bounded,
+        getFeatureChainObservation: () => bounded,
         getModifierObservation: () => modifiers,
         ...(cascade ? {getCascadeResult: () => cascade} : {}),
     };
@@ -209,7 +209,7 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
  * Native decorators retain authority over their special terminal/suppressed results.
  */
 function validateRetainedWins(session: VideoSlotSessionHandling, blueprint: GameBlueprint, steps: readonly RoundStepRecord[], nativeOutcome: boolean,
-    calculator: VideoSlotWinCalculator, bounded: BoundedMechanicObservation | undefined, before?: SessionFeatureAnalyticsBeforePlay): {ways: number[]; clusters: number[]} {
+    calculator: VideoSlotWinCalculator, bounded: FeatureChainObservation | undefined, before?: SessionFeatureAnalyticsBeforePlay): {ways: number[]; clusters: number[]} {
     const amounts = {ways: [] as number[], clusters: [] as number[]};
     for (const [index, step] of steps.entries()) {
         validateRoundRecordCoordinates(step);

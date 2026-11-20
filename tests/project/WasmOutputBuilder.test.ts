@@ -281,7 +281,7 @@ describe("WasmOutputBuilder", () => {
         const manifest = JSON.parse(fs.readFileSync(`${secondOutput}.pokie-wasm.json`, "utf8"));
         manifest.artifact.adapter = "other/runtime";
         fs.writeFileSync(`${secondOutput}.pokie-wasm.json`, JSON.stringify(manifest));
-        await expect(new ProjectTargetResolver().resolve(secondOutput)).rejects.toThrow(/does not satisfy PokieWasmComponentManifest/);
+        await expect(new ProjectTargetResolver().resolve(secondOutput)).rejects.toThrow(/does not satisfy PokieWasmComponentInfo/);
     });
 
     it("rejects a sidecar swapped from a game with identical mechanics but a different identity", async () => {

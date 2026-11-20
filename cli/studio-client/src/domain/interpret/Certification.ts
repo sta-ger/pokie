@@ -1,5 +1,5 @@
 import type {
-    CertificationPackManifest,
+    CertificationPackIndex,
     StudioCertificationBuildView,
     StudioCertificationSourceValidateView,
     ValidationIssue,
@@ -53,7 +53,7 @@ export function describeCertificationOutcome(view: {errors: readonly ValidationI
 
 // A one-line, plain-language summary of a built certification/evidence bundle's own recorded identity
 // -- purely a human-readable restatement of fields the manifest already carries.
-export function describeCertificationProvenanceSummary(manifest: CertificationPackManifest): string {
+export function describeCertificationProvenanceSummary(manifest: CertificationPackIndex): string {
     const modeCount = manifest.modes.length;
     return (
         `Certification evidence for ${manifest.game.name} v${manifest.game.version}, ` +

@@ -87,7 +87,7 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     if (holdAndWin) requireNames.push("VideoSlotWithHoldAndWinSession", "SymbolSetHoldAndWinCollector", "MinimumCountHoldAndWinTrigger", "SumWithMultiplierHoldAndWinPayoutAggregator");
     if (jackpot) requireNames.push("VideoSlotWithJackpotSession", "FixedJackpotPool", "AccumulatingJackpotPool", "PercentageOfBetJackpotContributor", "SymbolCountJackpotTrigger", "SingleTierJackpotAwarding");
     if (hasBounded) {
-        requireNames.push("BoundedVideoSlotSession");
+        requireNames.push("FeatureChainSession");
         if (!requireNames.includes("VideoSlotWinCalculator")) requireNames.push("VideoSlotWinCalculator");
     }
     if (bounded?.cascade) requireNames.push("CascadeSessionSerializer");
@@ -116,7 +116,7 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     const winCalculatorArgs = winModel.type === "lines" && !sharedMathModel ? "" : ", winCalculator";
     const sessionClassName = freeGames ? "VideoSlotWithFreeGamesSession" : "VideoSlotSession";
     const baseConstruction = hasBounded
-        ? `new BoundedVideoSlotSession(config, combinationsGenerator, ${JSON.stringify(bounded)}, ${sharedMathModel || winModel.type !== "lines" ? "winCalculator" : "new VideoSlotWinCalculator(config)"})`
+        ? `new FeatureChainSession(config, combinationsGenerator, ${JSON.stringify(bounded)}, ${sharedMathModel || winModel.type !== "lines" ? "winCalculator" : "new VideoSlotWinCalculator(config)"})`
         : `new ${sessionClassName}(config, combinationsGenerator${winCalculatorArgs})`;
     const sessionConstructionExpression = holdAndWin
         ? `new VideoSlotWithHoldAndWinSession(${baseConstruction}, ${holdAndWin.initialRespins}, new SymbolSetHoldAndWinCollector(blueprint.mechanics?.holdAndWin?.symbolEffects), new MinimumCountHoldAndWinTrigger(${holdAndWin.minimumCount}), new SumWithMultiplierHoldAndWinPayoutAggregator(${holdAndWin.payout.amountsAreBetMultiples}))`
@@ -350,7 +350,7 @@ ${freeGamesWrapCode}
 // PokieGame contract (see docs/game-packages.md)
 // ---------------------------------------------------------------------------
 module.exports = {
-    getManifest() {
+    getInfo() {
         return blueprint.manifest;
     },
     getModelDescriptor() {

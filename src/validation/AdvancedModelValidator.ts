@@ -420,7 +420,7 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
                             };
                             observe(after);
                             for (const [target] of targets) {
-                                const bounded = (session as unknown as {getBoundedMechanicObservation?: () => {collection?: {triggered: boolean}}}).getBoundedMechanicObservation?.();
+                                const bounded = (session as unknown as {getFeatureChainObservation?: () => {collection?: {triggered: boolean}}}).getFeatureChainObservation?.();
                                 if (target === "mechanics.respins" && (bounded as {respins?: {granted: number}})?.respins?.granted) targets.set(target, true);
                                 if (target === "mechanics.collection" && bounded?.collection?.triggered) targets.set(target, true);
                             }

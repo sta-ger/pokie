@@ -1,5 +1,5 @@
 import {isPokieGame} from "./isPokieGame.js";
-import type {PokieGameManifest} from "./PokieGameManifest.js";
+import type {PokieGameInfo} from "./PokieGameInfo.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import type {ValidationRule} from "../validation/ValidationRule.js";
 
@@ -11,23 +11,23 @@ export class PokieGameContractValidationRule implements ValidationRule<unknown> 
                     code: "pokie-game-missing-contract-methods",
                     severity: "error",
                     message:
-                        "The loaded export does not implement the PokieGame contract (missing getManifest()/createSession()).",
+                        "The loaded export does not implement the PokieGame contract (missing getInfo()/createSession()).",
                     suggestion: "Export an object implementing PokieGame as the entry module's default export.",
                 },
             ];
         }
 
-        let manifest: PokieGameManifest;
+        let manifest: PokieGameInfo;
         try {
-            const rawManifest = target.getManifest();
+            const rawManifest = target.getInfo();
             // Extraction can require detached JSON before this ordinary contract reads metadata fields.
-            manifest = (detachManifestData ? detachManifestData(rawManifest) : rawManifest) as PokieGameManifest;
+            manifest = (detachManifestData ? detachManifestData(rawManifest) : rawManifest) as PokieGameInfo;
         } catch (error) {
             return [
                 {
                     code: "pokie-game-manifest-threw",
                     severity: "error",
-                    message: `PokieGame.getManifest() threw: ${error instanceof Error ? error.message : String(error)}`,
+                    message: `PokieGame.getInfo() threw: ${error instanceof Error ? error.message : String(error)}`,
                 },
             ];
         }
@@ -37,7 +37,7 @@ export class PokieGameContractValidationRule implements ValidationRule<unknown> 
                 {
                     code: "pokie-game-manifest-missing",
                     severity: "error",
-                    message: "PokieGame.getManifest() must return a manifest object.",
+                    message: "PokieGame.getInfo() must return a manifest object.",
                 },
             ];
         }
@@ -47,7 +47,7 @@ export class PokieGameContractValidationRule implements ValidationRule<unknown> 
             .map((field) => ({
                 code: `pokie-game-manifest-invalid-${field}`,
                 severity: "error" as const,
-                message: `PokieGameManifest.${field} must be a non-empty string.`,
+                message: `PokieGameInfo.${field} must be a non-empty string.`,
             }));
     }
 }

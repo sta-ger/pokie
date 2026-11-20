@@ -1,11 +1,11 @@
 import {readIntegrityBoundCanonicalPokieWasmArtifact} from "./PokieWasmCanonicalModule.js";
-import type {PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
+import type {PokieWasmComponentInfo} from "../project/wasm/PokieWasmComponentInfo.js";
 
 export type PokieWasmBrowserBuild = {
     readonly projectRoot: string;
     readonly generation: string;
     readonly bytes: readonly number[];
-    readonly manifest: PokieWasmComponentManifest;
+    readonly manifest: PokieWasmComponentInfo;
 };
 /** A Project-scoped response contains the matching bytes and sidecar. Verify again in the browser
  * before constructing a Worker; the Worker independently checks the same binding on initialize.

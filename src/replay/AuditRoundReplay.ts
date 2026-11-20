@@ -72,7 +72,7 @@ export function captureAuditDelivery(game: PokieGame, session: GameSessionHandli
     let artifact: AuditDelivery["artifact"];
     if (!result.deliveryOnly && typeof slot.getWinEvaluationResult === "function" && typeof slot.getSymbolsCombination === "function") {
         const built = buildRoundRecordFromSession(slot as VideoSlotSessionHandling, {roundId: result.logicalRound?.id ?? command.roundId ?? disposition.requestId ?? disposition.sessionId,
-            stake: result.stake, betMode: result.mode, origin: {game: game.getManifest(), pokieVersion: POKIE_VERSION, ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})}});
+            stake: result.stake, betMode: result.mode, origin: {game: game.getInfo(), pokieVersion: POKIE_VERSION, ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})}});
         artifact = new PokieJsonRoundRecordProjector().project(result.logicalRound ? buildLogicalRoundRecord(result.logicalRound, built) : built);
     }
     return dto({execution, command, before, after: captureAuditBoundary(session), result, ...(artifact ? {artifact} : {}), disposition});
@@ -89,7 +89,7 @@ export function buildAuditRoundRecording(game: PokieGame, context: PokieGameCont
     if (!identity.modelHash || !game.getSessionStateSchema || !game.getSessionCommandCapabilities) throw new AuditReplayError("audit-codec-unsupported", "identity", "Exact audit requires selected model hash, authoritative codec and command capabilities.");
     const stateSchema = game.getSessionStateSchema();
     const body: Omit<AuditRoundRecording, "hash"> = dto({schemaVersion: "pokie.audit-round.v1", runtimeVersion: "pokie.session-runtime.v1", identity,
-        game: game.getManifest(), stateSchema, rngProfile: rngProfile(stateSchema),
+        game: game.getInfo(), stateSchema, rngProfile: rngProfile(stateSchema),
         ...(context ? {context} : {}), deliveries, ...(captureUnavailable ? {captureUnavailable} : {})});
     const recording = {...body, hash: computeAuditRoundHash(body)};
     validateAuditRoundRecording(recording, game);
@@ -127,7 +127,7 @@ function validateAuditStructure(value: unknown, game?: PokieGame): void {
     if (game) {
         if (!game.getConfigHash || !game.getSessionStateSchema || !game.getSessionCommandCapabilities) throw new AuditReplayError("audit-codec-unsupported", "game", "Selected package does not declare exact audit authority.");
         equal(r.identity, resolveGameSessionIdentity(game), "identity", "audit-identity");
-        equal(r.game, dto(game.getManifest()), "game", "audit-identity");
+        equal(r.game, dto(game.getInfo()), "game", "audit-identity");
         equal(r.stateSchema, dto(game.getSessionStateSchema()), "stateSchema", "audit-version");
     }
     let leaf = r.stateSchema;

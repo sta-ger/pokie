@@ -53,6 +53,6 @@ export type BuildOutputResult = {
     /** Durable imported Blueprint retained with a PAR-derived downstream artifact. */
     readonly importedBlueprintPath?: string;
     /** Stake publication evidence, present only for a successful Stake export. */
-    readonly stakeManifest?: import("../stakeengine/StakeEngineManifest.js").StakeEngineManifest;
+    readonly stakeManifest?: import("../stakeengine/StakeEngineInfo.js").StakeEngineInfo;
     readonly stakeFiles?: readonly string[];
 };

@@ -2,7 +2,7 @@ import {
     ScreenProjection,
     SlotGameNameGenerator,
     type GameBlueprint,
-    type GameBlueprintManifest,
+    type GameBlueprintInfo,
     type GameBlueprintMechanics,
     type SlotGameNameGenerating,
 } from "@fromstan/pokie";
@@ -167,7 +167,7 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
     // applyBlueprintNameOverride uses for the same "<name>" argument on the non-interactive paths, so
     // an accepted suggestion here always agrees with what a non-interactive run of the same name would
     // have produced.
-    private async askManifest(prompt: PromptAdapting, presetName?: string, editing?: boolean): Promise<GameBlueprintManifest> {
+    private async askManifest(prompt: PromptAdapting, presetName?: string, editing?: boolean): Promise<GameBlueprintInfo> {
         const preset = presetName !== undefined ? deriveManifestDefaults(presetName) : undefined;
         // Editing never mints a fresh random suggestion or derives one from a preset name -- the
         // GameBlueprint this wizard was constructed with (this.defaults) IS the blueprint being edited,

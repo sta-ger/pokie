@@ -7,7 +7,7 @@ import {
     OutcomeLibraryFolderWriter,
     OutcomeSourceReplayResult,
     PokieGame,
-    PokieGameManifest,
+    PokieGameInfo,
     PokieProject,
     PROJECT_TYPE_CAPABILITIES,
     ProjectResolving,
@@ -89,9 +89,9 @@ function createFakeSession(): GameSessionHandling & {getSymbolsCombination(): {t
     };
 }
 
-function createFakeGame(manifest: PokieGameManifest): PokieGame & {createdWith?: unknown} {
+function createFakeGame(manifest: PokieGameInfo): PokieGame & {createdWith?: unknown} {
     return {
-        getManifest: () => manifest,
+        getInfo: () => manifest,
         createSession(context) {
             this.createdWith = context;
             return createFakeSession();
@@ -100,7 +100,7 @@ function createFakeGame(manifest: PokieGameManifest): PokieGame & {createdWith?:
 }
 
 describe("ReplayCommand", () => {
-    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+    const manifest: PokieGameInfo = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     it("has the expected name and description", () => {
         const command = new ReplayCommand();
@@ -415,7 +415,7 @@ describe("ReplayCommand (integration, real loadPokieGame + fixture game package)
 // materializeRuntimePackage.ts) exactly once per invocation, and only ever loads against whatever
 // runtime path that boundary hands back -- never the caller's own raw packageRoot.
 describe("ReplayCommand runtime package materialization boundary", () => {
-    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+    const manifest: PokieGameInfo = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     it("replays a byte-bound canonical WASM artifact without package materialization", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-replay-canonical-wasm-"));
@@ -480,7 +480,7 @@ describe("ReplayCommand runtime package materialization boundary", () => {
     });
 
     it("completes seed-7 cascade logical replay and persists its RNG continuation", async () => {
-        const {boundedBlueprint} = await import("../../v2/fixtures/BoundedMechanicsGame.js");
+        const {boundedBlueprint} = await import("../../v2/fixtures/FeatureChainsGame.js");
         const {instantiatePokieWasm, SeededPokieWasmHost} = await import("../../../src/wasm/PokieWasmRuntime.js");
         const blueprint = boundedBlueprint("cascade");
         blueprint.reelStrips = [["A", "B"], ["A", "B"], ["A", "B"]];
@@ -561,7 +561,7 @@ describe("ReplayCommand runtime package materialization boundary", () => {
     });
 
     it.each([
-        ["missing", undefined, /no compatible PokieWasmComponentManifest sidecar.*Add a valid compatible sidecar.*never loads or executes/i],
+        ["missing", undefined, /no compatible PokieWasmComponentInfo sidecar.*Add a valid compatible sidecar.*never loads or executes/i],
         ["malformed", "{", /sidecar.*malformed.*not valid JSON.*Repair the malformed sidecar.*never loads or executes/i],
         ["incompatible", JSON.stringify({schemaVersion: "2.0.0", component: {id: "runtime-boundary", version: "1.0.0"}, serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"}, host: {rng: "pokie.rng.v1", services: []}, capabilities: []}), /not compatible with this POKIE build.*Update the incompatible sidecar.*never loads or executes/i],
     ])("preserves the %s WASM sidecar diagnostic without runtime preparation", async (_kind, sidecar, expectedDiagnostic) => {

@@ -8,7 +8,7 @@ import {
     StakeEngineExportModeInput,
     StakeEngineExporter,
     StakeEngineImporter,
-    StakeEngineManifest,
+    StakeEngineInfo,
     WeightedOutcomeLibrary,
 } from "@fromstan/pokie";
 import {buildSingleOutcomeStakeEngineLibrary, buildStakeEngineTestLibrary, stakeEngineTestProvenance} from "./StakeEngineTestFixtures.js";
@@ -114,8 +114,8 @@ describe("StakeEngineImporter", () => {
         // "generatedAt" (a fresh timestamp) and each mode's "libraryHash" — the
         // reconstructed library legitimately hashes differently (roundId/wins/provenance.pokieVersion are
         // substituted, not reproduced) even though everything Stake actually cares about round-trips exactly.
-        const originalManifest = JSON.parse(fs.readFileSync(path.join(outDir, "pokie-manifest.json"), "utf-8")) as StakeEngineManifest;
-        const reExportedManifest = JSON.parse(fs.readFileSync(path.join(importedOutDir, "pokie-manifest.json"), "utf-8")) as StakeEngineManifest;
+        const originalManifest = JSON.parse(fs.readFileSync(path.join(outDir, "pokie-manifest.json"), "utf-8")) as StakeEngineInfo;
+        const reExportedManifest = JSON.parse(fs.readFileSync(path.join(importedOutDir, "pokie-manifest.json"), "utf-8")) as StakeEngineInfo;
         const hashOf = (fileName: string) => `sha256:${crypto.createHash("sha256").update(fs.readFileSync(path.join(outDir, fileName))).digest("hex")}`;
         const expectedSourceProvenance = {
             indexHash: hashOf("index.json"),
@@ -129,7 +129,7 @@ describe("StakeEngineImporter", () => {
         expect(originalManifest.sourceProvenance).toBeUndefined();
         expect(importResult.sourceProvenance).toEqual(expectedSourceProvenance);
         expect(importResult.modes.map(mode => mode.sourceProvenance)).toEqual([expectedSourceProvenance, expectedSourceProvenance]);
-        const stripVolatileFields = (manifest: StakeEngineManifest) => ({
+        const stripVolatileFields = (manifest: StakeEngineInfo) => ({
             ...manifest,
             generatedAt: undefined,
             modes: manifest.modes.map((mode) => ({...mode, libraryHash: undefined})),
@@ -163,7 +163,7 @@ describe("StakeEngineImporter", () => {
         expect(imported.modes).toEqual([expect.objectContaining({modeName: "base", generator})]);
 
         await exporter.exportToDirectory(imported.modes.map((mode) => ({...mode, sourceProvenance: imported.sourceProvenance})), importedOutDir);
-        const reexported = JSON.parse(fs.readFileSync(path.join(importedOutDir, "pokie-manifest.json"), "utf-8")) as StakeEngineManifest;
+        const reexported = JSON.parse(fs.readFileSync(path.join(importedOutDir, "pokie-manifest.json"), "utf-8")) as StakeEngineInfo;
         expect(reexported.modes).toEqual([expect.objectContaining({name: "base", generator})]);
         expect(reexported.sourceProvenance).toEqual(imported.sourceProvenance);
     });
@@ -341,7 +341,7 @@ describe("StakeEngineImporter", () => {
         it("reports stakeengine-import-manifest-outcome-count-invalid when the manifest's outcomeCount is edited to zero", async () => {
             await exportSingleOutcome(1, 5);
             const manifestPath = path.join(outDir, "pokie-manifest.json");
-            const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as StakeEngineManifest;
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as StakeEngineInfo;
             fs.writeFileSync(manifestPath, JSON.stringify({...manifest, modes: [{...manifest.modes[0], outcomeCount: 0}]}));
 
             const result = await new StakeEngineImporter().importFromDirectory(outDir);
@@ -353,7 +353,7 @@ describe("StakeEngineImporter", () => {
         it("reports stakeengine-import-manifest-files-missing-entry when the manifest's own files list drops a current mode's file", async () => {
             await exportSingleOutcome(1, 5);
             const manifestPath = path.join(outDir, "pokie-manifest.json");
-            const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as StakeEngineManifest;
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as StakeEngineInfo;
             fs.writeFileSync(manifestPath, JSON.stringify({...manifest, files: manifest.files.filter((file) => file !== "books_base.jsonl.zst")}));
 
             const result = await new StakeEngineImporter().importFromDirectory(outDir);

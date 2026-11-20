@@ -48,7 +48,7 @@ function createModeSession(combinationsGenerator: SymbolsCombinationsGenerating<
 }
 
 const game: PokieGame = {
-    getManifest() {
+    getInfo() {
         return manifest;
     },
     getBetModes() {

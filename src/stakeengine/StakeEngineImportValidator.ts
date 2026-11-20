@@ -7,7 +7,7 @@ import type {StakeEngineImportBookLineResult, StakeEngineImportBundle, StakeEngi
 import type {StakeEngineImportValidating} from "./StakeEngineImportValidating.js";
 import type {StakeEngineImportSourceProvenance} from "./StakeEngineImportSourceProvenance.js";
 import type {StakeEngineIndex, StakeEngineIndexModeEntry} from "./StakeEngineIndex.js";
-import {STAKE_ENGINE_MANIFEST_SCHEMA_VERSION, type StakeEngineManifest, type StakeEngineManifestModeEntry} from "./StakeEngineManifest.js";
+import {STAKE_ENGINE_INFO_SCHEMA_VERSION, type StakeEngineInfo, type StakeEngineInfoModeEntry} from "./StakeEngineInfo.js";
 
 type ParsedCsvRow = {readonly id: number; readonly weight: bigint; readonly payoutMultiplier: number};
 type ParsedBookLine = {readonly id: number; readonly payoutMultiplier: number};
@@ -85,7 +85,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
         }
         const index = this.parseIndex(bundle.stakeDir, bundle.index.value, issues);
 
-        let manifest: StakeEngineManifest | undefined;
+        let manifest: StakeEngineInfo | undefined;
         if (bundle.manifest.status === "missing") {
             issues.push({
                 code: "stakeengine-import-manifest-missing",
@@ -112,11 +112,11 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
             return issues;
         }
 
-        if (manifest.schemaVersion !== STAKE_ENGINE_MANIFEST_SCHEMA_VERSION) {
+        if (manifest.schemaVersion !== STAKE_ENGINE_INFO_SCHEMA_VERSION) {
             issues.push({
                 code: "stakeengine-import-manifest-schema-version-unsupported",
                 severity: "error",
-                message: `pokie-manifest.json's schemaVersion (${manifest.schemaVersion}) is not supported (expected ${STAKE_ENGINE_MANIFEST_SCHEMA_VERSION}).`,
+                message: `pokie-manifest.json's schemaVersion (${manifest.schemaVersion}) is not supported (expected ${STAKE_ENGINE_INFO_SCHEMA_VERSION}).`,
             });
             return issues;
         }
@@ -156,7 +156,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
     // filenames are already guaranteed identical (the same deterministic formula, applied to the same name).
     // A genuine disagreement is unreachable: whichever file uses a different filename fails its own
     // stakeengine-import-mode-filename-mismatch check first, and validation never even reaches this method.
-    private crossCheckMode(indexMode: StakeEngineIndexModeEntry, manifestMode: StakeEngineManifestModeEntry | undefined, issues: ValidationIssue[]): void {
+    private crossCheckMode(indexMode: StakeEngineIndexModeEntry, manifestMode: StakeEngineInfoModeEntry | undefined, issues: ValidationIssue[]): void {
         if (manifestMode === undefined) {
             issues.push({
                 code: "stakeengine-import-mode-missing-in-manifest",
@@ -179,7 +179,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
     private validateModeFiles(
         modeName: string,
         modeFiles: StakeEngineImportModeFiles,
-        manifestMode: StakeEngineManifestModeEntry | undefined,
+        manifestMode: StakeEngineInfoModeEntry | undefined,
         issues: ValidationIssue[],
     ): void {
         if (modeFiles.csv.status === "missing") {
@@ -584,7 +584,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
         return sawError ? undefined : {modes};
     }
 
-    private parseManifest(stakeDir: string, rawManifest: unknown, issues: ValidationIssue[]): StakeEngineManifest | undefined {
+    private parseManifest(stakeDir: string, rawManifest: unknown, issues: ValidationIssue[]): StakeEngineInfo | undefined {
         if (
             typeof rawManifest !== "object" ||
             rawManifest === null ||
@@ -650,7 +650,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
 
         const seenNames = new Map<string, string>();
         const seenFiles = new Map<string, {modeName: string; field: "events" | "weights"; fileName: string}>();
-        const modes: StakeEngineManifestModeEntry[] = [];
+        const modes: StakeEngineInfoModeEntry[] = [];
 
         manifest.modes.forEach((rawMode, position) => {
             if (typeof rawMode !== "object" || rawMode === null) {
@@ -806,7 +806,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
     // of index.json's own filenames (which are cross-checked against the manifest's own mode entries elsewhere,
     // in crossCheckMode) — "files" describes the manifest's own understanding of what this export directory
     // should contain, exactly the same convention StakeEngineExporter's own manifest.files already follows.
-    private validateManifestFilesSet(stakeDir: string, files: readonly string[], modes: readonly StakeEngineManifestModeEntry[], issues: ValidationIssue[]): boolean {
+    private validateManifestFilesSet(stakeDir: string, files: readonly string[], modes: readonly StakeEngineInfoModeEntry[], issues: ValidationIssue[]): boolean {
         let sawError = false;
         const seen = new Map<string, string>();
         const actual = new Set<string>();

@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import type {StakeEngineManifest} from "../StakeEngineManifest.js";
+import type {StakeEngineInfo} from "../StakeEngineInfo.js";
 
 const MANIFEST_FILE_NAME = "pokie-manifest.json";
 const GENERATED_BY = "pokie stakeengine export";
@@ -10,7 +10,7 @@ const GENERATED_BY = "pokie stakeengine export";
 // assertSafeToReplaceStakeEngineExportDirectory (deciding whether re-exporting into an existing outDir is safe)
 // and StakeEngineImporter (deciding whether a directory can be imported at all) use, so the two can never
 // silently disagree on what counts as "one of ours".
-export function readRecognizedStakeEngineManifest(stakeDir: string): StakeEngineManifest | undefined {
+export function readRecognizedStakeEngineManifest(stakeDir: string): StakeEngineInfo | undefined {
     const manifestPath = path.join(stakeDir, MANIFEST_FILE_NAME);
     if (!fs.existsSync(manifestPath)) {
         return undefined;
@@ -21,7 +21,7 @@ export function readRecognizedStakeEngineManifest(stakeDir: string): StakeEngine
         if (!parsed || parsed.generatedBy !== GENERATED_BY) {
             return undefined;
         }
-        return parsed as StakeEngineManifest;
+        return parsed as StakeEngineInfo;
     } catch {
         return undefined;
     }

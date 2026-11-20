@@ -12,7 +12,7 @@ import {SeededWeightedOutcomeRandomSource} from "../pregenerated/SeededWeightedO
 import type {WeightedOutcomeRandomSource} from "../pregenerated/WeightedOutcomeRandomSource.js";
 import {capturePublishDirectoryOwnership, preflightAtomicDirectoryPublication, publishDirectoryAtomically, removePublishedDirectoryIfOwned, type PublishedDirectoryOwnership} from "../stakeengine/internal/publishDirectoryAtomically.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
-import type {OutcomeLibraryFolderManifest, OutcomeLibraryFolderManifestModeEntry} from "../weightedoutcome/folder/OutcomeLibraryFolderManifest.js";
+import type {OutcomeLibraryFolderIndex, OutcomeLibraryFolderIndexModeEntry} from "../weightedoutcome/folder/OutcomeLibraryFolderIndex.js";
 import type {OutcomeLibraryFolderModeIndex} from "../weightedoutcome/folder/OutcomeLibraryFolderModeIndex.js";
 import {OutcomeLibraryFolderReader} from "../weightedoutcome/folder/OutcomeLibraryFolderReader.js";
 import type {OutcomeLibraryFolderReading} from "../weightedoutcome/folder/OutcomeLibraryFolderReading.js";
@@ -22,10 +22,10 @@ import {readAndVerifyOutcomeAtByteRange} from "../weightedoutcome/folder/interna
 import {selectIndexEntryByCumulativeWeight} from "../weightedoutcome/folder/internal/selectIndexEntryByCumulativeWeight.js";
 import {computeCertificationPackContentHash} from "./computeCertificationPackContentHash.js";
 import {
-    CERTIFICATION_PACK_MANIFEST_SCHEMA_VERSION,
-    type CertificationPackManifest,
+    CERTIFICATION_PACK_INDEX_SCHEMA_VERSION,
+    type CertificationPackIndex,
     type CertificationPackModeEntry,
-} from "./CertificationPackManifest.js";
+} from "./CertificationPackIndex.js";
 import type {CertificationPackBuildResult} from "./CertificationPackBuildResult.js";
 import {CertificationPackBuildCancelledError, type CertificationPackBuildOptions} from "./CertificationPackBuildOptions.js";
 import type {CertificationPackBuilding} from "./CertificationPackBuilding.js";
@@ -37,7 +37,7 @@ import {isPositiveSafeInteger, MODE_NAME_PATTERN} from "./internal/certification
 import {assertSafeToReplaceCertificationPackDirectory} from "./internal/assertSafeToReplaceCertificationPackDirectory.js";
 import {sha256OfBytes} from "./internal/sha256OfBytes.js";
 
-function hashManifest(manifest: OutcomeLibraryFolderManifest): string {
+function hashManifest(manifest: OutcomeLibraryFolderIndex): string {
     return sha256OfBytes(JSON.stringify(toCanonicalJson(manifest)));
 }
 
@@ -159,7 +159,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
             return {outDir, files: [], manifest: undefined, issues: upfrontIssues};
         }
 
-        let sourceManifest: OutcomeLibraryFolderManifest;
+        let sourceManifest: OutcomeLibraryFolderIndex;
         try {
             if (!resolveSafeCertificationPackFilePath(libraryDir, "manifest.json")) throw new Error("Source manifest is missing, symlinked or unsafe.");
             sourceManifest = await this.reader.readManifest(libraryDir);
@@ -267,7 +267,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
             const draftManifest = {
                 pack,
                 presentation,
-                schemaVersion: CERTIFICATION_PACK_MANIFEST_SCHEMA_VERSION,
+                schemaVersion: CERTIFICATION_PACK_INDEX_SCHEMA_VERSION,
                 generatedBy: "pokie certification build",
                 pokieVersion: this.pokieVersion,
                 game: sourceManifest.game,
@@ -278,7 +278,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
                 deepValidation: {ranAt: generatedAt, issues: deepValidationIssues},
                 files: relativeFiles,
             };
-            const manifest: CertificationPackManifest = {
+            const manifest: CertificationPackIndex = {
                 ...draftManifest,
                 generatedAt,
                 sourceLibraryDir: libraryDir,
@@ -411,7 +411,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
         initialManifestHash: string,
         initialIndexes: ReadonlyMap<string, OutcomeLibraryFolderModeIndex>,
     ): Promise<ValidationIssue | undefined> {
-        let finalManifest: OutcomeLibraryFolderManifest;
+        let finalManifest: OutcomeLibraryFolderIndex;
         try {
             finalManifest = await this.reader.readManifest(libraryDir);
         } catch (error) {
@@ -469,7 +469,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
     private async sampleMode(
         libraryDir: string,
         modeInput: CertificationPackModeSampleInput,
-        sourceEntry: OutcomeLibraryFolderManifestModeEntry,
+        sourceEntry: OutcomeLibraryFolderIndexModeEntry,
         index: OutcomeLibraryFolderModeIndex,
         stagingDir: string,
         options: CertificationPackBuildOptions | undefined,

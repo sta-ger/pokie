@@ -1,4 +1,4 @@
-import type {BoundedMechanics} from "../session/videoslot/authored/BoundedMechanics.js";
+import type {FeatureChains} from "../session/videoslot/authored/FeatureChains.js";
 import type {ScreenModifiers} from "../session/videoslot/modifiers/ScreenModifiers.js";
 import type {WeightedSequenceVariant} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {ScreenGeometry} from "../session/videoslot/coordinates/ScreenGeometry.js";
@@ -10,7 +10,7 @@ import type {ReelStripGenerationSpec} from "./ReelStripGenerationSpec.js";
 // blueprint it was built from; it is not read back from blueprint JSON files.
 export const GAME_BLUEPRINT_SCHEMA_VERSION = 1;
 
-export type GameBlueprintManifest = {
+export type GameBlueprintInfo = {
     id: string;
     name: string;
     version: string;
@@ -50,7 +50,7 @@ export type GameBlueprintJackpot = {
     award: "single-tier";
 };
 
-export type GameBlueprintMechanics = BoundedMechanics & {
+export type GameBlueprintMechanics = FeatureChains & {
     modifiers?: ScreenModifiers;
     freeGames?: GameBlueprintFreeGames;
     holdAndWin?: GameBlueprintHoldAndWin;
@@ -61,7 +61,7 @@ export type GameBlueprintMechanics = BoundedMechanics & {
 // paytable, and reel strips/weights for a standard line-pay video slot. Optional fields fall back
 // to VideoSlotConfig's own defaults (horizontal paylines, the built-in weighted reel generator).
 export type GameBlueprint = {
-    manifest: GameBlueprintManifest;
+    manifest: GameBlueprintInfo;
     reels: number;
     rows: number;
     /** rows describes discrete visible cells; paylines are evaluation-local. */

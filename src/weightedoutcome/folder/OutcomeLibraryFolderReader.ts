@@ -9,7 +9,7 @@ import {iterateOutcomesJsonl} from "./internal/iterateOutcomesJsonl.js";
 import {findIndexEntryById, readAndVerifyOutcomeAtByteRange} from "./internal/readOutcomeAtByteRange.js";
 import {selectIndexEntryByCumulativeWeight} from "./internal/selectIndexEntryByCumulativeWeight.js";
 import {OutcomeLibraryFolderInvariantError} from "./OutcomeLibraryFolderInvariantError.js";
-import type {OutcomeLibraryFolderManifest} from "./OutcomeLibraryFolderManifest.js";
+import type {OutcomeLibraryFolderIndex} from "./OutcomeLibraryFolderIndex.js";
 import type {OutcomeLibraryFolderModeIndex} from "./OutcomeLibraryFolderModeIndex.js";
 import type {OutcomeLibraryFolderReading} from "./OutcomeLibraryFolderReading.js";
 
@@ -30,9 +30,9 @@ function isWeightedOutcomeShape(value: unknown): value is {id: string; weight: n
 // JSON) rather than returning ValidationIssue[] — the same "assume already validated, fail fast on a genuine
 // surprise" contract WeightedOutcomeSelector has toward WeightedOutcomeLibrary.
 export class OutcomeLibraryFolderReader<T extends string | number = string> implements OutcomeLibraryFolderReading<T> {
-    public async readManifest(libraryDir: string): Promise<OutcomeLibraryFolderManifest> {
+    public async readManifest(libraryDir: string): Promise<OutcomeLibraryFolderIndex> {
         const raw = await fs.promises.readFile(path.join(libraryDir, "manifest.json"), "utf-8");
-        return JSON.parse(raw) as OutcomeLibraryFolderManifest;
+        return JSON.parse(raw) as OutcomeLibraryFolderIndex;
     }
 
     public async readModeIndex(libraryDir: string, modeName: string): Promise<OutcomeLibraryFolderModeIndex> {

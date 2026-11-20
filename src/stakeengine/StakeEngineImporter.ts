@@ -28,7 +28,7 @@ import type {StakeEngineImportValidating} from "./StakeEngineImportValidating.js
 import {StakeEngineImportValidator} from "./StakeEngineImportValidator.js";
 import type {StakeEngineEvent} from "./StakeEngineEvent.js";
 import type {StakeEngineIndexModeEntry} from "./StakeEngineIndex.js";
-import type {StakeEngineManifest, StakeEngineManifestModeEntry} from "./StakeEngineManifest.js";
+import type {StakeEngineInfo, StakeEngineInfoModeEntry} from "./StakeEngineInfo.js";
 import {StakeEngineRoundEventsImporter} from "./StakeEngineRoundEventsImporter.js";
 import type {StakeEngineRoundEventsImporting} from "./StakeEngineRoundEventsImporting.js";
 import {WinEvaluationResult} from "../session/videoslot/winevaluation/WinEvaluationResult.js";
@@ -38,8 +38,8 @@ import type {WeightedOutcomeLibrary} from "../weightedoutcome/WeightedOutcomeLib
 type ImportModeContext = {
     readonly modeName: string;
     readonly cost: number;
-    readonly manifestMode: StakeEngineManifestModeEntry;
-    readonly manifest: StakeEngineManifest;
+    readonly manifestMode: StakeEngineInfoModeEntry;
+    readonly manifest: StakeEngineInfo;
 };
 
 // The exact raw bytes assembleBundle actually read off disk for each file — captured once, at the only point
@@ -96,7 +96,7 @@ export class StakeEngineImporter<T extends string | number = string> implements 
             }
 
             // Safe: validation passing with no errors guarantees both parsed to "ok" and match the expected shape.
-            const manifest = (bundle.manifest as {status: "ok"; value: unknown}).value as StakeEngineManifest;
+            const manifest = (bundle.manifest as {status: "ok"; value: unknown}).value as StakeEngineInfo;
             const index = (bundle.index as {status: "ok"; value: unknown}).value as {modes: readonly StakeEngineIndexModeEntry[]};
             const modeFilesByName = new Map(bundle.modeFiles.map((modeFiles) => [modeFiles.modeName, modeFiles]));
             const manifestModesByName = new Map(manifest.modes.map((mode) => [mode.name, mode]));

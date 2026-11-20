@@ -38,7 +38,7 @@ function generated(blueprint: GameBlueprint, typed = false): PokieGame {
 
 function authored(blueprint: GameBlueprint): PokieGame {
     return {
-        getManifest: () => blueprint.manifest,
+        getInfo: () => blueprint.manifest,
         getSessionCommandCapabilities: () => ({bets: blueprint.availableBets!, ...(blueprint.betModes?.some(mode => mode.runtimeType !== undefined) ? {modes: blueprint.betModes.map(mode => mode.id)} : {})}),
         getSessionStateSchema: () => {
             const base = {kind: "seeded-video-slot" as const, reels: blueprint.reels, symbols: blueprint.symbols};
@@ -145,7 +145,7 @@ describe("canonical runtime contracts", () => {
         expect(new SessionRuntime(direct).execute({kind: "spin"})).toMatchObject({status: "played"});
         expect(direct.toSessionState()).toEqual({round: 5});
         const game = legacyRoundGame();
-        expect(Object.keys(game).sort()).toEqual(["createSession", "getManifest"]);
+        expect(Object.keys(game).sort()).toEqual(["createSession", "getInfo"]);
         const session = game.createSession(),
             repository = new InMemorySessionRepository(),
             wallet = new InMemoryWallet();
@@ -183,7 +183,7 @@ describe("canonical runtime contracts", () => {
         const definition = authored({...fractionalBetBlueprint([1, 2], true), betModes: [
             {id: "base", runtimeType: "base", isDefault: true}, {id: "ante", runtimeType: "ante"},
         ]});
-        const game: PokieGame = authority === "declared" ? definition : {getManifest: definition.getManifest, createSession: definition.createSession};
+        const game: PokieGame = authority === "declared" ? definition : {getInfo: definition.getInfo, createSession: definition.createSession};
         const session = game.createSession({seed: 7}),
             wallet = new InMemoryWallet(),
             operations = new InMemorySpinOperationLog();
@@ -238,7 +238,7 @@ describe("canonical runtime contracts", () => {
     it.each(legacyCompositions)("executes unchanged %s decorators with absent and opaque nested snapshots", async composition => {
         for (const opaque of [false, true]) {
             const game = legacyComposedGame(composition, opaque);
-            expect(Object.keys(game).sort()).toEqual(["createSession", "getManifest"]);
+            expect(Object.keys(game).sort()).toEqual(["createSession", "getInfo"]);
             const session = game.createSession(),
                 repository = new InMemorySessionRepository(),
                 wallet = new InMemoryWallet();
@@ -282,7 +282,7 @@ describe("canonical runtime contracts", () => {
     it("F8 command settlement compensates a new tag contradicting authoritative ordinary generation", async () => {
         let contradictory = false;
         const game: PokieGame = {
-            getManifest: () => ({id: "coordinate-contract", name: "Coordinate contract", version: "1.0.0"}),
+            getInfo: () => ({id: "coordinate-contract", name: "Coordinate contract", version: "1.0.0"}),
             createSession: () => {
                 const config = overscanConfig();
                 config.setScreenGeometry(undefined);
@@ -321,7 +321,7 @@ describe("canonical runtime contracts", () => {
         let discover = false;
         const short = {...overscanGeometry, evaluated: {rowOffset: 2, rows: 2}};
         const game: PokieGame = {
-            getManifest: () => ({id: "legacy-coordinate-bounds", name: "Legacy bounds", version: "1.0.0"}),
+            getInfo: () => ({id: "legacy-coordinate-bounds", name: "Legacy bounds", version: "1.0.0"}),
             createSession: () => {
                 const config = overscanConfig();
                 config.setScreenGeometry(undefined);
@@ -428,7 +428,7 @@ describe("canonical runtime contracts", () => {
         const blueprint: GameBlueprint = {...fractionalBetBlueprint([0.05], true),
             betModes: [{id: "base", runtimeType: "base", isDefault: true}]};
         const declared = authored(blueprint);
-        const commandOnly: PokieGame = {getManifest: declared.getManifest, getSessionCommandCapabilities: declared.getSessionCommandCapabilities, createSession: declared.createSession};
+        const commandOnly: PokieGame = {getInfo: declared.getInfo, getSessionCommandCapabilities: declared.getSessionCommandCapabilities, createSession: declared.createSession};
         const nestedDeclared: PokieGame = {
             ...declared,
             getSessionStateSchema: () => ({kind: "free-games", base: declared.getSessionStateSchema!()}),
@@ -437,7 +437,7 @@ describe("canonical runtime contracts", () => {
         const games = [
             legacyComposedGame("bet-modes", false), legacyComposedGame("bet-modes", true),
             legacyComposedGame("free-bet", false), legacyComposedGame("free-bet", true),
-            {getManifest: declared.getManifest, createSession: declared.createSession}, declared, nestedDeclared, commandOnly,
+            {getInfo: declared.getInfo, createSession: declared.createSession}, declared, nestedDeclared, commandOnly,
         ];
         const corruptMode = (state: PokieSessionState): void => {
             let feature = state.featureState as {base?: unknown; betModeId?: string};
@@ -514,7 +514,7 @@ describe("canonical runtime contracts", () => {
         class LegacyModes extends VideoSlotWithBetModesSession {}
         const definition = authored(fractionalBetBlueprint([0.05], true));
         const game: PokieGame = {
-            getManifest: definition.getManifest,
+            getInfo: definition.getInfo,
             createSession: () => new LegacyModes(definition.createSession() as VideoSlotSessionHandling),
         };
         const session = game.createSession(),
@@ -530,10 +530,10 @@ describe("canonical runtime contracts", () => {
 
     it.each(["base", "video-slot"] as const)("plays an unchanged %s package using only trusted primed authority", async kind => {
         const game: PokieGame = {
-            getManifest: () => ({id: "unchanged", name: "Unchanged", version: "1"}),
+            getInfo: () => ({id: "unchanged", name: "Unchanged", version: "1"}),
             createSession: () => kind === "base" ? new GameSession() : new VideoSlotSession(),
         };
-        expect(Object.keys(game).sort()).toEqual(["createSession", "getManifest"]);
+        expect(Object.keys(game).sort()).toEqual(["createSession", "getInfo"]);
         const session = game.createSession(),
             repository = new InMemorySessionRepository(),
             wallet = new InMemoryWallet();
@@ -567,7 +567,7 @@ describe("canonical runtime contracts", () => {
             mechanics: {freeGames: {scatterSymbol: "B", awardsByCount: {3: 2}}},
             betModes: [{id: "base", runtimeType: "base", isDefault: true}, {id: "buy", runtimeType: "buyFeature", costMultiplier: 5, forcedFreeGames: 3}]};
         const definition = authored(blueprint);
-        const game: PokieGame = {getManifest: definition.getManifest, createSession: definition.createSession};
+        const game: PokieGame = {getInfo: definition.getInfo, createSession: definition.createSession};
         const context = {seed: "0"},
             session = game.createSession(context),
             reference = new SessionRuntime(game.createSession(context));
@@ -613,7 +613,7 @@ describe("canonical runtime contracts", () => {
                 state.credits = -1;
             },
         ]) {
-            const game: PokieGame = {getManifest: () => ({id: "unchanged", name: "Unchanged", version: "1"}), createSession: () => new GameSession()};
+            const game: PokieGame = {getInfo: () => ({id: "unchanged", name: "Unchanged", version: "1"}), createSession: () => new GameSession()};
             const session = game.createSession() as GameSession,
                 repository = new InMemorySessionRepository(),
                 wallet = new InMemoryWallet(),
@@ -1066,7 +1066,7 @@ describe("canonical runtime contracts", () => {
 
     it("preserves resolved unseeded reels across fresh construction and multiple restored consumer rounds", async () => {
         for (const make of [extensionGame, () => ({
-            getManifest: () => ({id: "random-reels", name: "Random reels", version: "1"}),
+            getInfo: () => ({id: "random-reels", name: "Random reels", version: "1"}),
             getSessionCommandCapabilities: () => ({bets: [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100]}),
             getSessionStateSchema: () => ({kind: "seeded-video-slot" as const}),
             createSession: () => {
@@ -1092,7 +1092,7 @@ describe("canonical runtime contracts", () => {
     });
 
     it("recovers a committed live-only retry without constructing, playing or charging again", async () => {
-        const game: PokieGame = {getManifest: () => ({id: "live-only", name: "Live", version: "1"}), getSessionCommandCapabilities: () => ({bets: [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100]}), createSession: () => new GameSession()};
+        const game: PokieGame = {getInfo: () => ({id: "live-only", name: "Live", version: "1"}), getSessionCommandCapabilities: () => ({bets: [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100]}), createSession: () => new GameSession()};
         const session = game.createSession(),
             repository = new InMemorySessionRepository(),
             wallet = new InMemoryWallet();
@@ -1278,7 +1278,7 @@ describe("canonical runtime contracts", () => {
         // Generated packages own restorable RNG state even without a caller seed. This
         // custom package deliberately retains the default, snapshot-free RNG instead.
         const game: PokieGame = {
-            getManifest: () => blueprint.manifest,
+            getInfo: () => blueprint.manifest,
             getSessionCommandCapabilities: () => ({bets: [0.05]}),
             getSessionStateSchema: () => ({kind: "seeded-video-slot", reels: blueprint.reels, symbols: blueprint.symbols}),
             validateLiveSessionState: state => publicApi.validateExecutableState(state, game.getSessionStateSchema!(), undefined, true),
@@ -1445,7 +1445,7 @@ describe("canonical runtime contracts", () => {
             }
         }
         const make = (complete: boolean): PokieGame => ({
-            getManifest: () => ({id: "stateful-paytable", name: "Stateful", version: "1"}),
+            getInfo: () => ({id: "stateful-paytable", name: "Stateful", version: "1"}),
             getSessionCommandCapabilities: () => ({bets: [1]}),
             getSessionStateSchema: () => complete ? {kind: "custom"} : {kind: "seeded-video-slot"},
             ...(complete ? {validateSessionState: (value: unknown) => {

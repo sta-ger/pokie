@@ -13,8 +13,8 @@ import {assertBuildNotCancelled, captureOutputDestinationState, cleanupIncomplet
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
 import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
-import {POKIE_WASM_ABI_VERSION, POKIE_WASM_ADAPTER, POKIE_WASM_CONTRACT_VERSION, type PokieWasmComponentManifest} from "./wasm/PokieWasmComponentManifest.js";
-import {wasmComponentManifestSidecarPath} from "./WasmProjectTargetAdapter.js";
+import {POKIE_WASM_ABI_VERSION, POKIE_WASM_ADAPTER, POKIE_WASM_CONTRACT_VERSION, type PokieWasmComponentInfo} from "./wasm/PokieWasmComponentInfo.js";
+import {wasmComponentInfoCompanionPath} from "./WasmProjectTargetAdapter.js";
 import {type CanonicalPokieWasmComponentDescriptor, type PokieWasmGameModel} from "../wasm/PokieWasmCanonicalModule.js";
 
 export {resolveCanonicalWasmGameModel} from "../wasm/resolveCanonicalWasmGameModel.js";
@@ -29,7 +29,7 @@ const filesystemWasmArtifactPublication: WasmOutputPublication = {
     rename: (fromPath, toPath) => fs.promises.rename(fromPath, toPath),
 };
 
-function canonicalDescriptor(manifest: Omit<PokieWasmComponentManifest, "artifact"> & {readonly artifact: Omit<NonNullable<PokieWasmComponentManifest["artifact"]>, "sha256" | "bytes">}): CanonicalPokieWasmComponentDescriptor {
+function canonicalDescriptor(manifest: Omit<PokieWasmComponentInfo, "artifact"> & {readonly artifact: Omit<NonNullable<PokieWasmComponentInfo["artifact"]>, "sha256" | "bytes">}): CanonicalPokieWasmComponentDescriptor {
     return {
         schemaVersion: manifest.schemaVersion,
         component: manifest.component,
@@ -68,7 +68,7 @@ export class WasmOutputBuilder implements BuildOutputBuilder {
         assertBuildNotCancelled(options);
         assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
         assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
-        const sidecarPath = wasmComponentManifestSidecarPath(destinationPath);
+        const sidecarPath = wasmComponentInfoCompanionPath(destinationPath);
         assertArtifactDestinationAvailable(sidecarPath, this.destinationKind);
         const destinationState = captureOutputDestinationState(destinationPath, this.destinationKind);
         const sidecarState = captureOutputDestinationState(sidecarPath, this.destinationKind);
@@ -92,7 +92,7 @@ export class WasmOutputBuilder implements BuildOutputBuilder {
             });
             const moduleBytes = compileCanonicalWasmBuild(parsedModel, descriptor);
             const hash = `sha256:${crypto.createHash("sha256").update(moduleBytes).digest("hex")}`;
-            const manifest: PokieWasmComponentManifest = {
+            const manifest: PokieWasmComponentInfo = {
                 schemaVersion: POKIE_WASM_CONTRACT_VERSION,
                 component: {id: blueprint.manifest.id, version: blueprint.manifest.version},
                 minPokieVersion: this.pokieVersion,

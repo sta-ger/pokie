@@ -8,7 +8,7 @@ export function observeVideoSlotFeatures<T extends string | number | symbol = st
     const mode = (session as {getChargedBetModeId?: () => string | undefined}).getChargedBetModeId?.();
     const outcome = jackpot.getJackpotLastRoundOutcome?.();
     const modifiers = (session as {getModifierObservation?: () => import("../../session/videoslot/modifiers/ScreenModifiers.js").ScreenModifierObservation<T> | undefined}).getModifierObservation?.();
-    const bounded = (session as Partial<import("../../session/videoslot/authored/BoundedMechanics.js").BoundedMechanicsProviding>).getBoundedMechanicObservation?.();
+    const bounded = (session as Partial<import("../../session/videoslot/authored/FeatureChains.js").FeatureChainsProviding>).getFeatureChainObservation?.();
     return {
         ...(bounded ? {boundedMechanics: bounded} : {}),
         ...(modifiers ? {modifiers} : {}),
