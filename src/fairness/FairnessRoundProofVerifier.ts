@@ -151,7 +151,7 @@ export class FairnessRoundProofVerifier implements FairnessRoundProofVerifying {
                     severity: "error",
                     message:
                         "no sourceBundleDir was given — pass an explicit {sourceBundleDir} " +
-                        '(or "--source <bundleDir>" on the CLI) to cross-check against the live source bundle.',
+                        '(or "--source <folder>" on the CLI) to cross-check against the live source folder.',
                 },
             ];
         }

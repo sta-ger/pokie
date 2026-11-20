@@ -11,7 +11,7 @@ Blueprint `screenGeometry` declares generated, visible and evaluated coordinates
 fractional visible windows are supported, while evaluation cells and paylines remain discrete. Windows span
 all reels; per-reel offsets, fractional evaluation cells and nonidentity ragged geometry are unsupported.
 Authored mechanics include free games, Hold&Win, jackpots, bet modes, expanding/sticky/restricted/multiplier
-wilds, transforms/reel replacements, bounded cascades/respins/collections and weighted bonuses. Their
+wilds, transforms/reel replacements, limited cascades, respins and collections and weighted bonuses. Their
 editor, build, runtime/restore, simulation/report, extraction, PAR and replay workflows are mapped in the
 [launch support register](supported-mechanics.md). Supported compositions and artifact
 targets remain explicit; arbitrary callbacks and dynamic targets remain custom-only, and lossy extraction
@@ -161,7 +161,7 @@ Across independent reels the joint event mass is the product of those weights.
 uniform tuple probability. Outcome-library generation sweeps the same ordered
 variant/stop events, merges mass for identical grids in memory or disk partitions,
 and evaluates each grid through the existing forced-session extension point. A deduplicated
-artifact does not claim one arbitrary variant ID for several possible sources.
+round record does not claim one arbitrary variant ID for several possible sources.
 Exact source identity includes all authored IDs, arrays, weights and ordering,
 including zero-weight alternatives; incompatible checkpoints are rejected.
 
@@ -234,7 +234,7 @@ session payout path during enumeration. Custom callbacks retain their custom
 supported action/extraction boundary. See [serialization](serialization.md) and
 the implementation evidence record.
 
-## Bounded authored mechanics
+## Feature chains with limits
 
 See [cascades, respins and collections](feature-chains.md) for the declarative
 interfaces, supported compositions, authoring/build/extraction/PAR workflow,
@@ -276,7 +276,7 @@ Statuses are `identical`, `different`, `partial`, `unsupported`, `invalid`,
 `identical` or `different`. An empty supported subset does not prove equality.
 Each source carries identity (kind, location when available, descriptor and
 Blueprint schema versions), support, complete known authored/effective JSON,
-field trusted source evidence, bounded diagnostics and comparison limits.
+field trusted source evidence, limited diagnostics and comparison limits.
 
 A change has an RFC 6901 JSON Pointer `path`, `classification`, `mathematical`,
 `seededTraceImpact`, and `before` / `after`. Paths escape `~` as `~0` and `/` as
@@ -390,7 +390,7 @@ has no payout cap, so its absent declaration resolves to `none` with framework
 trusted source. An undeclared custom policy is `unknown`, making the result partial.
 Observed report `maxWin`, library maxima and equal hashes never substitute for a
 policy declaration. Declared value/unit/scope changes are mathematical;
-trusted source-only changes are representation/provenance information. Unknown extra
+trusted source-only changes are representation/origin information. Unknown extra
 policy fields and malformed policies are rejected.
 
 Comparison completeness does not grant conversion eligibility. Extraction retains a
@@ -435,4 +435,4 @@ lifetime wallet/counter overflow retain limitations. Max-win declarations are
 checked in their declared units/scope and never install an enforcement cap.
 See the full source/mechanic boundary.
 
-See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning interfaces, locks, evidence and explicit candidate publication.
+See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning interfaces, locks, results and explicit candidate publication.

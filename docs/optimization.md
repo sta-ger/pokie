@@ -37,7 +37,7 @@ even when the user supplies no locks.
 | Input/output ProjectType | Concrete finite workflow and trusted source |
 | --- | --- |
 | Blueprint | Existing authored paytable multipliers; literal strips or weighted whole-sequence reels; existing authored bets. Returns Blueprint JSON. |
-| PAR workbook | Existing paytable cells in a lossless workbook; edits the workbook in place in a detached copy, updates its provenance hash, and reimports it. Ignored/defaulted/formula features fail before candidate writes. Returns XLSX. |
+| PAR workbook | Existing paytable cells in a lossless workbook; edits the workbook in place in a detached copy, updates its origin hash, and reimports it. Ignored/defaulted/formula features fail before candidate writes. Returns XLSX. |
 | TS package | An author-declared `pokie-tuning.json` v1 interface binds a JSON parameter Blueprint, permitted paytable paths, every custom source-file hash, and executable `getConfigHash()` / exact enumeration. Copies the package and edits only parameters and their interface hash; preserves custom code bytes and evaluates the real loaded candidate. No build script is launched. Returns a loadable package. |
 | Outcome Library | `/modes/MODE/outcomes/ID/weight` numeric weights, scoped to one mode. Preserves IDs, artifacts and other modes; the native writer rebuilds indexes, hashes, totals and analysis; deep validation/readback precedes measurement. Returns a native bundle. |
 | Stake | The same weight paths, with uint64 **decimal strings**, never JavaScript numeric weights. Retains IDs, payout units, mode costs, books and events, and reads the directory with `StakeEngineOutcomeSourceReader`. Returns a native Stake directory. |
@@ -228,7 +228,7 @@ candidate attempts at most 10000, and confidence must be finite in `[0.8,1)`.
 | Blueprint | Literal reels or whole-sequence variants; line payouts; feature-free logical rounds or paid entries. Free-game entry triggers may be counted, not their continuations. |
 | Lossless PAR | Same supported authored populations; native paytable-cell readback preserves other declarations. |
 | Explicitly declared TS package | Feature-free complete rounds with finite executable enumeration, source/dependency link and model hash. The executable enumeration establishes the return support bound; actual seeded sessions supply samples. The package must honor the `createSession({seed})` RNG interface, including independent seeds. An opaque/hash-only runtime is insufficient. |
-| Outcome Library | Selected `native-outcomes` numeric weights, matching artifact stake; event identities come from stored `featureEvents[].type`. |
+| Outcome Library | Selected `native-outcomes` numeric weights, matching round-record stake; event identities come from stored `featureEvents[].type`. |
 | Stake | Selected `native-outcomes` uint64 string weights (never rounded to numbers); actual paid cost is denomination times native mode cost. |
 | Source-bound WASM | Supported feature-free literal reels, rebuilt reproducibly and checked against every executable stop tuple before using the bound authored population. |
 
@@ -263,7 +263,7 @@ Evidence records the full validated request, source inventory revision, connecto
 versions, model identity, ordered parameters, per-candidate fitness/seeds/actual samples, total
 attempts/rejections/search/held-out samples, executable validation work, selected diff and assessment.
 Executable-validation samples (TS enumeration, or authored plus actual WASM stop tuples) are
-counted separately from sampled samples and bounded by `maxOutcomes` for each sweep. No hidden
+counted separately from sampled samples and limited by `maxOutcomes` for each sweep. No hidden
 target evaluations occur on save. Supported authored diffs reuse the math-definition reader/differ
 in analysis-only mode; that partial declared-model comparison is not itself runtime proof. Native
 weight diffs retain integer strings. Scratch paths, timestamps and job IDs are excluded from evidence;
@@ -318,10 +318,10 @@ from these implementation checks.
 
 ## Reviewed authored apply
 
-Artifact publication and authored apply are separate operations. `publish(candidate, request,
+Output publication and authored apply are separate operations. `publish(candidate, request,
 newDestination)` and CLI `--out` preserve the source and require a new/empty destination.
 `apply(candidate, currentRequest)` explicitly commits Blueprint JSON, PAR paytable
-cells/provenance, or a declared TS package's parameter file and interface model hash. Outcome
+cells/origin, or a declared TS package's parameter file and interface model hash. Outcome
 Library, Stake and WASM remain generated artifacts: save them to a new destination. Source
 code, package metadata, dependency links, workbook declarations and locked model fields
 are not tuning inputs unless the documented interface grants that field.
@@ -343,7 +343,7 @@ results; deliberate application does not certify a target that was not attained.
 
 Studio Overview presents per-target units, population, requested value/tolerance, measured result
 and result. Sampled measurements use the held-out assessment with confidence bounds, confidence
-level and actual samples; search estimates remain only in expanded provenance. Exact results
+level and actual samples; search estimates remain only in expanded origin. Exact results
 are labelled exact. Tunables, locks, protected files, constraint checks, precision and native parameter
 changes remain visible; authored definition changes reuse the shared definition differ. A native
 weight preview preserves uint64 strings and does not imply a Blueprint conversion.

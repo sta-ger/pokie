@@ -176,7 +176,7 @@ WASM, regardless of what this scan finds.**
 No package compilation is implied by a `"wasm"` project resolving successfully, or by
 `assessWasmPackagingPreflight` reporting zero blocking API usages.
 
-## Portable continuation and explicit evidence (runtime API 2.1)
+## Portable continuation and explicit audit data (runtime API 2.1)
 
 Ordinary snapshots retain `pokie.state.v3`: file identity, seed, sequence,
 credits, actual draw count and optional JSON-safe RNG continuation. Feature
@@ -269,7 +269,7 @@ forward modes and logical-round intent for supported artifacts; Play is
 process-only, and simulation excludes delivery-only frames from mathematical
 sampling while preserving money, status and weighted counters.
 
-## Bounded authored mechanics
+## Feature chains with limits
 
 See [cascades, respins and collections](feature-chains.md) for the declarative
 interfaces, supported compositions, authoring/build/extraction/PAR workflow,

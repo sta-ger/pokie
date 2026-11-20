@@ -1594,13 +1594,13 @@ Options:
 Exit code is non-zero (and nothing is written) if `serverSeed.txt` is empty/unreadable or a custom `issuedAt`
 would be invalid.
 
-## `pokie fairness commit <serverSeedCommitment.json> --client-seed <seed> --nonce <n> --source <bundleDir> --mode <modeName> [--out <file>] [--overwrite]`
+## `pokie fairness commit <serverSeedCommitment.json> --client-seed <seed> --nonce <n> --source <folder> --mode <modeName> [--out <file>] [--overwrite]`
 
 The second step: once the player's `clientSeed`/`nonce` are known, builds the `FairnessCommitment` (the "round
 commitment") published before the round is played. `libraryId`/`libraryHash` are never taken from a CLI flag —
 they're always read straight off the live source bundle's own mode index (`OutcomeLibraryBundleReading.readModeIndex`,
 the same reader `FairnessRoundProofBuilder`/`Verifier` themselves use), so a commitment can only ever pin the
-`libraryId`/`libraryHash` a real bundle actually has, never one a caller merely claims.
+`libraryId`/`libraryHash` a real folder actually has, never one a caller merely claims.
 
 ```
 pokie fairness commit seed-commitment.json --client-seed player-seed --nonce 0 --source ../bundle --mode <modeName> --out commitment.json
@@ -1613,17 +1613,17 @@ Options:
  same `"0"|[1-9]\d*"` rule `docs/stake-engine-export.md`'s own outcome-id parsing already uses), no larger than
  `Number.MAX_SAFE_INTEGER`. Rejects a leading zero/sign, a decimal point, scientific notation (`"1e3"`), and
  hexadecimal notation (`"0x10"`) — all of which `Number(...)` alone would otherwise silently accept.
-- `--source <bundleDir>` — **required.** The live Outcome Library Folder `--mode` is read from.
+- `--source <folder>` — **required.** The live Outcome Library Folder `--mode` is read from.
 - `--mode <modeName>` — **required.** Which mode's own index to pin `libraryId`/`libraryHash` from.
 - `--out <file>` — where to write the commitment JSON. Optional; always printed to stdout either way. Same
  `--overwrite` convention as `seed-commit` above.
 - `--overwrite` — allow `--out` to replace an existing file.
 
 Exit code is non-zero (and nothing is written) if `<serverSeedCommitment.json>` doesn't parse or doesn't itself
-validate, `--mode <modeName>` isn't present in `--source <bundleDir>`, or any of `--client-seed`/`--nonce` is
+validate, `--mode <modeName>` isn't present in `--source <folder>`, or any of `--client-seed`/`--nonce` is
 invalid.
 
-## `pokie fairness reveal <commitment.json> --server-seed <serverSeed.txt> --source <bundleDir> [--out <file>] [--overwrite]`
+## `pokie fairness reveal <commitment.json> --server-seed <serverSeed.txt> --source <folder> [--out <file>] [--overwrite]`
 
 The reveal step: once the round settles, reads the revealed `serverSeed` from a plain text file and calls
 `FairnessRoundProofBuilder.build(commitment, serverSeed, sourceBundleDir)` to draw the one outcome this
@@ -1640,7 +1640,7 @@ Options:
 - `--server-seed <file>` — **required.** Plain text file holding the revealed `serverSeed`, normalized the
  exact same way `seed-commit`'s own `<serverSeed.txt>` is (see that section's own "Seed file normalization"
  above) — the same file used for both commands round-trips correctly by construction.
-- `--source <bundleDir>` — **required.** The live Outcome Library Folder the round is drawn from.
+- `--source <folder>` — **required.** The live Outcome Library Folder the round is drawn from.
 - `--out <file>` — where to write the proof JSON. Optional; always printed to stdout either way. Same
  `--overwrite` convention as `seed-commit`/`commit` above.
 - `--overwrite` — allow `--out` to replace an existing file.
@@ -1650,7 +1650,7 @@ the revealed `serverSeed` doesn't hash to the commitment's own `serverSeedHash`,
 matches the commitment's own pinned `libraryId`/`libraryHash` (see `FairnessRoundProofBuildError` in
 [Provably Fair](provably-fair.md#building-a-proof)).
 
-## `pokie fairness verify <proof.json> --commitment <commitment.json> --source <bundleDir>`
+## `pokie fairness verify <proof.json> --commitment <commitment.json> --source <folder>`
 
 Verifies a [Provably Fair](provably-fair.md) round proof: first its own self-consistency (does the shape match,
 is `algorithmVersion` supported, does the revealed `serverSeed` actually hash to its own recorded
@@ -1674,7 +1674,7 @@ Options:
  alone can't prove they match anything that was ever actually committed to — without `--commitment`, full
  verification is impossible and the command fails with a usage error (or, programmatically, a
  `fairness-verify-commitment-required` diagnostic without reading anything).
-- `--source <bundleDir>` — **required.** Where the live source Outcome Library Folder actually is. A
+- `--source <folder>` — **required.** Where the live source Outcome Library Folder actually is. A
  `FairnessRoundProof` carries no bundle location of its own — omitting `--source` fails with a usage error, and
  running `verify` without it programmatically reports a diagnostic instead of reading anything.
 
@@ -2441,7 +2441,7 @@ Checks one supported POKIE project without running a game. `<project>` may be:
  per-mode indexes.
 
 An existing directory without `package.json` is treated as an outcome-library candidate. This means an incomplete
-bundle gets the actionable `manifest.json` diagnostic instead of a package-loading error.
+folder gets the actionable `manifest.json` diagnostic instead of a package-loading error.
 
 ```
 pokie validate./sample-slot
@@ -3874,8 +3874,7 @@ to their project types. [POKIE Studio](#pokie) already
 covers most of these workflows with a real GUI, not just the CLI: designing/building a game (Home's Design Game
 tab, including PAR Sheet import and reel strip generation), and, once a project is open, inspection/
 validation (Overview), the Game Model view, Play, Simulation, Replay, Build/Export (outcome library generation,
-local build outputs, and remote deployment via the External Adapter SDK), Certification/Evidence
-Bundle, and Fairness all have a working Studio surface. `pokie serve`/`pokie dev`/`pokie client` have no Studio GUI
+local build outputs, and remote deployment via the External connector SDK), Certification pack, and Fairness all have a working Studio surface. `pokie serve`/`pokie dev`/`pokie client` have no Studio GUI
 counterpart — Studio's own Play tab drives a real session entirely in-process instead; use the CLI directly to
 stand up an HTTP server.
 

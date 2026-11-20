@@ -1,6 +1,6 @@
 import type {CertificationPackInputs} from "./CertificationPack.js";
 // "sourceBundleDir" is where the live source Outcome Library Bundle actually is — it must always be given
-// explicitly by the caller (or, on the CLI, via "--source <bundleDir>"). A certification/evidence bundle's own
+// explicitly by the caller (or, on the CLI, via "--source <folder>"). A certification/evidence bundle's own
 // manifest.sourceBundleDir is recorded for *informational* purposes only (see
 // CertificationPackManifest.sourceBundleDir's own doc comment) and is never read or trusted here — a
 // hand-crafted or tampered manifest could point that field anywhere, so verification never follows it. Without

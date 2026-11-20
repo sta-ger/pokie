@@ -28,7 +28,7 @@ import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDispla
 
 const USAGE =
     "Usage: pokie certification build <bundleDir> <config.json> [--out <dir>]\n" +
-    "   or: pokie certification verify <certDir> --source <bundleDir>";
+    "   or: pokie certification verify <certDir> --source <folder>";
 const BUILD_USAGE = "Usage: pokie certification build <bundleDir> <config.json> [--out <dir>]";
 const VERIFY_USAGE = "Usage: pokie certification verify <certDir> --source <folder> [--trusted-sources <json>]";
 const CONFIG_HINT =
@@ -172,7 +172,7 @@ export class CertificationCommand implements CliCommandHandling {
                     throw new Error(`Unknown option "${excess[0]}". ${VERIFY_USAGE}`);
                 }
                 if (options.source === undefined) {
-                    throw new Error(`--source <bundleDir> is required. ${VERIFY_USAGE}`);
+                    throw new Error(`--source <folder> is required. ${VERIFY_USAGE}`);
                 }
                 const controller = new AbortController();
                 const onCancel = () => controller.abort();

@@ -126,7 +126,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
                     message:
                         "no sourceBundleDir was given. This evidence bundle's own manifest.sourceBundleDir is " +
                         "informational only and is never trusted for verification — pass an explicit " +
-                        '{sourceBundleDir} (or "--source <bundleDir>" on the CLI) to cross-check against the live source bundle.',
+                        '{sourceBundleDir} (or "--source <folder>" on the CLI) to cross-check against the live source folder.',
                 },
             ];
         }

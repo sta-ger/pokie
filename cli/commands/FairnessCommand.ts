@@ -21,17 +21,17 @@ import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDispla
 import {normalizeServerSeedFileContents} from "./internal/normalizeServerSeedFileContents.js";
 import {parseCanonicalNonNegativeInteger} from "./internal/parseCanonicalNonNegativeInteger.js";
 
-const VERIFY_USAGE = "Usage: pokie fairness verify <proof.json> --commitment <commitment.json> --source <bundleDir>";
+const VERIFY_USAGE = "Usage: pokie fairness verify <proof.json> --commitment <commitment.json> --source <folder>";
 const SEED_COMMIT_USAGE = "Usage: pokie fairness seed-commit <serverSeed.txt> [--out <file>] [--overwrite]";
 const COMMIT_USAGE =
-    "Usage: pokie fairness commit <serverSeedCommitment.json> --client-seed <seed> --nonce <n> --source <bundleDir> " +
+    "Usage: pokie fairness commit <serverSeedCommitment.json> --client-seed <seed> --nonce <n> --source <folder> " +
     "--mode <modeName> [--out <file>] [--overwrite]";
-const REVEAL_USAGE = "Usage: pokie fairness reveal <commitment.json> --server-seed <serverSeed.txt> --source <bundleDir> [--out <file>] [--overwrite]";
+const REVEAL_USAGE = "Usage: pokie fairness reveal <commitment.json> --server-seed <serverSeed.txt> --source <folder> [--out <file>] [--overwrite]";
 const USAGE =
     `${VERIFY_USAGE}\n` +
     "   or: pokie fairness seed-commit <serverSeed.txt> [--out <file>] [--overwrite]\n" +
-    "   or: pokie fairness commit <serverSeedCommitment.json> --client-seed <seed> --nonce <n> --source <bundleDir> --mode <modeName> [--out <file>] [--overwrite]\n" +
-    "   or: pokie fairness reveal <commitment.json> --server-seed <serverSeed.txt> --source <bundleDir> [--out <file>] [--overwrite]";
+    "   or: pokie fairness commit <serverSeedCommitment.json> --client-seed <seed> --nonce <n> --source <folder> --mode <modeName> [--out <file>] [--overwrite]\n" +
+    "   or: pokie fairness reveal <commitment.json> --server-seed <serverSeed.txt> --source <folder> [--out <file>] [--overwrite]";
 
 type VerifyOptions = {proofPath: string; commitmentPath: string; sourceBundleDir: string};
 type SeedCommitOptions = {serverSeedPath: string; out?: string; overwrite: boolean};
@@ -246,7 +246,7 @@ export class FairnessCommand implements CliCommandHandling {
                 }
                 return parsed;
             })
-            .option("--source <bundleDir>", "the outcome-library bundle this round will be drawn from (required)")
+            .option("--source <folder>", "the outcome library folder this round will be drawn from (required)")
             .option("--mode <modeName>", "the bet mode this round will be drawn from (required)")
             .option("--out <file>", "write the commitment JSON to this path (default: print only)")
             .option("--overwrite", "allow --out to replace an existing file")
@@ -269,7 +269,7 @@ export class FairnessCommand implements CliCommandHandling {
                         throw new Error(`--nonce <number> is required. ${COMMIT_USAGE}`);
                     }
                     if (options.source === undefined) {
-                        throw new Error(`--source <bundleDir> is required. ${COMMIT_USAGE}`);
+                        throw new Error(`--source <folder> is required. ${COMMIT_USAGE}`);
                     }
                     if (options.mode === undefined) {
                         throw new Error(`--mode <modeName> is required. ${COMMIT_USAGE}`);
@@ -292,7 +292,7 @@ export class FairnessCommand implements CliCommandHandling {
             .argument("<commitmentPath>", "the JSON round commitment published by \"pokie fairness commit\"")
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
             .option("--server-seed <file>", "a text file containing the secret server seed (required)")
-            .option("--source <bundleDir>", "the outcome-library bundle this round was drawn from (required)")
+            .option("--source <folder>", "the outcome library folder this round was drawn from (required)")
             .option("--out <file>", "write the proof JSON to this path (default: print only)")
             .option("--overwrite", "allow --out to replace an existing file")
             .action(async (commitmentPath: string, excess: string[], options: {serverSeed?: string; source?: string; out?: string; overwrite?: boolean}) => {
@@ -306,7 +306,7 @@ export class FairnessCommand implements CliCommandHandling {
                     throw new Error(`--server-seed <file> is required. ${REVEAL_USAGE}`);
                 }
                 if (options.source === undefined) {
-                    throw new Error(`--source <bundleDir> is required. ${REVEAL_USAGE}`);
+                    throw new Error(`--source <folder> is required. ${REVEAL_USAGE}`);
                 }
                 exitCodeRef.value = await this.runReveal({
                     commitmentPath,
@@ -323,7 +323,7 @@ export class FairnessCommand implements CliCommandHandling {
             .argument("<proofPath>", "the JSON round proof produced by \"pokie fairness reveal\"")
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
             .option("--commitment <file>", "the JSON round commitment this proof claims to reveal (required)")
-            .option("--source <bundleDir>", "the outcome-library bundle this round was drawn from (required)")
+            .option("--source <folder>", "the outcome library folder this round was drawn from (required)")
             .action(async (proofPath: string, excess: string[], options: {commitment?: string; source?: string}) => {
                 if (!proofPath) {
                     throw new Error(VERIFY_USAGE);
@@ -335,7 +335,7 @@ export class FairnessCommand implements CliCommandHandling {
                     throw new Error(`--commitment <commitment.json> is required. ${VERIFY_USAGE}`);
                 }
                 if (options.source === undefined) {
-                    throw new Error(`--source <bundleDir> is required. ${VERIFY_USAGE}`);
+                    throw new Error(`--source <folder> is required. ${VERIFY_USAGE}`);
                 }
                 exitCodeRef.value = await this.runVerify({proofPath, commitmentPath: options.commitment, sourceBundleDir: options.source});
             });

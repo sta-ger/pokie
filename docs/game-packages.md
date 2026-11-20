@@ -99,7 +99,7 @@ metadata and private deep imports are not public exports. See the [WASM boundary
 for portable execution and independent format versions.
 
 Code-first preparation can temporarily resolve an unpublished POKIE dependency against the running
-installation, restoring its authored manifest and lockfile afterwards. Builds through the
+installation, restoring its authored package files and lockfile afterwards. Builds through the
 CLI and Studio instead persist that installation as a `file:` dependency in both generated manifests,
 alongside the immediate runtime link. Thus their documented `npm install` reuses the same runtime
 without assuming a registry release exists. Keep that installation at its recorded location.
@@ -230,7 +230,7 @@ own strict validation requirements, including the game validator for custom payl
 
 Blueprint screenGeometry, generated packages and conversion support: see the coordinate interface and connector support matrix.
 
-### Exact audit supported action
+### Exact audit support
 
 A generated game declares its model hash, compatible executable schema and
 command supported actions. Its sessions use the existing seeded RNG codec even when
@@ -354,7 +354,7 @@ and rolls back operation-owned artifacts on failure, cancellation or failed Stud
 
 The companion `FILE.conversion-evidence.json` has `schemaVersion: 1`, `kind: "package-extraction"`,
 `sourceBindingHash`, `extractedBlueprintHash` and the full `extraction` result. Studio registration
-retains this evidence path across reopen without inventing PAR-workbook provenance. Save normal
+keeps this evidence path across reopen without inventing PAR-workbook provenance. Save normal
 Blueprint edits in the separate authoring project: its historical evidence remains the original
 extraction record, not a description of subsequent edits.
 
@@ -364,7 +364,7 @@ and grants are preserved, never padded into equivalent-looking defaults.
 
 ## Authored Hold&Win, jackpot and bet modes
 
-Blueprint `mechanics` accepts `freeGames`, `holdAndWin`, `jackpot`, `modifiers`, `cascade`, `respins` and `collection`. The bounded interfaces and their composition restrictions are documented in [feature chains with limits](feature-chains.md). Unknown fields and unsupported policies fail validation, including direct generator/render calls. Free games use `retriggerPolicy: "additive"` (also the legacy omitted default). Award counts start at one and awards may be zero. Hold&Win requires the explicit `reset-on-new-lock` policy:
+Blueprint `mechanics` accepts `freeGames`, `holdAndWin`, `jackpot`, `modifiers`, `cascade`, `respins` and `collection`. The feature-chain interfaces and their composition restrictions are documented in [feature chains with limits](feature-chains.md). Unknown fields and unsupported policies fail validation, including direct generator/render calls. Free games use `retriggerPolicy: "additive"` (also the legacy omitted default). Award counts start at one and awards may be zero. Hold&Win requires the explicit `reset-on-new-lock` policy:
 
 ```json
 {
@@ -406,7 +406,7 @@ package with `pokie PACKAGE`. Stateless modifiers retain exact enumeration;
 sticky games explicitly lack independent-spin enumeration. See the
 [math interface](math-modeling.md#authored-wilds-and-screen-modifiers).
 
-## Bounded authored mechanics
+## Feature chains with limits
 
 See [cascades, respins and collections](feature-chains.md) for the declarative
 interfaces, supported compositions, authoring/build/extraction/PAR workflow,
@@ -456,4 +456,4 @@ policy and unsupported nested collaborators remain unknown. Source-path
 acquisition owns and releases its snapshot; a direct supplied game remains
 caller-owned. See the advanced-validation report for supported checks and limits.
 
-See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning interfaces, locks, evidence and explicit candidate publication.
+See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning interfaces, locks, results and explicit candidate publication.

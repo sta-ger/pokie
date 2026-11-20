@@ -53,7 +53,7 @@ export type CertificationPackManifest = {
     // Where the source Outcome Library Bundle was read from at *build* time — purely informational (a
     // directory can move, and this field is only ever as trustworthy as whoever last wrote this manifest.json).
     // CertificationPackVerifying.verify NEVER reads this field and never falls back to it: a caller
-    // must always give an explicit CertificationPackVerifyOptions.sourceBundleDir (or "--source <bundleDir>"
+    // must always give an explicit CertificationPackVerifyOptions.sourceBundleDir (or "--source <folder>"
     // on the CLI), or verification reports a diagnostic and reads nothing outside certDir.
     readonly sourceBundleDir: string;
     // sha256 of the source bundle's own manifest.json, canonicalized the same way computeWeightedOutcomeLibraryHash
