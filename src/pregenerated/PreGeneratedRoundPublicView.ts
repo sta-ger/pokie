@@ -1,4 +1,4 @@
-import type {RoundRecordWin} from "../artifact/RoundRecordWin.js";
+import type {RoundRecordWin} from "../roundrecord/RoundRecordWin.js";
 
 // The client-safe projection of a PreGeneratedRoundResult — exactly what a player-facing client needs
 // to render a round, never the library/outcome/weight provenance that produced it (see

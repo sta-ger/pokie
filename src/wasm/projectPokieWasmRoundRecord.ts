@@ -1,18 +1,18 @@
-import {buildLogicalRoundRecord} from "../artifact/buildLogicalRoundRecord.js";
-import {PokieJsonRoundRecordProjector} from "../artifact/PokieJsonRoundRecordProjector.js";
+import {buildLogicalRoundRecord} from "../roundrecord/buildLogicalRoundRecord.js";
+import {PokieJsonRoundRecordProjector} from "../roundrecord/PokieJsonRoundRecordProjector.js";
 
 /** Project retained observations; never execute, infer wins or manufacture feature evidence. */
 export function projectPokieWasmRoundRecord(
     round: import("./PokieWasmRuntimeApi.js").PokieWasmRound,
-    origin: import("../artifact/RoundRecord.js").RoundRecord["origin"],
+    origin: import("../roundrecord/RoundRecord.js").RoundRecord["origin"],
     fallbackRoundId: string,
     declaredCapabilities?: readonly string[],
-): import("../artifact/RoundRecordJson.js").RoundRecordJson {
+): import("../roundrecord/RoundRecordJson.js").RoundRecordJson {
     const logical = round.logicalRound;
     const last = logical?.subrounds[logical.subrounds.length - 1];
     const steps = last?.artifacts;
     if (logical && last && steps?.length) {
-        let artifact: import("../artifact/RoundRecord.js").RoundRecord = {
+        let artifact: import("../roundrecord/RoundRecord.js").RoundRecord = {
             schemaVersion: 1, roundId: logical.id, origin, betMode: logical.mode ?? "base", stake: last.stake, totalWin: last.win,
             payoutMultiplier: last.stake > 0 ? last.win / last.stake : 0, screen: steps[steps.length - 1].screen,
             steps: [...steps], wins: steps.flatMap(step => step.wins), featureEvents: steps.flatMap(step => step.featureEvents ?? []),

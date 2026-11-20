@@ -44,7 +44,7 @@ separately deep-copied, since a `RoundRecord` is already immutable by constructi
 ### Library homogeneity: one library is one paid bet
 
 Every outcome in a library must describe the **same** underlying, paid round: the same
-`provenance.game.id`/`provenance.game.version`/`provenance.configHash`/`provenance.pokieVersion`, the same
+`origin.game.id`/`origin.game.version`/`origin.configHash`/`origin.pokieVersion`, the same
 `betMode`, and the same `stake` — and that `stake` must be a positive number, never `0`. A library mixes results
 for one specific bet; it isn't a place to combine spins from different games, configs, or bet sizes.
 
@@ -338,7 +338,7 @@ Outcome library folder; it can then be used with `pokie validate`, `pokie sim`, 
  flag preserves their historical unlabeled/base-compatible library identity.
 - `--stake <number>` — the stake threaded onto every generated round record; must be a positive number (see "library
  homogeneity" above — a library can only ever describe one stake).
-- `--config-hash <hash>` — the `provenance.configHash` threaded onto every generated round record.
+- `--config-hash <hash>` — the `origin.configHash` threaded onto every generated round record.
 - `--library-id <id>` — overrides the default `<manifest.id>[-<mode>]` library id.
 - `--max-outcome-space-size <n>` — overrides the default 20,000,000-raw-combination bound above which `generate`
  refuses to sweep exhaustively (accepts an arbitrarily large decimal string, parsed straight to `bigint`, since a

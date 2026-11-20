@@ -1,8 +1,8 @@
 import {captureCoordinatePublicPayload} from "./internal/captureCoordinatePublicPayload.js";
 import {cloneSessionData} from "../../runtime/internal/cloneSessionData.js";
-import {buildRoundRecordFromSession} from "../../artifact/buildRoundRecordFromSession.js";
-import {RoundRecordBuildError} from "../../artifact/RoundRecordBuildError.js";
-import type {RoundRecordOrigin} from "../../artifact/RoundRecordOrigin.js";
+import {buildRoundRecordFromSession} from "../../roundrecord/buildRoundRecordFromSession.js";
+import {RoundRecordBuildError} from "../../roundrecord/RoundRecordBuildError.js";
+import type {RoundRecordOrigin} from "../../roundrecord/RoundRecordOrigin.js";
 import type {PokieGameContext} from "../../gamepackage/PokieGameContext.js";
 import type {GameSessionSerializing} from "../../net/GameSessionSerializing.js";
 import type {GameSessionHandling} from "../../session/GameSessionHandling.js";

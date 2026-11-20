@@ -1,4 +1,4 @@
-import {PublicRoundRecordProjector} from "../artifact/PublicRoundRecordProjector.js";
+import {PublicRoundRecordProjector} from "../roundrecord/PublicRoundRecordProjector.js";
 import type {PreGeneratedRoundInternalView} from "./PreGeneratedRoundInternalView.js";
 import type {PreGeneratedRoundPublicView} from "./PreGeneratedRoundPublicView.js";
 import type {PreGeneratedRoundResult} from "./PreGeneratedRoundResult.js";

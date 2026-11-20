@@ -1,6 +1,6 @@
-import {PublicRoundRecordProjector} from "../../artifact/PublicRoundRecordProjector.js";
-import {PokieJsonRoundRecordProjector} from "../../artifact/PokieJsonRoundRecordProjector.js";
-import type {RoundRecord} from "../../artifact/RoundRecord.js";
+import {PublicRoundRecordProjector} from "../../roundrecord/PublicRoundRecordProjector.js";
+import {PokieJsonRoundRecordProjector} from "../../roundrecord/PokieJsonRoundRecordProjector.js";
+import type {RoundRecord} from "../../roundrecord/RoundRecord.js";
 import type {JsonObject} from "../../json/JsonValue.js";
 import type {ExternalRoundProjector} from "../ExternalRoundProjector.js";
 

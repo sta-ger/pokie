@@ -1,5 +1,5 @@
-import type {RoundRecord} from "../artifact/RoundRecord.js";
-import {RoundRecordValidator} from "../artifact/RoundRecordValidator.js";
+import type {RoundRecord} from "../roundrecord/RoundRecord.js";
+import {RoundRecordValidator} from "../roundrecord/RoundRecordValidator.js";
 import {deepFreeze} from "../internal/deepFreeze.js";
 import {InvalidJsonValueError} from "../json/InvalidJsonValueError.js";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";

@@ -1,7 +1,7 @@
 import type {AuditRoundRecording} from "./AuditRoundRecording.js";
 import type {SessionCommand} from "../runtime/SessionCommand.js";
 import type {LogicalRound} from "../runtime/LogicalRound.js";
-import type {RoundRecordJson} from "../artifact/RoundRecordJson.js";
+import type {RoundRecordJson} from "../roundrecord/RoundRecordJson.js";
 import type {PreGeneratedRoundReplayDescriptor} from "../pregenerated/PreGeneratedRoundReplayDescriptor.js";
 
 export type ReplayDescriptor = {

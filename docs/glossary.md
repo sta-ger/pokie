@@ -84,11 +84,12 @@ use the right-hand column.
 | Avoid | Use |
 |---|---|
 | artifact (build) | build output |
-| round record | round record |
+| round artifact | round record |
 | certification evidence dossier | certification pack |
 | dossier | certification pack |
 | evidence bundle | certification pack |
-| manifest | package info / index |
+| manifest (game design) | info |
+| manifest (file) | package info / index |
 | bundle | folder / pack |
 | provenance | origin |
 | materialize | create / write / prepare |

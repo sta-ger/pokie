@@ -1,4 +1,4 @@
-import type {RoundRecordFeatureEventInput} from "../artifact/RoundRecordFeatureEvent.js";
+import type {RoundRecordFeatureEventInput} from "../roundrecord/RoundRecordFeatureEvent.js";
 import type {StakeEngineEvent} from "./StakeEngineEvent.js";
 
 // Everything StakeEngineRoundEventsImporter needs beyond the raw events themselves: neither the mode's own Stake

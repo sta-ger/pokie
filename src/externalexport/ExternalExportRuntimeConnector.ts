@@ -8,7 +8,7 @@ import type {ExternalExportDeliveryResult} from "./ExternalExportDeliveryResult.
 // unmodified across targets that differ only in how they publish the result.
 //
 // This package ships no runtime adapter beyond the local-filesystem example (see
-// docs/external-adapter-sdk.md) — a live push to any specific RGS/aggregator is deliberately out of scope here;
+// docs/external-connector-sdk.md) — a live push to any specific RGS/aggregator is deliberately out of scope here;
 // implement this interface directly for a real transport.
 export interface ExternalExportRuntimeConnector {
     deliver(result: ExternalFileGenerationResult): Promise<ExternalExportDeliveryResult>;

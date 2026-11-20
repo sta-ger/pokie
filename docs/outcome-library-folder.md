@@ -88,7 +88,7 @@ type OutcomeLibraryFolderIndex = {
 
 `pokieVersion` is the same "who generated this file" stamp every manifest in this codebase carries
 (`StakeEngineInfo`'s own convention). `artifactPokieVersion` is read straight off the first outcome's own
-`artifact.provenance.pokieVersion` (guaranteed identical across every outcome, by the writer's own homogeneity
+`artifact.origin.pokieVersion` (guaranteed identical across every outcome, by the writer's own homogeneity
 checks) and cross-checked, in deep validation, against every outcome's own origin. The two are never required
 to match: a folder can legitimately be repacked by a newer or different package release than the one that
 originally computed its outcomes (e.g. outcomes simulated once, repacked repeatedly afterward) — treating a

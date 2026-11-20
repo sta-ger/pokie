@@ -2,7 +2,7 @@
 // for a given (library, seed, round) — deliberately narrower than a full PreGeneratedRoundResult (no
 // runtime/wallet/session facts to reproduce, since none of those participate in the deterministic
 // selection itself).
-import type {RoundRecord} from "../artifact/RoundRecord.js";
+import type {RoundRecord} from "../roundrecord/RoundRecord.js";
 
 // `selectionAlgorithm` is durable provenance, rather than an implementation detail.  In particular,
 // a seeded stream and a seed derived per round are both deterministic, but they are not interchangeable.

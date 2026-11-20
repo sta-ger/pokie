@@ -1,4 +1,4 @@
-import type {RoundRecord} from "../artifact/RoundRecord.js";
+import type {RoundRecord} from "../roundrecord/RoundRecord.js";
 import {analyticsEnvelope, type FeatureAnalyticsObservation} from "./FeatureAnalytics.js";
 /** Artifacts flatten their steps. Read that one level; events alone cannot prove lifecycle. */
 export function artifactAnalyticsObservation(artifact: RoundRecord, modelId: string): FeatureAnalyticsObservation {

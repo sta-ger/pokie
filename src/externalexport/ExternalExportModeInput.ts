@@ -6,7 +6,7 @@ import type {WeightedOutcomeLibrary} from "../weightedoutcome/WeightedOutcomeLib
 // by. A multi-mode deployment (e.g. "base" + "bonus") is simply an array of these — the same shape
 // StakeEngineExportModeInput uses, minus Stake's own "cost" field, which is specific to Stake's unit
 // conversion and has no general meaning across arbitrary external targets. See
-// docs/external-adapter-sdk.md#why-stake-engine-export-isnt-an-externaldeploymenttarget for why this
+// docs/external-connector-sdk.md#why-stake-engine-export-isnt-an-externalexporttarget for why this
 // exclusion is deliberate, not a gap to close.
 export type ExternalExportModeInput<T extends string | number = string> = {
     readonly modeName: string;

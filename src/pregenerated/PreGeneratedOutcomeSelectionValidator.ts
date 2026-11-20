@@ -1,4 +1,4 @@
-import {RoundRecordValidator} from "../artifact/RoundRecordValidator.js";
+import {RoundRecordValidator} from "../roundrecord/RoundRecordValidator.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import type {ValidationRule} from "../validation/ValidationRule.js";
 import {isPositiveSafeInteger} from "./internal/isPositiveSafeInteger.js";

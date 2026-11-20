@@ -1,7 +1,7 @@
 import {ScreenModifierEngine} from "../session/videoslot/modifiers/ScreenModifierEngine.js";
 import {validateMechanicState} from "./validateMechanicState.js";
 import {WeightedSymbolsSequence} from "../session/videoslot/combinations/WeightedSymbolsSequence.js";
-import {validateSequenceSelections} from "../artifact/validateSequenceSelections.js";
+import {validateSequenceSelections} from "../roundrecord/validateSequenceSelections.js";
 import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
 import type {LiveSnapshotPolicy} from "./internal/LiveSessionAuthority.js";
 import type {SessionStateSchema} from "../session/SessionStateRestoring.js";

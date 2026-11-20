@@ -2,11 +2,11 @@ import {resolveSessionPayout} from "./internal/resolveSessionPayout.js";
 import {validateWeightedBonusObservation} from "../session/videoslot/authored/WeightedBonus.js";
 import {determineChargedBetMode} from "../session/determineChargedBetMode.js";
 import {isSessionStateRestorable, resolveSessionStateSchema} from "../session/SessionStateRestoring.js";
-import {sequenceSelectionsEqual} from "../artifact/validateSequenceSelections.js";
+import {sequenceSelectionsEqual} from "../roundrecord/validateSequenceSelections.js";
 import type {CascadeResultProviding} from "../session/videoslot/cascade/CascadeResultProviding.js";
 import {cloneSessionData} from "./internal/cloneSessionData.js";
 import {deepFreeze} from "../internal/deepFreeze.js";
-import {buildRoundRecordFromSession} from "../artifact/buildRoundRecordFromSession.js";
+import {buildRoundRecordFromSession} from "../roundrecord/buildRoundRecordFromSession.js";
 import type {VideoSlotSessionHandling} from "../session/videoslot/VideoSlotSessionHandling.js";
 import {validateLogicalRound, type LogicalRound, type LogicalSubround, type LogicalRoundProgressProviding} from "./LogicalRound.js";
 

@@ -6,7 +6,7 @@ import {certificationPackFileName, validateCertificationPackInputs, validateCert
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import {computeRoundRecordHash} from "../artifact/computeRoundRecordHash.js";
+import {computeRoundRecordHash} from "../roundrecord/computeRoundRecordHash.js";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import {SeededWeightedOutcomeRandomSource} from "../pregenerated/SeededWeightedOutcomeRandomSource.js";
 import type {WeightedOutcomeRandomSource} from "../pregenerated/WeightedOutcomeRandomSource.js";

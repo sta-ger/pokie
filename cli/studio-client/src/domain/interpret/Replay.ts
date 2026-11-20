@@ -1,6 +1,6 @@
-import type {RoundRecord as CanonicalRoundRecord} from "../../../../../src/artifact/RoundRecord.js";
+import type {RoundRecord as CanonicalRoundRecord} from "../../../../../src/roundrecord/RoundRecord.js";
 import {toCanonicalJson} from "../../../../../src/json/toCanonicalJson.js";
-import {PublicRoundRecordProjector} from "../../../../../src/artifact/PublicRoundRecordProjector.js";
+import {PublicRoundRecordProjector} from "../../../../../src/roundrecord/PublicRoundRecordProjector.js";
 import type {
     OutcomeSourceReplayDescriptorView,
     ReplayDescriptor,
@@ -720,7 +720,7 @@ export function describeReplayEntryLabel(entry: StudioReplayListEntry): string {
 
 // Whether "Reproduce & compare" from this exact "Recent replays" entry can ever produce anything
 // meaningful -- the same foundational check describeReplayReproducibility applies first, before any
-// artifact/provenance/state completeness check: no recorded seed means a fresh reproduction would
+// roundrecord/provenance/state completeness check: no recorded seed means a fresh reproduction would
 // create a new, differently-seeded session, not recreate this round at all. The list summary never
 // carries enough (no artifact, no state snapshots) to evaluate the rest of that gate client-side, so
 // this is deliberately only the one check the list itself can answer -- the full gate still applies

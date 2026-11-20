@@ -12,10 +12,10 @@ import type {SessionCommand} from "../runtime/SessionCommand.js";
 import {SessionRuntime, executeSessionCommand} from "../runtime/SessionRuntime.js";
 import {executeLogicalReplayCommand} from "./internal/executeLogicalReplayCommand.js";
 import type {CascadeResultProviding} from "../session/videoslot/cascade/CascadeResultProviding.js";
-import {buildLogicalRoundRecord} from "../artifact/buildLogicalRoundRecord.js";
+import {buildLogicalRoundRecord} from "../roundrecord/buildLogicalRoundRecord.js";
 import type {LogicalRound} from "../runtime/LogicalRound.js";
-import {buildRoundRecordFromSession} from "../artifact/buildRoundRecordFromSession.js";
-import {PokieJsonRoundRecordProjector} from "../artifact/PokieJsonRoundRecordProjector.js";
+import {buildRoundRecordFromSession} from "../roundrecord/buildRoundRecordFromSession.js";
+import {PokieJsonRoundRecordProjector} from "../roundrecord/PokieJsonRoundRecordProjector.js";
 import type {VideoSlotSessionHandling} from "../session/videoslot/VideoSlotSessionHandling.js";
 import {captureScreen} from "../server/session/captureScreen.js";
 
@@ -273,7 +273,7 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
     }
 
     // Records an already-settled native Outcome Library round in the standard ReplayDescriptor shape.
-    // Unlike record(), this never creates a game session or calls play(): the supplied artifact/provenance
+    // Unlike record(), this never creates a game session or calls play(): the supplied roundrecord/provenance
     // is the authoritative math result and the outcomeSource field preserves how it was selected.
     public recordPreGenerated(options: PreGeneratedReplayRecordingOptions): ReplayDescriptor {
         const {sessionId, game, replay, totalBet, credits, screen} = options;

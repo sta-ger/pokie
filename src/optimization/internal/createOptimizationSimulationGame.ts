@@ -5,7 +5,7 @@ import type {GameSessionHandling} from "../../session/GameSessionHandling.js";
 import {SeededRandomNumberGenerator} from "../../session/videoslot/combinations/SeededRandomNumberGenerator.js";
 import {drawBelow} from "../../session/videoslot/combinations/WeightedSymbolsSequence.js";
 import {SeededWeightedOutcomeRandomSource} from "../../pregenerated/SeededWeightedOutcomeRandomSource.js";
-import {deriveStandardFeatureEvents} from "../../artifact/buildRoundRecordFromSession.js";
+import {deriveStandardFeatureEvents} from "../../roundrecord/buildRoundRecordFromSession.js";
 
 /** Serializable recipe bound by the adapter's native readback, never accepted as tuning authority. */
 export type OptimizationSimulationRecipe = {

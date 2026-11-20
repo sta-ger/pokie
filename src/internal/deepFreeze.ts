@@ -3,7 +3,7 @@
 // WeightedOutcomeLibrary/WeightedOutcome) is tree-shaped by construction: arbitrary caller-supplied blobs
 // (metadata/debug/feature event data) are always routed through canonicalizeJsonField (backed by
 // toCanonicalJson, which does its own cycle detection and rejects cycles before this ever runs) rather than
-// frozen as-is. Shared across packages (artifact/, weightedoutcome/) rather than duplicated — kept under this
+// frozen as-is. Shared across packages (roundrecord/, weightedoutcome/) rather than duplicated — kept under this
 // top-level "internal" folder (excluded from the public barrel, same as any other "internal" directory) since
 // it's a generic implementation detail, not part of either package's own public contract.
 export function deepFreeze<T>(value: T): T {

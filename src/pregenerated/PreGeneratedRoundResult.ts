@@ -1,4 +1,4 @@
-import type {RoundRecord} from "../artifact/RoundRecord.js";
+import type {RoundRecord} from "../roundrecord/RoundRecord.js";
 import type {PreGeneratedRoundRuntimeContext} from "./PreGeneratedRoundRuntimeContext.js";
 import type {PreGeneratedRoundSelectionProvenance} from "./PreGeneratedRoundSelectionProvenance.js";
 

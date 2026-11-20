@@ -202,7 +202,7 @@ export function deriveTotalWin(response: VideoSlotRoundResponse): number | undef
 }
 
 // The one other shape this module's own WinHighlight contract is adapted from -- an arbitrary game's own
-// RoundRecord win (see "pokie"'s src/artifact/RoundRecordWin.ts, mirrored client-side by Studio's own
+// RoundRecord win (see "pokie"'s src/roundrecord/RoundRecordWin.ts, mirrored client-side by Studio's own
 // RoundRecordWin in cli/studio-client/src/api/types.ts), structurally rather than by importing that
 // type directly (this module stays a standalone static asset with no runtime dependency on either "pokie"
 // or Studio -- same convention VideoSlotRoundResponse's own doc comment already follows). Every field read

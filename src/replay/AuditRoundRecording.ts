@@ -4,7 +4,7 @@ import type {PokieGameContext} from "../gamepackage/PokieGameContext.js";
 import type {SessionCommand} from "../runtime/SessionCommand.js";
 import type {SessionCommandResult} from "../runtime/SessionRuntimeHandling.js";
 import type {LogicalRound} from "../runtime/LogicalRound.js";
-import type {RoundRecordJson} from "../artifact/RoundRecordJson.js";
+import type {RoundRecordJson} from "../roundrecord/RoundRecordJson.js";
 
 /** Executable inputs, distinct from presentation serialization and from portable WASM state. */
 export type AuditBoundary = {

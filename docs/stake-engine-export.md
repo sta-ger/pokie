@@ -11,7 +11,7 @@ outcomes/artifacts, re-shaped, not recomputed.
 
 This is a deliberately separate, sibling pipeline to the [External Adapter SDK](external-connector-sdk.md) — not
 built on top of it, and not the other way around. See
-[Why Stake Engine Export isn't an `ExternalExportTarget`](external-connector-sdk.md#why-stake-engine-export-isnt-an-externaldeploymenttarget)
+[Why Stake Engine Export isn't an `ExternalExportTarget`](external-connector-sdk.md#why-stake-engine-export-isnt-an-externalexporttarget)
 for exactly why (a mode's own `cost`, required here for unit conversion, has no channel through that SDK's
 generic projector interface, and a real Stake export's atomicity spans modes with different costs in a way the
 SDK's per-target-fixed-descriptor model can't represent).
@@ -91,7 +91,7 @@ whose own ids are content-addressed — see [Weighted Outcome Library](weighted-
 this exporter/validator on its own, and by design: neither invents that mapping itself. The Project Dashboard's own
 Stake Engine Export integration (`StudioStakeEngineExportService`) is where that gap is actually bridged, one layer
 above this exporter — every resolved library is deterministically relabeled into Stake's own integer id convention
-(each outcome's own weight/artifact/provenance untouched, only `id` changes) before it ever reaches
+(each outcome's own weight/roundrecord/provenance untouched, only `id` changes) before it ever reaches
 `StakeEngineExportValidator`/`StakeEngineExporter`, so a real generated library still resolves through to a real
 Stake export (see `canonicalizeOutcomeIdsForStakeEngine`). A library whose ids are already Stake-compatible is left
 alone.

@@ -16,7 +16,7 @@ export function isAggregateWin(win: RoundRecordWin): boolean {
 }
 
 // Mirrors the "x stake" convention artifact.payoutMultiplier already uses for the round-level Total win
-// row (and the one src/artifact/RoundRecordValidator.ts itself applies when deriving
+// row (and the one src/roundrecord/RoundRecordValidator.ts itself applies when deriving
 // expectedPayoutMultiplier: stake > 0 ? totalWin / stake : 0) -- a per-win amount alone doesn't say
 // whether 5.00 is a big or small win relative to what was staked, so every known amount also states its
 // own multiple of stake. When stake is 0 (a validator-legal value -- RoundRecordValidator only requires

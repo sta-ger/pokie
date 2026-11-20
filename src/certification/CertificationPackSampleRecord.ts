@@ -1,4 +1,4 @@
-import type {RoundRecord} from "../artifact/RoundRecord.js";
+import type {RoundRecord} from "../roundrecord/RoundRecord.js";
 
 // One deterministically-sampled round, drawn from a source Outcome Library Bundle's mode via
 // OutcomeLibraryFolderReading.drawOutcome (the same weighted-draw algorithm the pre-generated runtime uses,

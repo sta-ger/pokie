@@ -1,4 +1,4 @@
-import type {RoundRecord} from "../../artifact/RoundRecord.js";
+import type {RoundRecord} from "../../roundrecord/RoundRecord.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import type {ValidationRule} from "../../validation/ValidationRule.js";
 import fs from "fs";

@@ -1,7 +1,7 @@
 const VERSION_PATTERN = /^(\d+)\.(\d+)\.(\d+)/;
 
 // A deliberately minimal major.minor.patch reader, duplicated from
-// externaladapter/internal/compareSemverLite.ts rather than imported across module boundaries -- "internal"
+// externalexport/internal/compareSemverLite.ts rather than imported across module boundaries -- "internal"
 // directories are private to their own module by this package's own convention (every other module with its
 // own internal/ folder owns its own copy of anything it needs from a sibling module's internal/), so wasm/
 // owns its own copy instead of reaching into externaladapter's.

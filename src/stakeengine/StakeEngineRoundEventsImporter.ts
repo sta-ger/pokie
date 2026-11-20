@@ -1,4 +1,4 @@
-import type {RoundRecordFeatureEventInput} from "../artifact/RoundRecordFeatureEvent.js";
+import type {RoundRecordFeatureEventInput} from "../roundrecord/RoundRecordFeatureEvent.js";
 import {convertStakeUnitsToRatio} from "./internal/convertStakeUnitsToRatio.js";
 import {convertStakeUnitsToRawAmount} from "./internal/convertStakeUnitsToRawAmount.js";
 import {StakeEngineImportEventsError} from "./StakeEngineImportEventsError.js";

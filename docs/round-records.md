@@ -7,7 +7,7 @@ metadata needed to replay or audit it. It is separate from the network payload u
 (see [Network Serialization](serialization.md)) and from a replay descriptor (see `pokie replay` in
 [CLI](cli.md)).
 
-The modules live in `artifact/`. A record is built from already-computed runtime state; POKIE never
+The modules live in `roundrecord/`. A record is built from already-computed runtime state; POKIE never
 recalculates the round. `toCanonicalJson` gives it a stable JSON view and a content hash.
 
 ## Data shapes
@@ -41,7 +41,7 @@ type RoundRecordFeatureEventInput = {
  readonly data?: Record<string, unknown>;
 };
 
-type RoundRecordProvenance = {
+type RoundRecordOrigin = {
  readonly game: Readonly<PokieGameInfo>; // id/name/version/description?/author? — reused, not duplicated
  readonly pokieVersion: string;
  readonly configHash?: string; // e.g. computeBlueprintHash() output, for a "pokie build"-generated game
@@ -59,7 +59,7 @@ type RoundStepRecord<T = string> = {
 type RoundRecord<T = string> = {
  readonly schemaVersion: number;
  readonly roundId: string;
- readonly provenance: RoundRecordProvenance;
+ readonly origin: RoundRecordOrigin;
  readonly betMode: string; // caller-supplied, e.g. "base" / "freeGames" — never inferred
  readonly stake: number;
  readonly totalWin: number;
@@ -106,16 +106,16 @@ is ever returned — on: an empty `steps` list, an invalid `roundId`/`betMode`/`
 inputs** — every nested array/object is deep-copied, never shared with the caller's own objects or the win
 evaluation pipeline's internal state — and **deeply frozen** (`Object.freeze`, recursively): mutating it
 afterward throws a `TypeError`, and mutating whatever the caller originally passed in has no effect on the
-artifact:
+record:
 
 ```ts
 import {RoundRecordBuildError} from "@fromstan/pokie";
 
 try {
- buildRoundRecord({roundId: "", provenance, stake: 1, steps: []});
+ buildRoundRecord({roundId: "", origin, stake: 1, steps: []});
 } catch (error) {
  if (error instanceof RoundRecordBuildError) {
- console.error(error.getCode(), error.message); // "round-artifact-steps-empty", "..."
+ console.error(error.getCode(), error.message); // "round-record-steps-empty", "..."
  }
 }
 ```
@@ -127,9 +127,9 @@ For the common single-step case, `buildRoundRecordFromSession` builds straight f
 import {buildRoundRecordFromSession} from "@fromstan/pokie";
 
 session.play();
-const artifact = buildRoundRecordFromSession(session, {
+const record = buildRoundRecordFromSession(session, {
  roundId: "round-42",
- provenance: {game: game.getInfo(), pokieVersion: "2.0.0"},
+ origin: {game: game.getInfo(), pokieVersion: "2.0.0"},
 });
 ```
 
@@ -145,9 +145,9 @@ For a multi-step round, build one `RoundRecordStepSource` per stage yourself (e.
 ```ts
 import {buildRoundRecord} from "@fromstan/pokie";
 
-const artifact = buildRoundRecord({
+const record = buildRoundRecord({
  roundId: "round-42",
- provenance: {game: game.getInfo(), pokieVersion: "2.0.0"},
+ origin: {game: game.getInfo(), pokieVersion: "2.0.0"},
  betMode: "base",
  stake: 5,
  steps: cascadeResult.getCascadeSteps().map((step) => ({
@@ -172,17 +172,17 @@ type JsonValue = JsonPrimitive | JsonObject | JsonArray;
 function toCanonicalJson(value: unknown): JsonValue; // throws InvalidJsonValueError
 
 interface RoundRecordProjector<T, TOutput> {
- project(artifact: RoundRecord<T>): TOutput;
+ project(record: RoundRecord<T>): TOutput;
 }
 
 class PokieJsonRoundRecordProjector<T = string> implements RoundRecordProjector<T, RoundRecordJson<T>> {
- project(artifact: RoundRecord<T>): RoundRecordJson<T>;
+ project(record: RoundRecord<T>): RoundRecordJson<T>;
 }
 
-function computeRoundRecordHash<T = string>(artifact: RoundRecord<T>): string; // "sha256:<hex>"
+function computeRoundRecordHash<T = string>(record: RoundRecord<T>): string; // "sha256:<hex>"
 ```
 
-`toCanonicalJson` (in `json/`, not `artifact/` — it's generic, not RoundRecord-specific) is the **one serializer** shared by both `computeRoundRecordHash` and `PokieJsonRoundRecordProjector`, so a hash and its
+`toCanonicalJson` (in `json/`, not `roundrecord/` — it's generic, not RoundRecord-specific) is the **one serializer** shared by both `computeRoundRecordHash` and `PokieJsonRoundRecordProjector`, so a hash and its
 own JSON view can never silently disagree on what counts as "valid" JSON or how it's ordered. It:
 
 - Sorts plain-object keys recursively (so two values with the same content but different construction/insertion
@@ -200,51 +200,51 @@ itself deeply frozen. Implement `RoundRecordProjector` directly for a different 
 a data warehouse, for example) without touching `RoundRecord` itself.
 
 A `RoundRecord` built via `buildRoundRecord`/`buildRoundRecordFromSession` is already guaranteed JSON-safe
-(they run every artifact through `toCanonicalJson` before returning it — see above), so `computeRoundRecordHash`/
-`PokieJsonRoundRecordProjector.project` only actually throw for a hand-crafted artifact that bypassed that
+(they run every record through `toCanonicalJson` before returning it — see above), so `computeRoundRecordHash`/
+`PokieJsonRoundRecordProjector.project` only actually throw for a hand-crafted record that bypassed that
 guarantee.
 
 ```ts
 import {PokieJsonRoundRecordProjector} from "@fromstan/pokie";
 
 const projector = new PokieJsonRoundRecordProjector();
-const json = projector.project(artifact);
-// json.hash === computeRoundRecordHash(artifact)
+const json = projector.project(record);
+// json.hash === computeRoundRecordHash(record)
 ```
 
 ## Validation
 
 ```ts
 class RoundRecordValidator<T = string> implements ValidationRule<RoundRecord<T>> {
- validate(artifact: RoundRecord<T>): ValidationIssue[];
+ validate(record: RoundRecord<T>): ValidationIssue[];
 }
 ```
 
 Reuses the existing generic `ValidationRule<T>` interface (same as `PokieGameContractValidationRule`/
 `GameBlueprintValidator` — see [Game Packages](game-packages.md)). Unlike `buildRoundRecord`'s own fail-fast
 checks, `validate()` **never throws** — not even for a completely malformed, hand-crafted, or JSON-round-tripped
-artifact that doesn't actually match `RoundRecord`'s shape at runtime (missing fields, wrong types, `null`,
-even a circular object) — it always returns an array of `ValidationIssue`s instead (a catch-all "round-artifact-
+record that doesn't actually match `RoundRecord`'s shape at runtime (missing fields, wrong types, `null`,
+even a circular object) — it always returns an array of `ValidationIssue`s instead (a catch-all "round-record-
 malformed" issue in the worst case). It checks:
 
-- `roundId`, `provenance.game.{id,name,version}`, `provenance.pokieVersion` are non-empty strings.
-- `schemaVersion` is a positive integer *and* matches the currently supported `ROUND_ARTIFACT_SCHEMA_VERSION`.
+- `roundId`, `origin.game.{id,name,version}`, `origin.pokieVersion` are non-empty strings.
+- `schemaVersion` is a positive integer *and* matches the currently supported `ROUND_RECORD_SCHEMA_VERSION`.
 - `stake`/`totalWin` are finite, non-negative numbers; `payoutMultiplier` matches `totalWin / stake`.
 - Every win's `winAmount` (both in `wins` and in each step's own `wins`) is a finite, non-negative number.
 - `steps` is non-empty, with indices `0..n-1` in order, and each step's own `totalWin` matches the sum of that
  step's own wins.
 - The round-level `totalWin` matches the sum of each step's `totalWin`.
 - **`wins` is deeply equal to the flattened concatenation of every step's own `wins`** — not just the same
- *count*: two artifacts can have the same number of wins per step while actually containing different wins, and
- this catches that case specifically (`round-artifact-wins-mismatch`, distinct from the plain count check
- `round-artifact-wins-count-mismatch`).
-- **`screen` matches the last step's `screen`** (`round-artifact-screen-mismatch`).
+ *count*: two records can have the same number of wins per step while actually containing different wins, and
+ this catches that case specifically (`round-record-wins-mismatch`, distinct from the plain count check
+ `round-record-wins-count-mismatch`).
+- **`screen` matches the last step's `screen`** (`round-record-screen-mismatch`).
 - Every feature event (round-level and per-step) has a non-empty `type`.
-- The whole artifact is JSON-safe (via the same `toCanonicalJson` described above) — a JSON-safety violation
- (`round-artifact-not-json-safe`) is reported as an issue, not thrown.
+- The whole record is JSON-safe (via the same `toCanonicalJson` described above) — a JSON-safety violation
+ (`round-record-not-json-safe`) is reported as an issue, not thrown.
 
 ```ts
-const issues = new RoundRecordValidator().validate(artifact);
+const issues = new RoundRecordValidator().validate(record);
 if (issues.some((issue) => issue.severity === "error")) {
  //...
 }
@@ -258,10 +258,10 @@ generated coordinates and the separate PublicRoundRecordProjector: see the coord
 
 Explicit logical delivery retains each evaluated result before another subround
 can overwrite the live session's output. `buildLogicalRoundRecord(round,
-provenanceTemplate)` folds these immutable ordered steps, using the entry's
+originTemplate)` folds these immutable ordered steps, using the entry's
 actual stake/mode and mathematical win total. It does not resolve, refill, draw
 or evaluate. Full server capture uses this complete prefix and completes it as
-free games finish; pending artifacts represent a committed prefix, not a claim
+free games finish; pending records represent a committed prefix, not a claim
 that the feature ended. Public view still removes generated/evaluated
 coordinate data, including on the currently delivered cascade step.
 
@@ -278,7 +278,7 @@ subrounds. Entry commands preserve explicit bet/mode choices. The default replay
 unit remains one domain step; `pokie replay --unit logical-round` selects logical
 addressing for capable game packages. WASM/outcome sources do not gain feature
 mechanics through this option. Studio's recorded Play history already holds the
-original commands, prefix/final artifact and provenance, so re-delivery creates
+original commands, prefix/final record and origin, so re-delivery creates
 no additional history record.
 
 ## Recorded executable audit replay
@@ -287,7 +287,7 @@ no additional history record.
 JSON round record is validated against its hash when supplied to `RoundRecordValidator`.
 A visible view has no canonical hash and is not independently replayable.
 `AuditRoundRecording` (`pokie.audit-round.v1`, runtime interface
-`pokie.session-runtime.v1`) binds artifacts to executable inputs and result:
+`pokie.session-runtime.v1`) binds records to executable inputs and result:
 
 - selected game compatibility/state schema and effective model hash;
 - original context, variant/mode, bet, delivery policy, operation/request/attempt
@@ -371,7 +371,7 @@ prefix and final unevaluated refill.
 
 The audit SHA-256 covers the complete wrapper; file SHA-256 covers file content. Object key ordering is canonical, array ordering is significant.
 Errors expose stable `AuditReplayError.code` and `path`: structure/hash, version,
-identity, codec unsupported, state, command, order, artifact, execution mismatch or
+identity, codec unsupported, state, command, order, record, execution mismatch or
 cancellation. Validation happens before reconstruction, with selected-package
 identity/schema/supported actions as trusted source. Hash-valid semantic inconsistencies also
 fail validation or reproduction. Content hashes detect corruption relative to a
@@ -387,7 +387,7 @@ Standard authored samples now include `holdAndWin` (locks, active flag, remainin
 
 ### Screen modifier evidence
 
-Artifacts contain the transformed generated/visible outcome and evaluation-local
+Records contain the transformed generated/visible outcome and evaluation-local
 wins, with existing geometry mappings. `screenModifiers` feature events declare
 `space: "evaluated"`, ordered rule IDs and affected coordinates, and applied sticky
 symbol/factor identities with remaining future steps (0 on the last application).
@@ -406,12 +406,12 @@ maps every mandatory family separately from arbitrary custom callbacks.
 ## Portable feature results
 
 Supported WASM feature results carry the shared logical-round samples and
-canonical mathematical artifacts. CLI/Studio connectors project those samples
+canonical mathematical records. CLI/Studio connectors project those samples
 without calculating wins again. A complete requested composite can fold its finite
 returned subrounds with `buildLogicalRoundRecord`; a compact restored checkpoint
 can expose its latest mathematical subround and logical totals without inventing
 missing history. Generated/visible/evaluated coordinates and selected variant IDs
-remain bound to their original artifact. Mathematical win and wallet payout are
+remain bound to their original record. Mathematical win and wallet payout are
 separate; delivery-only cascade frames add neither a stake nor another sample.
 
 Built-in sessions expose the exact wallet award separately from their mathematical

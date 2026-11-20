@@ -1,7 +1,7 @@
-import {validateRoundRecordCoordinates} from "../artifact/validateRoundRecordCoordinates.js";
-import type {RoundRecord} from "../artifact/RoundRecord.js";
-import type {RoundRecordFeatureEvent} from "../artifact/RoundRecordFeatureEvent.js";
-import type {RoundStepRecord} from "../artifact/RoundStepRecord.js";
+import {validateRoundRecordCoordinates} from "../roundrecord/validateRoundRecordCoordinates.js";
+import type {RoundRecord} from "../roundrecord/RoundRecord.js";
+import type {RoundRecordFeatureEvent} from "../roundrecord/RoundRecordFeatureEvent.js";
+import type {RoundStepRecord} from "../roundrecord/RoundStepRecord.js";
 import type {JsonObject} from "../json/JsonValue.js";
 import {convertRatioToStakeUnits} from "./internal/convertRatioToStakeUnits.js";
 import type {StakeEngineEvent} from "./StakeEngineEvent.js";

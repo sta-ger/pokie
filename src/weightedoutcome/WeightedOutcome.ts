@@ -1,4 +1,4 @@
-import type {RoundRecord} from "../artifact/RoundRecord.js";
+import type {RoundRecord} from "../roundrecord/RoundRecord.js";
 
 // One entry of a WeightedOutcomeLibrary: a canonical RoundRecord together with the probability weight it
 // carries within the library (not a probability itself — weights are relative to the library's own total, see

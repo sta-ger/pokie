@@ -12,7 +12,7 @@ guessed.
 ## Lossy vs. lossless — read this before anything else
 
 Stake's own `index.json`/CSV/books never store `RoundRecord.roundId`, the real per-round win breakdown
-(individual line/cluster wins, positions, multiplier breakdowns), or `provenance.pokieVersion` (the `pokie`
+(individual line/cluster wins, positions, multiplier breakdowns), or `origin.pokieVersion` (the `pokie`
 version that *built* the original artifact, as opposed to the manifest's own `pokieVersion`, the version that
 *ran the export*) — these three are genuinely unrecoverable, by design of the Stake format itself, not a gap in
 this importer. Rather than invent plausible-looking stand-ins, the importer uses clearly disclosed substitutes:
@@ -21,7 +21,7 @@ this importer. Rather than invent plausible-looking stand-ins, the importer uses
 |---|---|
 | `roundId` | synthesized deterministically as `` `stakeengine-import:<modeName>:<id>` `` |
 | `wins` | one synthetic win component per step with `totalWin > 0`, flagged via `metadata.stakeEngineImportSynthetic: true` — see below |
-| `provenance.pokieVersion` | substituted with `pokie-info.json`'s own `pokieVersion` |
+| `origin.pokieVersion` | substituted with `pokie-info.json`'s own `pokieVersion` |
 
 Within the supported format, Stake-facing outcome IDs, weights and raw integer payout multipliers
 round-trip exactly. Package fields (`cost`, `betMode`, `stake`, `libraryId`, game and config identity)
@@ -30,7 +30,7 @@ their floating-point bits need not match the original native objects. Each accep
 reproduce the original raw Stake integer under the shared forward calculation.
 
 **Do not expect `computeWeightedOutcomeLibraryHash(importedLibrary)` to match `pokie-info.json`'s own recorded
-`libraryHash`** — it won't, because `roundId`/`wins`/`provenance.pokieVersion` differ from the original by design.
+`libraryHash`** — it won't, because `roundId`/`wins`/`origin.pokieVersion` differ from the original by design.
 `StakeEngineImporter` reports this as an expected, informational `stakeengine-import-library-hash-differs-from-manifest`
 issue on every successful mode, not a warning or error.
 
@@ -54,7 +54,7 @@ the CLI (`pokie import <stakeDir>` writes exactly what `pokie build --target sta
 
 Import only ever round-trips a directory produced by `pokie build --target stakeAdapter` — there is no path for
 importing a hand-crafted or foreign Stake package with caller-supplied fallback fields. Without a recognized
-manifest (`generatedBy` identifies POKIE's connector export), `betMode`/`stake`/`provenance`/`libraryId` are genuinely
+manifest (`generatedBy` identifies POKIE's connector export), `betMode`/`stake`/`origin`/`libraryId` are genuinely
 unrecoverable, and reporting `stakeengine-import-manifest-missing`/`stakeengine-import-manifest-unrecognized`
 is the honest outcome — not inventing stand-in values for them.
 

@@ -1,6 +1,6 @@
 import {validateWeightedBonusObservation} from "../session/videoslot/authored/WeightedBonus.js";
 import type {ConvertableToSessionState} from "../session/ConvertableToSessionState.js";
-import {sequenceSelectionsEqual} from "../artifact/validateSequenceSelections.js";
+import {sequenceSelectionsEqual} from "../roundrecord/validateSequenceSelections.js";
 import type {ReelSequenceSelection} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import {SessionRuntime} from "./SessionRuntime.js";
 import {cloneSessionData} from "./internal/cloneSessionData.js";
@@ -9,7 +9,7 @@ import {validateLogicalRound} from "./LogicalRound.js";
 import {captureCoordinatePublicPayload} from "../server/session/internal/captureCoordinatePublicPayload.js";
 import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
 import type {LiveSessionAuthority, LiveSnapshotPolicy} from "./internal/LiveSessionAuthority.js";
-import {RoundRecordValidator} from "../artifact/RoundRecordValidator.js";
+import {RoundRecordValidator} from "../roundrecord/RoundRecordValidator.js";
 import {isSessionStateRestorable, resolveSessionStateSchema, sessionStateSchemasMatch, type SessionStateSchema} from "../session/SessionStateRestoring.js";
 import {validateExecutableState} from "./validateExecutableState.js";
 import type {PokieGame} from "../gamepackage/PokieGame.js";

@@ -220,7 +220,7 @@ artifact, screen and payout. That object is portable input provenance, not a gen
 is configured — a separate namespace (`/pregenerated-sessions`) that never overlaps with the existing `/sessions`
 routes, which are completely unaffected either way. The constructor itself fails fast — before `start()` is ever
 called — with `PreGeneratedLibraryProvenanceMismatchError` if the configured library's own provenance (every
-outcome shares the same `provenance.game`, guaranteed by `buildWeightedOutcomeLibrary`'s homogeneity check) doesn't
+outcome shares the same `origin.game`, guaranteed by `buildWeightedOutcomeLibrary`'s homogeneity check) doesn't
 match the loaded `PokieGame`'s manifest: a library built for the wrong game, or the wrong version of this one, is a
 configuration mistake caught at startup, never something a caller discovers mid-round.
 

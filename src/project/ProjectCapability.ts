@@ -1,5 +1,5 @@
 // A capability id is a plain, open string rather than a closed union — same convention as
-// ExternalExportCapability (see externaladapter/ExternalExportCapability.ts) and for the identical
+// ExternalExportCapability (see externalexport/ExternalExportCapability.ts) and for the identical
 // reason: the constants below are the vocabulary POKIE's own ProjectCapabilities/PokieOperation model
 // understands today, but closing this to a union would make every future capability a breaking change to this
 // file rather than an additive one.

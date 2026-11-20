@@ -7,6 +7,7 @@
 - `pokie build` converts a game design into a TypeScript game package, an outcome library, a Stake Engine export, a PAR workbook or a WASM build.
 - Authored free games, bet modes, Hold & Win, jackpots, cascades, resizable grids, weighted bonuses and screen modifiers.
 - Seeded simulation, parallel workers, adaptive early stop, exact weighted-outcome analysis and finite math optimization.
+- One public vocabulary: `GameBlueprint.info`, `RoundRecord`, `CertificationPack`, `FeatureChains`, `OutcomeLibraryFolder` and `ExternalExport*`. On-disk indexes use `index.json`; POKIE-produced Stake exports use `pokie-info.json`.
 - Round records, reproducible replay, audit records, commit-reveal fairness proofs and certification packs.
 - Single ESM library build and declarations, with Node `require(esm)` compatibility; ESM-only browser, WASM and player subpaths.
 - Local/reference HTTP server with replaceable session storage and wallet connectors. Not a casino backend or RGS.

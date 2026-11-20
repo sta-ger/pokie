@@ -1,9 +1,9 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import {buildRoundRecord} from "../artifact/buildRoundRecord.js";
-import {RoundRecordBuildError} from "../artifact/RoundRecordBuildError.js";
-import type {RoundRecord} from "../artifact/RoundRecord.js";
+import {buildRoundRecord} from "../roundrecord/buildRoundRecord.js";
+import {RoundRecordBuildError} from "../roundrecord/RoundRecordBuildError.js";
+import type {RoundRecord} from "../roundrecord/RoundRecord.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import {buildWeightedOutcomeLibrary} from "../weightedoutcome/buildWeightedOutcomeLibrary.js";
 import {WeightedOutcomeLibraryBuildError} from "../weightedoutcome/WeightedOutcomeLibraryBuildError.js";

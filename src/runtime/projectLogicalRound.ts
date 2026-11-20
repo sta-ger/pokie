@@ -1,5 +1,5 @@
 import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
-import {projectPublicRoundStep, projectPublicFeatureEvent} from "../artifact/PublicRoundRecordProjector.js";
+import {projectPublicRoundStep, projectPublicFeatureEvent} from "../roundrecord/PublicRoundRecordProjector.js";
 import type {LogicalRound} from "./LogicalRound.js";
 import {cloneSessionData} from "./internal/cloneSessionData.js";
 

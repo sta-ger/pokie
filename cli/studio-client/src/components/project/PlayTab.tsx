@@ -78,7 +78,7 @@ export function PlayTab({
     const activeSession = session.status === "ok" ? session.session : preservedSession;
     const availableSymbols = activeSession?.availableSymbols;
     // These values are the session serializer's direct projection of the canonical Project/Game Model;
-    // Play never invents a bet or a mode from an artifact/result.  They are refreshed from the returned
+    // Play never invents a bet or a mode from an roundrecord/result.  They are refreshed from the returned
     // session after every spin, which is particularly important for a consumed one-shot buyFeature.
     const availableBets = useMemo(() => deriveAvailableBets(activeSession?.availableBets), [activeSession?.availableBets]);
     const availableBetModes = useMemo(() => deriveAvailableBetModeIds(activeSession?.availableBetModeIds), [activeSession?.availableBetModeIds]);

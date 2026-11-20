@@ -2,7 +2,7 @@
 
 # External connector SDK
 
-`externaladapter/` is a small, generic SDK for deploying [`WeightedOutcomeLibrary`](weighted-outcome-library.md)
+`externalexport/` is a small, generic SDK for deploying [`WeightedOutcomeLibrary`](weighted-outcome-library.md)
 content to an *external* target — a specific external format or RGS/aggregator-style consumer — without POKIE
 itself needing to know anything about that target's own wire format. It's the same relationship
 [Stake Engine Export](stake-engine-export.md) has to the real Stake math-sdk format, generalized: instead of one
@@ -142,7 +142,7 @@ issues as `result.descriptorIssues` and stops before compatibility validation ev
 
 | Field | Meaning |
 |---|---|
-| `minPokieVersion?` | Lowest `provenance.pokieVersion` this target's format is known to understand (major.minor.patch only — see `internal/compareSemverLite`, a deliberately minimal comparator since POKIE has no semver dependency). |
+| `minPokieVersion?` | Lowest `origin.pokieVersion` this target's format is known to understand (major.minor.patch only — see `internal/compareSemverLite`, a deliberately minimal comparator since POKIE has no semver dependency). |
 | `symbolAlphabet?` | `"numeric"` requires every screen/step symbol (`T` in `RoundRecord<T>`) across every deployed outcome to be a `number`. `"any"` (default) places no constraint. |
 | `requiresHomogeneousProvenance?` | When true (the default), every mode in one deployment must share the same game id/version, `configHash`, and `pokieVersion` — the same cross-mode check `StakeEngineExportValidator` runs. |
 
@@ -152,8 +152,8 @@ SDK checks. Three well-known ids are understood by `ExternalExportCompatibilityV
 
 | Constant | Checked when... |
 |---|---|
-| `ROUND_ARTIFACT_FEATURE_EVENTS_CAPABILITY` | any deployed `RoundRecord`/`RoundStepRecord` has non-empty `featureEvents` |
-| `ROUND_ARTIFACT_DEBUG_METADATA_CAPABILITY` | any deployed `RoundRecord`/`RoundStepRecord` has a `debug` field |
+| `ROUND_RECORD_FEATURE_EVENTS_CAPABILITY` | any deployed `RoundRecord`/`RoundStepRecord` has non-empty `featureEvents` |
+| `ROUND_RECORD_DEBUG_METADATA_CAPABILITY` | any deployed `RoundRecord`/`RoundStepRecord` has a `debug` field |
 | `MULTI_MODE_DEPLOYMENT_CAPABILITY` | more than one `ExternalExportModeInput` is given in one deployment |
 
 A target that doesn't declare one of these gets an error-severity `ValidationIssue` if the deployed content
@@ -170,7 +170,7 @@ for the generator to choke on.
 | `external-deployment-mode-name-case-collision` | two `modeName`s differing only in case |
 | `external-deployment-multi-mode-unsupported` | more than one mode given without `MULTI_MODE_DEPLOYMENT_CAPABILITY` |
 | `external-deployment-provenance-mismatch` | a mode's provenance doesn't match the deployment's other modes (and `requiresHomogeneousProvenance` wasn't set to `false`) |
-| `external-deployment-pokie-version-too-old` | content's `provenance.pokieVersion` is below the target's `minPokieVersion` |
+| `external-deployment-pokie-version-too-old` | content's `origin.pokieVersion` is below the target's `minPokieVersion` |
 | `external-deployment-pokie-version-not-comparable` | either version string doesn't parse as `major.minor.patch` |
 | `external-deployment-symbol-alphabet-invalid` | `symbolAlphabet: "numeric"` but a non-numeric symbol was found |
 | `external-deployment-feature-events-unsupported` | content uses feature events without the supported action |

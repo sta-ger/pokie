@@ -1,4 +1,4 @@
-import {RoundRecordValidator} from "../artifact/RoundRecordValidator.js";
+import {RoundRecordValidator} from "../roundrecord/RoundRecordValidator.js";
 import {InvalidJsonValueError} from "../json/InvalidJsonValueError.js";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
@@ -242,7 +242,7 @@ implements ValidationRule<PreGeneratedRoundResult<T>> {
     // single-field check above can catch: a forged debit/credit amount, or a balanceAfter that doesn't
     // actually reconcile with balanceBefore and the transactions that supposedly produced it. Skips
     // silently (relying on validateRuntime's own per-entry check having already reported it) when
-    // runtime/artifact/transactions aren't even structurally sound enough to sum.
+    // runtime/roundrecord/transactions aren't even structurally sound enough to sum.
     private validateTransactionConsistency(
         runtime: Loose<PreGeneratedRoundResult<T>["runtime"]> | undefined,
         artifact: Loose<PreGeneratedRoundResult<T>["artifact"]> | undefined,

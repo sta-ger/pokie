@@ -1,8 +1,8 @@
 import {resolveSessionPayout} from "../../runtime/internal/resolveSessionPayout.js";
 import {validateCheckpointFeasibility} from "./validateCheckpointFeasibility.js";
 import {captureDeclarativeTransitionBalances, restoreDeclarativeObservation} from "./restoreDeclarativeObservation.js";
-import {buildRoundRecordFromSession} from "../../artifact/buildRoundRecordFromSession.js";
-import {RoundRecordValidator} from "../../artifact/RoundRecordValidator.js";
+import {buildRoundRecordFromSession} from "../../roundrecord/buildRoundRecordFromSession.js";
+import {RoundRecordValidator} from "../../roundrecord/RoundRecordValidator.js";
 import {ACTIVE_POKIE_WASM_TRACES as ACTIVE_TRACES} from "./PokieWasmTraceOwnership.js";
 import {PortableRandomNumberGenerator} from "../../session/videoslot/combinations/internal/PortableRandomNumberGenerator.js";
 import {ScreenProjection} from "../../session/videoslot/coordinates/ScreenProjection.js";

@@ -1383,7 +1383,7 @@ written and the exit code is non-zero. The result's `modes` can be fed straight 
 `pokie build <outDir>/config.json --target stakeAdapter` — importing and re-exporting the same directory reproduces
 byte-identical `index.json`/CSVs/books (see
 [The real round-trip property](stake-engine-import.md#the-real-round-trip-property)), even though the
-reconstructed `roundId`/win breakdown/`provenance.pokieVersion` don't match the original pre-export library (see
+reconstructed `roundId`/win breakdown/`origin.pokieVersion` don't match the original pre-export library (see
 [Lossy vs. lossless](stake-engine-import.md#lossy-vs-lossless--read-this-before-anything-else)).
 
 ## `pokie report <stakeDir>`
@@ -2371,7 +2371,7 @@ and fails closed for omissions or mismatches, telling the caller to restore the 
 replay remains best-effort; it may inspect a round with unavailable state, but must not claim an exact comparison.
 
 Seeded `pokie sample` prints a standard `ReplayDescriptor` whose `outcomeSource` is the portable
-provenance. Seeded Studio Outcome Library Play spins retain that provenance in Recent Rounds, and a seeded `pokie
+provenance. Seeded Studio Outcome Library Play spins retain that origin in Recent Rounds, and a seeded `pokie
 sim <folder> --mode <mode> --seed <seed>` report exposes its last sampled round as `lastReplay`. These all use
 `derived-round-seed-v1`: use the recorded `seed`, `round`, and `modeName` verbatim; a default mode or a raw
 seeded-stream sample is not interchangeable origin.
@@ -3869,7 +3869,7 @@ All 22 public top-level commands this file documents (`build`/`certification`/`c
 `serve`/`sim`/`validate`) are shipped today. Package-oriented workflows use the shared
 [game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`, `PokieGameContractValidationRule`);
 the positional Studio Project, portable `run` command and WASM inspect/validate/sim/replay paths use the integrity-checked `@fromstan/pokie/wasm`
-runtime instead, while artifact/source workflows use the resolver and `BuildOutputBuilderRegistry` interfaces appropriate
+runtime instead, while roundrecord/source workflows use the resolver and `BuildOutputBuilderRegistry` interfaces appropriate
 to their project types. [POKIE Studio](#pokie) already
 covers most of these workflows with a real GUI, not just the CLI: designing/building a game (Home's Design Game
 tab, including PAR Sheet import and reel strip generation), and, once a project is open, inspection/
@@ -3961,7 +3961,7 @@ Direct API callers must likewise retain their original requestId and payload; op
 
 `pokie replay <compatible-project> --recording recording.json [--out verified.json]`
 imports a `ReplayDescriptor` with its complete audit envelope and reproduces the
-original executable inputs. It rejects contradictory descriptor/artifact/result
+original executable inputs. It rejects contradictory descriptor/roundrecord/result
 fields, unsupported versions/model/codec and mismatches. `--recording` binds the
 commands/selections and cannot be combined with replacement seed, round, unit or
 mode flags. The descriptor separates the original operation/session identities from

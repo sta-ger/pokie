@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import fs from "fs";
-import {RoundRecordValidator} from "../../../artifact/RoundRecordValidator.js";
+import {RoundRecordValidator} from "../../../roundrecord/RoundRecordValidator.js";
 import {toCanonicalJson} from "../../../json/toCanonicalJson.js";
 import {isPositiveSafeInteger} from "../../../pregenerated/internal/isPositiveSafeInteger.js";
 import type {ValidationIssue} from "../../../validation/ValidationIssue.js";

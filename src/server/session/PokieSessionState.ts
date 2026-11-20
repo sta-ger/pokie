@@ -4,7 +4,7 @@ import type {ScreenGeometry} from "../../session/videoslot/coordinates/ScreenGeo
 import type {SessionStateSchema} from "../../session/SessionStateRestoring.js";
 import type {GameSessionIdentity} from "../../runtime/GameSessionIdentity.js";
 import type {PokieGameContext} from "../../gamepackage/PokieGameContext.js";
-import type {RoundRecord} from "../../artifact/RoundRecord.js";
+import type {RoundRecord} from "../../roundrecord/RoundRecord.js";
 import type {SessionCapturePolicy} from "./SessionCapturePolicy.js";
 
 export type PokieSessionState = {

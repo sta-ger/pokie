@@ -1,5 +1,5 @@
 import type {JsonObject} from "../json/JsonValue.js";
-import type {RoundRecord} from "../artifact/RoundRecord.js";
+import type {RoundRecord} from "../roundrecord/RoundRecord.js";
 
 // One target's own RoundRecord -> external-format projection. Deliberately not a reuse of the generic
 // RoundRecordProjector<T, TOutput> (see RoundRecordProjector.ts) — every ExternalExportTarget's own

@@ -1,4 +1,4 @@
-import type {RoundRecord} from "../artifact/RoundRecord.js";
+import type {RoundRecord} from "../roundrecord/RoundRecord.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import {WeightedOutcomeLibraryValidator} from "../weightedoutcome/WeightedOutcomeLibraryValidator.js";
 import type {WeightedOutcome} from "../weightedoutcome/WeightedOutcome.js";
@@ -45,7 +45,7 @@ function hasNonNumericSymbol<T extends string | number>(artifact: RoundRecord<T>
 }
 
 // Checks one ExternalExportTarget's own requirements/capabilities against a specific deployment's content —
-// always run before ExternalFileGenerator.generate() is ever called (see docs/external-adapter-sdk.md for
+// always run before ExternalFileGenerator.generate() is ever called (see docs/external-connector-sdk.md for
 // the intended pipeline: compatibility check -> generate -> ExternalFileValidator), so an incompatible
 // deployment fails fast instead of wasting a generation pass. Additively runs WeightedOutcomeLibraryValidator
 // against every mode's own library first — the same "never treat a malformed library as valid" convention

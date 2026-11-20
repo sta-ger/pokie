@@ -807,7 +807,7 @@ export type StudioSimulationReportListEntry = {
     modes?: Record<string, {rounds: number; betMode?: string}>;
 };
 
-// The server's copies of this whole RoundRecord family live in "pokie" itself (src/artifact/*.ts) —
+// The server's copies of this whole RoundRecord family live in "pokie" itself (src/roundrecord/*.ts) —
 // kept as their own client-side copies here, same convention as every other type in this file. Deeply
 // readonly to match the server's own guarantee (a RoundRecord is deep-frozen at build time).
 export type RoundRecordOrigin = {

@@ -6,7 +6,7 @@ import {AuditReplayError} from "../../replay/AuditReplayError.js";
 import type {AuditDisposition} from "../../replay/AuditRoundRecording.js";
 import {emptyLogicalRoundStatistics, mergeLogicalRoundStatistics} from "../../simulation/LogicalRoundStatistics.js";
 import {commandEnvelope} from "../../runtime/commandEnvelope.js";
-import {buildLogicalRoundRecord} from "../../artifact/buildLogicalRoundRecord.js";
+import {buildLogicalRoundRecord} from "../../roundrecord/buildLogicalRoundRecord.js";
 import {isExternalRoundStore, type ExternalRoundStore, type ExternalRoundPreparation, type ExternalRoundCandidate} from "../storage/ExternalRoundStore.js";
 import {InMemoryWallet} from "../wallet/InMemoryWallet.js";
 import type {TransactionalRoundStore} from "../storage/TransactionalRoundStore.js";
