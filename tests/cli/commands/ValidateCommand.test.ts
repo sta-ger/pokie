@@ -385,20 +385,20 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
             {
                 code: "pokie-game-manifest-threw",
                 path: "package.json#pokie.entry#manifest",
-                message: "The game manifest provided by this package could not be read.",
-                suggestion: "Ensure the package entry provides a manifest with non-empty id, name, and version, then run validate again.",
+                message: "The game info provided by this package could not be read.",
+                suggestion: "Ensure the package entry provides game info with a non-empty id, name and version, then run validate again.",
             },
             {
                 code: "pokie-game-manifest-missing",
                 path: "package.json#pokie.entry#manifest",
-                message: "The package entry does not provide a game manifest.",
-                suggestion: "Add a game manifest with non-empty id, name, and version to the package entry, then run validate again.",
+                message: "The package entry does not provide game info.",
+                suggestion: "Add game info with a non-empty id, name and version to the package entry, then run validate again.",
             },
             ...(["id", "name", "version"] as const).map((field) => ({
                 code: `pokie-game-manifest-invalid-${field}`,
                 path: `package.json#pokie.entry#manifest.${field}`,
-                message: `The game manifest field "${field}" must be a non-empty string.`,
-                suggestion: `Set the game manifest field "${field}" to a non-empty string, then run validate again.`,
+                message: `The game info field "${field}" must be a non-empty string.`,
+                suggestion: `Set the game info field "${field}" to a non-empty string, then run validate again.`,
             })),
         ];
 

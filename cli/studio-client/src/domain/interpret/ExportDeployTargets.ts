@@ -74,7 +74,7 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
         label: "Game Blueprint",
         purpose: "Extract a supported public package model or import a PAR workbook into a separate editable Game Blueprint.",
         destination: "Choose where to save the imported Blueprint, or use the default destination.",
-        technicalDestination: "A new Blueprint JSON file with adjacent conversion evidence.",
+        technicalDestination: "A new game design JSON file with conversion details.",
         unavailableReason: "This project cannot supply a complete representable game model. Open a package with a public model descriptor or a PAR workbook.",
     },
     tsPackage: {
@@ -102,7 +102,7 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
     },
     parWorkbook: {
         label: "PAR sheet (.xlsx)",
-        purpose: "Export this Game Blueprint as a PAR workbook snapshot, or republish this PAR workbook.",
+        purpose: "Export this game design as a PAR workbook copy, or republish this PAR workbook.",
         destination: "Choose where to save the PAR workbook, or use the default destination.",
         technicalDestination: "A new .xlsx file (default: \"parWorkbook.xlsx\" next to this project).",
         unavailableReason: "This project cannot export or republish a PAR workbook. Open a Game Blueprint or PAR sheet workbook project to continue.",
@@ -111,7 +111,7 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
         label: "Portable WASM game",
         purpose: `Build a portable POKIE WASM game from a supported Blueprint/PAR model. ${WASM_EXECUTION_BOUNDARY}`,
         destination: "Choose where to save the WASM game, or use the default destination.",
-        technicalDestination: "A game.wasm module with an integrity-bound POKIE manifest sidecar.",
+        technicalDestination: "A game.wasm module with a hash-verified POKIE companion file.",
         unavailableReason: "This project cannot build a portable WASM game. Open a Game Blueprint or PAR sheet workbook project to continue.",
     },
 };
@@ -162,7 +162,7 @@ export function describeArtifactBuildTargetCards(targets: readonly StudioArtifac
                 unavailableReasons: unavailableReasonsForArtifactTarget(entry, info.unavailableReason),
                 supported: entry.supported,
                 locality: "local",
-                compatibility: "The exact same ArtifactBuilderRegistry conversion runs in the CLI and Studio, so they always agree on what's buildable and what it writes.",
+                compatibility: "The same build conversion runs in the CLI and Studio, so they always agree on what can be built and what is written.",
                 artifactTarget: entry.target,
                 ...(entry.plan === undefined ? {} : {artifactPlan: entry.plan}),
             };
@@ -200,21 +200,21 @@ function describeExternalAdapterTargetCard(target: StudioDeploymentTargetSummary
         kind: "remoteDeployment",
         id: target.id,
         label: "Remote delivery",
-        adapter: "External Adapter SDK registered target",
+        adapter: "External connector SDK registered target",
         version: target.version,
         purpose: "Check and publish this project's outcome library to a configured remote destination.",
         destination: "Use the configured remote destination after a compatibility check succeeds.",
-        technicalDestination: "Wherever this target's own runtime adapter delivers to -- not necessarily local to this machine.",
+        technicalDestination: "Wherever this target's own runtime connector delivers to -- not necessarily local to this machine.",
         writePublishBehavior:
             "Preview runs the full pipeline (compatibility check, projection, generation, artifact validation, target diagnostic) without writing; Deploy additionally publishes the generated artifacts to the target's own output location.",
-        capabilities: target.capabilities.length > 0 ? target.capabilities.map(describeTargetCapability) : ["No optional capabilities declared."],
+        capabilities: target.capabilities.length > 0 ? target.capabilities.map(describeTargetCapability) : ["No optional supported actions declared."],
         limits: describeTargetRequirements(target.requirements),
-        prerequisites: ["One canonical outcome library file per deployment mode", "A reachable target diagnostic before Deploy is offered"],
+        prerequisites: ["One outcome library file per deployment mode", "A reachable target diagnostic before Deploy is offered"],
         unavailableReasons: [],
         supported: true,
         locality: "remote",
         compatibility:
-            "Checked by ExternalDeploymentCompatibilityValidator before any artifact is generated -- an incompatible mode is rejected up front, never partially deployed.",
+            "Checked by ExternalDeploymentCompatibilityValidator before any output is generated -- an incompatible mode is rejected up front, never partially deployed.",
         deploymentTarget: target,
     };
 }
@@ -239,7 +239,7 @@ const REMOTE_DEPLOYMENT_PLACEHOLDER_CARD: ExportDeployTargetCard = {
     unavailableReasons: ["No configured remote destination is available yet. Generate a compatible outcome library in Build/Export so it is ready to check when a destination is registered."],
     supported: false,
     locality: "remote",
-    compatibility: "Once registered, goes through the same ExternalDeploymentCompatibilityValidator contract every other target already does.",
+    compatibility: "Once registered, goes through the same ExternalDeploymentCompatibilityValidator interface every other target already does.",
 };
 
 // Builds the shell's own card list from live server data.  These cards describe

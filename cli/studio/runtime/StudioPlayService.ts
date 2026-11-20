@@ -122,8 +122,8 @@ type ActiveWasmSession = {
 type ActiveSession = ActiveRuntimeSession | ActiveOutcomeSourceSession | ActiveWasmSession;
 
 const WASM_SCENARIO_CAPABILITIES = {
-    findSymbolWin: "This canonical WASM runtime does not declare per-symbol win details, so Find symbol win isn't available. Spin remains available.",
-    findFreeGames: "This canonical WASM runtime does not declare free-games events, so Find free games isn't available. Spin remains available.",
+    findSymbolWin: "This WASM runtime does not declare per-symbol win details, so Find symbol win isn't available. Spin remains available.",
+    findFreeGames: "This WASM runtime does not declare free-games events, so Find free games isn't available. Spin remains available.",
 } as const;
 
 export type StudioPlaySpinResult =
@@ -575,12 +575,12 @@ export class StudioPlayService {
         try {
             const project = await this.resolveProject.resolve(active.projectRoot);
             if (!this.isActiveSession(active, sessionId)) return undefined;
-            if (project?.type !== "wasm") throw new Error("The active WASM artifact was replaced by a different project.");
+            if (project?.type !== "wasm") throw new Error("The active WASM build was replaced by a different project.");
             const current = await this.loadWasmRuntime(active.projectRoot, {nextRandom: () => 0});
             try {
                 if (!this.isActiveSession(active, sessionId)) return undefined;
                 const integrity = current.manifest.artifact?.sha256;
-                if (integrity !== active.integrity) throw new Error("The active WASM artifact changed after this session was opened. Start a new session to run the replacement.");
+                if (integrity !== active.integrity) throw new Error("The active WASM build changed after this session was opened. Start a new session to run the replacement.");
             } finally {
                 current.dispose();
             }
@@ -600,7 +600,7 @@ export class StudioPlayService {
             if (!this.isActiveSession(active, sessionId)) return undefined;
             if (project?.type !== "wasm") return undefined;
             await this.releaseCapturedActiveSession(active, sessionId);
-            return "This POKIE WASM component cannot play a game round until a new canonical WASM session is started.";
+            return "This POKIE WASM component cannot play a game round until a new WASM session is started.";
         } catch (error) {
             if (!this.isActiveSession(active, sessionId)) return undefined;
             await this.releaseCapturedActiveSession(active, sessionId);
@@ -992,7 +992,7 @@ export class StudioPlayService {
             ...(round.logicalRound ? {logicalRound: projectLogicalRound(round.logicalRound), logicalRoundDurability: "process-only" as const} : {}),
             screen: round.screen.map(reel => [...reel]), scenarioCapabilities: WASM_SCENARIO_CAPABILITIES,
             debug: {...(stateBefore === undefined ? {} : {stateBefore}), ...(stateAfter === undefined ? {} : {stateAfter}),
-                ...(artifact ? {artifact} : {artifactUnavailableReason: "This canonical WASM runtime does not declare artifact.inspect, so Studio cannot expose a Round Record projection."})},};
+                ...(artifact ? {artifact} : {artifactUnavailableReason: "This WASM runtime does not declare artifact.inspect, so Studio cannot expose a round record view."})},};
     }
 
     private projectWasmRoundRecord(active: ActiveWasmSession, sessionId: string, round: PokieWasmRound): RoundRecordJson {

@@ -258,7 +258,7 @@ export class StudioJobService {
         await Promise.all([...this.pendingExecutors]);
         if (!cleanupConfirmed || this.executorCleanupFailed || this.repository.list().some((job) => !isStudioJobTerminal(job.status))) {
             this.reconcileInterruptedJobs(true);
-            throw new Error("Studio shutdown could not confirm executor cleanup. Retained jobs require recovery.");
+            throw new Error("Studio shutdown could not confirm executor cleanup. Saved jobs require recovery.");
         }
         this.repository.saveProcessState({status: "gracefully-stopped", updatedAt: this.now()});
     }
@@ -268,7 +268,7 @@ export class StudioJobService {
             if (isStudioJobTerminal(job.status)) continue;
             const recovery: StudioJobRecoveryView = job.recoveryOnRestart ?? {action: "retry", reason: "Studio restarted before this job completed. No partial output was published; retry from scratch."};
             this.terminal(job.id, "recovery-required", {recovery: cleanupUnconfirmed
-                ? {...recovery, reason: "Studio shutdown could not confirm executor cleanup. Inspect the captured destination and retained artifacts, then restart Studio before retrying."}
+                ? {...recovery, reason: "Studio shutdown could not confirm executor cleanup. Inspect the captured destination and saved files, then restart Studio before retrying."}
                 : recovery});
         }
     }

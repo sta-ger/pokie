@@ -523,7 +523,7 @@ describe("CreateCommand", () => {
 
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toContain('Generated random game "Blazing Riches" (id: "blazing-riches-4821") from seed 20260721');
-            expect(printed).toContain('Provenance: generator 1.0.0, strategy "default-line-pay".');
+            expect(printed).toContain('Origin: generator 1.0.0, strategy "default-line-pay".');
             expect(printed).toContain('created at "./blazing-riches-4821.blueprint.json"');
         });
 

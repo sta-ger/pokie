@@ -152,7 +152,7 @@ export class OutcomeSourceCommand implements CliCommandHandling {
 
         parent
             .command("inspect")
-            .description("Inspect a resolved outcome-library/Stake Engine outcome source through its own canonical reader.")
+            .description("Inspect a resolved outcome-library/Stake Engine outcome source with its own reader.")
             .argument("<path>", "an outcome-library bundle or Stake Engine export directory")
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
             .action(async (targetPath: string, excess: string[]) => {

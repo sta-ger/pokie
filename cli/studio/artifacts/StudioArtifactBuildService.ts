@@ -65,7 +65,7 @@ function destinationKindFor(target: ArtifactTargetType): "file" | "directory" {
 function plannedOutputsFor(target: ArtifactTargetType): readonly string[] {
     switch (target) {
         case "blueprint":
-            return ["Game Blueprint JSON file with conversion evidence"];
+            return ["Game design JSON file with conversion details"];
         case "tsPackage":
             return ["Runnable TypeScript game package directory"];
         case "outcomeLibrary":
@@ -75,7 +75,7 @@ function plannedOutputsFor(target: ArtifactTargetType): readonly string[] {
         case "parWorkbook":
             return ["PAR workbook (.xlsx) file"];
         case "wasm":
-            return ["Portable game.wasm module", "Integrity-bound POKIE WASM manifest sidecar"];
+            return ["Portable game.wasm module", "Hash-verified POKIE WASM companion file"];
         default:
             throw new Error(`Unknown artifact target: ${target}`);
     }
@@ -170,7 +170,7 @@ export class StudioArtifactBuildService {
                     ...new ArtifactConversionPlanner().plan(project, target), status: "unavailable", steps: [],
                     diagnostic: {code: "unsupported-boundary", failedEdge: {from: project.type, to: target},
                         message: `${target} preflight failed: ${(error instanceof Error ? error.message : "Runtime inspection failed").slice(0, 2000)}`,
-                        recovery: "Inspect this target's runtime capabilities or choose an available model conversion."},
+                        recovery: "Inspect this target's supported actions or choose an available model conversion."},
                 };
             }
             const plannerFields = this.targetPlannerFields(plan);
@@ -205,7 +205,7 @@ export class StudioArtifactBuildService {
             ? await this.preparePreview(projectRoot, target, outDir, signal)
             : await this.preflight.preparePreview(projectRoot, target, outDir, signal);
         assertArtifactBuildNotCancelled({signal});
-        if (this.previewVersions.get(key) !== version) throw new Error("Artifact preflight superseded by a newer destination.");
+        if (this.previewVersions.get(key) !== version) throw new Error("Build check superseded by a newer destination.");
         const {view, extraction, stakeOperation} = prepared;
         if (view.status !== "ok") return view;
         let preparedOperationId: string | undefined;
@@ -358,7 +358,7 @@ export class StudioArtifactBuildService {
             assertArtifactBuildNotCancelled(options);
         } catch (error) {
             plan = new ArtifactConversionPlanner().plan(project, target, {destinationPath: destination});
-            return error instanceof ArtifactBuildCancelledError ? {status: "cancelled", message: "Artifact build cancelled before publication.", plan} : {status: "error", message: error instanceof Error ? error.message : String(error), plan};
+            return error instanceof ArtifactBuildCancelledError ? {status: "cancelled", message: "Build cancelled before publication.", plan} : {status: "error", message: error instanceof Error ? error.message : String(error), plan};
         }
         if (plan.status === "unavailable") {
             return {status: "unsupported", target, message: this.describePlanDiagnostic(plan), plan};
@@ -447,7 +447,7 @@ export class StudioArtifactBuildService {
                 return {status: "conflict", target, message: error.message, plan};
             }
             if (error instanceof ArtifactBuildCancelledError) {
-                return {status: "cancelled", message: "Artifact build was cancelled.", plan};
+                return {status: "cancelled", message: "Build was cancelled.", plan};
             }
             return {status: "error", message: error instanceof Error ? error.message : String(error), plan};
         }
@@ -603,7 +603,7 @@ export class StudioArtifactBuildService {
             // Two builders spelling the same output as "out", "./out", or
             // an absolute path must share one common durable conflict key.
             conflictKey: `artifact:${path.resolve(outDir ?? resolveDefaultDestination(projectRoot, target))}`,
-            recoveryOnRestart: {action: "rebuild", reason: "Artifact publication cannot safely resume after Studio restarts. Rebuild from the captured target and destination."},
+            recoveryOnRestart: {action: "rebuild", reason: "Output publication cannot safely resume after Studio restarts. Rebuild from the captured target and destination."},
         });
         if (common?.status === "conflict") return {status: "conflict", activeJobId: common.activeJobId};
         if (common?.status === "reattached") {
@@ -660,7 +660,7 @@ export class StudioArtifactBuildService {
         };
         let result: StudioArtifactBuildView;
         if (record.controller.signal.aborted) result = {
-            status: "cancelled", message: "Artifact build cancelled before execution.",
+            status: "cancelled", message: "Build cancelled before execution.",
             plan: record.preparedExtraction?.plan ?? record.preparedStakeOperation?.plan ?? createUnresolvedRuntimePlan(record.projectRoot, record.target, outDir),
         };
         else if (record.preparedExtraction !== undefined) result = await this.buildResolved(record.preparedExtraction.project, "blueprint", record.preparedExtraction.destination, options, undefined, record.preparedExtraction.plan);
@@ -680,7 +680,7 @@ export class StudioArtifactBuildService {
                 detail: {target: record.target, outputKind: resultView.outputKind, result: resultView},
             });
         } else if (status === "cancelled") {
-            this.jobService?.cancelled(record.id, {summary: "Artifact build cancelled after staging cleanup.", detail: {result}}, {action: "rebuild", reason: "Rebuild the artifact from its captured target and destination."});
+            this.jobService?.cancelled(record.id, {summary: "Build cancelled after staging cleanup.", detail: {result}}, {action: "rebuild", reason: "Rebuild the output from its captured target and destination."});
         } else {
             this.jobService?.fail(record.id, result.status !== "ok" ? result.message : "Artifact build failed.", {action: "rebuild", reason: "Resolve the reported build problem and refresh the preview before rebuilding."}, {summary: "Artifact build failed.", detail: {result}});
         }
@@ -826,7 +826,7 @@ export class StudioArtifactBuildService {
     private describePlanDiagnostic(plan: ArtifactConversionPlan): string {
         const diagnostic = plan.diagnostic;
         return diagnostic === undefined
-            ? "Artifact conversion is unavailable."
+            ? "Format conversion is unavailable."
             : describeArtifactConversionPlanDiagnostic(plan) ?? `${diagnostic.message} Next: ${diagnostic.recovery}`;
     }
 

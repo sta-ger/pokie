@@ -121,7 +121,7 @@ export class BrowserWasmStudioApi implements BrowserWasmStudioApiHandling {
         if (!project || this.disposed) throw new Error("Open the WASM Project before executing it.");
         const result = await this.network("/api/project/wasm/artifact", {cache: "no-store"});
         const body = await result.json();
-        if (!result.ok) throw new Error(record(body) && typeof body.error === "string" ? body.error : "Cannot load the WASM artifact and sidecar. Rebuild and reopen the Project.");
+        if (!result.ok) throw new Error(record(body) && typeof body.error === "string" ? body.error : "Cannot load the WASM build and companion file. Rebuild and reopen the Project.");
         const artifact = await validatePokieWasmBrowserArtifact(body as PokieWasmBrowserArtifact, project);
         if (project !== this.project || generation !== this.generation || this.disposed) throw new Error("The WASM Project was replaced while loading.");
         return artifact;
@@ -185,7 +185,7 @@ export class BrowserWasmStudioApi implements BrowserWasmStudioApiHandling {
         const old = this.session;
         if (!fresh && input.requestId && input.requestId === old?.lastRequest) {
             const current = await this.artifact();
-            if (current.generation !== old.artifact.generation || current.manifest.artifact!.sha256 !== old.artifact.manifest.artifact!.sha256) throw new Error("The WASM artifact changed. Start a new session.");
+            if (current.generation !== old.artifact.generation || current.manifest.artifact!.sha256 !== old.artifact.manifest.artifact!.sha256) throw new Error("The WASM build changed. Start a new session.");
             if (old.lastBinding !== JSON.stringify(input)) throw new Error("Play request identity conflicts with its original command. Start a new request.");
             return old.lastResult;
         }
@@ -207,7 +207,7 @@ export class BrowserWasmStudioApi implements BrowserWasmStudioApiHandling {
                 if (restoring) await execution.client.request({type: "restore", state: input.state as never});
             } else if (old!.artifact.generation !== execution.artifact.generation || old!.artifact.manifest.artifact!.sha256 !== execution.artifact.manifest.artifact!.sha256) {
                 this.releaseSession();
-                throw new Error("The artifact changed. Start a new session before playing again.");
+                throw new Error("The build changed. Start a new session before playing again.");
             }
             const before = fresh ? undefined : await execution.client.request({type: "view"}) as {state?: PokieWasmSessionState};
             let round: unknown;
@@ -298,7 +298,7 @@ export class BrowserWasmStudioApi implements BrowserWasmStudioApiHandling {
         execution.publishing = true;
         const result = await this.network(`/api/project/wasm/jobs/${execution.id}/finish`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({...this.binding(execution), cleanup: true, status, output, error, progress: execution.progress})});
         const body = await result.json();
-        if (!result.ok) throw new Error(record(body) && typeof body.error === "string" ? body.error : "Could not publish WASM Worker result. Inspect the retained job and retry.");
+        if (!result.ok) throw new Error(record(body) && typeof body.error === "string" ? body.error : "Could not publish WASM Worker result. Inspect the saved job and retry.");
         if (this.executions.get(execution.id) === execution) this.executions.delete(execution.id);
         return body as StudioJobView;
     }

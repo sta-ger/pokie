@@ -138,7 +138,7 @@ export function OutcomeSourceOverview({header, onRoundRecorded}: {header: Outcom
                             <Anchor href={buildReplayDownloadUrl(result.replayId)} download>Download draw replay JSON</Anchor>
                             <Text size="sm" mt="xs">
                                 {result.replay
-                                    ? "Saved in Replay Recent. Open Replay, choose Replay Artifact, then pick this recorded round to reproduce & compare."
+                                    ? "Saved in Replay Recent. Open Replay, choose Replay record, then pick this recorded round to reproduce & compare."
                                     : "Saved in Replay Recent for inspection and export. No seed was recorded, so exact reproduction is unavailable."}
                             </Text>
                         </div>

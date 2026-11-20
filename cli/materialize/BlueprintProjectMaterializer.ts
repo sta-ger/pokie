@@ -538,7 +538,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
     }
 
     private assertNotCancelled(signal: AbortSignal | undefined): void {
-        if (signal?.aborted) throw new RuntimePreparationCancelledError("Runtime materialization was cancelled.");
+        if (signal?.aborted) throw new RuntimePreparationCancelledError("Project preparation was cancelled.");
     }
 
     private delay(ms: number): Promise<void> {

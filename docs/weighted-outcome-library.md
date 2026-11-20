@@ -253,7 +253,7 @@ function generateSampledWeightedOutcomeLibrary(options: Omit<GenerateExactWeight
 ```
 
 `options` always includes `libraryId`, the loaded `game`/`pokieVersion` (and optionally `configHash`/`betMode`/
-`stake`, threaded onto every generated artifact). Generation runs in two phases: it streams every raw reel-stop
+`stake`, threaded onto every generated round record). Generation runs in two phases: it streams every raw reel-stop
 tuple (an odometer sweep over each reel's own strip, never creating the whole space as an array — memory is
 bounded by the number of *distinct* grids actually reachable, not the raw combination count), resolves each into
 its visible grid, and accumulates an exact `bigint` weight per distinct grid — the same "dedupe identical grids
@@ -314,12 +314,12 @@ pokie build <project> --target outcomeLibrary
 `generate` is the CLI entry point for everything above: it loads `<packageRoot>` — a package built by
 `pokie build` (or any package `loadPokieGame()` can require) — and drives *its own* session/win-calculation
 runtime through `generateExactWeightedOutcomeLibrary`, exactly as described in "Generating" above. This is a
-different workflow from outcome-bundle export (see [Outcome Library Folder](outcome-library-folder.md#cli-usage)):
+different workflow from outcome-library export (see [Outcome Library Folder](outcome-library-folder.md#cli-usage)):
 that export never loads or executes a `PokieGame` at all — it only bundles `WeightedOutcomeLibrary` JSON (or JSONL
 outcome streams) that some earlier step, such as `generate`, already produced. Bundle readers likewise only ever
 inspect an already-built bundle. `generate` is the public workflow that runs a live game.
 
-`build --target outcomeLibrary` is the equivalent project-to-bundle workflow. `--exact` is the default; its explicit
+`build --target outcomeLibrary` is the equivalent project-to-library-folder workflow. `--exact` is the default; its explicit
 form and `--sample <n> --seed <string>` make the choice visible in automation. The sampled form is passed through the
 registry-owned `BlueprintStakeOutcomeLibraryWorkflow`, which performs only the requested draws and writes a normal
 Outcome Library bundle; it can then be used with `pokie validate`, `pokie sim`, `pokie report`, `pokie replay`, and
@@ -336,9 +336,9 @@ Outcome Library bundle; it can then be used with `pokie validate`, `pokie sim`, 
  selected on the enumeration session and is used consistently for the artifact, library id, and bundle mode
  name. It is not an implicit `base` label. Legacy metadata-only `BetModes` remain labels only; omitting the
  flag preserves their historical unlabeled/base-compatible library identity.
-- `--stake <number>` — the stake threaded onto every generated artifact; must be a positive number (see "library
+- `--stake <number>` — the stake threaded onto every generated round record; must be a positive number (see "library
  homogeneity" above — a library can only ever describe one stake).
-- `--config-hash <hash>` — the `provenance.configHash` threaded onto every generated artifact.
+- `--config-hash <hash>` — the `provenance.configHash` threaded onto every generated round record.
 - `--library-id <id>` — overrides the default `<manifest.id>[-<mode>]` library id.
 - `--max-outcome-space-size <n>` — overrides the default 20,000,000-raw-combination bound above which `generate`
  refuses to sweep exhaustively (accepts an arbitrarily large decimal string, parsed straight to `bigint`, since a
@@ -348,7 +348,7 @@ Outcome Library bundle; it can then be used with `pokie validate`, `pokie sim`, 
 - `--sample <n> --seed <string>` — directly performs exactly `n` deterministic reel-stop draws through the same
  runtime calculation path, without first sweeping the full outcome space. The resulting library is honestly
  labelled `"bounded-coverage"` and records both its sampled raw count and seed, so the same game/count/seed is
- reproducible. This is useful even for a small game when a deliberately bounded Monte-Carlo library is wanted.
+ reproducible. This is useful even for a small game when a deliberately limited Monte-Carlo library is wanted.
 - `--bounded --sample-size <n> --seed <string>` — opts into the honestly-labelled `"bounded-coverage"` strategy
  once the raw space exceeds `--max-outcome-space-size`; all three must be given together — `--sample-size`/`--seed`
  without `--bounded`, or `--bounded` without both of the other two, are rejected rather than silently ignored. A
@@ -400,7 +400,7 @@ publishes no completed library. See [weighted mathematics](math-modeling.md#weig
 Weighted whole-sequence reels now support lossless PAR interchange and rendered
 Studio authoring. They are authored runtime alternatives with per-logical-round
 selection denominators; `WeightedOutcomeLibrary` remains a precomputed-outcome
-artifact with its own analyzer/report route. Per-symbol `symbolWeights` is a third
+round record with its own analyzer/report route. Per-symbol `symbolWeights` is a third
 supported action, whose PAR conversion is a diagnosed literal snapshot. No outcome-library
 reconstruction edge to Blueprint/PAR or arbitrary TypeScript-source recovery is
 implied by sequence interchange.
@@ -412,4 +412,4 @@ payout/duration units, authoring/interchange, restoration/replay, statistics and
 custom-rule/target boundaries. The [launch support register](supported-mechanics.md)
 maps every mandatory family separately from arbitrary custom callbacks.
 
-See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning interfaces, locks, evidence and explicit candidate publication.
+See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning interfaces, locks, results and explicit candidate publication.

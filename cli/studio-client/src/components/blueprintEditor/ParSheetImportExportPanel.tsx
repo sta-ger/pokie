@@ -327,7 +327,7 @@ export function ParSheetImportExportPanel({
         <PageSection legend={allowExport ? "PAR Sheet Import / Export" : "PAR Sheet Import"}>
             <Text size="sm" c="dimmed" mb="sm">
                 {allowExport
-                    ? "Import an existing PAR sheet (.xlsx) into a canonical POKIE blueprint, or export the current blueprint through POKIE’s PAR sheet services."
+                    ? "Import an existing PAR sheet (.xlsx) into a POKIE game design, or export the current design through POKIE's PAR sheet services."
                     : "Import an existing PAR sheet (.xlsx) through POKIE’s PAR sheet services. Import and preview read the workbook; Apply updates this draft. Save the design before building artifacts in its workspace."}
             </Text>
 

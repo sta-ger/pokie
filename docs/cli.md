@@ -37,17 +37,17 @@ WASM builds also support deterministic `pokie sim game.wasm --rounds <number> --
 
 Use the same explicit seed for comparisons: run, sim and replay have different WASM defaults
 (`pokie-wasm-cli`, `pokie-wasm-simulation`, `pokie-wasm-replay`). `replay --round N` plays through N rounds,
-so its cumulative `totalBet`/`totalWin` match `sim --rounds N` with that seed and artifact. Repeated replay
+so its cumulative `totalBet`/`totalWin` match `sim --rounds N` with that seed and round record. Repeated replay
 descriptors match after excluding `timestamp` and `durationMs`; repeated run output includes the same draw.
 WASM simulation requires `--workers 1` and does not accept `--mode` or adaptive convergence; WASM replay
 does not accept `--mode`. Omit replay `--out` when parsing stdout as JSON, or read the written JSON file:
 with `--out`, stdout also contains a destination notice.
 
-`npx --package @fromstan/pokie pokie game.wasm [--no-open] [--host 127.0.0.1] [--port 3200]` opens that artifact’s Studio Project. Bare `pokie` still opens Home. Explicit `pokie inspect game.wasm` remains the terminal inspection route. Home Open, registered projects and recent projects resolve the same artifact without creating a TypeScript package. A missing, stale, swapped, malformed, or incompatible sidecar is rejected before executable actions are granted.
+`npx --package @fromstan/pokie pokie game.wasm [--no-open] [--host 127.0.0.1] [--port 3200]` opens that build’s Studio Project. Bare `pokie` still opens Home. Explicit `pokie inspect game.wasm` remains the terminal inspection route. Home Open, registered projects and recent projects resolve the same build without creating a TypeScript package. A missing, stale, swapped, malformed, or incompatible sidecar is rejected before executable actions are granted.
 
-Studio verifies the Project-scoped bytes and sidecar on the server, in the browser, and in the production Web Worker. Play, fixed-limit single-Worker Simulation and Replay use the existing portable runtime and report/replay engines. Operations follow their individual declarations; serialize/restore and build detail are offered only when declared. Legacy manifest-only components stay inspection-only. Validation reports module/descriptor/configuration integrity, ABI, runtime and host compatibility; it does not certify game mathematics. Browser jobs retain seeds, modes and file identities in the existing job/report/download routes. Cancellation terminates the owned Worker, and reload discovers the saved terminal/retry state without automatically resubmitting a run.
+Studio verifies the Project-scoped bytes and sidecar on the server, in the browser, and in the production Web Worker. Play, fixed-limit single-Worker Simulation and Replay use the existing portable runtime and report/replay engines. Operations follow their individual declarations; serialize/restore and build detail are offered only when declared. Legacy components with only package info stay inspection-only. Validation reports module/descriptor/configuration integrity, ABI, runtime and host compatibility; it does not certify game mathematics. Browser jobs retain seeds, modes and file identities in the existing job/report/download routes. Cancellation terminates the owned Worker, and reload discovers the saved terminal/retry state without automatically resubmitting a run.
 
-Build creates a **new artifact**: package directories must be new or empty; file targets, including zero-byte
+Build creates a **new output**: package directories must be new or empty; file targets, including zero-byte
 PAR/WASM files, must not exist. WASM also refuses occupied integrity sidecars and PAR import companions.
 Design Game and Build/Export expose editable/browsable destinations and refuse conflicts without an overwrite
 action. Previews are advisory: execution checks again, so an occupied-after-preview destination is refused
@@ -71,13 +71,13 @@ Runs one deterministic round from a POKIE WASM build using the portable host. It
 pokie run game.wasm --seed demo
 ```
 
-`--seed` defaults to `pokie-wasm-cli`. The command prints the played round's sequence, draw, and seed. Use [`pokie validate`](#pokie-validate-project) first when a component has not yet been checked, and use [`pokie inspect`](#pokie-inspect-packageroot) for its manifest, supported actions, and available next actions.
+`--seed` defaults to `pokie-wasm-cli`. The command prints the played round's sequence, draw, and seed. Use [`pokie validate`](#pokie-validate-project) first when a component has not yet been checked, and use [`pokie inspect`](#pokie-inspect-packageroot) for its package info, supported actions, and available next actions.
 
-Feature-aware artifacts also accept `--bet`, `--mode`, `--round-id` and
+Feature-aware builds also accept `--bet`, `--mode`, `--round-id` and
 `--delivery stepwise|composite`. For example, `pokie run game.wasm --seed demo
 --bet 0.05 --mode buy --delivery composite --format json` returns the actual
 stake, mathematical win, wallet payout, reel-major samples and a restorable
-checkpoint when `runtime.serialize` is declared. Ordinary arithmetic artifacts
+checkpoint when `runtime.serialize` is declared. Ordinary arithmetic builds
 retain their single-spin interface. The portable API owns continuation cursors.
 
 ## `pokie --help` / `pokie -h`
@@ -283,7 +283,7 @@ pokie create --random --out my-game.blueprint.json # write to a specific path in
 ```
 Generated random game "Blazing Riches" (id: "blazing-riches") from seed 1845220913.
 Reproduce this exact game with: pokie create --random --seed 1845220913 --preset default
-Provenance: generator 1.1.0, strategy "default-line-pay".
+Origin: generator 1.1.0, strategy "default-line-pay".
  created./blazing-riches.blueprint.json
 
 Game blueprint "Blazing Riches" (id: "blazing-riches") created at "./blazing-riches.blueprint.json".
@@ -333,7 +333,7 @@ name/blueprint. Options:
  Same seed *and* same `--preset` always reproduces the same blueprint — switching `--preset` with the same seed
  produces a different game, since it selects an entirely different strategy.
 
-The line right after the reproduce-command hint — `Provenance: generator <generatorVersion>, strategy
+The line right after the reproduce-command hint — `Origin: generator <generatorVersion>, strategy
 "<strategy>".` — echoes `RandomGameBlueprintResult.provenance` (also available programmatically, see below):
 `generatorVersion` identifies `RandomGameBlueprintGenerator`'s own algorithm version (bumped only when a change
 would make the same seed produce a different blueprint) and `strategy` identifies which `RandomGameBlueprintStrategy`
@@ -498,10 +498,10 @@ Options:
  supports (`ArtifactBuilderRegistry.describe(target)`, also available
  programmatically, reports the same thing without resolving a project first).
 - `--exact` — only for `--target outcomeLibrary`; forces full exact enumeration instead of the managed
- bounded-coverage default for a large Blueprint/package source.
+ capped-sampling default for a large Blueprint/package source.
 - `--sample <n> --seed <string>` — only for `--target outcomeLibrary`; explicitly chooses `n` deterministic
- bounded-coverage draws and records that choice in the library manifest.
-- `--out <path>` — where the built artifact is written; optional, defaulting to a `<target>`-named sibling of
+ capped-sampling draws and records that choice in the library index.
+- `--out <path>` — where the build output is written; optional, defaulting to a `<target>`-named sibling of
  `<project>` (`game.wasm` for `wasm`, a `.xlsx` file for `parWorkbook`, a `.json` file for `blueprint`, a bare directory for every other target). An explicit `--out`
  always overrides the default and never changes what `--target` means. Must not already exist, or must be an
  empty directory (a file target like `wasm` or `parWorkbook` must simply not exist yet) — see [Conflict
@@ -521,13 +521,13 @@ Library before producing an Outcome Library or Stake Engine output. Small finite
 exactly. To keep a newcomer-created large Blueprint usable on Node's normal memory limit, a larger managed
 Blueprint/package export automatically writes a deterministic, labelled bounded-coverage library (5,000 draws;
 the package records its strategy and seed). Use `pokie build <project> --target outcomeLibrary --exact` only when
-you specifically need every outcome and have sized memory and storage for the full artifact library; `--sample <n>
+you specifically need every outcome and have sized memory and storage for the full outcome library; `--sample <n>
 --seed <seed>` selects a different deterministic coverage size explicitly. Same-type Outcome, Stake, and PAR cells
 republish their recognized output to a new destination. Every writer is atomic and validates its input before
 publishing, never attempting to recover a game model from an outcome-based file.
 
 Prepared Stake previews bind the consumed index, CSV weights, compressed books and
-provenance, including native optimizer inventories. A valid source edit requires a
+origin, including native optimizer inventories. A valid source edit requires a
 fresh preview; refreshing its native inventory does not refresh an older operation.
 Cancellation or registration rollback removes only owned publication output and
 preserves unrelated replacement directories and their contents.
@@ -546,11 +546,11 @@ pokie build ./my-package --target blueprint --out ./recovered.blueprint.json
 Preview reports the shared extractor's source kind, field-level diagnostics/defaults and comparison
 boundaries without publishing files. Only a complete validated descriptor can build. Legacy/opaque
 packages retain inspectable partial information and concrete recovery diagnostics. Builds publish a
-separate Blueprint plus a bound conversion-evidence companion; SIGINT cancels owned work. Opening
+separate Blueprint plus a bound conversion-details companion file; SIGINT cancels owned work. Opening
 and inspecting a package never rewrites it or replaces its Studio identity. Open the resulting
 Blueprint explicitly to edit it through the existing save/apply flow.
 
-Package -> package/PAR/WASM uses the same extraction stage through Blueprint and retains its evidence.
+Package -> package/PAR/WASM uses the same extraction stage through Blueprint and keeps its conversion details.
 Destination-specific restrictions still apply; supported weighted variants retain their identities in WASM.
 The normal runtime Outcome/Stake routes keep their existing behavior. See the
 [descriptor and evidence interface](game-packages.md#public-package-model-extraction) for support
@@ -593,7 +593,7 @@ handling](#conflict-handling-an-existing---out-destination) below) — and write
  `VideoSlotSession`, with `getSessionSerializer()` returning `new VideoSlotSessionSerializer()`. Both files hold
  the exact same generated logic — organized into labeled sections (blueprint data, config assembly, `PokieGame`
  exports) with a short header comment naming the game and the `pokie` version that built it — no blueprint-
- hash/provenance metadata is embedded, so re-running `pokie build` on an unchanged blueprint always regenerates
+ hash and origin metadata is embedded, so re-running `pokie build` on an unchanged blueprint always regenerates
  byte-identical files. `dist/index.js` is written directly, not compiled from `src/index.ts`, so the package is
  locally loadable through the CLI/Studio runtime link without a compile step; `src/index.ts` is typed (`GameBlueprint`
  imported from `@fromstan/pokie`) so a real `npm run build`, if you ever run one, reproduces an equivalent `dist/index.js`.
@@ -614,7 +614,7 @@ it's valid (warnings included).
 ### Republishing an already-built `outcomeLibrary`/`stakeAdapter`/`parWorkbook` output
 
 `--target outcomeLibrary`/`stakeAdapter`/`parWorkbook`, given a `<project>` that already resolves to that same
-artifact type, atomically copies it to `--out <path>` — the same "read it back with the exporter's own importer,
+output format, atomically copies it to `--out <path>` — the same "read it back with the exporter's own importer,
 re-export unchanged" round trip each format's own import/export commands already exercise (see `pokie build
 <config.json> --target stakeAdapter`/`pokie import <stakeDir>` and `pokie par export <config.json>` below).
 `--dry-run` here only prints a one-line
@@ -1027,7 +1027,7 @@ workbook suffix is case-insensitive (`.xlsx` and `.XLSX` both select the PAR imp
 generic import command only routes a directory to Stake Engine reconstruction when it is a
 POKIE-produced export with `pokie-manifest.json`. For a compatible foreign Stake directory,
 use `pokie report` or `pokie diff`, which intentionally do not require that
-manifest and do not claim to reconstruct missing POKIE provenance.
+manifest and do not claim to reconstruct missing POKIE origin.
 
 A minimal starter Blueprint:
 
@@ -1119,7 +1119,7 @@ Options:
 - `--out <file>` — where to write the imported `GameBlueprint` JSON.
 - `--format json` — print the full `{blueprint, provenance, issues, conversionEvidence}` importer result as JSON instead of a human-readable
  summary. `conversionEvidence` retains the original Meta cells, diagnostics and explicit import facts.
-- `--dry-run` — validate and show the prepared file destination and evidence sidecar without writing either file.
+- `--dry-run` — validate and show the prepared file destination and companion file without writing either file.
 
 Successful imports also write `<blueprint>.conversion-evidence.json`. The sidecar records the source workbook,
 verbatim Meta cells, parsed provenance, diagnostics, formula/ignored/default facts, and whether the imported
@@ -1203,7 +1203,7 @@ value produces a field diagnostic and remains ineligible. Older supported workbo
 may omit that optional field. `Meta` also retains detailed conversion diagnostics
 and loss facts in `Conversion Evidence`; build previews/results and Studio
 show those samples. Re-export retains prior import/preparation losses from
-the workbook or its Blueprint conversion-evidence sidecar. A new matching hash does
+the workbook or its Blueprint conversion-details companion file. A new matching hash does
 not erase that history.
 
 ## `pokie reel generate <blueprint.json>`
@@ -1281,7 +1281,7 @@ standard Node heap; inspect `manifest.json` to see the recorded strategy and see
 
 Standalone descriptors use the same command and prepared planner operation. Outcome descriptors
 support `libraryPath` or streamed `outcomesPath` with `libraryId`; Stake descriptors support `libraryPath` or
-`bundleDir`/`bundleModeName`, including imported `config.json` with generator metadata and source provenance.
+`bundleDir`/`bundleModeName`, including imported `config.json` with generator metadata and source origin.
 Relative paths resolve against the descriptor directory. Project recognition errors propagate before descriptor
 fallback; generation flags (`--exact`, seeded `--sample`) require a recognized generation source.
 Defaults follow `build`: a sibling `outcomeLibrary` or `stakeAdapter` directory, or `parWorkbook.xlsx` file.
@@ -1368,7 +1368,7 @@ Writes exactly the shape `pokie build <config.json> --target stakeAdapter` reads
 ```
 
 Also writes `source-provenance.json` (SHA-256 hashes of the raw `index.json`/manifest/CSV/books bytes this import
-read — see [Source provenance](stake-engine-import.md#source-provenance)) whenever the import produced one.
+read — see [Source origin](stake-engine-import.md#source-provenance)) whenever the import produced one.
 
 Options:
 
@@ -1462,7 +1462,7 @@ Exactly one of `libraryPath`/`outcomesPath` is required per mode.
 
 Options:
 
-- `--out <dir>` — where to write the bundle (default: `<config.json>`'s directory plus `/outcomeLibrary`).
+- `--out <dir>` — where to write the certification pack (default: `<config.json>`'s directory plus `/outcomeLibrary`).
 - `--dry-run` — validate the outcome-library source and destination without writing anything.
 
 Published as a whole directory (temp-dir-then-swap, the same discipline as `pokie build <config.json> --target stakeAdapter`): a write
@@ -1660,7 +1660,7 @@ that exact commitment — `commitmentHash` plus an exact field-by-field match of
 proof's own, unverifiable copies of those fields), and finally against the *live* source Outcome Library Folder
 it claims to have been drawn from — the pinned `libraryHash`/index hash (bundle drift), the drawn outcome's own
 recorded `weight`/`recordHash` (a substituted outcome), and a full reproduction of the deterministic HMAC-SHA256
-draw itself, against one pinned snapshot of the live bundle (a forged proof). No game/win calculation is ever
+draw itself, against one fixed snapshot of the live folder (a forged proof). No game/win calculation is ever
 involved. See [Provably Fair](provably-fair.md#verification) for the full code table.
 
 ```
@@ -2366,15 +2366,15 @@ pokie replay./outcome-library --seed recorded-seed --round 7 --mode base --out r
 The returned descriptor includes `outcomeSource` with the game, library id/hash, mode, selection algorithm,
 outcome id, artifact, screen, stake and payout. Do not substitute a default mode: a missing seed or mode
 is rejected. The CLI reconstructs from the current bundle; for an exact comparison with a saved recorded round,
-the exported `replayOutcomeSourceProject(..., recordedDescriptor)` API requires the complete provenance
-and fails closed for omissions or mismatches, telling the caller to restore the original artifact/bundle. Package
+the exported `replayOutcomeSourceProject(..., recordedDescriptor)` API requires the complete origin
+and fails closed for omissions or mismatches, telling the caller to restore the original round record or folder. Package
 replay remains best-effort; it may inspect a round with unavailable state, but must not claim an exact comparison.
 
 Seeded `pokie sample` prints a standard `ReplayDescriptor` whose `outcomeSource` is the portable
 provenance. Seeded Studio Outcome Library Play spins retain that provenance in Recent Rounds, and a seeded `pokie
 sim <bundle> --mode <mode> --seed <seed>` report exposes its last sampled round as `lastReplay`. These all use
 `derived-round-seed-v1`: use the recorded `seed`, `round`, and `modeName` verbatim; a default mode or a raw
-seeded-stream sample is not interchangeable provenance.
+seeded-stream sample is not interchangeable origin.
 
 The session's credit balance is set to `Number.MAX_SAFE_INTEGER` before replaying, so reaching `--round` is never
 cut short by the session running out of credits.
@@ -2460,7 +2460,7 @@ Options:
 
 - `--deep` — for outcome-library inputs, additionally streams every outcome and rebuilds each mode's library to
  catch corruption that a structural check cannot (for example, a tampered record or mismatched hash). It is off
- by default so normal bundle validation reads only `manifest.json` and the small per-mode indexes. It does not
+ by default so normal folder validation reads only `manifest.json` and the small per-mode indexes. It does not
  add checks to package or Blueprint inputs.
 - `--format json` — print the JSON report to stdout instead of the default human-readable summary.
 - `--out <file>` — write the JSON report to `<file>`. Independent of `--format json`: combine both to see the
@@ -3315,7 +3315,7 @@ Home offers one editable design path, including loading an existing Blueprint. P
  unchanged. Studio automatically validates the current revision with the same `GameBlueprintValidator`
  used everywhere else, without touching disk.
  Load/Save-by-path, the raw JSON view, and PAR import are tucked behind **Show advanced options (file
- and JSON tools)**. PAR Apply updates the draft; it does not publish an artifact. **Create game** validates
+ and JSON tools)**. PAR Apply updates the draft; it does not publish an output. **Create game** validates
  the current revision, saves the design and opens its workspace. Build packages and export PAR workbooks
  from that workspace’s **Build/Export**, which previews the actual destination and refuses occupied outputs.
  Saving alone does not imply runtime preparation, project validation, or an build succeeded. A **Reel Strip Modeler** mode
@@ -3416,7 +3416,7 @@ The Dashboard itself has four states, all handled explicitly by the frontend:
 - **loading** — only right after Studio starts directly into Project mode (`pokie.`/`pokie [projectRoot]`); the entry
  module hasn't finished loading yet. Design Game's Build and Projects' Open both already have the manifest in
  hand by the time they switch Studio into Project mode, so they go straight to **loaded**.
-- **loaded** — the game's manifest (id/name/version) loaded successfully.
+- **loaded** — the game's info (id/name/version) loaded successfully.
 - **error** — loading the entry module failed (missing build output, a package that doesn't satisfy the
  `PokieGame` interface, a corrupt/missing `package.json`, an entry module that throws on import,...). Overview
  stays usable even here — Inspect only reads `package.json`/`build-info.json` (no entry module needed), and its
@@ -3593,7 +3593,7 @@ grouped by kind (`ExportDeployTargets.ts`):
  and PAR workbook export. Current server plans determine availability; unsupported targets remain visible
  with their reasons and recovery guidance. Preview checks the actual destination before publication.
  Success identifies output type/location and offers applicable open, reveal, and registration follow-ups.
- These outputs are local outputs; building a Stake bundle is not remote delivery.
+ These outputs are local outputs; building a Stake export is not remote delivery.
 - **Remote deployment** — a GUI over the `pokie` package's own [External Adapter SDK](external-connector-sdk.md):
  `StudioDeploymentService` (`cli/studio/deployment/StudioDeploymentService.ts`) never projects a `RoundRecord`,
  generates an artifact, or validates compatibility/output itself; every one of those steps is delegated straight
@@ -3623,7 +3623,7 @@ grouped by kind (`ExportDeployTargets.ts`):
 
 Outcome generation defaults to the project’s current mode (or `"base"`) and exposes advanced generation
 options, coverage limits, and recovery. The retired Outcome Libraries select/compare workspace has no
-Build/Export equivalent; a generated bundle can be opened for inspection as its own project. Accordingly, legacy Deployment and
+Build/Export equivalent; a generated folder can be opened for inspection as its own project. Accordingly, legacy Deployment and
 Stake Engine Export links (`/project/deployment`, `/project/stakeEngineExport`) redirect to Build/Export and explain
 the saved card; legacy Outcome Libraries links (`/project/outcomeLibraries`) land on Overview with an explicit
 unavailable explanation and CLI comparison recovery. Obsolete Validate routes land on Overview diagnostics with
@@ -3976,7 +3976,7 @@ keep their existing profiles; package audit import requires a compatible game pa
 No top-level export command is introduced.
 
 Reference server spin debug/internal responses include saved `audit` or an
-explicit unavailable reason. Public HTTP responses omit this execution evidence.
+explicit unavailable reason. Public HTTP responses omit this execution details.
 Local atomic stores, independent compensation ports and external-provider intents
 keep their distinct durability/recovery guarantees; offline verification never
 settles or reconciles an imported operation.
@@ -3988,7 +3988,7 @@ settles or reconciles an imported operation.
 `pokie build WORKBOOK --target blueprint` and `pokie import WORKBOOK` preserve
 weighted full sequences and mixed exact/weighted reels. Supported automatic
 intermediates reach TypeScript packages without flattening variants. Output locations
-must be unused; import publishes the Blueprint and its conversion-evidence sidecar.
+must be unused; import publishes the Blueprint and its conversion-details companion file.
 Dry-run/JSON diagnostics use the same mappings and validation as direct library APIs.
 
 Studio Home Design and Project Reels provide rendered variant controls, validated
@@ -3996,7 +3996,7 @@ inspection, explicit Apply and explicit Save. PAR Diagnose/Preview/Apply uses th
 same workbook model; managed Save binds trusted evidence to workbook bytes and
 imported content. Invalid, cancelled and stale edits leave authored source unchanged.
 See [whole-sequence workbook interfaces](reels-and-sequences.md#whole-sequence-studio-and-par-workflow)
-for sheet columns, context versions and provenance.
+for sheet columns, context versions and origin.
 
 `pokie report` and Studio downloads retain configured/observed frequencies, coverage
 and selection denominators. `pokie diff` explains sequence order, weight, symbol-array
@@ -4016,7 +4016,7 @@ pokie build ./custom-package --target blueprint --out ./editable.json
 
 The default output is `blueprint.json` beside the source package. Preview prints source identity,
 extraction status, every supplied exact/inferred/defaulted/unsupported field and its trusted source,
-diagnostics, comparison limits and the Blueprint/evidence paths. It publishes no artifacts.
+diagnostics, comparison limits and the game design/audit evidence paths. It publishes no artifacts.
 Inferred fields are displayed only if the shared extraction result supplies them. Extraction reads
 executable public descriptors; metadata inspection and opening a package do not convert it.
 Partial, malformed, legacy and unsupported custom mechanics cannot be saved as complete models.
@@ -4051,7 +4051,7 @@ Hold&Win, fixed/session-local accumulating jackpots and executable base/ante/fre
 
 ## Feature chains with limits
 
-See [cascades, respins and collections](bounded-mechanics.md) for the declarative
+See [cascades, respins and collections](feature-chains.md) for the declarative
 interfaces, supported compositions, authoring/build/extraction/PAR workflow,
 logical-round accounting, continuation and durability boundaries.
 
@@ -4064,7 +4064,7 @@ analytics separate. `pokie diff` flags analytics-only changes. Unavailable sourc
 evidence and incomplete features display explicitly. See [analytics formulas,
 supported actions, bounds and worker seed policy](simulation.md#feature-analytics-aggregates).
 
-Simulation console output includes the saved report's sampling, empirical precision, bounded payout distribution, feature attribution and weighted-selection coverage diagnostics. JSON and `pokie report --format markdown|html` preserve those same populations. Native outcome-library sampling also emits an ordinary renderable simulation view while retaining its library identity and raw statistics. Older native sampled JSON is accepted explicitly; this is distinct from `pokie report <outcome-library>` static analysis. A short, zero-win or noisy run cannot establish exact or target RTP.
+Simulation console output includes the saved report's sampling, empirical precision, payout distribution with limits, feature attribution and weighted-selection coverage diagnostics. JSON and `pokie report --format markdown|html` preserve those same populations. Native outcome-library sampling also emits an ordinary renderable simulation view while retaining its library identity and raw statistics. Older native sampled JSON is accepted explicitly; this is distinct from `pokie report <outcome-library>` static analysis. A short, zero-win or noisy run cannot establish exact or target RTP.
 
 ### Comparing mathematical definitions
 
@@ -4160,7 +4160,7 @@ The latter reruns the request and checks reviewed source, request and candidate 
 committing. Changed locks/source/policy require another review; `--apply` cannot combine with `--out`.
 Exit codes remain success/attained 0, operational failure 1, infeasible 2, invalid 3, unsupported 4,
 exhausted 5, SIGINT cancellation 6 and inconclusive 7. See [optimization](optimization.md) for the six
-conditional connectors, author opt-in, confidence evidence, apply rollback and restart limits.
+conditional connectors, author opt-in, confidence results, apply rollback and restart limits.
 
 ### Interchange domains
 

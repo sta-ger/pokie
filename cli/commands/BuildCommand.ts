@@ -36,14 +36,11 @@ import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderErr
 // one registry.  WASM is deliberately not a second build command.
 const TARGET_TYPES: readonly ArtifactTargetType[] = ADVERTISED_ARTIFACT_BUILD_TARGETS;
 
-const USAGE = "Usage: pokie build <project> --target <artifact> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]";
+const USAGE = "Usage: pokie build <project> --target <format> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]";
 const TARGET_HINT = `--target must be one of: ${TARGET_TYPES.join(", ")}.`;
 const PROJECT_HINT =
-    "<project> is a path pokie resolves to a blueprint/tsPackage/outcomeLibrary/stakeAdapter/wasm/parWorkbook " +
-    "project, or a standalone Outcome Library/Stake descriptor (see docs/cli.md#pokie-build-project). Supported workflows: GameBlueprint -> tsPackage, outcomeLibrary, " +
-    "stakeAdapter, PAR workbook, or wasm; PAR workbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, PAR workbook, or wasm; " +
-    "tsPackage -> Blueprint or supported targets through public model extraction, outcomeLibrary or stakeAdapter; outcomeLibrary -> outcomeLibrary or stakeAdapter; stakeAdapter -> stakeAdapter; " +
-    "parWorkbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, parWorkbook, or wasm; Blueprint -> wasm is the canonical portable-runtime source.";
+    "<project> is a POKIE game design, game package, outcome library, PAR workbook, Stake Engine export or WASM build. " +
+    'Run "pokie build --help" for the supported conversions.';
 // parWorkbook is the one target whose artifact is a single file rather than a directory (see
 // assertArtifactDestinationAvailable's own "file"/"directory" split) -- its default destination needs a real
 // file extension, every other target's default is just a bare directory name.
@@ -137,7 +134,7 @@ export class BuildCommand implements CliCommandHandling {
             .argument("<project>", PROJECT_HINT)
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
             .option(
-                "--target <artifact>",
+                "--target <format>",
                 TARGET_HINT,
                 (value: string) => {
                     if (!TARGET_TYPES.includes(value as ArtifactTargetType)) {
@@ -146,10 +143,10 @@ export class BuildCommand implements CliCommandHandling {
                     return value as ArtifactTargetType;
                 },
             )
-            .option("--out <path>", "where to write the built artifact (default: a <target>-named sibling of <project>)")
+            .option("--out <path>", "where to write the build output (default: a <target>-named sibling of <project>)")
             .option(
                 "--exact",
-                "explicitly request full Outcome Library enumeration; large managed Blueprint/package Outcome builds otherwise use deterministic bounded coverage (only valid with --target outcomeLibrary)",
+                "explicitly request full Outcome Library enumeration; large managed Blueprint/package Outcome builds otherwise use deterministic capped sampling (only valid with --target outcomeLibrary)",
             )
             .option("--sample <n>", "directly perform n deterministic Outcome Library draws (requires --seed; only valid with --target outcomeLibrary)", (value: string): bigint => parsePositiveBigIntOption(value, "--sample"))
             .option("--seed <string>", "deterministic seed for --sample")
@@ -418,7 +415,7 @@ export class BuildCommand implements CliCommandHandling {
         }
 
         console.log("Build summary:");
-        console.log(`  artifact root    ${result.outputPath}`);
+        console.log(`  output folder    ${result.outputPath}`);
         console.log(`  target           ${target}`);
         console.log(`  source           ${project.rootPath}`);
         if (result.parConversion) this.printParConversion(result.parConversion);

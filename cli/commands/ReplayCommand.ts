@@ -233,7 +233,7 @@ export class ReplayCommand implements CliCommandHandling {
             .description(this.getDescription())
             .argument("<packageRoot>", "a POKIE game package, game design, WASM build, or outcome-library folder (with --mode)")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
-            .option("--recording <file>", "verify recorded audit evidence against this compatible package; no wallet or live session required")
+            .option("--recording <file>", "verify a recorded audit round against this compatible package; no wallet or live session required")
             .option("--seed <string>", "seed to replay against (WASM default: pokie-wasm-replay; required for a native outcome-library bundle)")
             .option("--round <number>", "round index to replay (required)", (value: string) => {
                 const parsed = Number(value);

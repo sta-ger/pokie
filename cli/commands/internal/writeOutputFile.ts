@@ -6,7 +6,7 @@ import path from "path";
 // boundary small also lets command tests inject a simple writer without needing filesystem fixtures.
 export function writeOutputFileAtomically(file: string, contents: string | Buffer, exclusive = false): void {
     if (contents.length === 0 || typeof contents === "string" && contents.trim().length === 0) {
-        throw new Error("Refusing to write an empty report artifact.");
+        throw new Error("Refusing to write an empty report file.");
     }
 
     const directory = path.dirname(file);

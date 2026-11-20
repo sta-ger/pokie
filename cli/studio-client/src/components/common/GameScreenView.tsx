@@ -13,7 +13,7 @@ import {CanonicalPlayerView} from "./CanonicalPlayerView";
 // cli/client/player/index.ts's own doc comment), not a second, independently-rendered player. Kept
 // singular within Studio itself: every one of the surfaces above renders through this exact component,
 // never a page-local re-presentation of the same screen/win data -- proven by
-// RoundRecordInspector.test.tsx's own "Cross-surface round presentation parity" suite (component-level)
+// RoundRecordInspector.test.tsx's own "Cross-surface round presentation match" suite (component-level)
 // and ProjectDashboardPage.playWorkflow.test.tsx's own "canonical player parity" suite (through Play's
 // real session/spin workflow, proving it reaches the exact same cli/client/player DOM functions
 // tests/cli/client/player/renderPlayer.test.ts's own fixture-round test calls directly).

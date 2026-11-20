@@ -825,7 +825,7 @@ export function BlueprintEditorPage({
             setDraftRecoveryDismissed(true);
         };
         if (editor.getCurrentState().revision !== cleanRevisionRef.current || jsonDraftDirty || sequenceDraftDirty) {
-            confirm("Restore the retained draft? The unsaved design and unapplied JSON edits will be replaced.", restore);
+            confirm("Restore the saved draft? The unsaved design and unapplied JSON edits will be replaced.", restore);
         } else {
             restore();
         }
@@ -1387,7 +1387,7 @@ export function BlueprintEditorPage({
                             return;
                         }
                         if (sequenceDraftDirty && nextMode !== mode) {
-                            confirm("Switch editor mode? Unapplied whole-sequence edits are retained until Apply or Cancel.", () => setMode(nextMode));
+                            confirm("Switch editor mode? Unapplied whole-sequence edits are saved until Apply or Cancel.", () => setMode(nextMode));
                             return;
                         }
                         setMode(nextMode);

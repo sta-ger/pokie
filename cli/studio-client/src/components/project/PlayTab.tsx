@@ -118,7 +118,7 @@ export function PlayTab({
     let errorNotice: ReactNode;
     if (session.status === "error") {
         errorNotice = session.subject === "Checkpoint restore"
-            ? <ErrorState message="Checkpoint restore failed. Supply a valid checkpoint from this WASM artifact and matching version, then retry the restore. Your last confirmed session is preserved." detail={session.message} />
+            ? <ErrorState message="Checkpoint restore failed. Supply a valid checkpoint from this WASM build and matching version, then retry the restore. Your last confirmed session is preserved." detail={session.message} />
             : <ErrorState message={describeRuntimeActionError(session.subject ?? "This session", session.message)} />;
     } else if (session.status === "blocked") {
         errorNotice = <ErrorState message={describeRuntimeActionError("This spin", session.message)} />;

@@ -54,7 +54,7 @@ dev` are local/reference tools, not production infrastructure.
 18. **[Optimization](optimization.md)** — exact and seeded math optimization within declared limits.
 19. **[Supported mechanics](supported-mechanics.md)** — the authored workflow and composition support
  matrix.
-20. **[Feature chains with limits](bounded-mechanics.md)** — authored cascade, respin and collection
+20. **[Feature chains with limits](feature-chains.md)** — authored cascade, respin and collection
  compositions.
 21. **[Weighted bonus](weighted-bonus.md)** — finite weighted-bonus outcomes.
 

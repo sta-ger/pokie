@@ -236,7 +236,7 @@ the implementation evidence record.
 
 ## Bounded authored mechanics
 
-See [cascades, respins and collections](bounded-mechanics.md) for the declarative
+See [cascades, respins and collections](feature-chains.md) for the declarative
 interfaces, supported compositions, authoring/build/extraction/PAR workflow,
 logical-round accounting, continuation and durability boundaries.
 

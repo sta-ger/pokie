@@ -3,7 +3,7 @@ import {loadPokieWasmFileRuntime, SeededPokieWasmHost} from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
-const USAGE = "Usage: pokie run <artifact.wasm> [--seed <string>]";
+const USAGE = "Usage: pokie run <game.wasm> [--seed <string>]";
 
 /** Starts one portable round directly from a canonical artifact, with no project package or compiler. */
 export class RunWasmCommand implements CliCommandHandling {

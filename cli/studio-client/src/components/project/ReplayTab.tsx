@@ -83,7 +83,7 @@ type ReplayLoadTarget = {round: number; seed?: string; modeName?: string};
 // spin, pick a simulation round).
 const SOURCE_EMPTY_PROMPT: Record<FindMethod, string> = {
     seedRound: "Load a round above to run it -- a fresh forward replay, not a reproduction of any specific prior result.",
-    artifact: "Paste a replay artifact, or pick one from Recent Replays above, to validate it.",
+    artifact: "Paste a round record, or pick one from Recent Replays above, to validate it.",
     spin: "Pick a spin above to view its details.",
     simulation: "Pick a simulation and round above to load it.",
 };
@@ -524,7 +524,7 @@ export function ReplayTab({
                     <Textarea
                         id="replay-artifact-json"
                         data-pokie-lifecycle-field="replay-artifact-json"
-                        label="Paste a replay artifact JSON (downloaded from Export)"
+                        label="Paste a round record JSON (downloaded from Export)"
                         minRows={6}
                         autosize
                         maxRows={16}

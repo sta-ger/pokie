@@ -60,7 +60,7 @@ export class StudioArtifactPreflightWorker implements StudioArtifactPreflighting
     }
 
     private run<T>(projectRoot: string, target?: ArtifactTargetType | "packageModel", outDir?: string, signal?: AbortSignal): Promise<T> {
-        if (!this.accepting) return Promise.reject(new Error("Studio artifact preflight is stopping."));
+        if (!this.accepting) return Promise.reject(new Error("Studio build check is stopping."));
         const identity = canonicalStudioProjectIdentity(projectRoot);
         for (const [owner, request] of this.requests) {
             if (request.projectRoot === identity && request.target === target) owner.abort();

@@ -53,9 +53,9 @@ export class StudioWasmBrowserService {
         if (!this.accepting) throw new Error("Studio is shutting down. Release the WASM browser session and restart before retrying.");
         if (context.mode !== "project") throw new Error("Open a WASM Project before executing it.");
         const project = await new ProjectTargetResolver().resolve(context.projectRoot);
-        if (project?.type !== "wasm") throw new Error("The current Project is not a WASM artifact. Reopen the Project.");
+        if (project?.type !== "wasm") throw new Error("The current Project is not a WASM build. Reopen the Project.");
         const read = await readWasmComponentManifest(project);
-        if (!read.supported || !read.manifest.artifact) throw new Error("This legacy WASM component is inspection-only. Rebuild a canonical artifact to execute it.");
+        if (!read.supported || !read.manifest.artifact) throw new Error("This legacy WASM component is inspection-only. Rebuild it as a WASM build to execute it.");
         const bytes = new Uint8Array(await fs.promises.readFile(project.rootPath));
         // A replacement between reads must never produce a mixed module/sidecar pair.
         await readIntegrityBoundCanonicalPokieWasmArtifact(bytes, read.manifest);
@@ -109,7 +109,7 @@ export class StudioWasmBrowserService {
                 }
             }
         }
-        if (!lease || lease.owner !== value.owner || lease.artifact.generation !== value.generation || lease.artifact.manifest.artifact!.sha256 !== value.artifactIdentity) return {status: 409, body: {error: "The WASM execution owner, generation or artifact changed. Retry from the current Project."}};
+        if (!lease || lease.owner !== value.owner || lease.artifact.generation !== value.generation || lease.artifact.manifest.artifact!.sha256 !== value.artifactIdentity) return {status: 409, body: {error: "The WASM execution owner, generation or build changed. Retry from the current Project."}};
         const job = this.jobs.get(lease.job.projectId, lease.job.id)!;
         if (route[2] === "finish") {
             lease.publication ??= this.finish(lease, value, context, isCurrent);
@@ -151,7 +151,7 @@ export class StudioWasmBrowserService {
         if (typeof value.owner !== "string" || !(/^[A-Za-z0-9_-]{1,100}$/).test(value.owner) || !record(value.request)) throw new Error("Supply a browser owner and operation inputs.");
         const artifact = await this.artifact(context);
         if (!isCurrent()) throw new Error("WASM Project changed before admission. Reopen and retry.");
-        if (value.projectRoot !== artifact.projectRoot || value.generation !== artifact.generation || value.artifactIdentity !== artifact.manifest.artifact!.sha256) throw new Error("The WASM artifact or Project changed. Reopen it before executing.");
+        if (value.projectRoot !== artifact.projectRoot || value.generation !== artifact.generation || value.artifactIdentity !== artifact.manifest.artifact!.sha256) throw new Error("The WASM build or Project changed. Reopen it before executing.");
         const operation = value.operation;
         if (operation !== "simulation" && operation !== "replay" && operation !== "browser-play") throw new Error("Unavailable WASM browser operation.");
         const declaration = operation === "replay" ? "runtime.replay" : "runtime.play";
@@ -159,16 +159,16 @@ export class StudioWasmBrowserService {
         let request: Record<string, unknown>;
         if (operation === "simulation") {
             request = {...validateSimulationRequest(value.request)};
-            if (request.convergence || (request.workers as number) > 1) throw new Error("WASM browser simulation supports one Worker and a fixed round budget. Set Workers to 1 and disable adaptive stopping.");
+            if (request.convergence || (request.workers as number) > 1) throw new Error("WASM browser simulation supports one Worker and a fixed round limit. Set Workers to 1 and disable adaptive stopping.");
         } else if (operation === "replay") {
             let replay = validateReplayRequest(value.request);
-            if (replay.recording || value.request.outcomeSource) throw new Error("Use a WASM recorded round or seed replay for this artifact.");
+            if (replay.recording || value.request.outcomeSource) throw new Error("Use a WASM recorded round or seed replay for this build.");
             if (replay.simulationId !== undefined) {
                 const simulation = this.jobs.get(canonicalStudioProjectIdentity(artifact.projectRoot), replay.simulationId);
                 const report = simulation?.result?.detail?.report;
                 if (simulation?.status !== "completed" || simulation.operation !== "simulation" || simulation.result?.provenance?.artifactIdentity !== artifact.manifest.artifact!.sha256 ||
                     simulation.result.provenance.configHash !== artifact.manifest.artifact!.configurationHash || !record(report) || !("game" in report) || !("rounds" in report || "modes" in report)) {
-                    throw new Error("The selected simulation does not match this WASM artifact and configuration. Run a new simulation.");
+                    throw new Error("The selected simulation does not match this WASM build and configuration. Run a new simulation.");
                 }
                 replay = bindReplayToSimulationReport(replay, report as SimulationReport | SimulationReportSet, {wasm: true});
                 if (replay.expectedConfigHash !== artifact.manifest.artifact!.configurationHash) throw new Error("The project model changed since this simulation; run a new simulation before sampling it.");
@@ -307,7 +307,7 @@ export class StudioWasmBrowserService {
         let roundDetail: StudioRuntimeSessionView["debug"] = {};
         if (round) roundDetail = manifest.capabilities.includes("artifact.inspect")
             ? {artifact: projectPokieWasmRoundRecord(round, {game, pokieVersion: POKIE_WASM_RUNTIME_VERSION, configHash: provenance.configHash}, `wasm:${job.id}`)}
-            : {artifactUnavailableReason: "This artifact does not declare artifact.inspect."};
+            : {artifactUnavailableReason: "This build does not declare artifact.inspect."};
         const session: StudioRuntimeSessionView = {...(record(output.initialData) ? output.initialData : {}), ...round?.network,
             sessionId, game, credits: round?.credits ?? (output.state as {credits?: number})?.credits ?? 1000, ...(round ? {bet: round.network?.bet ?? round.stake, stake: round.stake, win: round.win ?? round.payout, payout: round.payout, screen: round.screen.map(reel => [...reel]),
                 ...(round.logicalRound ? {logicalRound: projectLogicalRound(round.logicalRound), logicalRoundDurability: "process-only" as const} : {}), sequenceSelections: round.sequenceSelections, sequenceStatistics: round.sequenceStatistics} : {}),
@@ -319,7 +319,7 @@ export class StudioWasmBrowserService {
             session.studioRequestId = (job.request.command as Record<string, unknown>)?.requestId as string | undefined;
             this.recorder.record(session, {source: "play", operation: "spin", projectRoot: artifact.projectRoot, seed: job.request.seed as string});
         }
-        return {summary: output.committedProgress === true ? "Browser Worker Play retained its committed prefix." : "Browser Worker Play completed.", provenance, detail: {session}};
+        return {summary: output.committedProgress === true ? "Browser Worker Play kept its committed prefix." : "Browser Worker Play completed.", provenance, detail: {session}};
     }
 
     private armSession(session: SessionLease): void {

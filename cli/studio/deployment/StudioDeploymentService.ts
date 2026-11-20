@@ -231,7 +231,7 @@ export class StudioDeploymentService {
             : undefined;
         const selectedModes = request.modes.length === 0 ? serverSelectedModes! : request.modes;
         const plan = await this.prepareForSelectedBundles(projectRoot, selectedModes);
-        onProgress?.("Validating deployment", "pipeline stages", 1, 5, "Checking the prepared artifact plan and target.");
+        onProgress?.("Validating deployment", "pipeline stages", 1, 5, "Checking the prepared build plan and target.");
         if (signal?.aborted) return {status: "cancelled", deliveryOutcome: "not-delivered", plan};
         const registry = this.buildRegistry(projectRoot);
         const target = registry.get(request.targetId);

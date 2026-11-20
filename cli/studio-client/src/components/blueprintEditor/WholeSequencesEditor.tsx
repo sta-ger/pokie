@@ -337,7 +337,7 @@ export function WholeSequencesEditor({
                         });
                         invalidate();
                         if (!applied) {
-                            setMessage("The game design changed after this preview. Your sequence edits are retained. Preview whole sequences again before applying.");
+                            setMessage("The game design changed after this preview. Your sequence edits are saved. Preview whole sequences again before applying.");
                         }
                     }}
                 >

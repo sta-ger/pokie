@@ -170,7 +170,7 @@ export class CreateCommand implements CliCommandHandling {
                     return value as RandomPreset;
                 },
             )
-            .option("--out <file>", "output path (default: derived from the written blueprint's own manifest id)")
+            .option("--out <file>", "output path (default: derived from the written design's own package id)")
             .action(
                 async (
                     name: string | null,
@@ -370,7 +370,7 @@ export class CreateCommand implements CliCommandHandling {
         console.log(
             `Reproduce this exact game with: pokie create ${name ?? ""}${name ? " " : ""}--random --seed ${usedSeed} --preset ${preset}`,
         );
-        console.log(`Provenance: generator ${provenance.generatorVersion}, strategy "${provenance.strategy}".`);
+        console.log(`Origin: generator ${provenance.generatorVersion}, strategy "${provenance.strategy}".`);
 
         const perReelBlueprint = this.applyPerReelGeneration(blueprint, usedSeed);
 

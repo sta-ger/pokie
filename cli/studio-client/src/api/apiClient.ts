@@ -873,7 +873,7 @@ export async function inspectReplayArtifact(fetchImpl: FetchLike, descriptor: un
         body: JSON.stringify(descriptor),
     });
     if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to inspect replay artifact"));
+        throw new Error(await extractErrorMessage(response, "Failed to inspect the round record"));
     }
     return (await response.json()) as InspectReplayArtifactResult;
 }
@@ -1289,7 +1289,7 @@ export async function buildCertificationPack(
         body: JSON.stringify({bundleDir, modes, outDir, ...configuration}),
     });
     if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to build the certification/evidence bundle"));
+        throw new Error(await extractErrorMessage(response, "Failed to build the certification pack"));
     }
     return (await response.json()) as StudioCertificationBuildView;
 }
@@ -1400,7 +1400,7 @@ export async function exportStakeEngine(
 export async function listArtifactTargets(fetchImpl: FetchLike, signal?: AbortSignal): Promise<StudioArtifactTargetView[]> {
     const response = await fetchImpl("/api/project/artifacts/targets", {signal});
     if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to load the build artifact target list"));
+        throw new Error(await extractErrorMessage(response, "Failed to load the output format list"));
     }
     return (await response.json()) as StudioArtifactTargetView[];
 }
@@ -1417,7 +1417,7 @@ export async function previewArtifact(fetchImpl: FetchLike, target: StudioArtifa
         body: JSON.stringify({target, outDir}),
     });
     if (!response.ok && response.status !== 409) {
-        throw new Error(await extractErrorMessage(response, "Failed to preview the artifact build"));
+        throw new Error(await extractErrorMessage(response, "Failed to preview the build"));
     }
     return (await response.json()) as StudioArtifactPreviewView;
 }
@@ -1438,7 +1438,7 @@ export async function startArtifactBuild(
         body: JSON.stringify({target, outDir, ...(deferExecution === undefined ? {} : {deferExecution}), ...(preparedOperationId === undefined ? {} : {preparedOperationId})}),
     });
     if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to start the artifact build"));
+        throw new Error(await extractErrorMessage(response, "Failed to start the build"));
     }
     const view = (await response.json()) as {status: "created"; job: StudioArtifactBuildJobView};
     return view.job;
@@ -1447,18 +1447,18 @@ export async function startArtifactBuild(
 /** Release a queued Studio build only after its ID and startup cancellation intent are known. */
 export async function activateArtifactBuild(fetchImpl: FetchLike, id: string): Promise<void> {
     const response = await fetchImpl(`/api/project/artifacts/build/${encodeURIComponent(id)}/activate`, {method: "POST"});
-    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to activate the artifact build"));
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to activate the build"));
 }
 
 export async function getArtifactBuild(fetchImpl: FetchLike, id: string): Promise<StudioArtifactBuildJobView> {
     const response = await fetchImpl(`/api/project/artifacts/build/${encodeURIComponent(id)}`, {cache: "no-store"});
-    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to read the artifact build status"));
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to read the build status"));
     return (await response.json()) as StudioArtifactBuildJobView;
 }
 
 export async function cancelArtifactBuild(fetchImpl: FetchLike, id: string): Promise<StudioArtifactBuildJobView> {
     const response = await fetchImpl(`/api/project/artifacts/build/${encodeURIComponent(id)}/cancel`, {method: "POST"});
-    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to cancel the artifact build"));
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to cancel the build"));
     return (await response.json()) as StudioArtifactBuildJobView;
 }
 

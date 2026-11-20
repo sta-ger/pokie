@@ -32,7 +32,7 @@ function selectorLabel(selector: RecordValue): string {
     if (selector.kind === "bundle" && typeof selector.bundleDir === "string" && typeof selector.modeName === "string") return `Bundle ${selector.bundleDir}, mode ${selector.modeName}`;
     if (selector.kind === "json" && typeof selector.path === "string") return `JSON ${selector.path}`;
     if (selector.kind === "stakeEngine" && typeof selector.stakeDir === "string" && typeof selector.modeName === "string") return `Stake Engine ${selector.stakeDir}, mode ${selector.modeName}`;
-    return "Retained selector metadata is incomplete.";
+    return "Saved selector metadata is incomplete.";
 }
 
 function terminalPresentation(status: Exclude<StudioJobView["status"], "queued" | "running" | "cancelling">): {color: "green" | "gray" | "orange" | "red"; label: string; fallback: string} {

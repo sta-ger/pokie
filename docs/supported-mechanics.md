@@ -11,7 +11,7 @@ guide, not a certification.
 | Jackpots | Fixed and accumulating pools, contribution, award and reset — see [game session](game-session.md). |
 | Bet modes | Base, ante and explicit purchase status — see [game session](game-session.md). |
 | Screen modifiers and wild variants | Expanding, sticky, restricted, multiplier, transform and reel rules — see [authored wilds](math-modeling.md#authored-wilds-and-screen-modifiers). |
-| Cascades, respins and collections | All seven nonempty combinations with bounded terminal/progression behavior — see [feature chains with limits](bounded-mechanics.md). |
+| Cascades, respins and collections | All seven nonempty combinations with bounded terminal/progression behavior — see [feature chains with limits](feature-chains.md). |
 | Weighted bonus outcomes | Finite outcome tables with weights, payout units and duration — see [weighted bonus](weighted-bonus.md). |
 | Resizable grids and geometry | Generated, visible and evaluated screen ownership — see [resizable grid](resizable-grid.md). |
 | Artifacts and interchange | Generated TypeScript/CJS packages, PAR workbooks, extraction and WASM — see [game packages](game-packages.md). |

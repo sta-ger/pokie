@@ -243,11 +243,11 @@ export class ValidateCommand implements CliCommandHandling {
             const result = await readWasmComponentManifest(project);
             if (!result.supported) return this.wasmValidationFailure(project.rootPath, result.diagnostic.message);
             if (result.manifest.artifact === undefined) {
-                return this.wasmValidationFailure(project.rootPath, "This legacy sidecar-only WASM component cannot validate WASM game logic because it is inspectable but not runnable. Rebuild it with `pokie build <blueprint> --target wasm`.");
+                return this.wasmValidationFailure(project.rootPath, "This legacy WASM component with a companion file cannot validate WASM game logic because it is inspectable but not runnable. Rebuild it with `pokie build <blueprint> --target wasm`.");
             }
             const {manifest} = result;
             const artifact = manifest.artifact;
-            if (artifact === undefined) return this.wasmValidationFailure(project.rootPath, "This legacy sidecar-only WASM component is inspection-only.");
+            if (artifact === undefined) return this.wasmValidationFailure(project.rootPath, "This legacy WASM component is inspection-only.");
             return {
                 schemaVersion: 1,
                 project: {path: project.rootPath, kind: "wasm"},
@@ -439,17 +439,17 @@ export class ValidateCommand implements CliCommandHandling {
         if (issue.code === "pokie-game-manifest-threw") {
             return {
                 ...issue,
-                message: "The game manifest provided by this package could not be read.",
+                message: "The game info provided by this package could not be read.",
                 path: `${entryPath}#manifest`,
-                suggestion: "Ensure the package entry provides a manifest with non-empty id, name, and version, then run validate again.",
+                suggestion: "Ensure the package entry provides game info with a non-empty id, name and version, then run validate again.",
             };
         }
         if (issue.code === "pokie-game-manifest-missing") {
             return {
                 ...issue,
-                message: "The package entry does not provide a game manifest.",
+                message: "The package entry does not provide game info.",
                 path: `${entryPath}#manifest`,
-                suggestion: "Add a game manifest with non-empty id, name, and version to the package entry, then run validate again.",
+                suggestion: "Add game info with a non-empty id, name and version to the package entry, then run validate again.",
             };
         }
 
@@ -457,9 +457,9 @@ export class ValidateCommand implements CliCommandHandling {
         if (manifestField !== undefined) {
             return {
                 ...issue,
-                message: `The game manifest field "${manifestField}" must be a non-empty string.`,
+                message: `The game info field "${manifestField}" must be a non-empty string.`,
                 path: `${entryPath}#manifest.${manifestField}`,
-                suggestion: `Set the game manifest field "${manifestField}" to a non-empty string, then run validate again.`,
+                suggestion: `Set the game info field "${manifestField}" to a non-empty string, then run validate again.`,
             };
         }
         return undefined;

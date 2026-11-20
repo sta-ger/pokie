@@ -207,9 +207,9 @@ export function describeProjectType(type: StudioProjectType, wasmPresentation?: 
 const CAPABILITY_LABEL: Record<string, string> = {
     "blueprint.build": "Edit and build this game",
     "runtime.execute": "Play, test, and export this game",
-    "wasm.runtime.execute": "Play, simulate, and replay this portable artifact",
-    "wasm.runtime.play": "Play and simulate this portable artifact",
-    "wasm.runtime.replay": "Replay this portable artifact",
+    "wasm.runtime.execute": "Play, simulate, and replay this portable build",
+    "wasm.runtime.play": "Play and simulate this portable build",
+    "wasm.runtime.replay": "Replay this portable build",
     "outcomeLibrary.read": "Use saved game outcomes",
     "stakeAdapter.exchange": "Share this game export",
     "parWorkbook.exchange": "Share this PAR spreadsheet",

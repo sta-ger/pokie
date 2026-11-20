@@ -711,7 +711,7 @@ function MechanicsSection({section}: {section: GameModelProjection["mechanics"]}
             {cascade && <Text size="sm">Cascade: maximum {cascade.maxCascades} winning removals; a terminal losing evaluation completes the cascade. A further win rejects and rolls back the subround.</Text>}
             {respins && <>
                 <Text size="sm">Respins: trigger symbol {respins.trigger.symbolId}, minimum count {respins.trigger.minimumCount}; grant {respins.grant}; retrigger {respins.retrigger}; maximum executed respins {respins.maxRespins}.</Text>
-                <Text size="sm">Continuation stake is zero. Each accepted subround pays its own win; retrigger grants are clipped to the remaining lifetime budget.</Text>
+                <Text size="sm">Continuation stake is zero. Each accepted subround pays its own win; retrigger grants are clipped to the remaining lifetime limit.</Text>
             </>}
             {weightedBonus && <>
                 <Text size="sm">Weighted bonus: {weightedBonus.id}; {weightedBonus.context}; trigger {weightedBonus.trigger.symbolId} × {weightedBonus.trigger.minimumCount}; feature {weightedBonus.feature.id}; maximum duration {weightedBonus.feature.maxDuration}.</Text>

@@ -423,7 +423,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
 
         parent
             .command("build")
-            .description("Build a canonical outcome-library persistence bundle from WeightedOutcomeLibrary JSON/JSONL files.")
+            .description("Build an outcome-library folder from WeightedOutcomeLibrary JSON/JSONL files.")
             .argument("<config.json>", "lists one outcome source per mode -- see docs/outcome-library-bundle.md")
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
             .option("--out <dir>", "output directory (default: an \"outcomelibrary\" sibling of <config.json>)")
@@ -440,7 +440,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             .description("Validate an outcome-library persistence bundle.")
             .argument("<bundleDir>", "an existing outcome-library bundle directory built by \"pokie outcomelibrary build\"")
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
-            .option("--deep", "also validate every outcome's own weight/artifact shape, not just the bundle's index")
+            .option("--deep", "also validate every outcome's own weight and round-record shape, not just the folder index")
             .action(async (bundleDir: string, excess: string[], options: {deep?: boolean}) => {
                 if (excess.length > 0) {
                     throw new Error(`Unknown option "${excess[0]}". ${VALIDATE_USAGE}`);
@@ -462,7 +462,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 return parsed;
             })
             .option("--config-hash <hash>", "verify the loaded package configuration identity before generation")
-            .option("--library-id <id>", "id for the generated library (default: derived from the game manifest/mode)")
+            .option("--library-id <id>", "id for the generated library (default: derived from the game info and mode)")
             .option(
                 "--max-outcome-space-size <n>",
                 "above this raw outcome count, exact generation fails safely; use --sample <n> --seed <string> for sampled draws",
@@ -697,7 +697,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                         ) {
                             throw new WeightedOutcomeLibraryGenerationError(
                                 "weighted-outcome-library-generation-configuration-conflict",
-                                "The loaded package configuration or output destination changed after preflight. Re-run generation from a fresh preflight.",
+                                "The loaded package configuration or output destination changed after preflight. Re-run generation from a fresh check.",
                             );
                         }
                         // The planner may consume a streaming result after read()
@@ -734,7 +734,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                     if (reboundDestination?.path !== rawOutput) {
                         throw new WeightedOutcomeLibraryGenerationError(
                             "weighted-outcome-library-generation-destination-conflict",
-                            "The output destination changed after preflight. Re-run generation from a fresh preflight.",
+                            "The output destination changed after preflight. Re-run generation from a fresh check.",
                         );
                     }
                 },

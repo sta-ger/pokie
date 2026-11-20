@@ -75,7 +75,7 @@ export function useDurableJobs(port: DurableJobsObserving, scope: string | undef
         } catch (error: unknown) {
             if (token === owner.current && sequence === listSequence.current) {
                 setDiscovery(previous => previous.scope === scope && previous.status === "complete" ? previous : {scope, status: "failed"});
-                setConnectionError(`Connection to Studio lost. ${knownJobs.current.length > 0 ? "Known work is retained" : "Cannot check for retained work"}; reconnecting automatically. ${errorMessage(error)}`);
+                setConnectionError(`Connection to Studio lost. ${knownJobs.current.length > 0 ? "Known work is saved" : "Cannot check for saved work"}; reconnecting automatically. ${errorMessage(error)}`);
             }
         }
     }, [port, request, scope]);
@@ -111,7 +111,7 @@ export function useDurableJobs(port: DurableJobsObserving, scope: string | undef
                     setJobs((previous) => previous.map((existing) => existing.id === job.id ? observed(existing, update) : existing));
                 } catch (error: unknown) {
                     if (token === owner.current && revision === revisions.current.get(job.id)) {
-                        setConnectionError(`Cannot observe job ${job.id}. Known work is retained; reconnecting automatically. ${errorMessage(error)}`);
+                        setConnectionError(`Cannot observe job ${job.id}. Known work is saved; reconnecting automatically. ${errorMessage(error)}`);
                     }
                 }
             }));

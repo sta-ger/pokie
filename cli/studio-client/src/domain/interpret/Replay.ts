@@ -287,9 +287,9 @@ function describeComparisonSide(role: "recorded" | "recreated", side: Comparable
     } else if (side.stateBefore === undefined || side.stateAfter === undefined) {
         completeness = "Partial -- round record recorded, but no session state captured.";
     } else if (extractDeterministicReelStops(side.artifact.debug) === undefined) {
-        completeness = "Partial -- artifact and state recorded, but no RNG/reel-stop trace.";
+        completeness = "Partial -- round record and state recorded, but no RNG/reel-stop trace.";
     } else {
-        completeness = "Full -- artifact, state, and RNG/reel-stop trace all recorded.";
+        completeness = "Full -- round record, state, and RNG/reel-stop trace all recorded.";
     }
 
     return {
@@ -368,7 +368,7 @@ export function describeReplayComparison(expected: ComparableReplayResult, repro
             dimensions.source = compareDimension(
                 {game: a.game, libraryId: a.libraryId, libraryHash: a.libraryHash},
                 {game: b.game, libraryId: b.libraryId, libraryHash: b.libraryHash},
-                isDebugObject, (left, right) => deepEqualJson(left, right) ? undefined : "Library identity, hash or game provenance differs.",
+                isDebugObject, (left, right) => deepEqualJson(left, right) ? undefined : "Library identity, hash or game origin differs.",
             );
             dimensions.selection = compareDimension(
                 {mode: a.modeName, algorithm: a.selectionAlgorithm, seed: a.seed, round: a.round},
@@ -434,7 +434,7 @@ function compareDimension<Value>(
 // compared against a mismatched pairing.
 function compareStatePair(expectedBefore: unknown, expectedAfter: unknown, reproducedBefore: unknown, reproducedAfter: unknown): ComparisonDimensionResult {
     if (expectedBefore === undefined || expectedAfter === undefined || reproducedBefore === undefined || reproducedAfter === undefined) {
-        return {status: "unavailable", reason: "A state snapshot is missing on one or both sides."};
+        return {status: "unavailable", reason: "A saved state is missing on one or both sides."};
     }
     const matches = deepEqualJson(expectedBefore, reproducedBefore) && deepEqualJson(expectedAfter, reproducedAfter);
     return matches ? {status: "match"} : {status: "mismatch", detail: "Session state before/after differs."};
@@ -550,19 +550,19 @@ function describeLibraryRecordIssue(record: ComparableReplayResult): string | un
         !isFiniteNumber(source.totalWin) || !isFiniteNumber(source.payoutMultiplier) ||
         !isFiniteNumber(source.stake) || source.stake <= 0 || !Array.isArray(source.screen) ||
         !source.game?.id || !source.game.name || !source.game.version || !source.artifact || !resolveReplayArtifact(record)) {
-        return "Incomplete library source, selection provenance or recorded result. Restore the original downloaded descriptor and open its original library.";
+        return "Incomplete library source, selection origin or recorded result. Restore the original downloaded descriptor and open its original library.";
     }
     const artifact = resolveReplayArtifact(record)!;
     if (source.seed !== record.seed || source.round !== record.round || source.modeName !== record.modeName ||
         !deepEqualJson(source.game, artifact.origin?.game) ||
         source.stake !== artifact.stake || source.totalWin !== artifact.totalWin || source.payoutMultiplier !== artifact.payoutMultiplier ||
         !screensEqual(source.screen, artifact.screen)) {
-        return "Library provenance does not agree with the loaded seed, round, mode or recorded artifact. Restore the original downloaded descriptor.";
+        return "Library origin does not agree with the loaded seed, round, mode or round record. Restore the original downloaded descriptor.";
     }
     if (source.artifact !== undefined) {
         const {hash: _hash, ...outerArtifact} = artifact;
         if (!deepEqualJson(source.artifact, outerArtifact)) {
-            return "Library recorded artifact does not agree with its selection provenance. Restore the original downloaded descriptor.";
+            return "Library round record does not agree with its selection origin. Restore the original downloaded descriptor.";
         }
     }
     return undefined;
@@ -584,7 +584,7 @@ export function describeReplayReproducibility(
             reason:
                 "This round has no recorded seed, so replaying it forward from round 1 can't deterministically reproduce the original result — likely an imported round that never carried a Pokie seed.",
             remediation:
-                'Add a "seed" field with the original seed to the pasted artifact JSON before reproducing, or use it for inspection only (skip Reproduce and go straight to Inspect via Recent Replays).',
+                'Add a "seed" field with the original seed to the pasted round-record JSON before reproducing, or use it for inspection only (skip Reproduce and go straight to Inspect via Recent Replays).',
         };
     }
 
@@ -607,7 +607,7 @@ export function describeReplayReproducibility(
             reason:
                 'This round record has no game id/version origin ("origin.game"), so there is no way to confirm it was reproduced against the same game build that originally produced it — likely an incomplete or hand-trimmed record.',
             remediation:
-                'Add an "origin.game" object with the original "id" and "version" to the pasted artifact JSON before reproducing, or use it for inspection only (skip Reproduce and go straight to Inspect via Recent Replays).',
+                'Add an "origin.game" object with the original "id" and "version" to the pasted round-record JSON before reproducing, or use it for inspection only (skip Reproduce and go straight to Inspect via Recent Replays).',
         };
     }
 
@@ -624,9 +624,9 @@ export function describeReplayReproducibility(
             return {
                 status: "blocked",
                 reason:
-                    'This round\'s artifact has no recorded session state ("stateBefore"/"stateAfter" immediately around the round), so a fresh reproduction\'s own state transition can\'t be verified against it — likely an incomplete or hand-trimmed record.',
+                    'This round\'s round record has no recorded session state ("stateBefore"/"stateAfter" immediately around the round), so a fresh reproduction\'s own state transition can\'t be verified against it — likely an incomplete or hand-trimmed record.',
                 remediation:
-                    'Add "stateBefore" and "stateAfter" fields (captured alongside the original round) to the pasted artifact JSON before reproducing, or use it for inspection only (skip Reproduce and go straight to Inspect).',
+                    'Add "stateBefore" and "stateAfter" fields (captured alongside the original round) to the pasted round-record JSON before reproducing, or use it for inspection only (skip Reproduce and go straight to Inspect).',
             };
         }
 
@@ -634,7 +634,7 @@ export function describeReplayReproducibility(
             return {
                 status: "bestEffort",
                 reason:
-                    'This round\'s artifact has no recorded RNG/reel-stop trace (a "reelStops" field under "debug"), so a fresh reproduction\'s own RNG data can\'t be verified against it. Inspection of the recorded round is unaffected -- Reproduce is still offered, but only as a best-effort forward replay: it is explicitly non-verifiable, never presented as an exact match.',
+                    'This round\'s round record has no recorded RNG/reel-stop trace (a "reelStops" field under "debug"), so a fresh reproduction\'s own RNG data can\'t be verified against it. Inspection of the recorded round is unaffected -- Reproduce is still offered, but only as a best-effort forward replay: it is explicitly non-verifiable, never presented as an exact match.',
             };
         }
     }
@@ -806,7 +806,7 @@ function describeComparableCapability(
         return {status: "unavailable", reason: "No round record recorded on this entry to compare against."};
     }
     if (comparison === undefined) {
-        return {status: "available", reason: "Will be verified against the loaded artifact once reproduced."};
+        return {status: "available", reason: "Will be verified against the loaded round record once reproduced."};
     }
     if (comparison.status === "unavailable") {
         return {status: "unavailable", reason: comparison.unavailableReason ?? "Verification unavailable."};
@@ -885,7 +885,7 @@ function describeLoadedSpin(spin: StudioRuntimeSessionView, canExport: boolean):
     }
     const hasDebugBundle = spin.debug?.debugData !== undefined || spin.debug?.stateBefore !== undefined || spin.debug?.stateAfter !== undefined;
     let completeness: string;
-    if (spin.debug?.recording?.audit) completeness = "Full audit export -- executable inputs, commands, canonical artifacts and disposition are retained separately from this visible display.";
+    if (spin.debug?.recording?.audit) completeness = "Full audit export -- executable inputs, commands, round records and results are saved separately from this visible display.";
     else if (spin.debug?.auditUnavailableReason) completeness = `Audit unavailable -- ${spin.debug.auditUnavailableReason}`;
     else if (spin.debug?.artifact !== undefined) {
         completeness = "Full -- a complete round record (screen, wins, steps, debug) plus state was captured for this spin.";
@@ -906,7 +906,7 @@ function describeLoadedSpin(spin: StudioRuntimeSessionView, canExport: boolean):
         timestamp: spin.studioRecordedAt ? new Date(spin.studioRecordedAt).toLocaleString() : "(unknown)",
         completeness,
         capabilities: {...describeReplayCapabilities({source: "spin", hasResult: true, hasComparisonTarget: false, canExport}),
-            ...(spin.debug?.recording?.audit ? {reproducible: {status: "available" as const, reason: "Load the recorded executable evidence for audit replay."}} : {}),
+            ...(spin.debug?.recording?.audit ? {reproducible: {status: "available" as const, reason: "Load the recorded audit round for replay."}} : {}),
             ...(spin.debug?.auditUnavailableReason ? {reproducible: {status: "unavailable" as const, reason: spin.debug.auditUnavailableReason}} : {})},
     };
 }
@@ -1016,9 +1016,9 @@ function describeLoadedArtifact(
     } else if (reproducibility.status === "ready") {
         completeness = expected.outcomeSource
             ? "Full -- library source, selection inputs and recorded result; no live session snapshots."
-            : "Full -- seed, provenance, state, and RNG trace all recorded.";
+            : "Full -- seed, origin, state, and RNG trace all recorded.";
     } else if (reproducibility.status === "bestEffort") {
-        completeness = "Partial -- seed, provenance, and state recorded, but no RNG/reel-stop trace (best-effort reproduction only).";
+        completeness = "Partial -- seed, origin, and state recorded, but no RNG/reel-stop trace (best-effort reproduction only).";
     } else {
         completeness = "Incomplete -- missing data required to verify a reproduction (see below).";
     }
@@ -1028,7 +1028,7 @@ function describeLoadedArtifact(
         // been played forward from it (see StudioReplayExecutionService.run()), so the label says so
         // while still naming the recorded artifact it was reproduced from -- `identities` below then
         // carries the recreated session/job's own identity, distinct from this recorded reference.
-        source: result ? "Recreated -- reproduced from a recorded replay artifact" : "Recorded -- replay artifact (reference, not yet reproduced)",
+        source: result ? "Recreated -- reproduced from a recorded replay round" : "Recorded -- replay round record (reference, not yet reproduced)",
         identities: result ? `replay session ${result.sessionId}, replay job ${result.id}` : "(assigned once reproduced)",
         seed: expected.seed ?? "(none)",
         versionHash: versionHashParts.length > 0 ? versionHashParts.join(", ") : "(not recorded)",
@@ -1067,7 +1067,7 @@ function describeLoadedFreshReplay(
     } else if (result.artifact) {
         completeness = "Full -- round record captured (screen, wins, steps, debug).";
     } else {
-        completeness = "Partial -- round-level result only, no per-step artifact for this game.";
+        completeness = "Partial -- round-level result only, no per-step round record for this game.";
     }
     return {
         source: source === "seedRound" ? "Recreated -- recreate from seed" : "Recreated -- recent simulation",

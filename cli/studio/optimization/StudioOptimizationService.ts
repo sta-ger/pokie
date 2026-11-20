@@ -223,7 +223,7 @@ export class StudioOptimizationService {
                         status: "recovery-required",
                         recovery: {
                             action: "retry",
-                            reason: "Optimization cleanup failed. Inspect retained scratch output before retrying.",
+                            reason: "Optimization cleanup failed. Inspect saved temporary output before retrying.",
                         },
                         result: retained,
                     };

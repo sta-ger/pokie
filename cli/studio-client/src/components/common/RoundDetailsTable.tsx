@@ -19,7 +19,7 @@ export function RoundDetailsTable({
                     <Table.Td style={{overflowWrap: "anywhere"}}>
                         {artifact.origin.game
                             ? `${artifact.origin.game.name} (id: "${artifact.origin.game.id}", v${artifact.origin.game.version})`
-                            : "Unavailable -- this artifact has no recorded game id/version origin."}
+                            : "Unavailable -- this round record has no recorded game id/version origin."}
                     </Table.Td>
                 </Table.Tr>
                 <Table.Tr>

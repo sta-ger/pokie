@@ -252,7 +252,7 @@ if (issues.some((issue) => issue.severity === "error")) {
 
 ## Generated, visible and evaluated coordinates
 
-generated evidence and the separate PublicRoundRecordProjector: see the coordinate interface and connector support matrix.
+generated coordinates and the separate PublicRoundRecordProjector: see the coordinate interface and connector support matrix.
 
 ### Retained logical rounds
 
@@ -263,7 +263,7 @@ actual stake/mode and mathematical win total. It does not resolve, refill, draw
 or evaluate. Full server capture uses this complete prefix and completes it as
 free games finish; pending artifacts represent a committed prefix, not a claim
 that the feature ended. Public view still removes generated/evaluated
-coordinate evidence, including on the currently delivered cascade step.
+coordinate data, including on the currently delivered cascade step.
 
 `buildRoundRecordFromSession()` remains a single played-subround capture for
 free-game sessions. For cascade providers it consumes the saved resolver
@@ -284,7 +284,7 @@ no additional history record.
 ## Recorded executable audit replay
 
 `RoundRecord` schema 1 remains the canonical mathematical sample. A hashed
-JSON artifact is validated against its hash when supplied to `RoundRecordValidator`.
+JSON round record is validated against its hash when supplied to `RoundRecordValidator`.
 A visible view has no canonical hash and is not independently replayable.
 `AuditRoundRecording` (`pokie.audit-round.v1`, runtime interface
 `pokie.session-runtime.v1`) binds artifacts to executable inputs and result:
@@ -310,10 +310,10 @@ actual charge and charged bet mode. `logicalRound`, totals and the unchanged v1
 audit deliveries retain aggregate accounting separately. Package mode attribution
 uses `modePolicy.selection: "recorded-commands"`; those commands describe the
 actual explicit entries and zero-stake continuations, rather than a repeat-mode
-selector. Studio Session Spin displays and downloads this same step artifact.
+selector. Studio Session Spin displays and downloads this same step record.
 Previously exported v1 logical-round descriptors remain accepted against their
 original aggregate view. Display-only deliveries reuse the last evaluated
-artifact and do not manufacture a new spin.
+record and do not manufacture a new spin.
 
 Direct retries require a request identity or explicit logical delivery identity. Identical
 unkeyed calls execute separately. A retry returns its immutable original descriptor and
@@ -322,7 +322,7 @@ execution. Composite subdeliveries share their owning request and retain distinc
 cursors. `walletPayout` records the actual signed post-stake wallet adjustment (credit or
 debit). Built-in sessions retain exact domain payouts; legacy custom accounting can
 include floating-point residue. Mathematical stakes and wins remain unchanged.
-Captured evidence survives compensation with a compensated result. Recovery validates
+Captured data survives compensation with a compensated result. Recovery validates
 the original hash and owning operation identity before publishing a new result.
 When a successor calculation fails, the thrown error retains the immutable accepted prefix in
 `committedRecording`. Export its `audit` for detached replay; its logical completion
@@ -333,7 +333,7 @@ assigned result revisions against the audit; pre-save operation captures may sti
 have an unassigned `newVersion`.
 
 Audit capture is fallible after runtime acceptance. The recorder binds original inputs and
-charges each accepted delivery before capturing its evidence. It retries capture once at
+charges each accepted delivery before capturing its record. It retries capture once at
 that same boundary, without another calculation. If both attempts fail, it throws the stable
 `audit-capture-unavailable` error with `acceptedDeliveries`, the immutable `operation`
 (commands, context and result), and `uncapturedDelivery` (command, pre-play boundary,
@@ -364,12 +364,12 @@ const reproduced = recorder.replay(compatibleGame, portable.audit);
 path, restoring detached executable state at every accepted boundary. It has no
 wallet, store, provider, reconciliation or publication dependencies. Transactional
 status is preserved and validated, never applied offline. Retries return saved
-historical evidence; they do not append another calculation. A completed verification
+historical data; they do not append another calculation. A completed verification
 of a pending/exhausted prefix does not complete the logical round. Mathematical
 steps and saved-stage deliveries remain different; exhaustion retains the evaluated
 prefix and final unevaluated refill.
 
-The audit SHA-256 covers the complete envelope; artifact SHA-256 covers file content. Object key ordering is canonical, array ordering is significant.
+The audit SHA-256 covers the complete wrapper; file SHA-256 covers file content. Object key ordering is canonical, array ordering is significant.
 Errors expose stable `AuditReplayError.code` and `path`: structure/hash, version,
 identity, codec unsupported, state, command, order, artifact, execution mismatch or
 cancellation. Validation happens before reconstruction, with selected-package
@@ -383,7 +383,7 @@ recording types only; Studio uses the server verifier's result. Native outcome
 libraries retain their selection/hash profile; portable WASM retains its current
 runtime replay and compact state, without package audit support.
 
-Standard authored samples now include `holdAndWin` (locks, active flag, remaining respins and completion payout), `jackpot` (pool balances/statistics and award), and `chargedBetMode` events. Live VideoSlot payloads expose corresponding data and `chargedBetModeId` separately from selected `betModeId`. Shared player counters consume both live data and replay artifact events. Symbol-less jackpot wins carry a JSON `null` symbol ID. Seeded replay reconstructs commands; exact audit replay validates saved executable boundaries and outputs, including purchase and continuation commands.
+Standard authored samples now include `holdAndWin` (locks, active flag, remaining respins and completion payout), `jackpot` (pool balances/statistics and award), and `chargedBetMode` events. Live VideoSlot payloads expose corresponding data and `chargedBetModeId` separately from selected `betModeId`. Shared player counters consume both live data and replay round events. Symbol-less jackpot wins carry a JSON `null` symbol ID. Seeded replay reconstructs commands; exact audit replay validates saved executable boundaries and outputs, including purchase and continuation commands.
 
 ### Screen modifier evidence
 
@@ -393,8 +393,8 @@ wins, with existing geometry mappings. `screenModifiers` feature events declare
 symbol/factor identities with remaining future steps (0 on the last application).
 Win multiplier breakdowns retain unique winning coordinates, factor values and
 the combined product. Public screen/highlight view preserves the payout
-evidence; modifier event coordinates keep their explicit evaluation tag. Neither
-artifact construction nor Play/Replay presentation re-executes a rule.
+data; modifier event coordinates keep their explicit evaluation tag. Neither
+round record construction nor Play/Replay presentation re-executes a rule.
 
 ## Weighted bonus authoring
 

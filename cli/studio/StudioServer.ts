@@ -1487,7 +1487,7 @@ export class StudioServer implements StudioServerHandling {
                 const outDir = url.searchParams.get("outDir") ?? "";
                 const file = url.searchParams.get("file") ?? "";
                 const job = this.jobService.list(projectRoot).find(item => item.operation === "certification-build" && item.status === "completed" && item.request.outDir === outDir && (item.result?.provenance?.manifest as {evidenceContentHash?: string} | undefined)?.evidenceContentHash === identity);
-                if (!job) throw new Error("No successful retained pack matches this request.");
+                if (!job) throw new Error("No successful saved certification pack matches this request.");
                 const request = validateCertificationBuildRequest(job.request);
                 if (typeof job.request.inputIdentity === "string" && this.certificationService.requestIdentity(projectRoot, request) !== job.request.inputIdentity) throw new Error("Pack input files changed; prepare a fresh pack.");
                 const operation = this.certificationService.download(projectRoot, request, file, identity, controller.signal);
@@ -1788,7 +1788,7 @@ export class StudioServer implements StudioServerHandling {
         if (this.rejectUnconfirmedProjectTransition(res, validated.confirmActiveJobs, validated.projectRoot)) return;
 
         const sourcePath = this.canonicalPathIdentity(validated.projectRoot);
-        const recovery = {action: "retry", reason: "Runtime materialization is not resumable after restart. Reopen the same project to retry."} as const;
+        const recovery = {action: "retry", reason: "Project preparation is not resumable after restart. Reopen the same project to retry."} as const;
 
         // loadProjectDashboardContext (behind StudioHomeService.openProject()) only ever resolves
         // "loaded", "outcome-source", "artifact", or "error" — "empty"/"loading" are exclusively synthesized
@@ -1871,7 +1871,7 @@ export class StudioServer implements StudioServerHandling {
                     }
                     if (dashboard.status === "loaded" || dashboard.status === "outcome-source" || dashboard.status === "artifact") {
                         return {status: "completed", result: {
-                            summary: "Project opening and runtime materialization completed.",
+                            summary: "Project opening and preparation completed.",
                             outputs: [{path: dashboard.projectRoot, label: "Opened project"}],
                             provenance: {sourcePath},
                             detail: {sourcePath, projectRoot: dashboard.projectRoot},
@@ -2864,7 +2864,7 @@ export class StudioServer implements StudioServerHandling {
             res,
             {
                 projectId: projectRoot, operation: "deployment", request: {...validated, sourceProjectId: projectRoot} as unknown as Readonly<Record<string, unknown>>, conflictKey: `deployment-delivery:${validated.targetId}`, recoveryOnRestart: recovery,
-                initialProgress: {stage: "Planning deployment", unit: "pipeline stages", current: 0, total: "indeterminate", message: "Validating artifacts and delivery boundaries."},
+                initialProgress: {stage: "Planning deployment", unit: "pipeline stages", current: 0, total: "indeterminate", message: "Validating outputs and delivery boundaries."},
                 // runDeployment always resolves its planner view for an
                 // operation outcome.  Keep reconnects in that shape too; a
                 // bare 409 would be mistaken for a failed HTTP request.
@@ -3064,7 +3064,7 @@ export class StudioServer implements StudioServerHandling {
         // a client assertion about the selected strategy.
         const binding = this.outcomeLibraryGenerateService.getPreflightBinding(validated.preflightToken);
         if (binding === undefined) {
-            this.sendJson(res, 409, {status: "conflict", error: "The displayed generation preflight has expired. Refresh it before generating."});
+            this.sendJson(res, 409, {status: "conflict", error: "The displayed generation check has expired. Refresh it before generating."});
             return;
         }
         if (binding?.requiresBounded) {
@@ -3081,7 +3081,7 @@ export class StudioServer implements StudioServerHandling {
         // the shared key (strategy/sample/cap/identity/destination), while
         // the service rechecks current source and resolved destination.
         if (generationRequestKey(validated) !== binding.requestKey) {
-            this.sendJson(res, 409, {status: "conflict", error: "The generation request no longer matches the immutable preflight. Refresh the displayed preflight before generating."});
+            this.sendJson(res, 409, {status: "conflict", error: "The generation request no longer matches the fixed check. Refresh the displayed check before generating."});
             return;
         }
         const bindingConflict = await this.outcomeLibraryGenerateService.validatePreflightBinding(this.currentContext.projectRoot, validated, binding);
@@ -3353,7 +3353,7 @@ export class StudioServer implements StudioServerHandling {
                 // another validator can allocate its own domain work.
                 conflictKey: `certification-validate:${projectRoot}`,
                 recoveryOnRestart: {action: "retry", reason: "Deep validation is not resumable after restart. Retry the captured validation."},
-                initialProgress: {stage: "Validating evidence", unit: "evidence files", current: "indeterminate", total: "indeterminate", message: "Checking certification evidence and provenance."},
+                initialProgress: {stage: "Validating evidence", unit: "evidence files", current: "indeterminate", total: "indeterminate", message: "Checking certification pack files and origin."},
                 reattachedResponse: (job) => ({statusCode: 200, body: {status: "load-error", error: "Certification validation is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
             },
             ({signal, progress}) => this.certificationService.validateSourceBundle(projectRoot, validated.bundleDir, {
@@ -3390,7 +3390,7 @@ export class StudioServer implements StudioServerHandling {
         }
 
         const projectRoot = this.canonicalPathIdentity(this.currentContext.projectRoot);
-        const recovery = {action: "rebuild", reason: "Rebuild the evidence bundle from the captured source and destination."} as const;
+        const recovery = {action: "rebuild", reason: "Rebuild the certification pack from the captured source and destination."} as const;
         let inputIdentity: string | undefined;
         let authorityFailure: string | undefined;
         try {
@@ -3404,7 +3404,7 @@ export class StudioServer implements StudioServerHandling {
                 projectId: projectRoot, operation: "certification-build", request: {...validated, sourceProjectId: projectRoot, ...(inputIdentity ? {inputIdentity} : {}), ...(authorityFailure ? {authorityFailure} : {})} as unknown as Readonly<Record<string, unknown>>,
                 conflictKey: `certification-output:${this.canonicalPathIdentity(path.resolve(projectRoot, validated.outDir))}`,
                 recoveryOnRestart: recovery,
-                initialProgress: {stage: "Building evidence", unit: "evidence files", current: "indeterminate", total: "indeterminate", message: "Writing certification evidence to a staging destination."},
+                initialProgress: {stage: "Building evidence", unit: "evidence files", current: "indeterminate", total: "indeterminate", message: "Writing the certification pack to a staging destination."},
                 reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", errors: [], warnings: [], activeJobId: job.id, reattached: true}}),
             },
             ({signal, progress}) => authorityFailure ? Promise.resolve({status: "load-error" as const, error: authorityFailure}) : this.certificationService.build(projectRoot, validated.bundleDir, validated.modes, validated.outDir, {
@@ -3415,11 +3415,11 @@ export class StudioServer implements StudioServerHandling {
             (result, cancelled) => {
                 if (cancelled) return result.status === "load-error" && (/cleanup failed/).test(result.error) ? {status: "failed", error: result.error, recovery} : {status: "cancelled", result: {summary: "Certification evidence build cancellation settled; inspect the retained executor result for cleanup diagnostics."}, recovery};
                 if (result.status === "ok") return {status: "completed", result: {summary: `${result.manifest.pack?.support.notice ?? "Certification-ready preparation only."} Model representation: ${result.manifest.pack?.support.coverage ?? "unavailable"}.`, outputs: result.files.map((file) => ({path: file, label: "Certification evidence", downloadPath: `/api/project/certification/download?${new URLSearchParams({outDir: validated.outDir, identity: result.manifest.evidenceContentHash, file})}`})), provenance: {bundleDir: validated.bundleDir, manifest: result.manifest, artifactHashes: result.artifactHashes ?? {}}, detail: {outDir: validated.outDir, templateHash: result.manifest.presentation?.templateHash}}};
-                return {status: "failed", error: result.status === "load-error" ? result.error : "Certification evidence build failed.", recovery: {action: "rebuild", reason: "Correct the source bundle and rebuild the evidence."}};
+                return {status: "failed", error: result.status === "load-error" ? result.error : "Certification pack build failed.", recovery: {action: "rebuild", reason: "Correct the source folder and rebuild the certification pack."}};
             },
             (error, cancelled) => cancelled && !(error instanceof Error && (/cleanup failed/).test(error.message))
                 ? {status: "cancelled", result: {summary: "Certification evidence build cancellation settled; inspect the retained executor result for cleanup diagnostics."}, recovery}
-                : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery: {action: "rebuild", reason: "Correct the source bundle and rebuild the evidence."}},
+                : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery: {action: "rebuild", reason: "Correct the source folder and rebuild the certification pack."}},
         );
         if (execution === undefined) return;
         this.sendJson(res, 200, execution.value);
@@ -3643,7 +3643,7 @@ export class StudioServer implements StudioServerHandling {
                 if (start.status === "stale") {
                     this.sendJson(res, 409, {error: "Package extraction requires its current preparedOperationId and destination. Refresh the preview before saving."});
                 } else if (start.status === "conflict") {
-                    this.sendJson(res, 409, {error: "An artifact build already owns this destination.", activeJobId: start.activeJobId});
+                    this.sendJson(res, 409, {error: "A build already owns this destination.", activeJobId: start.activeJobId});
                 } else if (start.status === "unsupported") {
                     this.sendJson(res, 409, {error: start.message});
                 } else this.sendJson(res, 202, start);
@@ -3652,12 +3652,12 @@ export class StudioServer implements StudioServerHandling {
         }
         if (validated.target === "stakeAdapter") {
             if (validated.preparedOperationId === undefined) {
-                this.sendJson(res, 409, {error: "Stake build requires the preparedOperationId returned by its current preview. Refresh the preflight before building."});
+                this.sendJson(res, 409, {error: "Stake build requires the preparedOperationId returned by its current preview. Refresh the check before building."});
                 return;
             }
             const preparedDestination = this.artifactBuildService.preparedStakeProjectionDestination(this.currentContext.projectRoot, validated.preparedOperationId);
             if (preparedDestination === undefined || (validated.outDir !== undefined && validated.outDir !== preparedDestination)) {
-                this.sendJson(res, 409, {error: "The prepared Stake operation is stale or names a different destination. Refresh the preflight before building."});
+                this.sendJson(res, 409, {error: "The prepared Stake operation is stale or names a different destination. Refresh the check before building."});
                 return;
             }
             const start = await this.artifactBuildService.startPreparedStakeProjection(this.canonicalPathIdentity(this.currentContext.projectRoot), validated.preparedOperationId, validated.deferExecution);
@@ -3666,11 +3666,11 @@ export class StudioServer implements StudioServerHandling {
                 return;
             }
             if (start.status === "stale") {
-                this.sendJson(res, 409, {error: "The prepared Stake operation is stale or belongs to another project. Refresh the preflight before building."});
+                this.sendJson(res, 409, {error: "The prepared Stake operation is stale or belongs to another project. Refresh the check before building."});
                 return;
             }
             if (start.status === "conflict") {
-                this.sendJson(res, 409, {error: "An artifact build already owns this destination.", activeJobId: start.activeJobId});
+                this.sendJson(res, 409, {error: "A build already owns this destination.", activeJobId: start.activeJobId});
                 return;
             }
             this.sendJson(res, 202, {status: "created", job: start.job});
@@ -3682,7 +3682,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         if (result.status === "conflict") {
-            this.sendJson(res, 409, {error: "An artifact build already owns this destination.", activeJobId: result.activeJobId});
+            this.sendJson(res, 409, {error: "A build already owns this destination.", activeJobId: result.activeJobId});
             return;
         }
         this.sendJson(res, 202, result);
@@ -3702,7 +3702,7 @@ export class StudioServer implements StudioServerHandling {
         else if (action === "cancel") job = this.artifactBuildService.cancelForProject(this.currentContext.projectRoot, id);
         else job = this.artifactBuildService.getStatusForProject(this.currentContext.projectRoot, id);
         if (job === undefined) {
-            this.sendJson(res, 404, {error: "Artifact build job not found."});
+            this.sendJson(res, 404, {error: "Build job not found."});
             return Promise.resolve();
         }
         this.sendJson(res, 200, job);
@@ -3862,7 +3862,7 @@ export class StudioServer implements StudioServerHandling {
             }
             const recorded = recordedOutcomeSource as PreGeneratedRoundReplayDescriptor;
             if (recorded.round !== validated.round || recorded.seed !== validated.seed || recorded.modeName !== validated.modeName) {
-                this.sendJson(res, 400, {error: "Replay request seed/round/mode does not match its outcome-library provenance. Restore the original descriptor and retry."});
+                this.sendJson(res, 400, {error: "Replay request seed/round/mode does not match its outcome-library origin. Restore the original descriptor and retry."});
                 return;
             }
             try {
@@ -3976,7 +3976,7 @@ export class StudioServer implements StudioServerHandling {
             }
             const recorded = outcomeSource as PreGeneratedRoundReplayDescriptor;
             if (recorded.round !== validated.round || recorded.seed !== validated.seed) {
-                this.sendJson(res, 400, {error: "Replay descriptor outer seed/round does not match its outcome-library provenance. Restore the original descriptor and retry."});
+                this.sendJson(res, 400, {error: "Replay descriptor outer seed/round does not match its outcome-library origin. Restore the original descriptor and retry."});
                 return;
             }
             const outerMismatches: string[] = [];

@@ -334,7 +334,7 @@ export class StudioOutcomeLibraryGenerateService {
         binding: StudioOutcomeLibraryPreflightBinding,
     ): Promise<{readonly request: ValidatedOutcomeLibraryGenerateRequest} | {readonly result: Exclude<StudioOutcomeLibraryGenerateResultView, {status: "ok"} | {status: "cancelled"} | {status: "invalid"} | {status: "generation-error"}>}> {
         if (generationRequestKey(request) !== binding.requestKey) {
-            return {result: {status: "conflict", error: "The persisted checkpoint request identity no longer matches its immutable binding.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")}};
+            return {result: {status: "conflict", error: "The saved checkpoint request identity no longer matches its fixed link.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")}};
         }
         const preflight = await this.estimate(projectRoot, request);
         if (preflight.status !== "ok") {
@@ -372,7 +372,7 @@ export class StudioOutcomeLibraryGenerateService {
         binding: StudioOutcomeLibraryPreflightBinding,
     ): Promise<string | undefined> {
         if (generationRequestKey(request) !== binding.requestKey) {
-            return "The generation request no longer matches the immutable preflight. Refresh the displayed preflight before generating.";
+            return "The generation request no longer matches the fixed check. Refresh the displayed check before generating.";
         }
         const snapshot = request.preflightToken === undefined ? undefined : this.preflightSnapshots.get(request.preflightToken);
         // A managed Blueprint preflight already holds the canonical source
@@ -388,7 +388,7 @@ export class StudioOutcomeLibraryGenerateService {
                 snapshot.binding.destination !== binding.destination ||
                 snapshot.binding.requiresBounded !== binding.requiresBounded
             ) {
-                return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
+                return "The source, configuration, destination, or generation settings changed after the check. Refresh the displayed check before generating.";
             }
             try {
                 const game = await this.loadBoundManagedBlueprint(snapshot);
@@ -406,19 +406,19 @@ export class StudioOutcomeLibraryGenerateService {
                         preparedRequest.preflight.destination?.path !== binding.destination ||
                         preparedRequest.preflight.requiresSampledOptIn !== binding.requiresBounded
                     ) {
-                        return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
+                        return "The source, configuration, destination, or generation settings changed after the check. Refresh the displayed check before generating.";
                     }
                     return undefined;
                 } finally {
                     await releasePokieGame(game).catch(() => undefined);
                 }
             } catch {
-                return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
+                return "The source, configuration, destination, or generation settings changed after the check. Refresh the displayed check before generating.";
             }
         }
         const preflight = await this.estimate(projectRoot, request);
         if (preflight.status !== "ok") {
-            return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
+            return "The source, configuration, destination, or generation settings changed after the check. Refresh the displayed check before generating.";
         }
         const current = this.preflightSnapshots.get(preflight.preflightToken)?.binding;
         if (
@@ -430,7 +430,7 @@ export class StudioOutcomeLibraryGenerateService {
             current.destination !== binding.destination ||
             current.requiresBounded !== binding.requiresBounded
         ) {
-            return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
+            return "The source, configuration, destination, or generation settings changed after the check. Refresh the displayed check before generating.";
         }
         return undefined;
     }
@@ -491,7 +491,7 @@ export class StudioOutcomeLibraryGenerateService {
         // a small bounded request is an exact plan and must not acquire sampled
         // provenance just because it arrived through Studio.
         const snapshot = request.preflightToken === undefined ? undefined : this.preflightSnapshots.get(request.preflightToken);
-        if (request.preflightToken !== undefined && snapshot === undefined) return {status: "conflict", error: "The displayed generation preflight has expired. Refresh it before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
+        if (request.preflightToken !== undefined && snapshot === undefined) return {status: "conflict", error: "The displayed generation check has expired. Refresh it before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         let game: PokieGame;
         let ownsGameLease = false;
         let domainRequest: OutcomeLibraryGenerationRequest;
@@ -537,7 +537,7 @@ export class StudioOutcomeLibraryGenerateService {
             const binding = snapshot?.binding;
             const loadedConfigHash = game.getConfigHash?.();
             if (binding !== undefined && (binding.requestKey !== generationRequestKey(request) || binding.destination !== preparedRequest.preflight.destination?.path || binding.gameId !== game.getManifest().id || binding.gameVersion !== game.getManifest().version || binding.configHash !== loadedConfigHash)) {
-                return {status: "conflict", error: "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
+                return {status: "conflict", error: "The source, configuration, destination, or generation settings changed after the check. Refresh the displayed check before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
             }
             const requestedGeneration = requestedGenerationFor(preparedRequest.preflight);
             const boundDestination = preparedRequest.preflight.destination?.path;
@@ -676,7 +676,7 @@ export class StudioOutcomeLibraryGenerateService {
                     const reuse = plan.steps.find((step) => step.kind === "reuseManagedOutcomeLibrary");
                     if (reuse !== undefined) {
                         const sourceDir = reuse.output.canonicalLocation;
-                        if (sourceDir === undefined) return {status: "terminal", view: {status: "load-error", error: "The prepared reusable Outcome Library has no canonical location. Refresh the preview and retry.", plan}};
+                        if (sourceDir === undefined) return {status: "terminal", view: {status: "load-error", error: "The prepared reusable Outcome Library has no fixed location. Refresh the preview and retry.", plan}};
                         try {
                             const sourceManifest = await this.bundleReader.readManifest(sourceDir);
                             const sourceMode = sourceManifest.modes.find((entry) => entry.modeName === modeName);
@@ -790,7 +790,7 @@ export class StudioOutcomeLibraryGenerateService {
             const read = execution.read;
             if (read.status !== "ready") return {status: "load-error", error: "The prepared Outcome Library generation lost its publishable source.", plan};
             const generator = read.generator ?? read.getGenerator?.();
-            if (generator === undefined) return {status: "load-error", error: "The generated Outcome Library completed without provenance diagnostics.", plan};
+            if (generator === undefined) return {status: "load-error", error: "The generated Outcome Library completed without origin diagnostics.", plan};
             const coverage = generator.strategy === "exact" ? 1 : toNumberApprox(generator.sampledRawCount) / toNumberApprox(generator.totalOutcomeSpaceSize);
 
             return {
@@ -995,10 +995,10 @@ export class StudioOutcomeLibraryGenerateService {
         try {
             physicalLocation = this.realpath(source.canonicalLocation);
         } catch {
-            throw new Error("The prepared managed Blueprint source is no longer available. Refresh the displayed preflight before generating.");
+            throw new Error("The prepared managed Blueprint source is no longer available. Refresh the displayed check before generating.");
         }
         if (this.isDirectory(physicalLocation)) {
-            throw new Error("The prepared managed Blueprint source is not a file. Refresh the displayed preflight before generating.");
+            throw new Error("The prepared managed Blueprint source is not a file. Refresh the displayed check before generating.");
         }
         return {
             canonicalLocation: source.canonicalLocation,
@@ -1012,16 +1012,16 @@ export class StudioOutcomeLibraryGenerateService {
         const source = snapshot.plan.source;
         const canonicalLocation = source.canonicalLocation;
         if (source.kind !== "blueprint" || canonicalLocation === undefined) {
-            throw new Error("The prepared managed Blueprint source is no longer available. Refresh the displayed preflight before generating.");
+            throw new Error("The prepared managed Blueprint source is no longer available. Refresh the displayed check before generating.");
         }
         let physicalLocation: string;
         try {
             physicalLocation = this.realpath(canonicalLocation);
         } catch {
-            throw new Error("The managed Blueprint source changed or was deleted after preflight. Refresh the displayed preflight before generating.");
+            throw new Error("The managed Blueprint source changed or was deleted after the check. Refresh the displayed check before generating.");
         }
         if (this.isDirectory(physicalLocation)) {
-            throw new Error("The managed Blueprint source was replaced after preflight. Refresh the displayed preflight before generating.");
+            throw new Error("The managed Blueprint source was replaced after the check. Refresh the displayed check before generating.");
         }
         const managedBlueprint = snapshot.managedBlueprint;
         if (managedBlueprint !== undefined && (
@@ -1029,11 +1029,11 @@ export class StudioOutcomeLibraryGenerateService {
             managedBlueprint.physicalLocation !== physicalLocation ||
             managedBlueprint.fileIdentity !== this.managedBlueprintFileIdentity(canonicalLocation)
         )) {
-            throw new Error("The managed Blueprint source was replaced after preflight. Refresh the displayed preflight before generating.");
+            throw new Error("The managed Blueprint source was replaced after the check. Refresh the displayed check before generating.");
         }
         const expectedInputBindingHash = managedBlueprint?.inputBindingHash ?? source.configurationProvenance?.inputBindingHash;
         if (expectedInputBindingHash !== undefined && computeArtifactInputBindingHash([canonicalLocation]) !== expectedInputBindingHash) {
-            throw new Error("The managed Blueprint input changed after preflight. Refresh the displayed preflight before generating.");
+            throw new Error("The managed Blueprint input changed after the check. Refresh the displayed check before generating.");
         }
         const manifest = game.getManifest();
         if (
@@ -1041,14 +1041,14 @@ export class StudioOutcomeLibraryGenerateService {
             manifest.version !== snapshot.binding.gameVersion ||
             (snapshot.binding.configHash !== undefined && game.getConfigHash?.() !== snapshot.binding.configHash)
         ) {
-            throw new Error("The managed Blueprint configuration changed after preflight. Refresh the displayed preflight before generating.");
+            throw new Error("The managed Blueprint configuration changed after the check. Refresh the displayed check before generating.");
         }
     }
 
     private async loadBoundManagedBlueprint(snapshot: StudioOutcomeLibraryPreflightSnapshot): Promise<PokieGame> {
         const canonicalLocation = snapshot.plan.source.canonicalLocation;
         if (canonicalLocation === undefined) {
-            throw new Error("The prepared managed Blueprint source is no longer available. Refresh the displayed preflight before generating.");
+            throw new Error("The prepared managed Blueprint source is no longer available. Refresh the displayed check before generating.");
         }
         const game = await this.loadGame(canonicalLocation);
         try {
@@ -1062,7 +1062,7 @@ export class StudioOutcomeLibraryGenerateService {
 
     private rebindManagedBlueprintRuntime(snapshot: StudioOutcomeLibraryPreflightSnapshot): PokieGame {
         if (snapshot.validatedGame === undefined) {
-            throw new Error("The prepared managed Blueprint runtime is no longer available. Refresh the displayed preflight before generating.");
+            throw new Error("The prepared managed Blueprint runtime is no longer available. Refresh the displayed check before generating.");
         }
         this.assertManagedBlueprintBinding(snapshot, snapshot.validatedGame);
         return snapshot.validatedGame;
@@ -1074,7 +1074,7 @@ export class StudioOutcomeLibraryGenerateService {
             if (!stats.isFile()) throw new Error("not a file");
             return `${stats.dev}:${stats.ino}`;
         } catch {
-            throw new Error("The managed Blueprint source changed or was deleted after preflight. Refresh the displayed preflight before generating.");
+            throw new Error("The managed Blueprint source changed or was deleted after the check. Refresh the displayed check before generating.");
         }
     }
 
@@ -1295,7 +1295,7 @@ export class StudioOutcomeLibraryGenerateService {
         if (!(/^[0-9a-f-]{36}$/i).test(recoveryAuthorityId)) {
             throw new WeightedOutcomeLibraryGenerationError(
                 "weighted-outcome-library-generation-checkpoint-mismatch",
-                "The persisted recovery authority is invalid. Start a new generation.",
+                "The saved recovery source is invalid. Start a new generation.",
             );
         }
         const recoveryAuthority: ExactEnumerationRecoveryAuthority = issueExactEnumerationRecoveryAuthority(

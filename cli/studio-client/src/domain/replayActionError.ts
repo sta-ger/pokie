@@ -31,7 +31,7 @@ type ReplayActionIssue = {status: string; remediation: string};
 
 const REPLAY_ACTION_ISSUE_COPY: Record<ReplayActionErrorReason, (subject: string) => ReplayActionIssue> = {
     network: (subject) => ({status: `${subject} couldn't reach the Studio server.`, remediation: "Check your connection and try again."}),
-    schema: (subject) => ({status: `${subject} was rejected as invalid.`, remediation: "Check the round/seed/artifact values entered and try again."}),
+    schema: (subject) => ({status: `${subject} was rejected as invalid.`, remediation: "Check the round, seed and record values entered and try again."}),
     "not-found": (subject) => ({
         status: `${subject} could no longer be found.`,
         remediation: "It may have been deleted or aged out of the server's history -- refresh and try again.",

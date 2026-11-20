@@ -577,7 +577,7 @@ export class StudioReplayExecutionService {
     /** Replays portable WASM with the same seeded host stream used by Studio Play. */
     private async runWasmReplay(record: StudioReplayJobRecord): Promise<void> {
         if (record.seed === undefined) {
-            this.fail(record, new Error("A canonical WASM replay requires a deterministic seed."));
+            this.fail(record, new Error("A WASM replay requires a reproducible seed."));
             return;
         }
         let runtime;

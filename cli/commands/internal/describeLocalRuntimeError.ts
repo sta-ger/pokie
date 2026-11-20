@@ -46,7 +46,7 @@ export function describeRuntimePackageLoadError(packageRoot: string, error: unkn
         error.name === "BlueprintMaterializationError" ||
         error.name === "RuntimePreparationError" ||
         error.message.startsWith("Cannot prepare a runnable runtime") ||
-        error.message.includes("Runtime materialization was cancelled")
+        error.message.includes("Project preparation was cancelled")
     )) return error;
     return new Error(
         `Could not load a POKIE game package from ${JSON.stringify(packageRoot)}. ` +

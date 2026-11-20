@@ -54,7 +54,7 @@ describe("CLI workflow (integration): first-class random game generation", () =>
             expect(blueprint.reelStripGeneration).toHaveLength(blueprint.reels);
 
             const printed = (console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
-            expect(printed).toMatch(/Provenance: generator [\d.]+, strategy "default-line-pay"\./);
+            expect(printed).toMatch(/Origin: generator [\d.]+, strategy "default-line-pay"\./);
 
             const projectRoot = path.join(workDir, "my-random-game");
             const buildExitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--target", "tsPackage", "--out", projectRoot]);
@@ -82,7 +82,7 @@ describe("CLI workflow (integration): first-class random game generation", () =>
             expect(fs.existsSync(blueprintPath)).toBe(true);
 
             const printed = (console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
-            expect(printed).toMatch(/Provenance: generator [\d.]+, strategy "random-variant"\./);
+            expect(printed).toMatch(/Origin: generator [\d.]+, strategy "random-variant"\./);
 
             const projectRoot = path.join(workDir, "my-variant-game");
             const buildExitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--target", "tsPackage", "--out", projectRoot]);

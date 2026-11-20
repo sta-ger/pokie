@@ -30,7 +30,7 @@ const USAGE =
     "Usage: pokie certification build <bundleDir> <config.json> [--out <dir>]\n" +
     "   or: pokie certification verify <certDir> --source <bundleDir>";
 const BUILD_USAGE = "Usage: pokie certification build <bundleDir> <config.json> [--out <dir>]";
-const VERIFY_USAGE = "Usage: pokie certification verify <certDir> --source <bundleDir> [--trusted-sources <json>]";
+const VERIFY_USAGE = "Usage: pokie certification verify <certDir> --source <folder> [--trusted-sources <json>]";
 const CONFIG_HINT =
     '<config.json> lists one sample source per mode of the given outcome-library bundle — {"modes": ' +
     '[{"modeName": "base", "seed": "cert-2026-07-15-base", "sampleCount": 200}, ...]} — see ' +
@@ -139,7 +139,7 @@ export class CertificationCommand implements CliCommandHandling {
 
         parent
             .command("build")
-            .description("Build a canonical certification pack on top of an outcome-library bundle.")
+            .description("Build a certification pack from an outcome library.")
             .argument("<bundleDir>", "an existing outcome-library bundle directory (create one with \"pokie build <config.json> --target outcomeLibrary --out <bundleDir>\")")
             .argument("<config.json>", "lists one sample source per mode -- see docs/certification-pack.md")
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
@@ -161,11 +161,11 @@ export class CertificationCommand implements CliCommandHandling {
 
         parent
             .command("verify")
-            .description("Verify a certification pack against its outcome-library source.")
+            .description("Verify a certification pack against its outcome library folder.")
             .argument("<certDir>", "an existing certification pack directory built by \"pokie certification build\"")
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
-            .option("--source <bundleDir>", "the outcome-library bundle the certification bundle was built from (required)")
-            .option("--template <json>", "explicit custom presentation template authority")
+            .option("--source <folder>", "the outcome library folder the certification pack was built from (required)")
+            .option("--template <json>", "explicit custom presentation template file")
             .option("--trusted-sources <json>", "explicit relocated model/report/replay/revision trusted sources JSON")
             .action(async (certDir: string, excess: string[], options: {source?: string; trustedSources?: string; template?: string}) => {
                 if (excess.length > 0) {

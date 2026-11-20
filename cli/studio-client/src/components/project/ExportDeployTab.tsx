@@ -1805,9 +1805,9 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                     if (target === "outcomeLibrary") refreshArtifactPreviews();
                 } else {
                     const result = job.result;
-                    let message = "Artifact build ended without a result.";
+                    let message = "Build ended without a result.";
                     if (result !== undefined) message = result.status === "ok"
-                        ? "Artifact job failed without confirming a successful publication." : describeArtifactBuildResultError(result);
+                        ? "Build job failed without confirming a successful publication." : describeArtifactBuildResultError(result);
                     setArtifactBuildRuns((runs) => ({
                         ...runs,
                         [target]: {

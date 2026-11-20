@@ -310,7 +310,7 @@ export class StudioStakeEngineExportService {
         // Do not call build(projectRoot, ...) here: it would prepare a second
         // plan after validation and could select a different managed library.
         if (this.projectGoal!.executeStakeProjection === undefined) {
-            return {status: "load-error", error: "The Studio Stake projection executor is unavailable.", plan: prepared.plan};
+            return {status: "load-error", error: "The Studio Stake export executor is unavailable.", plan: prepared.plan};
         }
         const result = await this.projectGoal!.executeStakeProjection(prepared.operation, {signal});
         if (result.status === "conflict") return {status: "conflict", outDir, overwritable: false, error: result.message, plan: result.plan};

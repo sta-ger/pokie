@@ -309,7 +309,7 @@ describe("BlueprintProjectMaterializer", () => {
             controller.abort();
             releaseMarkerRead();
 
-            await expect(pending).rejects.toThrow("Runtime materialization was cancelled.");
+            await expect(pending).rejects.toThrow("Project preparation was cancelled.");
             expect(runner.calls).toHaveLength(1);
         } finally {
             readFileSpy.mockRestore();
@@ -530,7 +530,7 @@ describe("BlueprintProjectMaterializer", () => {
 
     it("preserves an unknown dependency error after an abort instead of manufacturing safe cancellation", async () => {
         const controller = new AbortController();
-        const failure = new Error("Runtime materialization was cancelled.");
+        const failure = new Error("Project preparation was cancelled.");
         const runner = () => {
             controller.abort();
             return Promise.reject(failure);

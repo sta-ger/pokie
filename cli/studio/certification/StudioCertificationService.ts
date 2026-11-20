@@ -92,7 +92,7 @@ export class StudioCertificationService {
     // bundle before committing to Build, without triggering a build attempt.
     public async validateSourceBundle(projectRoot: string, bundleDir: string, options?: AbortSignal | StudioCertificationExecutionOptions): Promise<StudioCertificationSourceValidateView> {
         const {signal, onProgress} = executionOptions(options);
-        onProgress?.("Resolving evidence", "validation stages", 0, 2, "Resolving the requested certification bundle.");
+        onProgress?.("Resolving evidence", "validation stages", 0, 2, "Resolving the requested certification pack.");
         if (signal?.aborted) {
             return {status: "load-error", error: "Certification source validation was cancelled before it started."};
         }
@@ -102,7 +102,7 @@ export class StudioCertificationService {
         }
 
         try {
-            onProgress?.("Deep validation", "validation stages", 1, 2, "Checking evidence files and immutable provenance.");
+            onProgress?.("Deep validation", "validation stages", 1, 2, "Checking audit files and fixed origin.");
             const issues = await this.bundleValidator.validate(resolved.resolvedPath, {deep: true, signal});
             if (signal?.aborted) {
                 return {status: "load-error", error: "Certification source validation was cancelled after its last settled validation boundary."};
@@ -127,7 +127,7 @@ export class StudioCertificationService {
     ): Promise<StudioCertificationBuildView> {
         const {signal, onProgress, pack, output} = executionOptions(options);
         const sampleCount = modes.reduce((total, mode) => total + mode.sampleCount, 0);
-        onProgress?.("Resolving inputs", "build stages", 0, 3, "Resolving the evidence source and staging destination.");
+        onProgress?.("Resolving inputs", "build stages", 0, 3, "Resolving the audit source and staging destination.");
         const resolvedBundle = resolveProjectDirectory(projectRoot, bundleDir, this.realpath);
         if (resolvedBundle.status === "error") {
             return {status: "load-error", error: resolvedBundle.message};
@@ -152,7 +152,7 @@ export class StudioCertificationService {
                 onStage: stage => onProgress?.(stage, "stages", "indeterminate", "indeterminate", stage),
                 onSample: (completed, total) => onProgress?.("Sampling evidence", "samples", completed, total, `Verified ${completed} of ${total} certification samples.`),
             });
-            onProgress?.("Validating publication", "build stages", 3, 3, "Checking the atomically published certification manifest.");
+            onProgress?.("Validating publication", "build stages", 3, 3, "Checking the published certification pack index.");
             const errors = result.issues.filter((issue) => issue.severity === "error");
             const warnings = result.issues.filter((issue) => issue.severity !== "error");
             if (result.manifest === undefined || errors.length > 0) {

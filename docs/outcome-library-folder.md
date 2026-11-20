@@ -89,7 +89,7 @@ type OutcomeLibraryBundleManifest = {
 `pokieVersion` is the same "who generated this file" stamp every manifest in this codebase carries
 (`StakeEngineManifest`'s own convention). `artifactPokieVersion` is read straight off the first outcome's own
 `artifact.provenance.pokieVersion` (guaranteed identical across every outcome, by the writer's own homogeneity
-checks) and cross-checked, in deep validation, against every outcome's own provenance. The two are never required
+checks) and cross-checked, in deep validation, against every outcome's own origin. The two are never required
 to match: a folder can legitimately be repacked by a newer or different package release than the one that
 originally computed its outcomes (e.g. outcomes simulated once, repacked repeatedly afterward) — treating a
 difference there as corruption would reject a perfectly valid folder.
@@ -291,7 +291,7 @@ versa):
 | `outcome-library-folder-outcomes-weight-mismatch` | the same id's weight disagrees between the outcomes file and the index |
 | `outcome-library-folder-outcomes-artifact-invalid` | an outcome's artifact fails `RoundRecordValidator` — never a second definition of "valid" |
 | `outcome-library-folder-outcomes-inconsistent-provenance` / `-inconsistent-bet-mode` / `-inconsistent-stake` | an outcome's game/config/pokieVersion, `betMode`, or `stake` disagrees with this mode's other outcomes |
-| `outcome-library-folder-outcomes-manifest-provenance-mismatch` | this mode's outcomes' own (mutually-consistent) game id/version/configHash/pokieVersion doesn't match `manifest.json`'s own top-level `game`/`configHash`/`artifactPokieVersion` — a gap the cross-*outcome* check above can't catch on its own, since it never reads the manifest. Deliberately never compares against `manifest.pokieVersion` (which pokie *tool* version built this folder index, a different, unrelated quantity from `artifactPokieVersion`) |
+| `outcome-library-folder-outcomes-manifest-provenance-mismatch` | this mode's outcomes' own (mutually-consistent) game id/version/configHash/pokieVersion doesn't match `manifest.json`'s own top-level `game`/`configHash`/`artifactPokieVersion` — a gap the cross-*outcome* check above can't catch on its own, since it never reads the index file. Deliberately never compares against `manifest.pokieVersion` (which pokie *tool* version built this folder index, a different, unrelated quantity from `artifactPokieVersion`) |
 | `outcome-library-folder-outcomes-manifest-mode-mismatch` | this mode's outcomes' own betMode/stake doesn't match `manifest.json`'s own per-mode `betMode`/`stake` entry |
 | `outcome-library-folder-outcomes-not-json-safe` | an outcome can't be re-canonicalized via `toCanonicalJson` (used to recompute the hash) |
 | `outcome-library-folder-outcomes-count-mismatch` | the outcomes file's own valid-record count disagrees with the index's entry count |

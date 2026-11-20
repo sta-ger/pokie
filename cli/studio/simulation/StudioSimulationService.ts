@@ -167,7 +167,7 @@ export class StudioSimulationService {
             const declaration = readCanonicalWasmDeclaration(projectRoot, "simulate game rounds");
             if (!declaration.supported) return {status: "unsupported", message: declaration.message};
             if (!declaration.manifest.capabilities.includes("runtime.play") || (request.workers ?? 1) !== 1) {
-                return {status: "unsupported", message: "WASM simulation requires runtime.play, one Worker and a fixed round budget. Rebuild with play support and set workers to 1."};
+                return {status: "unsupported", message: "WASM simulation requires runtime.play, one Worker and a fixed round limit. Rebuild with play support and set workers to 1."};
             }
         }
         if (request.convergence && (outcomeSourceProject !== undefined || isWasmComponentFile(projectRoot))) {

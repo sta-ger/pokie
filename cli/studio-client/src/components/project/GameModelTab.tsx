@@ -186,7 +186,7 @@ export function GameModelTab({
             setEditState({status: "editing", section: draft.section, baselineRevision});
             setRetainedDraft(undefined);
         };
-        if (isDirty) confirm("Restore the retained draft? Unsaved section edits will be replaced.", restore);
+        if (isDirty) confirm("Restore the saved draft? Unsaved section edits will be replaced.", restore);
         else restore();
     };
 

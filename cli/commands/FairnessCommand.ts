@@ -53,7 +53,7 @@ type RevealOptions = {commitmentPath: string; serverSeedPath: string; sourceBund
 // the offending value is displayed as "nothing" or as its JSON.stringify'd form.
 function nonceUsageMessage(displayValue: string): string {
     return (
-        `--nonce must be a canonical non-negative decimal integer (e.g. "0", "42" — no sign, decimal point, ` +
+        `--nonce must be a non-negative decimal integer (e.g. "0", "42" — no sign, decimal point, ` +
         `leading zero, or scientific/hex notation, and no larger than Number.MAX_SAFE_INTEGER), got ${displayValue}. ${COMMIT_USAGE}`
     );
 }
@@ -239,7 +239,7 @@ export class FairnessCommand implements CliCommandHandling {
             .argument("<serverSeedCommitmentPath>", "the JSON commitment published by \"pokie fairness seed-commit\"")
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
             .option("--client-seed <seed>", "the player-supplied seed for this round (required)")
-            .option("--nonce <n>", "a canonical non-negative decimal integer, unique per client seed (required)", (value: string) => {
+            .option("--nonce <n>", "a non-negative decimal integer, unique per client seed (required)", (value: string) => {
                 const parsed = parseCanonicalNonNegativeInteger(value);
                 if (parsed === undefined) {
                     throw new Error(nonceUsageMessage(JSON.stringify(value)));

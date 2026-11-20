@@ -58,7 +58,7 @@ export function bindReplayToSimulationReport(request: ValidatedReplayRequest, re
     if ((report.workers ?? 1) !== 1 || (selected.workers ?? 1) !== 1 || typeof selected.seed !== "string" || request.seed !== selected.seed ||
         !Number.isSafeInteger(acceptedSteps) || request.round > acceptedSteps || request.unit === "logical-round" || request.entryCommands !== undefined ||
         (request.modeName !== undefined && request.modeName !== selected.betMode)) {
-        throw new Error("Simulation replay requires the retained seed, selected mode and step range from a single-worker run.");
+        throw new Error("Simulation replay requires the saved seed, selected mode and step range from a single-worker run.");
     }
     return {...request, modeName: selected.betMode, expectedConfigHash: selected.reproducibility?.configHash,
         ...(options.wasm ? {initialCredits: POKIE_WASM_SIMULATION_CREDITS} : {})};
