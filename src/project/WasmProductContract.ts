@@ -4,7 +4,7 @@ import {readCanonicalPokieWasmModule, assertCanonicalWasmDescriptorMatchesInfo, 
 import {satisfiesMinimumSemverLite} from "./wasm/internal/compareSemverLite.js";
 import type {PokieWasmComponentInfo} from "./wasm/PokieWasmComponentInfo.js";
 import {WASM_EXECUTION_BOUNDARY, POKIE_WASM_RUNTIME_VERSION} from "../wasm/PokieWasmRuntimeApi.js";
-import {WASM_MANIFEST_READ_CAPABILITY, type ProjectCapability} from "./ProjectCapability.js";
+import {WASM_INFO_READ_CAPABILITY, type ProjectCapability} from "./ProjectCapability.js";
 import {assessWasmComponentCompatibility} from "./wasm/assessWasmComponentCompatibility.js";
 
 // The one production-readable statement of POKIE's WASM product boundary. A
@@ -14,7 +14,7 @@ export const WASM_PRODUCT_CONTRACT = {
     executionBoundary: WASM_EXECUTION_BOUNDARY,
     kind: "POKIE WASM component",
     studioLabel: "POKIE WASM component",
-    capabilities: [WASM_MANIFEST_READ_CAPABILITY] as readonly ProjectCapability[],
+    capabilities: [WASM_INFO_READ_CAPABILITY] as readonly ProjectCapability[],
     inspectionPurpose: "A compatible WebAssembly component whose declared manifest identity, serialization identifiers, host bindings, capabilities, and integrity POKIE can inspect.",
     inspectionBoundary: "Canonical POKIE WASM artifacts bind metadata to module bytes and run through the portable host; legacy sidecar-only components remain inspection-only and POKIE never loads or executes them.",
     manifestActionLabel: "Inspect declared manifest",
@@ -189,8 +189,8 @@ function wasmSidecarCause(sidecarPath: string, failure: WasmSidecarFailure, deta
 // product boundary as CLI/direct-library callers.
 export type WasmProductContractView = {
     readonly label: string;
-    readonly manifestCapability: ProjectCapability;
-    readonly manifestCapabilityLabel: string;
+    readonly infoCapability: ProjectCapability;
+    readonly infoCapabilityLabel: string;
     readonly inspectActionLabel: string;
     readonly inspectionSummary: string;
 };
@@ -198,8 +198,8 @@ export type WasmProductContractView = {
 export function wasmProductContractView(): WasmProductContractView {
     return {
         label: WASM_PRODUCT_CONTRACT.studioLabel,
-        manifestCapability: WASM_MANIFEST_READ_CAPABILITY,
-        manifestCapabilityLabel: "Inspect declared WASM component metadata",
+        infoCapability: WASM_INFO_READ_CAPABILITY,
+        infoCapabilityLabel: "Inspect declared WASM component metadata",
         inspectActionLabel: WASM_PRODUCT_CONTRACT.manifestActionLabel,
         inspectionSummary: `${WASM_PRODUCT_CONTRACT.inspectionPurpose} ${WASM_PRODUCT_CONTRACT.inspectionBoundary} ${WASM_PRODUCT_CONTRACT.executionBoundary} ${WASM_PRODUCT_CONTRACT.originalSourceRecovery}`,
     };

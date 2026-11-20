@@ -163,8 +163,8 @@ export async function loadProjectDashboardContext(
                 origin: identity?.origin,
                 wasmPresentation: {
                     label: "POKIE WASM component",
-                    manifestCapability: "wasm.manifest.read",
-                    manifestCapabilityLabel: "Inspect declared WASM component metadata",
+                    infoCapability: "wasm.info.read",
+                    infoCapabilityLabel: "Inspect declared WASM component metadata",
                     inspectActionLabel: "Inspect declared manifest",
                     inspectionSummary: "This legacy WASM component is inspection-only; rebuild it as a canonical POKIE WASM artifact to use shared Studio workflows.",
                 },

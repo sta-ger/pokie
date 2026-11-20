@@ -11,7 +11,7 @@ import {
     WASM_EXPORT_CAPABILITY,
     WASM_ARTIFACT_INSPECT_CAPABILITY,
     WASM_CANONICAL_ARTIFACT_CAPABILITY,
-    WASM_MANIFEST_READ_CAPABILITY,
+    WASM_INFO_READ_CAPABILITY,
     WASM_RUNTIME_EXECUTE_CAPABILITY,
     WASM_RUNTIME_PLAY_CAPABILITY,
     WASM_RUNTIME_REPLAY_CAPABILITY,
@@ -52,7 +52,7 @@ export const PAR_IMPORT_OPERATION: PokieOperation = "par.import";
 export const PAR_EXPORT_OPERATION: PokieOperation = "par.export";
 export const WASM_EXPORT_OPERATION: PokieOperation = "wasm.export";
 // Reads back a resolved "wasm" project's own PokieWasmComponentInfo (see readWasmComponentInfo) —
-// requires WASM_MANIFEST_READ_CAPABILITY. Both legacy and canonical components expose metadata; canonical
+// requires WASM_INFO_READ_CAPABILITY. Both legacy and canonical components expose metadata; canonical
 // execution is separately gated by its declared per-operation capability, while WASM_RUNTIME_EXECUTE_CAPABILITY
 // denotes only the complete play/serialize/replay bundle.
 export const WASM_INSPECT_OPERATION: PokieOperation = "wasm.inspect";
@@ -128,7 +128,7 @@ export const OPERATION_REQUIRED_CAPABILITY: Readonly<Record<PokieOperation, Proj
     [PAR_IMPORT_OPERATION]: PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     [PAR_EXPORT_OPERATION]: PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     [WASM_EXPORT_OPERATION]: WASM_EXPORT_CAPABILITY,
-    [WASM_INSPECT_OPERATION]: WASM_MANIFEST_READ_CAPABILITY,
+    [WASM_INSPECT_OPERATION]: WASM_INFO_READ_CAPABILITY,
     [WASM_PACKAGING_PREFLIGHT_OPERATION]: RUNTIME_EXECUTE_CAPABILITY,
     [OUTCOME_SOURCE_INSPECT_OPERATION]: OUTCOME_SOURCE_READ_CAPABILITY,
     [OUTCOME_SOURCE_ANALYZE_OPERATION]: OUTCOME_SOURCE_READ_CAPABILITY,

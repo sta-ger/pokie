@@ -311,8 +311,8 @@ export type StudioProjectStatus = "ok" | "missing" | "unavailable";
 // project DTO and Open action instead of an inspection presentation.
 export type StudioWasmPresentation = {
     label: string;
-    manifestCapability: StudioProjectCapability;
-    manifestCapabilityLabel: string;
+    infoCapability: StudioProjectCapability;
+    infoCapabilityLabel: string;
     inspectActionLabel: string;
     inspectionSummary: string;
 };

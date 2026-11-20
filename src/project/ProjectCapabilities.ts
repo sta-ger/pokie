@@ -9,7 +9,7 @@ import {
     RUNTIME_EXECUTE_CAPABILITY,
     STAKE_ADAPTER_EXCHANGE_CAPABILITY,
     STAKE_ADAPTER_EXPORT_CAPABILITY,
-    WASM_MANIFEST_READ_CAPABILITY,
+    WASM_INFO_READ_CAPABILITY,
     WASM_ARTIFACT_INSPECT_CAPABILITY,
     WASM_CANONICAL_ARTIFACT_CAPABILITY,
     WASM_EXPORT_CAPABILITY,
@@ -37,9 +37,9 @@ export type ProjectCapabilities = readonly ProjectCapability[];
 
 export function wasmProjectCapabilities(manifest: Pick<PokieWasmComponentInfo, "artifact" | "serialization" | "host" | "capabilities">): ProjectCapabilities {
     if (manifest.artifact === undefined || describeUnsupportedCanonicalWasmRuntimeContract(manifest) !== undefined) {
-        return [WASM_MANIFEST_READ_CAPABILITY];
+        return [WASM_INFO_READ_CAPABILITY];
     }
-    const capabilities: ProjectCapability[] = [WASM_MANIFEST_READ_CAPABILITY, WASM_CANONICAL_ARTIFACT_CAPABILITY];
+    const capabilities: ProjectCapability[] = [WASM_INFO_READ_CAPABILITY, WASM_CANONICAL_ARTIFACT_CAPABILITY];
     const declaresPlay = manifest.capabilities.includes(POKIE_WASM_RUNTIME_PLAY_DECLARATION);
     const declaresSerialize = manifest.capabilities.includes(POKIE_WASM_RUNTIME_SERIALIZE_DECLARATION);
     const declaresReplay = manifest.capabilities.includes(POKIE_WASM_RUNTIME_REPLAY_DECLARATION);
@@ -90,6 +90,6 @@ export const PROJECT_TYPE_CAPABILITIES: Readonly<Record<ProjectType, ProjectCapa
     // A resolved canonical component is executable through the portable WASM
     // host. Legacy sidecar-only components retain manifest inspection but are
     // rejected by that host at operation time.
-    wasm: [WASM_MANIFEST_READ_CAPABILITY],
+    wasm: [WASM_INFO_READ_CAPABILITY],
     parWorkbook: [PAR_WORKBOOK_EXCHANGE_CAPABILITY, WASM_EXPORT_CAPABILITY],
 };

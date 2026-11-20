@@ -67,7 +67,7 @@ export const WASM_EXPORT_CAPABILITY: ProjectCapability = "wasm.export";
 // at resolution time (see that adapter's own doc comment). Deliberately distinct from WASM_EXPORT_CAPABILITY
 // above (which Blueprint and PAR projects grant) and from executable capabilities: both legacy and canonical
 // artifacts expose metadata, while canonical artifacts grant only their declared per-operation capabilities.
-export const WASM_MANIFEST_READ_CAPABILITY: ProjectCapability = "wasm.manifest.read";
+export const WASM_INFO_READ_CAPABILITY: ProjectCapability = "wasm.info.read";
 
 // A project whose own pre-computed outcomes can be inspected and exactly analyzed straight off disk, via its
 // own canonical outcome-source reader — never by loading or executing a PokieGame. What

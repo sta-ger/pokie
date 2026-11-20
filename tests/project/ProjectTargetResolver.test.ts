@@ -263,7 +263,7 @@ describe("ProjectTargetResolver", () => {
         expect(project).toEqual({
             type: "wasm",
             rootPath: wasmFile,
-            capabilities: ["wasm.manifest.read"],
+            capabilities: ["wasm.info.read"],
             provenance: expect.stringContaining("sample-component"),
         });
     });
@@ -276,7 +276,7 @@ describe("ProjectTargetResolver", () => {
 
         await expect(resolver.resolve(wasmFile)).resolves.toMatchObject({
             type: "wasm",
-            capabilities: ["wasm.manifest.read", "wasm.canonical", "wasm.runtime.play", "wasm.runtime.serialize", "wasm.artifact.inspect"],
+            capabilities: ["wasm.info.read", "wasm.canonical", "wasm.runtime.play", "wasm.runtime.serialize", "wasm.artifact.inspect"],
         });
     });
 

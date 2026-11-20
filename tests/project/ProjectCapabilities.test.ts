@@ -11,7 +11,7 @@ import {
     STAKE_ADAPTER_EXCHANGE_CAPABILITY,
     STAKE_ADAPTER_EXPORT_CAPABILITY,
     WASM_EXPORT_CAPABILITY,
-    WASM_MANIFEST_READ_CAPABILITY,
+    WASM_INFO_READ_CAPABILITY,
     WASM_RUNTIME_EXECUTE_CAPABILITY,
     WASM_RUNTIME_PLAY_CAPABILITY,
     WASM_RUNTIME_REPLAY_CAPABILITY,
@@ -45,29 +45,29 @@ describe("PROJECT_TYPE_CAPABILITIES", () => {
     });
 
     it("grants \"wasm\" only read-only manifest access, never export/build or runtime execution", () => {
-        expect(PROJECT_TYPE_CAPABILITIES.wasm).toEqual([WASM_MANIFEST_READ_CAPABILITY]);
+        expect(PROJECT_TYPE_CAPABILITIES.wasm).toEqual([WASM_INFO_READ_CAPABILITY]);
         expect(PROJECT_TYPE_CAPABILITIES.wasm).not.toContain(WASM_EXPORT_CAPABILITY);
         expect(PROJECT_TYPE_CAPABILITIES.wasm).not.toContain(RUNTIME_EXECUTE_CAPABILITY);
     });
 
     it("derives canonical WASM operations from supported host contracts and per-operation declarations", () => {
         const {manifest} = createCanonicalWasmFixture({capabilities: ["runtime.play", "runtime.serialize", "artifact.inspect"]});
-        expect(wasmProjectCapabilities(manifest as never)).toEqual(["wasm.manifest.read", "wasm.canonical", "wasm.runtime.play", "wasm.runtime.serialize", "wasm.artifact.inspect"]);
-        expect(wasmProjectCapabilities({...manifest, serialization: {...manifest.serialization, state: "other.state.v1"}} as never)).toEqual(["wasm.manifest.read"]);
-        expect(wasmProjectCapabilities({...manifest, host: {rng: "other.rng.v1", services: []}} as never)).toEqual(["wasm.manifest.read"]);
-        expect(wasmProjectCapabilities({...manifest, host: {...manifest.host, services: ["pokie.clock.v1"]}} as never)).toEqual(["wasm.manifest.read"]);
+        expect(wasmProjectCapabilities(manifest as never)).toEqual(["wasm.info.read", "wasm.canonical", "wasm.runtime.play", "wasm.runtime.serialize", "wasm.artifact.inspect"]);
+        expect(wasmProjectCapabilities({...manifest, serialization: {...manifest.serialization, state: "other.state.v1"}} as never)).toEqual(["wasm.info.read"]);
+        expect(wasmProjectCapabilities({...manifest, host: {rng: "other.rng.v1", services: []}} as never)).toEqual(["wasm.info.read"]);
+        expect(wasmProjectCapabilities({...manifest, host: {...manifest.host, services: ["pokie.clock.v1"]}} as never)).toEqual(["wasm.info.read"]);
     });
 
     it("keeps canonical WASM declarations independent and reserves runtime.execute for the complete bundle", () => {
         const {manifest} = createCanonicalWasmFixture({capabilities: ["runtime.replay"]});
 
         expect(wasmProjectCapabilities(manifest as never)).toEqual([
-            WASM_MANIFEST_READ_CAPABILITY,
+            WASM_INFO_READ_CAPABILITY,
             "wasm.canonical",
             WASM_RUNTIME_REPLAY_CAPABILITY,
         ]);
         expect(wasmProjectCapabilities({...manifest, capabilities: ["runtime.play", "runtime.serialize", "runtime.replay"]} as never)).toEqual([
-            WASM_MANIFEST_READ_CAPABILITY,
+            WASM_INFO_READ_CAPABILITY,
             "wasm.canonical",
             WASM_RUNTIME_PLAY_CAPABILITY,
             WASM_RUNTIME_SERIALIZE_CAPABILITY,

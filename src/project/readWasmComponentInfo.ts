@@ -14,7 +14,7 @@ export type WasmComponentInfoReadResult =
     | {readonly supported: false; readonly diagnostic: UnsupportedProjectOperationDiagnostic};
 
 // Reads back a resolved "wasm" project's own PokieWasmComponentInfo -- the read-only access
-// WASM_MANIFEST_READ_CAPABILITY actually grants (see ProjectCapabilities.ts): metadata only, never the
+// WASM_INFO_READ_CAPABILITY actually grants (see ProjectCapabilities.ts): metadata only, never the
 // ".wasm" bytes themselves, and never anything resembling loading/instantiating/executing the component --
 // Canonical POKIE WASM components execute through the portable runtime while this reader re-reads and re-validates
 // the sidecar from disk rather than trusting `project.provenance` (a human-readable string, not structured

@@ -136,7 +136,7 @@ outcomes:
 | Sidecar present, well-shaped, but `assessWasmComponentCompatibility` rejects its `schemaVersion` | `resolve()` throws `ProjectTargetUnsupportedError` naming exactly which interface version was declared vs. required — a clear incompatibility diagnostic. |
 | Sidecar present, well-shaped, and compatible | Resolves as a `"wasm"` `PokieProject`. |
 
-Every compatible WASM project carries `WASM_MANIFEST_READ_CAPABILITY` (`"wasm.manifest.read"`). Integrity-bound
+Every compatible WASM project carries `WASM_INFO_READ_CAPABILITY` (`"wasm.info.read"`). Integrity-bound
 artifacts additionally carry `WASM_CANONICAL_ARTIFACT_CAPABILITY` (`"wasm.canonical"`): that proves the
 module bytes and manifest have one identity, but authorizes no runtime operation by itself. The manifest's
 declared `runtime.play`, `runtime.serialize`, `runtime.replay`, and `artifact.inspect` operations grant their
