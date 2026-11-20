@@ -171,8 +171,8 @@ after its final session is destroyed (or use `loadPokieGameRuntime()` for an exp
 
 It rejects if `package.json` has no `pokie.entry` field, or if the entry module's default export fails
 `PokieGameContractValidationRule` — missing `getInfo()`/`createSession()`, `getInfo()` throwing, or a
-manifest with a missing/empty `id`, `name`, or `version`. The rejection error lists every failing check by code
-(e.g. `pokie-game-manifest-invalid-version`), not just the first one.
+game info with a missing/empty `id`, `name`, or `version`. The rejection error lists every failing check by code
+(e.g. `pokie-game-info-invalid-version`), not just the first one.
 
 ## Validating a loaded export
 
@@ -187,7 +187,7 @@ if (!isPokieGame(candidate)) {
 }
 ```
 
-For a fuller check — including that `getInfo()` doesn't throw and returns a well-formed manifest (non-empty
+For a fuller check — including that `getInfo()` doesn't throw and returns well-formed game info (non-empty
 `id`/`name`/`version`) — use `PokieGameContractValidationRule`, which implements the same `ValidationRule`/
 `ValidationResult` pattern used by the win evaluation pipeline's [validation rules](paytable-and-wins.md#aggregation-policy):
 
@@ -288,7 +288,7 @@ getModelDescriptor(): PackageModelDescriptor {
 
 `model` contains the effective, representable `GameBlueprint` data; it can be partial for
 inspection. `getInfo()` is trusted for game identity and must agree with a descriptor's
-manifest. npm package name/version do not become game identity. Contract versions are independent
+game info. npm package name/version do not become game identity. Contract versions are independent
 of the game's package version. Generated CommonJS and recompilable TypeScript entrypoints expose
 the same descriptor without a Blueprint JSON file or historical build-info sidecar.
 
@@ -301,7 +301,7 @@ model from symbolWeights, a new seed or hash, nor substitutes the currently sele
 Absent payout/grant entries, empty symbol tables and explicit zeros remain distinct. There is
 no integer parsing of stakes and no runtime payout sampling to infer a linear model.
 
-Legacy packages without a descriptor return manifest and supported command declarations with
+Legacy packages without a descriptor return game info and supported command declarations with
 `partial` diagnostics. A public getter returning zero cannot distinguish an authored omission
 from an explicit zero. Custom calculators, non-linear per-bet payouts, restricted wilds, custom
 patterns, unsupported symbol types and opaque features require explicit unsupported boundaries;

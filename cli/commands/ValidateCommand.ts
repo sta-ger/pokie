@@ -436,7 +436,7 @@ export class ValidateCommand implements CliCommandHandling {
                 suggestion: 'Update "package.json#pokie.entry" so it identifies the module that exports your POKIE game, then run validate again.',
             };
         }
-        if (issue.code === "pokie-game-manifest-threw") {
+        if (issue.code === "pokie-game-info-threw") {
             return {
                 ...issue,
                 message: "The game info provided by this package could not be read.",
@@ -444,7 +444,7 @@ export class ValidateCommand implements CliCommandHandling {
                 suggestion: "Ensure the package entry provides game info with a non-empty id, name and version, then run validate again.",
             };
         }
-        if (issue.code === "pokie-game-manifest-missing") {
+        if (issue.code === "pokie-game-info-missing") {
             return {
                 ...issue,
                 message: "The package entry does not provide game info.",
@@ -453,13 +453,13 @@ export class ValidateCommand implements CliCommandHandling {
             };
         }
 
-        const manifestField = (/^pokie-game-manifest-invalid-(id|name|version)$/).exec(issue.code)?.[1];
-        if (manifestField !== undefined) {
+        const infoField = (/^pokie-game-info-invalid-(id|name|version)$/).exec(issue.code)?.[1];
+        if (infoField !== undefined) {
             return {
                 ...issue,
-                message: `The game info field "${manifestField}" must be a non-empty string.`,
-                path: `${entryPath}#manifest.${manifestField}`,
-                suggestion: `Set the game info field "${manifestField}" to a non-empty string, then run validate again.`,
+                message: `The game info field "${infoField}" must be a non-empty string.`,
+                path: `${entryPath}#manifest.${infoField}`,
+                suggestion: `Set the game info field "${infoField}" to a non-empty string, then run validate again.`,
             };
         }
         return undefined;

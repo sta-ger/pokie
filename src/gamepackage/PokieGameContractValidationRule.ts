@@ -4,7 +4,7 @@ import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import type {ValidationRule} from "../validation/ValidationRule.js";
 
 export class PokieGameContractValidationRule implements ValidationRule<unknown> {
-    public validate(target: unknown, detachManifestData?: (manifest: unknown) => unknown): ValidationIssue[] {
+    public validate(target: unknown, detachInfoData?: (info: unknown) => unknown): ValidationIssue[] {
         if (!isPokieGame(target)) {
             return [
                 {
@@ -17,35 +17,35 @@ export class PokieGameContractValidationRule implements ValidationRule<unknown> 
             ];
         }
 
-        let manifest: PokieGameInfo;
+        let info: PokieGameInfo;
         try {
-            const rawManifest = target.getInfo();
+            const rawInfo = target.getInfo();
             // Extraction can require detached JSON before this ordinary contract reads metadata fields.
-            manifest = (detachManifestData ? detachManifestData(rawManifest) : rawManifest) as PokieGameInfo;
+            info = (detachInfoData ? detachInfoData(rawInfo) : rawInfo) as PokieGameInfo;
         } catch (error) {
             return [
                 {
-                    code: "pokie-game-manifest-threw",
+                    code: "pokie-game-info-threw",
                     severity: "error",
                     message: `PokieGame.getInfo() threw: ${error instanceof Error ? error.message : String(error)}`,
                 },
             ];
         }
 
-        if (typeof manifest !== "object" || manifest === null) {
+        if (typeof info !== "object" || info === null) {
             return [
                 {
-                    code: "pokie-game-manifest-missing",
+                    code: "pokie-game-info-missing",
                     severity: "error",
-                    message: "PokieGame.getInfo() must return a manifest object.",
+                    message: "PokieGame.getInfo() must return a game info object.",
                 },
             ];
         }
 
         return (["id", "name", "version"] as const)
-            .filter((field) => typeof manifest[field] !== "string" || manifest[field].trim().length === 0)
+            .filter((field) => typeof info[field] !== "string" || info[field].trim().length === 0)
             .map((field) => ({
-                code: `pokie-game-manifest-invalid-${field}`,
+                code: `pokie-game-info-invalid-${field}`,
                 severity: "error" as const,
                 message: `PokieGameInfo.${field} must be a non-empty string.`,
             }));

@@ -68,7 +68,7 @@ describe("PokieGamePackageValidator", () => {
         expect(report.valid).toBe(false);
         expect(report.game).toEqual({id: "", name: "Invalid Manifest Game", version: ""});
         expect(report.errors.map((issue) => issue.code).sort()).toEqual(
-            ["pokie-game-manifest-invalid-id", "pokie-game-manifest-invalid-version"].sort(),
+            ["pokie-game-info-invalid-id", "pokie-game-info-invalid-version"].sort(),
         );
         expect(report.warnings).toEqual([]);
     });

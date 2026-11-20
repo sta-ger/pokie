@@ -279,9 +279,9 @@ describe("loadPokieGame", () => {
         expect(caughtError).toBeInstanceOf(Error);
         const message = (caughtError as Error).message;
         expect(message).toContain("does not export a valid");
-        expect(message).toContain("pokie-game-manifest-invalid-id");
-        expect(message).toContain("pokie-game-manifest-invalid-version");
-        expect(message).not.toContain("pokie-game-manifest-invalid-name");
+        expect(message).toContain("pokie-game-info-invalid-id");
+        expect(message).toContain("pokie-game-info-invalid-version");
+        expect(message).not.toContain("pokie-game-info-invalid-name");
     });
 
     it("throws when package.json has no pokie.entry field", async () => {

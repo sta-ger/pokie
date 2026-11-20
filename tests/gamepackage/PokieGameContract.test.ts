@@ -52,7 +52,7 @@ describe("PokieGameContractValidationRule", () => {
 
         const issues = rule.validate(game);
         expect(issues).toHaveLength(1);
-        expect(issues[0]).toMatchObject({code: "pokie-game-manifest-threw", severity: "error"});
+        expect(issues[0]).toMatchObject({code: "pokie-game-info-threw", severity: "error"});
         expect(issues[0].message).toContain("boom");
     });
 
@@ -61,7 +61,7 @@ describe("PokieGameContractValidationRule", () => {
 
         const issues = rule.validate(game);
         expect(issues.map((issue) => issue.code).sort()).toEqual(
-            ["pokie-game-manifest-invalid-id", "pokie-game-manifest-invalid-version"].sort(),
+            ["pokie-game-info-invalid-id", "pokie-game-info-invalid-version"].sort(),
         );
     });
 
@@ -70,7 +70,7 @@ describe("PokieGameContractValidationRule", () => {
 
         const issues = rule.validate(game);
         expect(issues.map((issue) => issue.code).sort()).toEqual(
-            ["pokie-game-manifest-invalid-id", "pokie-game-manifest-invalid-version"].sort(),
+            ["pokie-game-info-invalid-id", "pokie-game-info-invalid-version"].sort(),
         );
     });
 

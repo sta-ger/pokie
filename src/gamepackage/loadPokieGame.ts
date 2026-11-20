@@ -18,11 +18,11 @@ export type LoadedPokieGame = {
 export async function loadPokieGameRuntime(
     packageRoot: string,
     loadEntryModule?: PokieGameEntryModuleLoading,
-    options?: {readonly detachManifestData?: (manifest: unknown) => unknown},
+    options?: {readonly detachInfoData?: (manifest: unknown) => unknown},
 ): Promise<LoadedPokieGame> {
     const {entryPath, candidate, release} = await resolvePokieGameEntryModule(packageRoot, loadEntryModule);
 
-    const validation = new ValidationResult(new PokieGameContractValidationRule().validate(candidate, options?.detachManifestData));
+    const validation = new ValidationResult(new PokieGameContractValidationRule().validate(candidate, options?.detachInfoData));
     if (validation.hasErrors()) {
         try {
             // A rejected manifest still belongs to an acquired executable with its own resources.

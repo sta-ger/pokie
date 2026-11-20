@@ -89,7 +89,7 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
         };
         try {
             if (cancelled()) return result;
-            const loaded = typeof input === "string" ? await loadPokieGameRuntime(input, undefined, {detachManifestData: detachPackageModelData}) : undefined;
+            const loaded = typeof input === "string" ? await loadPokieGameRuntime(input, undefined, {detachInfoData: detachPackageModelData}) : undefined;
             release = loaded?.release;
             if (cancelled()) return result;
             const game = loaded?.game ?? (input as PokieGame);
