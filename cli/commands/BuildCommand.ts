@@ -363,16 +363,16 @@ export class BuildCommand implements CliCommandHandling {
         // Reading provenance for the CLI summary happens only after the registry has produced the package;
         // it is not part of the Project -> Artifact execution path above.
         const blueprint = this.loadBlueprint(project.rootPath) as GameBlueprint;
-        const manifest = (blueprint as GameBlueprint).manifest;
+        const info = (blueprint as GameBlueprint).info;
         const blueprintHash = computeGameBlueprintHash(blueprint);
 
         console.log("Build summary:");
         console.log(`  package root     ${result.outputPath}`);
-        console.log(`  game             ${manifest.name} (id: "${manifest.id}", v${manifest.version})`);
+        console.log(`  game             ${info.name} (id: "${info.id}", v${info.version})`);
         console.log(`  blueprint hash   ${blueprintHash}`);
         console.log(`  source           ${project.rootPath}`);
 
-        console.log(`\nGame package "${manifest.name}" (id: "${manifest.id}") built in "${result.outputPath}".`);
+        console.log(`\nGame package "${info.name}" (id: "${info.id}") built in "${result.outputPath}".`);
         console.log(`\nNext:`);
         console.log(`  cd ${result.outputPath} && npm install`);
         console.log(`  pokie inspect ${result.outputPath}`);
@@ -512,7 +512,7 @@ export class BuildCommand implements CliCommandHandling {
 
         console.log("Dry run — blueprint is valid, no files written.\n");
         console.log("Blueprint summary:");
-        console.log(`  game             ${blueprint.manifest.name} (id: "${blueprint.manifest.id}", v${blueprint.manifest.version})`);
+        console.log(`  game             ${blueprint.info.name} (id: "${blueprint.info.id}", v${blueprint.info.version})`);
         console.log(`  reels x rows     ${blueprint.reels} x ${blueprint.rows}`);
         console.log(`  symbols          ${blueprint.symbols.length}`);
         console.log(`  paylines         ${paylines}`);

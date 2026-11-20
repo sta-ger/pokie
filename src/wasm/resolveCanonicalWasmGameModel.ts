@@ -10,13 +10,13 @@ export function resolveCanonicalWasmGameModel(blueprint: GameBlueprint): PokieWa
     const resolution = resolveReelStripGeneration(blueprint);
     if (!resolution.success) {
         const failedReels = resolution.reels.filter((reel) => !reel.success).map((reel) => `reel ${reel.reelIndex}: ${reel.diagnostics.flatMap((diagnostic) => diagnostic.violations.map((violation) => violation.message)).join("; ")}`).join(" | ");
-        throw new Error(`Blueprint "${blueprint.manifest.id}" cannot materialize its generated reel strips for the canonical WASM model. ${failedReels || "Fix reelStripGeneration and rebuild."}`);
+        throw new Error(`Blueprint "${blueprint.info.id}" cannot materialize its generated reel strips for the canonical WASM model. ${failedReels || "Fix reelStripGeneration and rebuild."}`);
     }
     let materialized: GameBlueprint;
     try {
         materialized = normalizeResolvedWasmBlueprint(writeReelStrips(blueprint, resolution.reelStripGeneration));
     } catch (error) {
-        throw new Error(`Blueprint "${blueprint.manifest.id}" cannot materialize its reel strips for the canonical WASM model. ${error instanceof Error ? error.message : String(error)} Next: use valid literal/generated strips or repair the authored symbol weights.`);
+        throw new Error(`Blueprint "${blueprint.info.id}" cannot materialize its reel strips for the canonical WASM model. ${error instanceof Error ? error.message : String(error)} Next: use valid literal/generated strips or repair the authored symbol weights.`);
     }
     return resolveResolvedCanonicalWasmGameModel(materialized);
 }

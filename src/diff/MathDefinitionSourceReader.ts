@@ -21,7 +21,7 @@ import {writeReelStrips} from "../generated/writeReelStrips.js";
 import {ParSheetImporter} from "../parsheet/ParSheetImporter.js";
 import type {PokieProject} from "../project/PokieProject.js";
 import {ProjectTargetResolver} from "../project/ProjectTargetResolver.js";
-import {readWasmComponentManifest} from "../project/readWasmComponentManifest.js";
+import {readWasmComponentInfo} from "../project/readWasmComponentInfo.js";
 import type {
     DefinitionJson,
     MathDefinitionBlueprintInput,
@@ -189,7 +189,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
                         return result;
                     }
                     case "wasm": {
-                        const read = await readWasmComponentManifest(project);
+                        const read = await readWasmComponentInfo(project);
                         check();
                         if (!read.supported || !read.canonical) {
                             snapshot.diagnostics.push(
@@ -308,7 +308,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
             Reflect.deleteProperty(model, "reelStripGeneration");
             const extraction = await this.extraction.extract(
                 {
-                    getInfo: () => model.manifest,
+                    getInfo: () => model.info,
                     getModelDescriptor: () => ({
                         descriptorVersion: 1,
                         blueprintSchemaVersion: 1,

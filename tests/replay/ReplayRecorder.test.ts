@@ -214,7 +214,7 @@ describe("ReplayRecorder (integration, real loadPokieGame + fixture game package
 describe("fractional logical replay payout", () => {
     it.each([0.05, 7.5, 1e-7].flatMap(bet => [false, true].map(deferred => ({bet, deferred}))))("preserves awards at $bet (deferred=$deferred)", ({bet, deferred}) => {
         const model = deferred ? createOverscanGame({
-            manifest: {id: "fractional-bank", name: "Fractional bank", version: "1"},
+            info: {id: "fractional-bank", name: "Fractional bank", version: "1"},
             reels: 3, rows: 1, availableBets: [0.05, 7.5, 1e-7], symbols: ["A", "S"], wilds: [], scatters: ["S"],
             paylines: [[0, 0, 0]], paytable: {A: {"3": 2}}, reelStrips: Array.from({length: 3}, () => ["A"]),
             mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {"3": 2}}},

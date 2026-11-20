@@ -52,7 +52,7 @@ export type CanonicalPokieWasmModule = {
 
 /**
  * Checks the host and wire contract which this portable runtime actually
- * implements.  Manifest shape compatibility is deliberately not enough: an
+ * implements.  Info shape compatibility is deliberately not enough: an
  * artifact that asks for a different serializer, RNG protocol, or service
  * would otherwise be accepted and run with invented host behaviour.
  */

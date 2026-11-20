@@ -92,8 +92,8 @@ function isSafeSymbolArtworkReference(reference: string): boolean {
 // reserved for a name that's unsafe as a directory segment (contains a path separator, is "."/".."), not
 // for "not yet a valid game id".
 function deriveManagedBlueprintName(blueprint: unknown): string {
-    if (isPlainObject(blueprint) && isPlainObject(blueprint.manifest) && typeof blueprint.manifest.id === "string") {
-        const trimmedId = blueprint.manifest.id.trim();
+    if (isPlainObject(blueprint) && isPlainObject(blueprint.info) && typeof blueprint.info.id === "string") {
+        const trimmedId = blueprint.info.id.trim();
         if (trimmedId.length > 0) {
             return trimmedId;
         }
@@ -837,13 +837,13 @@ export class StudioBlueprintService {
         return {
             status: "ok",
             warnings: validated.warnings,
-            manifest: b.manifest,
+            manifest: b.info,
             reels: b.reels,
             rows: b.rows,
             symbolsCount: b.symbols.length,
             blueprintHash: buildInfo.blueprintHash,
             expectedFiles: buildInfo.files ?? [],
-            ...previewBuildDestination(b.manifest.id, process.cwd(), outDir, sourcePath, this.studioRoot),
+            ...previewBuildDestination(b.info.id, process.cwd(), outDir, sourcePath, this.studioRoot),
         };
     }
 
@@ -974,7 +974,7 @@ export class StudioBlueprintService {
 
         let destination: string;
         try {
-            destination = resolveGamePackageDestination((blueprint as GameBlueprint).manifest.id, process.cwd(), outDir);
+            destination = resolveGamePackageDestination((blueprint as GameBlueprint).info.id, process.cwd(), outDir);
         } catch (error) {
             return {status: "error", error: error instanceof Error ? error.message : String(error)};
         }
@@ -1010,7 +1010,7 @@ export class StudioBlueprintService {
                 read: () => blueprint as GameBlueprint,
                 canPublish: () => true,
                 publish: () => this.gamePackageGenerator.generate(blueprint as GameBlueprint, process.cwd(), outDir, undefined, {signal, runtimePackageRoot}),
-                register: (generated) => this.homeService.rememberRecentProject(generated.projectRoot, generated.manifest.name),
+                register: (generated) => this.homeService.rememberRecentProject(generated.projectRoot, generated.info.name),
                 // Ownership starts after generation returns. Rollback releases
                 // that publication while retaining caller-owned directories.
                 rollback: async (generated) => {
@@ -1042,7 +1042,7 @@ export class StudioBlueprintService {
             return {
                 status: "ok",
                 projectRoot: generated.projectRoot,
-                manifest: generated.manifest,
+                manifest: generated.info,
                 createdFiles: generated.createdFiles,
                 buildInfo: buildGameBuildInfo(blueprint as GameBlueprint, this.pokieVersion, sourcePath, undefined, generated.createdFiles),
                 warnings: validated.warnings,

@@ -11,7 +11,7 @@ import {POKIE_WASM_CONTRACT_VERSION} from "../../src/project/wasm/PokieWasmCompo
 import {createCanonicalWasmFixture} from "../fixtures/wasm/createCanonicalWasmFixture.js";
 
 const SAMPLE_BLUEPRINT = {
-    manifest: {id: "sample", name: "Sample", version: "1.0.0"},
+    info: {id: "sample", name: "Sample", version: "1.0.0"},
     reels: 5,
     rows: 3,
     symbols: ["A", "B", "C"],
@@ -173,7 +173,7 @@ describe("ProjectTargetResolver", () => {
             type: "blueprint",
             rootPath: blueprintFile,
             capabilities: ["blueprint.build", "outcomeLibrary.generate", "stakeAdapter.export", "wasm.export"],
-            provenance: expect.stringContaining("manifest"),
+            provenance: expect.stringContaining("info"),
         });
     });
 

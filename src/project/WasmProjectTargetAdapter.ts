@@ -12,7 +12,7 @@ import {POKIE_WASM_RUNTIME_VERSION} from "../wasm/PokieWasmRuntimeApi.js";
 
 // The sidecar file a ".wasm" file must be paired with for this adapter to ever recognize it -- e.g.
 // "game.wasm" needs a "game.wasm.pokie-wasm.json" next to it declaring a PokieWasmComponentInfo. Exported
-// so readWasmComponentManifest can re-read the exact same file a resolved "wasm" project was recognized from,
+// so readWasmComponentInfo can re-read the exact same file a resolved "wasm" project was recognized from,
 // without duplicating this naming rule a second time.
 export function wasmComponentInfoCompanionPath(wasmFilePath: string): string {
     return `${wasmFilePath}.pokie-wasm.json`;

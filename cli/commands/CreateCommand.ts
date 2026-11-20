@@ -303,7 +303,7 @@ export class CreateCommand implements CliCommandHandling {
         }
 
         console.log("\nPreview:");
-        console.log(`  Game:        ${blueprint.manifest.name} (id: "${blueprint.manifest.id}", v${blueprint.manifest.version})`);
+        console.log(`  Game:        ${blueprint.info.name} (id: "${blueprint.info.id}", v${blueprint.info.version})`);
         console.log(`  Layout:      ${blueprint.reels} reels x ${blueprint.rows} rows`);
         console.log(`  Symbols:     ${blueprint.symbols.join(", ")}${roles.length > 0 ? ` (${roles.join("; ")})` : ""}`);
         console.log(`  Paytable:    ${Object.keys(blueprint.paytable).length} symbol(s) with payouts`);
@@ -332,7 +332,7 @@ export class CreateCommand implements CliCommandHandling {
 
     private printCreated(blueprint: GameBlueprint, filePath: string): void {
         console.log(`  created  ${filePath}`);
-        console.log(`\nGame blueprint "${blueprint.manifest.name}" (id: "${blueprint.manifest.id}") created at "${filePath}".`);
+        console.log(`\nGame blueprint "${blueprint.info.name}" (id: "${blueprint.info.id}") created at "${filePath}".`);
         console.log(`\nBuild it:`);
         console.log(`  pokie build ${filePath} --target tsPackage --out <dir> --dry-run`);
         console.log(`  pokie build ${filePath} --target tsPackage --out <dir>`);
@@ -341,7 +341,7 @@ export class CreateCommand implements CliCommandHandling {
     // --blank: writes the filled-in starter template directly, no wizard.
     private executeBlank(name: string | undefined, out: string | undefined): number {
         const blueprint = applyBlueprintNameOverride(this.createBlankBlueprint(), name);
-        const filePath = out ?? this.defaultBlueprintPath(blueprint.manifest.id);
+        const filePath = out ?? this.defaultBlueprintPath(blueprint.info.id);
 
         this.writeBlueprintFile(filePath, blueprint);
         this.printCreated(blueprint, filePath);
@@ -366,7 +366,7 @@ export class CreateCommand implements CliCommandHandling {
             overrides: nameDefaults === undefined ? undefined : {id: nameDefaults.id, name: nameDefaults.name},
         });
 
-        console.log(`Generated random game "${blueprint.manifest.name}" (id: "${blueprint.manifest.id}") from seed ${usedSeed}.`);
+        console.log(`Generated random game "${blueprint.info.name}" (id: "${blueprint.info.id}") from seed ${usedSeed}.`);
         console.log(
             `Reproduce this exact game with: pokie create ${name ?? ""}${name ? " " : ""}--random --seed ${usedSeed} --preset ${preset}`,
         );
@@ -387,7 +387,7 @@ export class CreateCommand implements CliCommandHandling {
             return 1;
         }
 
-        const filePath = out ?? this.defaultBlueprintPath(blueprint.manifest.id);
+        const filePath = out ?? this.defaultBlueprintPath(blueprint.info.id);
         this.writeBlueprintFile(filePath, perReelBlueprint);
         this.printCreated(blueprint, filePath);
 

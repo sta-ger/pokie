@@ -80,7 +80,7 @@ export class GamePackageGenerator implements GamePackageGenerating {
         if (mechanicErrors.length) throw new Error(mechanicErrors.map(issue => issue.message).join("; "));
         const variantErrors = validateBlueprintReelSequences(blueprint);
         if (variantErrors.length) throw new Error(variantErrors.join("; "));
-        const id = blueprint.manifest.id;
+        const id = blueprint.info.id;
         const projectRoot = resolveGamePackageDestination(id, cwd, outDir);
 
         const resolvedReelStripGeneration =
@@ -98,9 +98,9 @@ export class GamePackageGenerator implements GamePackageGenerating {
         const basePackageJson = buildPackageJsonPatch(
             {
                 name: id,
-                version: blueprint.manifest.version,
-                description: blueprint.manifest.description ?? DEFAULT_DESCRIPTION,
-                ...(blueprint.manifest.author ? {author: blueprint.manifest.author} : {}),
+                version: blueprint.info.version,
+                description: blueprint.info.description ?? DEFAULT_DESCRIPTION,
+                ...(blueprint.info.author ? {author: blueprint.info.author} : {}),
                 keywords: ["pokie", "video-slot", "generated"],
                 private: true,
                 devDependencies: {"@types/node": DEFAULT_TYPES_NODE_VERSION},
@@ -113,14 +113,14 @@ export class GamePackageGenerator implements GamePackageGenerating {
             "package.json": `${JSON.stringify(packageJson, null, 4)}\n`,
             "package-lock.json": renderBuiltPackageLock(packageJson),
             "tsconfig.json": renderTsconfig(),
-            "README.md": renderBuiltPackageReadme(blueprint.manifest, runtimePackageRoot !== undefined),
+            "README.md": renderBuiltPackageReadme(blueprint.info, runtimePackageRoot !== undefined),
             "src/index.ts": renderBuiltGameModuleSource(materializedBlueprint, this.pokieVersion),
             "dist/index.js": renderBuiltGameModule(materializedBlueprint, this.pokieVersion),
         }, options, runtimePackageRoot);
 
         return {
             projectRoot,
-            manifest: blueprint.manifest,
+            info: blueprint.info,
             createdFiles: [...BUILT_PACKAGE_FILES, ...(runtimePackageRoot === undefined ? [] : ["node_modules/@fromstan/pokie"])],
         };
     }
@@ -213,7 +213,7 @@ export class GamePackageGenerator implements GamePackageGenerating {
                 );
             });
 
-        throw new Error(`Blueprint "${blueprint.manifest.id}" could not generate its reel strips:\n${lines.join("\n")}`);
+        throw new Error(`Blueprint "${blueprint.info.id}" could not generate its reel strips:\n${lines.join("\n")}`);
     }
 }
 

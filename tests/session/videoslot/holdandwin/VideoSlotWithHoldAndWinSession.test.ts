@@ -620,7 +620,7 @@ describe("HoldAndWin synchronous rollback", () => {
         expect(data.winningPositions).toEqual([]);
         expect(data.holdAndWin!.payout).toBe(0);
         expect(data.jackpot?.award).toBeUndefined();
-        const artifact = buildRoundRecordFromSession(session, {roundId: "rejected", origin: {game: b.manifest, pokieVersion: "1.3.0"}});
+        const artifact = buildRoundRecordFromSession(session, {roundId: "rejected", origin: {game: b.info, pokieVersion: "1.3.0"}});
         expect(artifact.totalWin).toBe(0);
         expect(artifact.wins).toEqual([]);
         expect(artifact.featureEvents).toContainEqual({type: "holdAndWin", data: expect.objectContaining({payout: 0})});

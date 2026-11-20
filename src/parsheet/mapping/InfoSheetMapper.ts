@@ -68,7 +68,7 @@ export class InfoSheetMapper implements InfoSheetMapping {
 
         return {
             value: {
-                manifest,
+                info: manifest,
                 reels: cellToNumber(values.get("Reels")) ?? 0,
                 rows: cellToNumber(values.get("Rows")) ?? 0,
             },

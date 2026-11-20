@@ -1,6 +1,6 @@
 import type {OptimizationRequest} from "../../../src/optimization/OptimizationPolicy.js";
 export const optimizationBlueprint = () => ({
-    manifest: {id: "opt", name: "Optimization", version: "1.0.0"},
+    info: {id: "opt", name: "Optimization", version: "1.0.0"},
     reels: 2,
     rows: 1,
     symbols: ["A", "B"],

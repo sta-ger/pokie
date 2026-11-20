@@ -11,7 +11,7 @@ import type {GameBlueprint} from "@fromstan/pokie";
 // or warnings as-is — see createStarterGameBlueprint.test.ts.
 export function createStarterGameBlueprint(): GameBlueprint {
     return {
-        manifest: {
+        info: {
             id: "starter-slot",
             name: "Starter Slot",
             version: "0.1.0",

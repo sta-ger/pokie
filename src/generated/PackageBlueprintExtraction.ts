@@ -93,23 +93,23 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
             release = loaded?.release;
             if (cancelled()) return result;
             const game = loaded?.game ?? (input as PokieGame);
-            const manifest = detachPackageModelData(game.getInfo()) as GameBlueprint["manifest"];
+            const info = detachPackageModelData(game.getInfo()) as GameBlueprint["info"];
             if (
                 new GameBlueprintValidator()
-                    .validate({manifest})
-                    .some((issue) => issue.severity === "error" && issue.code.startsWith("blueprint-manifest"))
-            ) throw new Error("Malformed game manifest");
+                    .validate({info})
+                    .some((issue) => issue.severity === "error" && issue.code.startsWith("blueprint-info"))
+            ) throw new Error("Malformed game info");
             if (cancelled()) return result;
             if (
-                [manifest.description, manifest.author].some(
+                [info.description, info.author].some(
                     (value) => value !== undefined && typeof value !== "string",
                 )
-            ) throw new Error("Manifest optional metadata must be strings");
-            result.source.gameId = manifest.id;
-            result.source.gameVersion = manifest.version;
+            ) throw new Error("Game info optional metadata must be strings");
+            result.source.gameId = info.id;
+            result.source.gameVersion = info.version;
             if (!game.getModelDescriptor) {
-                result.model = {manifest};
-                this.recordFields(manifest, "manifest", "getInfo", result.fields);
+                result.model = {info};
+                this.recordFields(info, "info", "getInfo", result.fields);
                 if (game.getSessionCommandCapabilities) {
                     const capabilities = detachPackageModelData(game.getSessionCommandCapabilities()) as {
                         bets: number[];
@@ -164,7 +164,7 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                     path: "$",
                     code: "legacy-model-unavailable",
                     message:
-                        "Manifest and declared command data are available. Runtime getters cannot establish authored missing/zero payouts, custom calculators, wild restrictions or feature equivalence. Supply a versioned public effective-model descriptor.",
+                        "Game info and declared command data are available. Runtime getters cannot establish authored missing/zero payouts, custom calculators, wild restrictions or feature equivalence. Supply a versioned public effective-model descriptor.",
                 });
                 return result;
             }
@@ -198,7 +198,7 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                     path: "descriptorVersion",
                     code: "incompatible-model-version",
                     message:
-                        "Supported descriptorVersion and blueprintSchemaVersion are both 1; game manifest version is independent.",
+                        "Supported descriptorVersion and blueprintSchemaVersion are both 1; game info version is independent.",
                 });
                 return result;
             }
@@ -217,19 +217,19 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                 (model.rows ?? 0) > 10000 ||
                 (model.reels ?? 0) * (model.rows ?? 0) > 1000000
             ) throw new Error("Model geometry exceeds extraction limits");
-            if (hasOwn(model, "manifest")) {
-                const manifestErrors = new GameBlueprintValidator().validate({manifest: model.manifest})
-                    .filter(issue => issue.severity === "error" && issue.code.startsWith("blueprint-manifest"));
-                if (manifestErrors.length > 0) throw new Error(`manifest: ${manifestErrors.map(issue => issue.message).join("; ")}`);
-                if (computeGameBlueprintHash({manifest: model.manifest} as GameBlueprint) !==
-                    computeGameBlueprintHash({manifest} as GameBlueprint)) throw new Error("manifest: descriptor differs from getInfo identity/data");
+            if (hasOwn(model, "info")) {
+                const manifestErrors = new GameBlueprintValidator().validate({info: model.info})
+                    .filter(issue => issue.severity === "error" && issue.code.startsWith("blueprint-info"));
+                if (manifestErrors.length > 0) throw new Error(`info: ${manifestErrors.map(issue => issue.message).join("; ")}`);
+                if (computeGameBlueprintHash({info: model.info} as GameBlueprint) !==
+                    computeGameBlueprintHash({info} as GameBlueprint)) throw new Error("info: descriptor differs from getInfo identity/data");
             }
-            model.manifest = manifest;
+            model.info = info;
             result.model = model;
             this.recordFields(model, "", "public model descriptor", result.fields);
-            for (const field of result.fields) if (field.path === "manifest" || field.path.startsWith("manifest.")) field.authority = "getInfo";
+            for (const field of result.fields) if (field.path === "info" || field.path.startsWith("info.")) field.authority = "getInfo";
             const known = new Set([
-                "manifest",
+                "info",
                 "reels",
                 "rows",
                 "screenGeometry",
@@ -266,7 +266,7 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                     }
                 }
             };
-            checkKeys(model.manifest, "manifest", ["id", "name", "version", "description", "author"]);
+            checkKeys(model.info, "info", ["id", "name", "version", "description", "author"]);
             checkKeys(model.winModel, "winModel", ["type", "minimumClusterSize"]);
             checkKeys(model.mechanics, "mechanics", ["freeGames", "holdAndWin", "jackpot", "modifiers", "cascade", "respins", "collection", "weightedBonus"]);
             checkKeys(model.mechanics?.cascade, "mechanics.cascade", ["maxCascades"]);
@@ -318,7 +318,7 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
             const omitted = (field: string, authority: string): void => {
                 result.fields.push({path: field, status: "defaulted", authority});
             };
-            for (const field of ["description", "author"]) if (!hasOwn(manifest, field)) omitted(`manifest.${field}`, "manifest: optional metadata absent");
+            for (const field of ["description", "author"]) if (!hasOwn(info, field)) omitted(`info.${field}`, "info: optional metadata absent");
             if (!model.winModel) omitted("winModel.type", "generated runtime: lines");
             if (!model.mechanics?.freeGames) omitted("mechanics.freeGames", "generated runtime: no free-game feature");
             if (!model.screenGeometry) for (const field of [
@@ -474,7 +474,7 @@ function requiredFieldPath(code: string): string {
         "screengeometry",
         "paytable",
         "reelstrips",
-        "manifest",
+        "info",
         "symbols",
         "wilds",
         "scatters",

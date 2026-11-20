@@ -23,7 +23,7 @@ import {
     PokieProject,
     PreGeneratedRoundReplayDescriptor,
     ProjectTargetResolver,
-    readWasmComponentManifest,
+    readWasmComponentInfo,
     describeUnsupportedProjectOperation,
     describeUnavailableWasmComponent,
     isWasmComponentFile,
@@ -922,7 +922,7 @@ export class StudioServer implements StudioServerHandling {
                     const validation = this.blueprintService.validate(loaded.blueprint);
                     if (validation.status !== "ok") throw new Error(validation.errors.map(issue => `${issue.code}: ${issue.message}`).join("\n"));
                     return {
-                        status: "loaded", projectRoot, game: (loaded.blueprint as GameBlueprint).manifest,
+                        status: "loaded", projectRoot, game: (loaded.blueprint as GameBlueprint).info,
                         type: identity.type, capabilities: identity.capabilities, origin: identity.origin,
                     };
                 }
@@ -2552,7 +2552,7 @@ export class StudioServer implements StudioServerHandling {
             return this.validateParWorkbookProject(resolved);
         }
         if (resolved?.type === "wasm") {
-            const manifestRead = await readWasmComponentManifest(resolved);
+            const manifestRead = await readWasmComponentInfo(resolved);
             if (!manifestRead.supported || manifestRead.manifest.artifact === undefined) {
                 throw new StudioHttpRequestError(409, manifestRead.supported
                     ? (describeUnsupportedProjectOperation(resolved, VALIDATE_OPERATION)?.message ?? "WASM validation unavailable")
@@ -2565,7 +2565,7 @@ export class StudioServer implements StudioServerHandling {
 
     private async inspectWasmProject(project: PokieProject): Promise<GamePackageInspectionReport> {
         try {
-            const manifestRead = await readWasmComponentManifest(project);
+            const manifestRead = await readWasmComponentInfo(project);
             if (!manifestRead.supported) {
                 return {packageRoot: project.rootPath, valid: false, error: manifestRead.diagnostic.message};
             }
@@ -2627,7 +2627,7 @@ export class StudioServer implements StudioServerHandling {
         try {
             const project = await new ProjectTargetResolver().resolve(projectRoot, {readConfigurationProvenance: false});
             if (project?.type === "wasm") {
-                const manifest = await readWasmComponentManifest(project);
+                const manifest = await readWasmComponentInfo(project);
                 const diagnostic = describeUnsupportedProjectOperation(project, operation);
                 if (manifest.supported && manifest.manifest.artifact !== undefined && diagnostic === undefined) return false;
                 await this.playService.reset();
@@ -2688,7 +2688,7 @@ export class StudioServer implements StudioServerHandling {
                     loadBlueprint: (root) => this.blueprintService.load(root),
                     inspectPackage: (root) => this.gamePackageInspector.inspect(root),
                     importParWorkbook: (root) => new ParSheetImporter().importFromFile(root),
-                    readWasmManifest: readWasmComponentManifest,
+                    readWasmManifest: readWasmComponentInfo,
                 },
                 seed,
                 unresolvedWasmReason,

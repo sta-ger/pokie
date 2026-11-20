@@ -2,7 +2,7 @@ import fs from "fs";
 import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js";
 import {resolveCanonicalWasmGameModel} from "../project/WasmOutputBuilder.js";
 import {compileCanonicalWasmBuild} from "../wasm/DeclarativeWasmModel.js";
-import {readWasmComponentManifest} from "../project/readWasmComponentManifest.js";
+import {readWasmComponentInfo} from "../project/readWasmComponentInfo.js";
 import {ProjectTargetResolver} from "../project/ProjectTargetResolver.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import type {PokieWasmComponentInfo} from "../project/wasm/PokieWasmComponentInfo.js";
@@ -70,7 +70,7 @@ export async function bindCanonicalWasmTuningSource(
 ): Promise<void> {
     const project = await new ProjectTargetResolver().resolve(file);
     if (!project || project.type !== "wasm") throw new Error("Expected a canonical WASM project.");
-    const read = await readWasmComponentManifest(project);
+    const read = await readWasmComponentInfo(project);
     if (!read.supported || !read.canonical || paths.some((field) => !paytablePaths(blueprint).includes(field))) throw new Error("Unsupported source/tuning contract.");
     if (digest(compileBoundTuningWasm(blueprint, read.manifest)) !== digest(fs.readFileSync(file))) throw new Error("Source does not reproduce canonical component bytes.");
     const contract: CanonicalWasmTuningContract = {

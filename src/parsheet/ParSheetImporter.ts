@@ -139,7 +139,7 @@ export class ParSheetImporter implements ParSheetImporting {
         issues.push(...manifestResult.issues, ...symbolsResult.issues, ...paytableResult.issues);
 
         const blueprint: GameBlueprint = {
-            manifest: manifestResult.value.manifest,
+            info: manifestResult.value.info,
             reels: manifestResult.value.reels,
             rows: manifestResult.value.rows,
             symbols: symbolsResult.value.symbols,

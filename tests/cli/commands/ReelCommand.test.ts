@@ -5,7 +5,7 @@ import {GameBlueprint} from "@fromstan/pokie";
 import {ReelCommand} from "../../../cli/commands/ReelCommand.js";
 
 const baseBlueprint: GameBlueprint = {
-    manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+    info: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     reels: 3,
     rows: 3,
     symbols: ["A", "B"],
@@ -19,7 +19,7 @@ const baseBlueprint: GameBlueprint = {
 };
 
 const noReelStripGenerationBlueprint: GameBlueprint = {
-    manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+    info: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     reels: 1,
     rows: 3,
     symbols: ["A"],
@@ -32,7 +32,7 @@ const allLiteralBlueprint: GameBlueprint = {
 };
 
 const impossibleBlueprint: GameBlueprint = {
-    manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+    info: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     reels: 1,
     rows: 3,
     symbols: ["A"],

@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import fs from "fs";
 import {ProjectTargetResolver} from "../../../src/project/ProjectTargetResolver.js";
-import {readWasmComponentManifest} from "../../../src/project/readWasmComponentManifest.js";
+import {readWasmComponentInfo} from "../../../src/project/readWasmComponentInfo.js";
 import {readIntegrityBoundCanonicalPokieWasmArtifact} from "../../../src/wasm/PokieWasmCanonicalModule.js";
 import type {PokieWasmBrowserBuild} from "../../../src/wasm/loadPokieWasmBrowserBuild.js";
 import type {PokieWasmWorkerProgress} from "../../../src/wasm/PokieWasmWorkerClient.js";
@@ -54,7 +54,7 @@ export class StudioWasmBrowserService {
         if (context.mode !== "project") throw new Error("Open a WASM Project before executing it.");
         const project = await new ProjectTargetResolver().resolve(context.projectRoot);
         if (project?.type !== "wasm") throw new Error("The current Project is not a WASM build. Reopen the Project.");
-        const read = await readWasmComponentManifest(project);
+        const read = await readWasmComponentInfo(project);
         if (!read.supported || !read.manifest.artifact) throw new Error("This legacy WASM component is inspection-only. Rebuild it as a WASM build to execute it.");
         const bytes = new Uint8Array(await fs.promises.readFile(project.rootPath));
         // A replacement between reads must never produce a mixed module/sidecar pair.

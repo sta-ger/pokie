@@ -1226,7 +1226,7 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
 
     describe('"full" against a real "pokie build" Blueprint package — provenance.configHash carries the build\'s own authoritative hash, never an invented one', () => {
         const blueprint: GameBlueprint = {
-            manifest: {id: "built-blueprint-game", name: "Built Blueprint Game", version: "1.0.0"},
+            info: {id: "built-blueprint-game", name: "Built Blueprint Game", version: "1.0.0"},
             reels: 3,
             rows: 3,
             symbols: ["A", "B"],

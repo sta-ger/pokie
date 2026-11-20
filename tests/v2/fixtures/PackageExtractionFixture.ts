@@ -72,7 +72,7 @@ export function writeDescriptorPackage(
         `// Fixture source: ${JSON.stringify(path.resolve(root))}
 const model = ${JSON.stringify(model)};
 module.exports = {
-    getInfo() { return model.manifest; },
+    getInfo() { return model.info; },
     createSession() { throw new Error("Model extraction must not create a session"); },
     ${
     options.legacy

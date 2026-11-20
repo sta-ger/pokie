@@ -10,7 +10,7 @@ import type {GameBlueprint} from "@fromstan/pokie";
 // without inventing extra match-count tiers just to fill out the template.
 export function createBlankGameBlueprint(): GameBlueprint {
     return {
-        manifest: {
+        info: {
             id: "blank-slot",
             name: "Blank Slot",
             version: "0.1.0",

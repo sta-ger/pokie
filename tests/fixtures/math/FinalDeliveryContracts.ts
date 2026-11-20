@@ -7,7 +7,7 @@ const json = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 export const finalStakes = [0.05, 7.5, 1e-7];
 
 export function finalBlueprint(): API.GameBlueprint {
-    return {manifest: {id: "final-contract", name: "Final contract", version: "1"}, reels: 3, rows: 1,
+    return {info: {id: "final-contract", name: "Final contract", version: "1"}, reels: 3, rows: 1,
         symbols: ["A", "S"], wilds: [], scatters: ["S"], paylines: [[0, 0, 0]],
         reelStrips: [["A"], ["A"], ["A"]], availableBets: finalStakes, paytable: {A: {3: 2}, S: {3: 0}}};
 }
@@ -39,7 +39,7 @@ export async function verifyFinalDelivery(api: Api, makeGame: MakeGame, database
             amount(result.payout!, stake * (payout ?? 0));
             assert.equal(result.stake, stake);
             assert.equal(result.logicalRound?.totalPayout, result.payout);
-            const artifact = api.buildRoundRecordFromSession(session as API.VideoSlotSessionHandling, {roundId: "money", origin: {game: model.manifest, pokieVersion: "2.0.0"}});
+            const artifact = api.buildRoundRecordFromSession(session as API.VideoSlotSessionHandling, {roundId: "money", origin: {game: model.info, pokieVersion: "2.0.0"}});
             amount(artifact.totalWin, stake * (payout ?? 0));
             assert.equal(artifact.stake, stake);
         }

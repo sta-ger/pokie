@@ -12,13 +12,13 @@ import os from "os";
 import path from "path";
 import {WasmOutputBuilder, resolveCanonicalWasmGameModel} from "../../src/project/WasmOutputBuilder.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
-import {readWasmComponentManifest} from "../../src/project/readWasmComponentManifest.js";
+import {readWasmComponentInfo} from "../../src/project/readWasmComponentInfo.js";
 import {ProjectTargetResolver} from "../../src/project/ProjectTargetResolver.js";
 import {loadPokieWasmFileRuntime} from "../../src/wasm/node/PokieWasmFileRuntimeAdapter.js";
 import {readCanonicalPokieWasmModule} from "../../src/wasm/PokieWasmCanonicalModule.js";
 
 const blueprint = {
-    manifest: {id: "wasm-fixture", name: "WASM Fixture", version: "1.0.0"},
+    info: {id: "wasm-fixture", name: "WASM Fixture", version: "1.0.0"},
     reels: 3,
     rows: 1,
     symbols: ["A", "B", "C"],
@@ -130,7 +130,7 @@ describe("WasmOutputBuilder", () => {
         expect(WebAssembly.validate(new Uint8Array(fs.readFileSync(outputPath)))).toBe(true);
         const project = await new ProjectTargetResolver().resolve(outputPath);
         expect(project).toBeDefined();
-        const read = await readWasmComponentManifest(project!);
+        const read = await readWasmComponentInfo(project!);
         expect(read).toMatchObject({supported: true, manifest: {component: {id: "wasm-fixture"}, artifact: {format: "pokie.wasm.v1", adapter: "@fromstan/pokie/wasm"}}});
         if (read.supported) expect(read.manifest.artifact?.bytes).toBeGreaterThan(8);
         if (read.supported) expect(read.manifest.artifact?.sha256).toBe(`sha256:${crypto.createHash("sha256").update(fs.readFileSync(outputPath)).digest("hex")}`);
@@ -182,7 +182,7 @@ describe("WasmOutputBuilder", () => {
         const firstOutput = path.join(workDir, "first.wasm");
         const secondOutput = path.join(workDir, "second.wasm");
         fs.writeFileSync(firstSource, JSON.stringify(blueprint));
-        fs.writeFileSync(secondSource, JSON.stringify({...blueprint, manifest: {...blueprint.manifest, id: "wasm-fixture-second"}, reelStrips: [["A", "A", "B", "C"], ["A", "B", "B", "C"], ["A", "B", "C", "C"]], paytable: {A: {3: 9}, B: {3: 1}, C: {3: 1}}}));
+        fs.writeFileSync(secondSource, JSON.stringify({...blueprint, info: {...blueprint.info, id: "wasm-fixture-second"}, reelStrips: [["A", "A", "B", "C"], ["A", "B", "B", "C"], ["A", "B", "C", "C"]], paytable: {A: {3: 9}, B: {3: 1}, C: {3: 1}}}));
         const builder = new WasmOutputBuilder("1.3.0");
         await builder.build({type: "blueprint", rootPath: firstSource, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"}, firstOutput);
         await builder.build({type: "blueprint", rootPath: secondSource, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"}, secondOutput);
@@ -265,7 +265,7 @@ describe("WasmOutputBuilder", () => {
         const firstOutput = path.join(workDir, "first.wasm");
         const secondOutput = path.join(workDir, "second.wasm");
         fs.writeFileSync(firstSource, JSON.stringify(blueprint));
-        fs.writeFileSync(secondSource, JSON.stringify({...blueprint, manifest: {...blueprint.manifest, id: "second"}, paytable: {A: {3: 8}, B: {3: 1}, C: {3: 1}}}));
+        fs.writeFileSync(secondSource, JSON.stringify({...blueprint, info: {...blueprint.info, id: "second"}, paytable: {A: {3: 8}, B: {3: 1}, C: {3: 1}}}));
         const builder = new WasmOutputBuilder("1.3.0");
         await builder.build({type: "blueprint", rootPath: firstSource, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"}, firstOutput);
         await builder.build({type: "blueprint", rootPath: secondSource, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"}, secondOutput);
@@ -290,7 +290,7 @@ describe("WasmOutputBuilder", () => {
         const firstOutput = path.join(workDir, "first.wasm");
         const secondOutput = path.join(workDir, "second.wasm");
         fs.writeFileSync(firstSource, JSON.stringify(blueprint));
-        fs.writeFileSync(secondSource, JSON.stringify({...blueprint, manifest: {...blueprint.manifest, id: "same-mechanics-other-id"}}));
+        fs.writeFileSync(secondSource, JSON.stringify({...blueprint, info: {...blueprint.info, id: "same-mechanics-other-id"}}));
         const builder = new WasmOutputBuilder("1.3.0");
         await builder.build({type: "blueprint", rootPath: firstSource, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"}, firstOutput);
         await builder.build({type: "blueprint", rootPath: secondSource, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"}, secondOutput);

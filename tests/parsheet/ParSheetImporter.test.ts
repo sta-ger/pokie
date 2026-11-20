@@ -61,7 +61,7 @@ describe("ParSheetImporter", () => {
         const {blueprint, issues} = await importer.importFromFile(filePath);
 
         expect(blueprint).toEqual({
-            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+            info: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
             reels: 2,
             rows: 2,
             symbols: ["A", "W"],
@@ -103,7 +103,7 @@ describe("ParSheetImporter", () => {
 
     it("classifies ignored workbook columns and keys as conversion loss even when Meta hash matches", async () => {
         const blueprint: GameBlueprint = {
-            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+            info: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
             reels: 2,
             rows: 2,
             symbols: ["A", "W"],
@@ -131,7 +131,7 @@ describe("ParSheetImporter", () => {
 
     it("enforces a persisted Meta non-lossless boundary even when the imported Blueprint hash matches", async () => {
         const blueprint: GameBlueprint = {
-            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+            info: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
             reels: 2,
             rows: 2,
             symbols: ["A", "W"],
@@ -233,7 +233,7 @@ describe("ParSheetImporter", () => {
     describe("winModel / mechanics / betModes", () => {
         it("round-trips winModel, mechanics.freeGames, and betModes through export -> import", async () => {
             const original: GameBlueprint = {
-                manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                info: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
                 reels: 2,
                 rows: 2,
                 symbols: ["A", "W", "S"],
@@ -265,7 +265,7 @@ describe("ParSheetImporter", () => {
 
         it("round-trips a lines winModel with no mechanics/betModes present", async () => {
             const original: GameBlueprint = {
-                manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                info: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
                 reels: 2,
                 rows: 2,
                 symbols: ["A", "W"],
@@ -392,7 +392,7 @@ describe("ParSheetImporter", () => {
         // The exact blueprint validSheets (with no Paylines/AvailableBets sheet) assembles to —
         // computeBlueprintHash canonicalizes internally, so this can be built in any key order.
         const assembledBlueprint: GameBlueprint = {
-            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+            info: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
             reels: 2,
             rows: 2,
             symbols: ["A", "W"],
@@ -541,7 +541,7 @@ describe("ParSheetImporter", () => {
                 ...assembledBlueprint,
                 wilds: [],
                 scatters: [],
-                manifest: {...assembledBlueprint.manifest, description: "", author: ""},
+                info: {...assembledBlueprint.info, description: "", author: ""},
             };
             const exporter = new ParSheetExporter("1.3.0");
             const exportIssues = await exporter.exportToFile(withEmptyOptionalFields, filePath);

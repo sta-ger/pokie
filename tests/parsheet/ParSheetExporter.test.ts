@@ -29,7 +29,7 @@ describe("ParSheetExporter", () => {
     });
 
     const blueprint: GameBlueprint = {
-        manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+        info: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         reels: 2,
         rows: 2,
         symbols: ["A", "W"],

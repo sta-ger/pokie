@@ -184,13 +184,13 @@ export class ProjectTargetResolver implements ProjectResolving {
     private async configurationProvenance(type: PokieProject["type"], rootPath: string): Promise<OutputConfigurationOrigin | undefined> {
         try {
             if (type === "blueprint") {
-                const blueprint = loadGameBlueprint(rootPath) as {manifest: {id: string; version: string}};
+                const blueprint = loadGameBlueprint(rootPath) as {info: {id: string; version: string}};
                 return {
                     configurationHash: computeGameBlueprintHash(blueprint as never),
                     inputBindingHash: computeProjectInputBindingHash({type, rootPath}),
-                    gameId: blueprint.manifest.id,
-                    gameVersion: blueprint.manifest.version,
-                    manifestIdentity: `${blueprint.manifest.id}@${blueprint.manifest.version}`,
+                    gameId: blueprint.info.id,
+                    gameVersion: blueprint.info.version,
+                    manifestIdentity: `${blueprint.info.id}@${blueprint.info.version}`,
                 };
             }
             if (type === "outcomeLibrary") {

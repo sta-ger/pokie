@@ -61,7 +61,7 @@ export type GameBlueprintMechanics = FeatureChains & {
 // paytable, and reel strips/weights for a standard line-pay video slot. Optional fields fall back
 // to VideoSlotConfig's own defaults (horizontal paylines, the built-in weighted reel generator).
 export type GameBlueprint = {
-    manifest: GameBlueprintInfo;
+    info: GameBlueprintInfo;
     reels: number;
     rows: number;
     /** rows describes discrete visible cells; paylines are evaluation-local. */

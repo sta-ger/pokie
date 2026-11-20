@@ -631,7 +631,7 @@ pokie build ./my-par-sheet.xlsx --target parWorkbook --out ./my-par-sheet-copy.x
 
 ```ts
 {
- manifest: {id: string; name: string; version: string; description?: string; author?: string};
+ info: {id: string; name: string; version: string; description?: string; author?: string};
  reels: number;
  rows: number;
  symbols: string[];
@@ -662,7 +662,7 @@ A minimal example (5x3, 3 symbols, no wilds/scatters, default paylines and reel 
 
 ```json
 {
- "manifest": {"id": "sample-slot", "name": "Sample Slot", "version": "0.1.0"},
+ "info": {"id": "sample-slot", "name": "Sample Slot", "version": "0.1.0"},
  "reels": 5,
  "rows": 3,
  "symbols": ["A", "K", "Q"],
@@ -678,7 +678,7 @@ A complete example using every optional field (wilds, scatters, `symbolWeights`,
 
 ```json
 {
- "manifest": {
+ "info": {
  "id": "sample-slot",
  "name": "Sample Slot",
  "version": "0.1.0",
@@ -759,7 +759,7 @@ constraints, `symbolCounts` vs. `symbolWeights`, and a locked position):
 
 ```json
 {
- "manifest": {
+ "info": {
  "id": "generated-reels",
  "name": "Generated Reels",
  "version": "0.1.0",
@@ -1033,7 +1033,7 @@ A minimal starter Blueprint:
 
 ```json
 {
- "manifest": {
+ "info": {
  "id": "par-sheet-starter",
  "name": "PAR Sheet Starter",
  "version": "0.1.0",
@@ -3701,7 +3701,7 @@ client, even for a load/validation failure.
  "buildInfo", "warnings"}` on success — the built project is also recorded as a recent project, so its
  **Open in Studio** button (`POST /api/home/projects/open` below) works exactly like every other Home flow's.
 - `POST /api/home/projects/open` `{"projectRoot": string}` — resolves `projectRoot` through the shared project
- interface and switches Studio to Project mode on success (`200 {"context": {...}, "manifest": {...}}`): game
+ interface and switches Studio to Project mode on success (`200 {"context": {...}, "info": {...}}`): game
  packages load with `loadPokieGame`, WASM opens through the portable integrity-checked runtime, and
  legacy sidecar-only components remain inspectable. `400 {"error": "..."}` reports an invalid project. This is
  the one explicit Home → Project Studio context

@@ -3,7 +3,7 @@ import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 import type {SheetGrid} from "../SheetGrid.js";
 
 export type InfoSheetValue = {
-    manifest: GameBlueprintInfo;
+    info: GameBlueprintInfo;
     reels: number;
     rows: number;
 };

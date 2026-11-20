@@ -325,7 +325,7 @@ describe("BlueprintProjectMaterializer", () => {
         const before = await materializer.materialize(blueprintProjectOf(blueprintPath));
 
         const edited = createStarterGameBlueprint();
-        edited.manifest.version = "0.2.0";
+        edited.info.version = "0.2.0";
         writeBlueprint(sourceDir, "game.json", edited);
         const after = await materializer.materialize(blueprintProjectOf(blueprintPath));
 

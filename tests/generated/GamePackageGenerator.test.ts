@@ -36,7 +36,7 @@ import {GamePackageCreator} from "../../cli/scaffold/GamePackageCreator.js";
 
 function buildBlueprint(overrides: Partial<GameBlueprint> = {}): GameBlueprint {
     return {
-        manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+        info: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         reels: 3,
         rows: 3,
         symbols: ["A", "B"],
@@ -439,7 +439,7 @@ describe("GamePackageGenerator", () => {
 
         const projectRoot = path.join(cwd, "sample-slot");
         expect(result.projectRoot).toBe(projectRoot);
-        expect(result.manifest).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
+        expect(result.info).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
         expect(result.createdFiles.sort()).toEqual([...BUILT_PACKAGE_FILES].sort());
         expect(BUILT_PACKAGE_FILES.sort()).toEqual(
             ["package.json", "package-lock.json", "tsconfig.json", "README.md", "src/index.ts", "dist/index.js"].sort(),
@@ -561,7 +561,7 @@ describe("GamePackageGenerator", () => {
     it("uses the blueprint manifest's own description when given", () => {
         const generator = new GamePackageGenerator("1.3.0");
         const blueprint = buildBlueprint({
-            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0", description: "A fruity slot."},
+            info: {id: "sample-slot", name: "Sample Slot", version: "0.1.0", description: "A fruity slot."},
         });
 
         const result = generator.generate(blueprint, cwd);
@@ -607,7 +607,7 @@ describe("GamePackageGenerator", () => {
         const generator = new GamePackageGenerator("1.3.0");
 
         expect(() =>
-            generator.generate(buildBlueprint({manifest: {id: id.startsWith("/") ? path.join(cwd, "absolute-slot") : id, name: "Escape", version: "0.1.0"}}), cwd),
+            generator.generate(buildBlueprint({info: {id: id.startsWith("/") ? path.join(cwd, "absolute-slot") : id, name: "Escape", version: "0.1.0"}}), cwd),
         ).toThrow(/not a valid directory name/);
         expect(fs.readdirSync(cwd)).toEqual([]);
     });
@@ -641,7 +641,7 @@ describe("GamePackageGenerator", () => {
             const first = generator.generate(buildBlueprint(), cwd);
 
             expect(() =>
-                generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
+                generator.generate(buildBlueprint({info: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
             ).toThrow(/already exists and is not empty/);
 
             const pkg = JSON.parse(fs.readFileSync(path.join(first.projectRoot, "package.json"), "utf-8"));
@@ -846,8 +846,8 @@ describe("GamePackageGenerator", () => {
     it("exposes getBetModes() on the generated package only when betModes is configured", () => {
         const generator = new GamePackageGenerator("1.3.0");
         const betModes = [{id: "base"}, {id: "buy-bonus", costMultiplier: 100}];
-        const withBetModes = generator.generate(buildBlueprint({betModes, manifest: {id: "with-bet-modes", name: "With", version: "0.1.0"}}), cwd);
-        const withoutBetModes = generator.generate(buildBlueprint({manifest: {id: "without-bet-modes", name: "Without", version: "0.1.0"}}), cwd);
+        const withBetModes = generator.generate(buildBlueprint({betModes, info: {id: "with-bet-modes", name: "With", version: "0.1.0"}}), cwd);
+        const withoutBetModes = generator.generate(buildBlueprint({info: {id: "without-bet-modes", name: "Without", version: "0.1.0"}}), cwd);
 
         const gameWithBetModes = require(path.join(withBetModes.projectRoot, "dist", "index.js")) as PokieGame;
         const gameWithoutBetModes = require(path.join(withoutBetModes.projectRoot, "dist", "index.js")) as PokieGame;
@@ -867,7 +867,7 @@ describe("GamePackageGenerator", () => {
         const generator = new GamePackageGenerator("1.3.0");
         const betModes = [{id: "base"}, {id: "buy-bonus", costMultiplier: 100}];
         const result = generator.generate(
-            buildBlueprint({betModes, manifest: {id: "with-buy-bonus-like-mode", name: "With Buy Bonus", version: "0.1.0"}}),
+            buildBlueprint({betModes, info: {id: "with-buy-bonus-like-mode", name: "With Buy Bonus", version: "0.1.0"}}),
             cwd,
         );
 
@@ -895,7 +895,7 @@ describe("GamePackageGenerator", () => {
         // runtime default again, this ordering would catch it defaulting to "ante" instead of "base".
         const betModes = [{id: "ante", costMultiplier: 1.25}, {id: "base"}];
         const result = generator.generate(
-            buildBlueprint({betModes, manifest: {id: "no-implied-default", name: "No Implied Default", version: "0.1.0"}}),
+            buildBlueprint({betModes, info: {id: "no-implied-default", name: "No Implied Default", version: "0.1.0"}}),
             cwd,
         );
 
@@ -930,7 +930,7 @@ describe("GamePackageGenerator", () => {
                 {id: "base", runtimeType: "base", isDefault: true},
             ];
             const result = generator.generate(
-                buildBlueprint({betModes, manifest: {id: "explicit-ante", name: "Explicit Ante", version: "0.1.0"}}),
+                buildBlueprint({betModes, info: {id: "explicit-ante", name: "Explicit Ante", version: "0.1.0"}}),
                 cwd,
             );
 
@@ -962,7 +962,7 @@ describe("GamePackageGenerator", () => {
                         {id: "ante", runtimeType: "ante", costMultiplier: 1.25},
                         {id: "base", runtimeType: "base", isDefault: true},
                     ],
-                    manifest: {id: "exact-enum-explicit-ante", name: "Exact Enum Explicit Ante", version: "0.1.0"},
+                    info: {id: "exact-enum-explicit-ante", name: "Exact Enum Explicit Ante", version: "0.1.0"},
                 }),
                 cwd,
             );
@@ -998,7 +998,7 @@ describe("GamePackageGenerator", () => {
                     paytable: {A: {3: 5}, B: {3: 2}, S: {3: 2}},
                     mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 10}}},
                     betModes,
-                    manifest: {id: "explicit-buy-bonus", name: "Explicit Buy Bonus", version: "0.1.0"},
+                    info: {id: "explicit-buy-bonus", name: "Explicit Buy Bonus", version: "0.1.0"},
                 }),
                 cwd,
             );
@@ -1036,7 +1036,7 @@ describe("GamePackageGenerator", () => {
 
             expect(() =>
                 generator.generate(
-                    buildBlueprint({betModes, manifest: {id: "incomplete-semantics", name: "Incomplete", version: "0.1.0"}}),
+                    buildBlueprint({betModes, info: {id: "incomplete-semantics", name: "Incomplete", version: "0.1.0"}}),
                     cwd,
                 ),
             ).toThrow(BetModeRuntimeSemanticsInvalidError);
@@ -1056,7 +1056,7 @@ describe("GamePackageGenerator", () => {
                     paytable: {A: {3: 5}, B: {3: 2}, S: {3: 2}},
                     mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 10}}},
                     betModes,
-                    manifest: {id: "explicit-multi-buy-bonus", name: "Explicit Multi Buy Bonus", version: "0.1.0"},
+                    info: {id: "explicit-multi-buy-bonus", name: "Explicit Multi Buy Bonus", version: "0.1.0"},
                 }),
                 cwd,
             );
@@ -1097,7 +1097,7 @@ describe("GamePackageGenerator", () => {
                 {id: "ante", runtimeType: "ante", costMultiplier: 1.25, targetRtp: 0.965},
             ];
             const result = generator.generate(
-                buildBlueprint({betModes, manifest: {id: "explicit-target-rtp", name: "Explicit Target RTP", version: "0.1.0"}}),
+                buildBlueprint({betModes, info: {id: "explicit-target-rtp", name: "Explicit Target RTP", version: "0.1.0"}}),
                 cwd,
             );
 
@@ -1117,7 +1117,7 @@ describe("GamePackageGenerator", () => {
 
     it("createSession() behaves exactly as before -- no bet-mode wrapping at all -- when the blueprint has no betModes", () => {
         const generator = new GamePackageGenerator("1.3.0");
-        const result = generator.generate(buildBlueprint({manifest: {id: "no-modes", name: "No Modes", version: "0.1.0"}}), cwd);
+        const result = generator.generate(buildBlueprint({info: {id: "no-modes", name: "No Modes", version: "0.1.0"}}), cwd);
 
         const game = require(path.join(result.projectRoot, "dist", "index.js")) as PokieGame;
         const session = game.createSession();

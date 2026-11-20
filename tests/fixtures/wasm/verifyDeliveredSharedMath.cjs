@@ -12,7 +12,7 @@ const pokie = nativeRequire('@fromstan/pokie');
 const hash = bytes => `sha256:${crypto.createHash('sha256').update(bytes).digest('hex')}`;
 const stakes = [0.05, 7.5, 1e-7];
 const inventory = ['A', 'B', 'W', 'S'];
-const base = {manifest: {id: 'shared-math', name: 'Shared math', version: '1.0.0'}, reels: 3, rows: 3, symbols: inventory,
+const base = {info: {id: 'shared-math', name: 'Shared math', version: '1.0.0'}, reels: 3, rows: 3, symbols: inventory,
     wilds: ['W'], scatters: ['S'], availableBets: stakes,
     reelStrips: [['A', 'W', 'S', 'B', 'A'], ['A', 'B', 'W', 'S', 'A', 'B', 'A'], ['W', 'A', 'S']],
     paytable: {A: {2: 0, 3: 0.3, 4: 0.7, 5: 1.1, 6: 1.3, 7: 1.7, 8: 1.9, 9: 2.3}, B: {2: 0.1, 3: 0.7, 4: 1.1, 5: 1.3, 6: 1.7, 7: 1.9, 8: 2.3, 9: 2.9}, S: {2: 0, 3: 1.1, 4: 1.9}}};
@@ -89,7 +89,7 @@ async function main() {
     // The same invalid models must keep Node diagnostics and fail portable preflight/loading.
     for (const kind of ['clusters', 'explicit-clusters', 'ways']) {
         const ways = kind === 'ways';
-        const invalid = {manifest: {id: `invalid-${kind}`, name: 'Evaluator validation', version: '1.0.0'},
+        const invalid = {info: {id: `invalid-${kind}`, name: 'Evaluator validation', version: '1.0.0'},
             reels: 3, rows: 1, symbols: ways ? ['W', 'S'] : ['A'],
             reelStrips: Array.from({length: 3}, () => ways ? ['W', 'S'] : ['A']),
             paytable: ways ? {W: {3: 2}, S: {3: 2}} : {A: {3: 2}}, wilds: ways ? ['W'] : [], scatters: ways ? ['S'] : [],
@@ -130,7 +130,7 @@ async function main() {
         }
         // Compile a fully consistent rejected model independently of the publisher.
         const configurationHash = hash(new TextEncoder().encode(pokie.stableSlotMathJson(model)));
-        const descriptor = {schemaVersion: '1.0.0', component: {id: invalid.manifest.id, version: '1.0.0'},
+        const descriptor = {schemaVersion: '1.0.0', component: {id: invalid.info.id, version: '1.0.0'},
             serialization: {session: 'pokie.session.v2', play: 'pokie.play.v2', state: 'pokie.state.v3'}, host: {rng: 'pokie.rng.v2', services: []},
             capabilities: ['runtime.play', 'runtime.serialize', 'runtime.replay'],
             artifact: {format: 'pokie.wasm.v1', abiVersion: '3.0.0', adapter: '@fromstan/pokie/wasm', configurationHash}};
@@ -145,7 +145,7 @@ async function main() {
         fs.writeFileSync(artifact, binary); fs.writeFileSync(`${artifact}.pokie-wasm.json`, JSON.stringify(sidecar));
         await assert.rejects(pokie.loadPokieWasmFileRuntime(artifact, host), diagnostic);
         await assert.rejects(new pokie.ProjectTargetResolver().resolve(artifact), diagnostic);
-        await assert.rejects(pokie.readWasmComponentManifest({type: 'wasm', rootPath: artifact, capabilities: pokie.PROJECT_TYPE_CAPABILITIES.wasm, provenance: 'direct readback'}), diagnostic);
+        await assert.rejects(pokie.readWasmComponentInfo({type: 'wasm', rootPath: artifact, capabilities: pokie.PROJECT_TYPE_CAPABILITIES.wasm, provenance: 'direct readback'}), diagnostic);
         assert.deepEqual(fs.readFileSync(artifact), Buffer.from(binary));
         assert.deepEqual(JSON.parse(fs.readFileSync(`${artifact}.pokie-wasm.json`)), sidecar);
         assert.equal(draws, 0);

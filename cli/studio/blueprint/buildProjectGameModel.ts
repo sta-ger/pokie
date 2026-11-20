@@ -1,4 +1,4 @@
-import {PackageBlueprintExtraction, buildPackageGameModelProjection, buildGameModelProjection, describeUnavailableWasmComponent, describeWasmGameModelBoundary, GameBlueprint, GameModelProjection, GamePackageInspectionReport, isWasmComponentFile, ParSheetImportResult, PokieProject, readWasmComponentManifest} from "@fromstan/pokie";
+import {PackageBlueprintExtraction, buildPackageGameModelProjection, buildGameModelProjection, describeUnavailableWasmComponent, describeWasmGameModelBoundary, GameBlueprint, GameModelProjection, GamePackageInspectionReport, isWasmComponentFile, ParSheetImportResult, PokieProject, readWasmComponentInfo} from "@fromstan/pokie";
 import type {StudioBlueprintLoadView} from "./StudioBlueprintLoadView.js";
 
 // The collaborators GET /api/project/gameModel's own resolved-project-type dispatch needs to actually
@@ -10,7 +10,7 @@ export type GameModelSourceReaders = {
     loadBlueprint: (projectRoot: string) => StudioBlueprintLoadView;
     inspectPackage: (projectRoot: string) => GamePackageInspectionReport;
     importParWorkbook: (projectRoot: string) => Promise<ParSheetImportResult>;
-    readWasmManifest: typeof readWasmComponentManifest;
+    readWasmManifest: typeof readWasmComponentInfo;
 };
 
 // GET /api/project/gameModel routes requested model reads to the authoritative format reader.
@@ -73,7 +73,7 @@ export async function buildProjectGameModel(
             const model = manifestRead.canonical.model;
             if (model.features) return buildGameModelProjection(model.features.blueprint);
             return buildGameModelProjection({
-                manifest: {id: manifestRead.manifest.component.id, name: manifestRead.manifest.component.id, version: manifestRead.manifest.component.version},
+                info: {id: manifestRead.manifest.component.id, name: manifestRead.manifest.component.id, version: manifestRead.manifest.component.version},
                 reels: model.reels,
                 rows: model.rows,
                 symbols: [...new Set(model.reelStrips.flat())],

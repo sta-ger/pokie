@@ -24,7 +24,7 @@ export type WasmComponentInfoReadResult =
 // has genuinely changed on disk (moved/deleted/edited) since `project` was resolved -- an already-resolved
 // "wasm" project is a promise the manifest was compatible at resolution time, not a guarantee it still is at
 // read time.
-export async function readWasmComponentManifest(project: PokieProject): Promise<WasmComponentInfoReadResult> {
+export async function readWasmComponentInfo(project: PokieProject): Promise<WasmComponentInfoReadResult> {
     const diagnostic = describeUnsupportedProjectOperation(project, WASM_INSPECT_OPERATION);
     if (diagnostic !== undefined) {
         return {supported: false, diagnostic};

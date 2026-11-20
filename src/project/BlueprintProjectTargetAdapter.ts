@@ -14,6 +14,6 @@ export class BlueprintProjectTargetAdapter implements ProjectTargetTypeAdapter {
         if (!looksLikeGameBlueprintFile(resolvedPath)) {
             return Promise.resolve(undefined);
         }
-        return Promise.resolve('required blueprint fields present ("manifest", "reels", "rows", "symbols", "paytable")');
+        return Promise.resolve('required blueprint fields present ("info", "reels", "rows", "symbols", "paytable")');
     }
 }

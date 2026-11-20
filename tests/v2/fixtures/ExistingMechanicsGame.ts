@@ -6,7 +6,7 @@ import * as api from "@fromstan/pokie";
 
 export function existingMechanicsBlueprint(row: typeof api.AUTHORED_MECHANIC_CATALOG[number]): api.GameBlueprint {
     const blueprint: api.GameBlueprint = {
-        manifest: {id: row.id, name: row.id, version: "1.0.0"}, reels: 3, rows: 1,
+        info: {id: row.id, name: row.id, version: "1.0.0"}, reels: 3, rows: 1,
         symbols: ["A", "C", "M", "J", "S"], scatters: ["S"], paytable: {A: {3: 0}},
         availableBets: [0.05, 7.5, 1e-7], reelStrips: [["C", "A", "S", "J", "M"], ["A", "S", "J", "C", "M"], ["A", "S", "J", "C", "M"]], mechanics: {},
     };

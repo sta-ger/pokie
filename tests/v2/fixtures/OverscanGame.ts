@@ -6,7 +6,7 @@ export const overscanGeometry: ScreenGeometry = {
     generated: {reels: 5, rows: 7}, visible: {rowOffset: 1, rows: 3}, evaluated: {rowOffset: 2, rows: 3}, paylineSpace: "evaluated",
 };
 export const overscanBlueprint: GameBlueprint = {
-    manifest: {id: "overscan-contract", name: "Overscan Contract", version: "0.1.0"},
+    info: {id: "overscan-contract", name: "Overscan Contract", version: "0.1.0"},
     reels: 5, rows: 3, screenGeometry: overscanGeometry,
     symbols: ["A", "B", "W", "S"], wilds: ["W"], scatters: ["S"], availableBets: [0.05, 7.5, 1e-7, 1],
     paylines: [[0, 0, 0, 0, 0], [1, 1, 1, 1, 1], [2, 2, 2, 2, 2]],

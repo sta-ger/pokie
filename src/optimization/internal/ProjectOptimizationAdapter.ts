@@ -18,7 +18,7 @@ import {loadPokieGame, loadPokieGameRuntime} from "../../gamepackage/loadPokieGa
 import {releaseSimulationGame} from "../../simulation/parallel/internal/releaseSimulationGame.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import type {PokieProject} from "../../project/PokieProject.js";
-import {readWasmComponentManifest} from "../../project/readWasmComponentManifest.js";
+import {readWasmComponentInfo} from "../../project/readWasmComponentInfo.js";
 import type {PokieWasmComponentInfo} from "../../project/wasm/PokieWasmComponentInfo.js";
 import {resolveCanonicalWasmGameModel} from "../../project/WasmOutputBuilder.js";
 import {computeBlueprintHash} from "../../parsheet/computeBlueprintHash.js";
@@ -432,7 +432,7 @@ export async function acquireOptimizationAdapter(
             wasmContract.builder !== "canonical-pokie-v1" ||
             !Array.isArray(wasmContract.paths)
         ) throw new OptimizationUnsupportedError("Unsupported WASM tuning contract.");
-        const read = await readWasmComponentManifest(project);
+        const read = await readWasmComponentInfo(project);
         if (!read.supported || !read.canonical) throw new OptimizationUnsupportedError("WASM tuning requires a canonical executable artifact.");
         wasmManifest = read.manifest;
         blueprint = wasmContract.blueprint;

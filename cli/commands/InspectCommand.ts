@@ -7,7 +7,7 @@ import {
     ProjectTargetMalformedError,
     ProjectTargetResolver,
     ProjectTargetUnsupportedError,
-    readWasmComponentManifest,
+    readWasmComponentInfo,
     WASM_RUNTIME_PLAY_CAPABILITY,
     WASM_RUNTIME_REPLAY_CAPABILITY,
     WASM_PRODUCT_CONTRACT,
@@ -131,7 +131,7 @@ export class InspectCommand implements CliCommandHandling {
     }
 
     private async printWasmManifest(project: PokieProject): Promise<import("@fromstan/pokie").PokieWasmComponentInfo> {
-        const manifestRead = await readWasmComponentManifest(project);
+        const manifestRead = await readWasmComponentInfo(project);
         if (!manifestRead.supported) {
             throw new Error(manifestRead.diagnostic.message);
         }

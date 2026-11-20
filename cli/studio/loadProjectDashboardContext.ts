@@ -1,4 +1,4 @@
-import {isWasmComponentFile, loadPokieGame, OutcomeSourceProjectAnalyzer, OutcomeSourceProjectReport, PokieProject, ProjectTargetResolver, readWasmComponentManifest, releasePokieGame, type ProjectType} from "@fromstan/pokie";
+import {isWasmComponentFile, loadPokieGame, OutcomeSourceProjectAnalyzer, OutcomeSourceProjectReport, PokieProject, ProjectTargetResolver, readWasmComponentInfo, releasePokieGame, type ProjectType} from "@fromstan/pokie";
 import path from "path";
 import {BlueprintMaterializationError} from "../materialize/BlueprintMaterializationError.js";
 import {RuntimePreparationError} from "../materialize/RuntimePreparationError.js";
@@ -139,7 +139,7 @@ export async function loadProjectDashboardContext(
                 // A canonical component is an ordinary portable game runtime, not
                 // a Studio-only artifact dashboard. Read it again here so opening
                 // a registered/recent component cannot reuse stale metadata.
-                const manifestRead = await readWasmComponentManifest(artifact);
+                const manifestRead = await readWasmComponentInfo(artifact);
                 assertDashboardLoadCurrent(options);
                 if (manifestRead.supported && manifestRead.manifest.artifact !== undefined) {
                     return {

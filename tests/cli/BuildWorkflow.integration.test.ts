@@ -173,7 +173,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         fs.writeFileSync(
             finiteBlueprintPath,
             JSON.stringify({
-                manifest: {id: "finite-outcome-slot", name: "Finite Outcome Slot", version: "1.0.0"},
+                info: {id: "finite-outcome-slot", name: "Finite Outcome Slot", version: "1.0.0"},
                 reels: 2,
                 rows: 1,
                 symbols: ["A", "B"],
@@ -229,7 +229,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         fs.writeFileSync(
             blueprintPath,
             JSON.stringify({
-                manifest: {id: "large-managed-outcome-slot", name: "Large Managed Outcome Slot", version: "1.0.0"},
+                info: {id: "large-managed-outcome-slot", name: "Large Managed Outcome Slot", version: "1.0.0"},
                 reels: 3,
                 rows: 1,
                 symbols: ["A", "B"],

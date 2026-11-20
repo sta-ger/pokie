@@ -150,7 +150,7 @@ migration boundary without falsely advertising execution. A resolved WASM artifa
 `WASM_EXPORT_CAPABILITY`, because it is an output rather than a conversion source; the authored `blueprint` and
 `parWorkbook` project types grant `wasm.export` for the explicit Blueprint/PAR matrix edges.
 
-`readWasmComponentManifest(project)` reads component id/version, serialization format ids, host links, and
+`readWasmComponentInfo(project)` reads component id/version, serialization format ids, host links, and
 declared supported actions. Resolution also verifies the module/manifest integrity link before runtime
 operations; a swapped, stale, malformed, or incompatible sidecar is rejected before instantiation.
 

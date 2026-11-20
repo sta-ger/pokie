@@ -16,7 +16,7 @@ import {
     PokieProject,
     ProjectResolving,
     ProjectTargetResolver,
-    readWasmComponentManifest,
+    readWasmComponentInfo,
     SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
     simulateOutcomeSourceProject,
@@ -362,7 +362,7 @@ export class SimCommand implements CliCommandHandling {
     private async executeAgainstWasmArtifact(project: PokieProject, options: SimOptions): Promise<void> {
         const operationDiagnostic = describeUnavailableBuildOperation(project, SIM_OPERATION);
         if (operationDiagnostic !== undefined) throw new UnsupportedProjectOperationError(operationDiagnostic);
-        const manifestRead = await readWasmComponentManifest(project);
+        const manifestRead = await readWasmComponentInfo(project);
         if (!manifestRead.supported || manifestRead.canonical === undefined) {
             const diagnostic = describeUnavailableBuildOperation(project, SIM_OPERATION);
             if (diagnostic !== undefined) throw new UnsupportedProjectOperationError(diagnostic);

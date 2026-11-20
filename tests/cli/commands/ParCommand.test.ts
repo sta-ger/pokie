@@ -37,7 +37,7 @@ function createStubExporter(
 }
 
 const fullBlueprint: GameBlueprint = {
-    manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+    info: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     reels: 3,
     rows: 3,
     symbols: ["A", "K"],
@@ -322,7 +322,7 @@ describe("ParCommand", () => {
         it("exports canonical generated and weighted Blueprints as literal snapshots, preserves their sources, and leaves no file on a generated-reel failure", async () => {
             const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-par-command-export-test-"));
             const generatedBlueprint: GameBlueprint = {
-                manifest: {id: "generated-par", name: "Generated PAR", version: "1.0.0"},
+                info: {id: "generated-par", name: "Generated PAR", version: "1.0.0"},
                 reels: 2,
                 rows: 1,
                 symbols: ["A", "B"],
@@ -333,7 +333,7 @@ describe("ParCommand", () => {
                 ],
             };
             const weightedBlueprint: GameBlueprint = {
-                manifest: {id: "weighted-par", name: "Weighted PAR", version: "1.0.0"},
+                info: {id: "weighted-par", name: "Weighted PAR", version: "1.0.0"},
                 reels: 2,
                 rows: 1,
                 symbols: ["A", "B"],
@@ -361,7 +361,7 @@ describe("ParCommand", () => {
                     const imported = await new ParSheetImporter().importFromFile(workbookPath);
                     expect(imported.issues.filter((issue) => issue.severity === "error")).toEqual([]);
                     expect(imported.blueprint).toMatchObject({
-                        manifest: blueprint.manifest,
+                        info: blueprint.info,
                         symbols: blueprint.symbols,
                         paytable: blueprint.paytable,
                     });
@@ -372,7 +372,7 @@ describe("ParCommand", () => {
 
                 const unmaterializable: GameBlueprint = {
                     ...generatedBlueprint,
-                    manifest: {id: "unmaterializable-par", name: "Unmaterializable PAR", version: "1.0.0"},
+                    info: {id: "unmaterializable-par", name: "Unmaterializable PAR", version: "1.0.0"},
                     reelStripGeneration: [
                         {type: "literal", strip: ["A", "B"]},
                         {

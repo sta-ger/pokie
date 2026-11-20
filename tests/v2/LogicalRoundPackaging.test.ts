@@ -10,7 +10,7 @@ import {setTransactionBoundaryHook} from "../../src/server/storage/internal/tran
 
 function game(grant = 1, purchased = 3): api.PokieGame {
     return createOverscanGame({
-        manifest: {id: "logical-round", name: "Logical round", version: "1"}, reels: 3, rows: 1,
+        info: {id: "logical-round", name: "Logical round", version: "1"}, reels: 3, rows: 1,
         availableBets: [0.05, 7.5, 1e-7], symbols: ["A", "S"], wilds: [], scatters: ["S"],
         paylines: [[0, 0, 0]], paytable: {A: {"3": 2}, S: {"1": 0}},
         reelStrips: Array.from({length: 3}, () => ["A", "A", "S", "A"]),
@@ -208,7 +208,7 @@ describe("logical-round delivery and mathematical boundaries", () => {
             expect(data.winningPositions).toEqual([]);
             expect(data.holdAndWin?.payout).toBe(0);
             expect(data.jackpot?.award).toBeUndefined();
-            const artifact = api.buildRoundRecordFromSession(session, {roundId: "failed", origin: {game: b.manifest, pokieVersion: "1.3.0"}});
+            const artifact = api.buildRoundRecordFromSession(session, {roundId: "failed", origin: {game: b.info, pokieVersion: "1.3.0"}});
             expect(artifact.totalWin).toBe(0);
             expect(artifact.wins).toEqual([]);
             expect(artifact.featureEvents).toContainEqual({type: "holdAndWin", data: expect.objectContaining({payout: 0})});

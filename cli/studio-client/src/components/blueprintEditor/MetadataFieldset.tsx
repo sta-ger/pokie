@@ -35,7 +35,7 @@ export function MetadataFieldset({
     legend?: string;
     issues?: ValidationIssue[];
 }) {
-    const manifest = toRecordCopy(blueprint.manifest);
+    const manifest = toRecordCopy(blueprint.info);
     const readManifest = (field: ManifestField): string => (typeof manifest[field] === "string" ? (manifest[field] as string) : "");
 
     const setManifestField = (field: ManifestField, value: string): void => {

@@ -3,7 +3,7 @@ import * as api from "@fromstan/pokie";
 import {renderBuiltGameModule} from "../../../src/generated/renderBuiltGameModule.js";
 
 export const weightedBlueprint: api.GameBlueprint = {
-    manifest: {id: "weighted-whole", name: "Weighted whole", version: "1"}, reels: 2, rows: 1,
+    info: {id: "weighted-whole", name: "Weighted whole", version: "1"}, reels: 2, rows: 1,
     symbols: ["A", "B", "S"], wilds: [], scatters: [], availableBets: [1], paytable: {A: {2: 4}},
     reelSequences: [
         {type: "weighted", variants: [{id: "all-A", symbols: ["A", "A"], weight: 1}, {id: "all-B", symbols: ["B", "B"], weight: 3}]},

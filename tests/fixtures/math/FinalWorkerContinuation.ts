@@ -6,7 +6,7 @@ export async function measureFinalWorkerContinuation(api: typeof Wasm, rounds: n
     const check = (condition: boolean, message: string): void => {
         if (!condition) throw new Error(message);
     };
-    const artifact = await api.createBlueprintWasmBuild({manifest: {id: "final-worker", name: "Final worker", version: "1"},
+    const artifact = await api.createBlueprintWasmBuild({info: {id: "final-worker", name: "Final worker", version: "1"},
         reels: 3, rows: 1, symbols: ["A", "B"], wilds: [], scatters: [], paylines: [[0, 0, 0]],
         reelStrips: [["A", "B"], ["A", "B"], ["A", "B"]], paytable: {A: {3: 2}}, availableBets: [0.05]});
     const protocol = new api.PokieWasmWorkerProtocol();

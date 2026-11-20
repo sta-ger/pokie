@@ -132,7 +132,7 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
             for (const key of ["manifest", "reels", "rows", "symbols", "paytable", "wilds", "scatters", "paylines", "availableBets", "mechanics"]) Reflect.deleteProperty(preserved, key);
             const blueprint: GameBlueprint = {
                 ...preserved,
-                manifest,
+                info: manifest,
                 reels,
                 rows,
                 symbols,
@@ -179,7 +179,7 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
         // uniqueness suffix ("blazing-riches-4821") that has no business in a game id someone is about
         // to name their project after. The suffixed form stays available where it's actually useful —
         // see "pokie name", which still prints it alongside the plain one.
-        const suggestedId = editing ? this.defaults.manifest.id : (preset?.id ?? suggestion!.packageName);
+        const suggestedId = editing ? this.defaults.info.id : (preset?.id ?? suggestion!.packageName);
 
         const id = await this.askUntilValid(prompt, `Game id [${suggestedId}]: `, (raw) => {
             if (raw.length === 0) {
@@ -197,10 +197,10 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
         if (id !== suggestedId) {
             defaultName = this.titleCaseFromId(id);
         } else {
-            defaultName = editing ? this.defaults.manifest.name : (preset?.name ?? suggestion!.title);
+            defaultName = editing ? this.defaults.info.name : (preset?.name ?? suggestion!.title);
         }
         const name = await this.askWithDefault(prompt, `Game name [${defaultName}]: `, defaultName);
-        const defaultVersion = this.defaults.manifest.version;
+        const defaultVersion = this.defaults.info.version;
         const version = await this.askWithDefault(prompt, `Version [${defaultVersion}]: `, defaultVersion);
 
         return {id, name, version};

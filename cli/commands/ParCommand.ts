@@ -491,7 +491,7 @@ export class ParCommand implements CliCommandHandling {
         information: ValidationIssue[],
     ): void {
         console.log(`Imported "${inputPath}"`);
-        console.log(`  game             ${blueprint.manifest.name} (id: "${blueprint.manifest.id}", v${blueprint.manifest.version})`);
+        console.log(`  game             ${blueprint.info.name} (id: "${blueprint.info.id}", v${blueprint.info.version})`);
         console.log(`  reels x rows     ${blueprint.reels} x ${blueprint.rows}`);
         console.log(`  symbols          ${blueprint.symbols.length}`);
 

@@ -600,7 +600,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                 />
                 <Stepper.Step
                     label="Inspect"
-                    description="Manifest & artifacts"
+                    description="Index & files"
                     disabled={!inspectReachable}
                     title={inspectReachable ? undefined : "Build a certification pack before inspecting its package info and files."}
                     aria-current={activeStep === 3 ? "step" : undefined}

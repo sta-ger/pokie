@@ -33,7 +33,7 @@ import {QuickActions} from "../common/QuickActions";
 // instead. Returns undefined for a missing/blank id (still resolves to the root, unchanged behavior) --
 // GameBlueprintValidator itself is what rejects an empty "manifest.id", not this hint.
 function buildOutputAutoDestination(blueprint: Record<string, unknown>): string | undefined {
-    const manifest = blueprint.manifest;
+    const manifest = blueprint.info;
     if (typeof manifest !== "object" || manifest === null || Array.isArray(manifest)) {
         return undefined;
     }

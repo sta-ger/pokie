@@ -17,10 +17,10 @@ function createStubRandomBlueprintGenerator(
                 ...result,
                 blueprint: {
                     ...result.blueprint,
-                    manifest: {
-                        ...result.blueprint.manifest,
-                        id: request.overrides.id ?? result.blueprint.manifest.id,
-                        name: request.overrides.name ?? result.blueprint.manifest.name,
+                    info: {
+                        ...result.blueprint.info,
+                        id: request.overrides.id ?? result.blueprint.info.id,
+                        name: request.overrides.name ?? result.blueprint.info.name,
                     },
                 },
             };
@@ -68,7 +68,7 @@ function createControllablePrompt(confirmAnswer: string | null): PromptAdapting 
 }
 
 const starterBlueprint: GameBlueprint = {
-    manifest: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"},
+    info: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"},
     reels: 5,
     rows: 3,
     symbols: ["A", "K", "Q", "J"],
@@ -76,7 +76,7 @@ const starterBlueprint: GameBlueprint = {
 };
 
 const blankBlueprint: GameBlueprint = {
-    manifest: {id: "blank-slot", name: "Blank Slot", version: "0.1.0"},
+    info: {id: "blank-slot", name: "Blank Slot", version: "0.1.0"},
     reels: 3,
     rows: 3,
     symbols: ["A", "B", "C"],
@@ -84,7 +84,7 @@ const blankBlueprint: GameBlueprint = {
 };
 
 const wizardBlueprint: GameBlueprint = {
-    manifest: {id: "wiz-slot", name: "Wiz Slot", version: "0.1.0"},
+    info: {id: "wiz-slot", name: "Wiz Slot", version: "0.1.0"},
     reels: 3,
     rows: 3,
     symbols: ["A", "B"],
@@ -415,7 +415,7 @@ describe("CreateCommand", () => {
 
             const written = JSON.parse((writeFile.mock.calls[0] as [string, string])[1]) as GameBlueprint;
             expect(writeFile.mock.calls[0][0]).toBe("./sample-slot.blueprint.json");
-            expect(written.manifest).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
+            expect(written.info).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
         });
 
         it("writes to the given --out path instead of the default", async () => {
@@ -477,7 +477,7 @@ describe("CreateCommand", () => {
 
     describe("--random", () => {
         const randomBlueprint: GameBlueprint = {
-            manifest: {id: "blazing-riches-4821", name: "Blazing Riches", version: "0.1.0"},
+            info: {id: "blazing-riches-4821", name: "Blazing Riches", version: "0.1.0"},
             reels: 5,
             rows: 3,
             symbols: ["A", "K", "Q", "J", "10"],

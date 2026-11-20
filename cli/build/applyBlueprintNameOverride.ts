@@ -17,5 +17,5 @@ export function applyBlueprintNameOverride(blueprint: GameBlueprint, name: strin
     }
 
     const derived = deriveManifestDefaults(trimmed);
-    return {...blueprint, manifest: {...blueprint.manifest, id: derived.id, name: derived.name}};
+    return {...blueprint, info: {...blueprint.info, id: derived.id, name: derived.name}};
 }

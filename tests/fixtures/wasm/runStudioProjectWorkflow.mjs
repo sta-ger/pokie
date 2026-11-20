@@ -14,7 +14,7 @@ const temporaryRoot = fileURLToPath(new URL("../../../node_modules/.cache/pokie-
 fs.mkdirSync(temporaryRoot, {recursive: true});
 const directory = fs.mkdtempSync(path.join(temporaryRoot, "v2c22-installed-workflow-"));
 const blueprint = {
-    manifest: {id: "wasm-project-workflow", name: "WASM project workflow", version: "1.0.0"},
+    info: {id: "wasm-project-workflow", name: "WASM project workflow", version: "1.0.0"},
     reels: 3, rows: 1, symbols: ["A", "B", "C"], wilds: [], scatters: [],
     reelStrips: [["A", "B", "C"], ["A", "B", "C"], ["A", "B", "C"]], paylines: [[0, 0, 0]],
     availableBets: [0.05, 7.5, 1e-7], paytable: {A: {3: 5}, B: {3: 0}},

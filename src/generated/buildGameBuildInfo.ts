@@ -33,7 +33,7 @@ export function buildGameBuildInfo(
         blueprintHash: computeGameBlueprintHash(blueprint),
         ...(sourcePath !== undefined ? {source: sourcePath} : {}),
         files: [...generatedFiles].sort(),
-        game: blueprint.manifest,
+        game: blueprint.info,
         ...(reelStripGeneration !== undefined ? {reelStripGeneration} : {}),
     };
 }

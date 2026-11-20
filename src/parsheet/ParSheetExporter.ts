@@ -229,7 +229,7 @@ export class ParSheetExporter implements ParSheetExporting {
         addSheet(
             workbook,
             this.manifestMapper.sheetName,
-            this.manifestMapper.toRows(typedBlueprint.manifest, typedBlueprint.reels, typedBlueprint.rows),
+            this.manifestMapper.toRows(typedBlueprint.info, typedBlueprint.reels, typedBlueprint.rows),
         );
         addSheet(
             workbook,

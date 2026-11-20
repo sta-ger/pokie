@@ -58,7 +58,7 @@ export interface PokieGame {
     // live round it settles, so a recorded artifact can be traced back to the exact config that produced
     // it. A game that doesn't implement this simply has no configHash captured — never a fabricated one.
     /** Exact audit requires this authority for hand-authored games too: include all effective math/model collaborators.
-     * Manifest identity alone is insufficient. Capture/restore must include any dynamic variant/configuration inputs.
+     * Game info identity alone is insufficient. Capture/restore must include any dynamic variant/configuration inputs.
      */
     getConfigHash?(): string;
 

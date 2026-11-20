@@ -195,7 +195,7 @@ export class EditCommand implements CliCommandHandling {
 
             await this.writeFile(savePath, `${JSON.stringify(blueprint, null, 4)}\n`);
             console.log(`\n  saved  ${savePath}`);
-            console.log(`\nGame blueprint "${blueprint.manifest.name}" (id: "${blueprint.manifest.id}") saved at "${savePath}".`);
+            console.log(`\nGame blueprint "${blueprint.info.name}" (id: "${blueprint.info.id}") saved at "${savePath}".`);
             return 0;
         } finally {
             prompt.close();
@@ -223,9 +223,9 @@ export class EditCommand implements CliCommandHandling {
             }
         };
 
-        changed("id", original.manifest.id, edited.manifest.id);
-        changed("name", original.manifest.name, edited.manifest.name);
-        changed("version", original.manifest.version, edited.manifest.version);
+        changed("id", original.info.id, edited.info.id);
+        changed("name", original.info.name, edited.info.name);
+        changed("version", original.info.version, edited.info.version);
         changed("reels", original.reels, edited.reels);
         changed("rows", original.rows, edited.rows);
         changed("symbols", original.symbols, edited.symbols);

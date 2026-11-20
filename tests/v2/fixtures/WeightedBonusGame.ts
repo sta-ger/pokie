@@ -3,7 +3,7 @@ import type {GameBlueprint} from "../../../src/generated/GameBlueprint.js";
 /** Constant trigger screen; unequal integer intervals [0,1), [1,4), and zero mass. */
 export function weightedBonusBlueprint(): GameBlueprint {
     return {
-        manifest: {id: "weighted-bonus", name: "Weighted bonus", version: "1.0.0"},
+        info: {id: "weighted-bonus", name: "Weighted bonus", version: "1.0.0"},
         reels: 3,
         rows: 1,
         symbols: ["A", "C"],

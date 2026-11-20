@@ -621,7 +621,7 @@ describe("SimCommand --mode (integration, real generated package)", () => {
         ];
         const result = new GamePackageGenerator("1.3.0").generate(
             {
-                manifest: {id: "generated-ante-game", name: "Generated Ante Game", version: "0.1.0"},
+                info: {id: "generated-ante-game", name: "Generated Ante Game", version: "0.1.0"},
                 reels: 3,
                 rows: 3,
                 symbols: ["A", "B"],
@@ -664,7 +664,7 @@ describe("SimCommand --mode (integration, real generated package)", () => {
         ];
         const result = new GamePackageGenerator("1.3.0").generate(
             {
-                manifest: {id: "generated-multi-buy-game", name: "Generated Multi Buy Game", version: "0.1.0"},
+                info: {id: "generated-multi-buy-game", name: "Generated Multi Buy Game", version: "0.1.0"},
                 reels: 3,
                 rows: 3,
                 symbols: ["A", "B", "S"],
@@ -731,7 +731,7 @@ describe("SimCommand --mode all (integration, real generated package)", () => {
         ];
         const result = new GamePackageGenerator("1.3.0").generate(
             {
-                manifest: {id: manifestId, name: "Generated All Modes Game", version: "0.1.0"},
+                info: {id: manifestId, name: "Generated All Modes Game", version: "0.1.0"},
                 reels: 3,
                 rows: 3,
                 symbols: ["A", "B", "S"],
@@ -898,7 +898,7 @@ describe("SimCommand --mode all (integration, real generated package)", () => {
         const generator = new GamePackageGenerator("1.3.0");
         const result = generator.generate(
             {
-                manifest: {id: "no-modes-all", name: "No Modes All", version: "0.1.0"},
+                info: {id: "no-modes-all", name: "No Modes All", version: "0.1.0"},
                 reels: 3,
                 rows: 3,
                 symbols: ["A", "B"],

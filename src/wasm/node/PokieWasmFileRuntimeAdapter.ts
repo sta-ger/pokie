@@ -1,6 +1,6 @@
 import fs from "fs";
 import {ProjectTargetResolver} from "../../project/ProjectTargetResolver.js";
-import {readWasmComponentManifest} from "../../project/readWasmComponentManifest.js";
+import {readWasmComponentInfo} from "../../project/readWasmComponentInfo.js";
 import {instantiatePokieWasm} from "../PokieWasmRuntime.js";
 import type {PokieWasmHost, PokieWasmRuntime} from "../PokieWasmRuntimeApi.js";
 
@@ -8,7 +8,7 @@ import type {PokieWasmHost, PokieWasmRuntime} from "../PokieWasmRuntimeApi.js";
 export async function loadPokieWasmFileRuntime(filePath: string, host: PokieWasmHost): Promise<PokieWasmRuntime> {
     const project = await new ProjectTargetResolver().resolve(filePath);
     if (project?.type !== "wasm") throw new Error(`"${filePath}" is not a recognized POKIE WASM artifact.`);
-    const manifestRead = await readWasmComponentManifest(project);
+    const manifestRead = await readWasmComponentInfo(project);
     if (!manifestRead.supported || manifestRead.manifest.artifact === undefined) {
         throw new Error("This WASM component is inspection-only and cannot be loaded as a canonical POKIE runtime.");
     }

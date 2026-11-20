@@ -33,7 +33,7 @@ const parWorkbookProject = projectOf("parWorkbook", "./game.par.xlsx");
 const stakeProject = projectOf("stakeAdapter", "./stake-export");
 
 const SAMPLE_BLUEPRINT = {
-    manifest: {id: "sample", name: "Sample", version: "1.0.0"},
+    info: {id: "sample", name: "Sample", version: "1.0.0"},
     reels: 5,
     rows: 3,
     symbols: ["A", "B", "C"],

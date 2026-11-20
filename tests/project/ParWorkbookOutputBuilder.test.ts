@@ -33,7 +33,7 @@ function blueprintProjectOf(rootPath: string): PokieProject {
 }
 
 const blueprint: GameBlueprint = {
-    manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+    info: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     reels: 2,
     rows: 2,
     symbols: ["A", "W"],
@@ -101,7 +101,7 @@ describe("ParWorkbookOutputBuilder", () => {
 
         const imported = await new ParSheetImporter().importFromFile(destinationFile);
         expect(imported.issues.filter((issue) => issue.severity === "error")).toEqual([]);
-        expect(imported.blueprint).toMatchObject({manifest: blueprint.manifest, reelStrips: blueprint.reelStrips, paytable: blueprint.paytable});
+        expect(imported.blueprint).toMatchObject({info: blueprint.info, reelStrips: blueprint.reelStrips, paytable: blueprint.paytable});
     });
 
     it("keeps legacy importer evidence optional without certifying an unobserved lossless import", async () => {
@@ -115,7 +115,7 @@ describe("ParWorkbookOutputBuilder", () => {
     });
 
     it("reports Blueprint validation diagnostics without creating a PAR workbook", async () => {
-        fs.writeFileSync(blueprintFile, JSON.stringify({manifest: blueprint.manifest}));
+        fs.writeFileSync(blueprintFile, JSON.stringify({info: blueprint.info}));
         const builder = new ParWorkbookOutputBuilder("1.3.0");
 
         await expect(builder.validate(blueprintProjectOf(blueprintFile))).rejects.toThrow(
@@ -250,7 +250,7 @@ describe("ParWorkbookOutputBuilder", () => {
         await new ParWorkbookOutputBuilder("1.3.0").build(source, unicodeDestination);
         const imported = await new ParSheetImporter().importFromFile(unicodeDestination);
         expect(imported.issues.filter(issue => issue.severity === "error")).toEqual([]);
-        expect(imported.blueprint).toMatchObject({manifest: blueprint.manifest, reelStrips: blueprint.reelStrips, paytable: blueprint.paytable});
+        expect(imported.blueprint).toMatchObject({info: blueprint.info, reelStrips: blueprint.reelStrips, paytable: blueprint.paytable});
         expect(fs.readFileSync(source.rootPath)).toEqual(sourceBytes);
     });
 

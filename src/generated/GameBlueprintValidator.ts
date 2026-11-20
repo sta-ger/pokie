@@ -42,7 +42,7 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         const issues: ValidationIssue[] = [];
         const b = blueprint as Record<string, unknown>;
 
-        this.validateManifest(b.manifest, issues);
+        this.validateInfo(b.info, issues);
 
         const reels = b.reels;
         const reelsValid = typeof reels === "number" && Number.isInteger(reels) && reels >= 1;
@@ -561,24 +561,24 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         }
     }
 
-    private validateManifest(manifest: unknown, issues: ValidationIssue[]): void {
-        if (typeof manifest !== "object" || manifest === null || Array.isArray(manifest)) {
+    private validateInfo(info: unknown, issues: ValidationIssue[]): void {
+        if (typeof info !== "object" || info === null || Array.isArray(info)) {
             issues.push({
-                code: "blueprint-manifest-missing",
+                code: "blueprint-info-missing",
                 severity: "error",
-                message: '"manifest" must be an object with non-empty "id"/"name"/"version" strings.',
+                message: '"info" must be an object with non-empty "id"/"name"/"version" strings.',
             });
             return;
         }
 
-        const m = manifest as Record<string, unknown>;
+        const m = info as Record<string, unknown>;
         for (const field of ["id", "name", "version"] as const) {
             if (typeof m[field] !== "string" || (m[field] as string).trim().length === 0) {
                 issues.push({
-                    code: `blueprint-manifest-invalid-${field}`,
+                    code: `blueprint-info-invalid-${field}`,
                     severity: "error",
-                    message: `"manifest.${field}" must be a non-empty string.`,
-                    path: `manifest.${field}`,
+                    message: `"info.${field}" must be a non-empty string.`,
+                    path: `info.${field}`,
                 });
             }
         }

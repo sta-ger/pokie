@@ -29,7 +29,7 @@ export function computeBlueprintHash(blueprint: GameBlueprint): string {
 
 function canonicalizeBlueprint(blueprint: GameBlueprint): Record<string, unknown> {
     const canonical: Record<string, unknown> = {
-        manifest: canonicalizeManifest(blueprint.manifest),
+        info: canonicalizeManifest(blueprint.info),
         reels: blueprint.reels,
         rows: blueprint.rows,
         symbols: blueprint.symbols,

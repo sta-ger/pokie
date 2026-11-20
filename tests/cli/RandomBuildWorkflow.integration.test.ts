@@ -48,8 +48,8 @@ describe("CLI workflow (integration): first-class random game generation", () =>
             expect(fs.existsSync(blueprintPath)).toBe(true);
 
             const blueprint = JSON.parse(fs.readFileSync(blueprintPath, "utf-8")) as GameBlueprint;
-            expect(blueprint.manifest.id).toBe("my-random-game");
-            expect(blueprint.manifest.name).toBe("My Random Game");
+            expect(blueprint.info.id).toBe("my-random-game");
+            expect(blueprint.info.name).toBe("My Random Game");
             expect(blueprint.symbolWeights).toBeUndefined();
             expect(blueprint.reelStripGeneration).toHaveLength(blueprint.reels);
 

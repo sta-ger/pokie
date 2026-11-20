@@ -69,7 +69,7 @@ export class RandomGameBlueprintGenerator implements RandomGameBlueprintGenerati
         const {id, name} = this.resolveName(resolvedSeed, request.overrides);
 
         const blueprint: GameBlueprint = {
-            manifest: {
+            info: {
                 id,
                 name,
                 version: DEFAULT_MANIFEST_VERSION,

@@ -23,7 +23,7 @@ export function createTunableBlueprintGame(blueprint: GameBlueprint): PokieGame 
             sharedMathPool.dispose();
             return Promise.resolve();
         },
-        getInfo: () => blueprint.manifest,
+        getInfo: () => blueprint.info,
         getConfigHash: () => computeGameBlueprintHash(blueprint),
         createSession: (context) => createAuthoredSession(blueprint, new SeededRandomNumberGenerator(context?.seed ?? 0), undefined, sharedMathPool).session,
         createExactEnumerationSession: (forced) =>

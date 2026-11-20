@@ -5,7 +5,7 @@ import {GameBlueprintValidator} from "../../src/generated/GameBlueprintValidator
 
 function validBlueprint(): GameBlueprint {
     return {
-        manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+        info: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         reels: 5,
         rows: 3,
         symbols: ["A", "K", "Q", "J", "W", "S"],
@@ -125,10 +125,10 @@ describe("GameBlueprintValidator", () => {
     });
 
     it("flags a missing/invalid manifest", () => {
-        const blueprint = {...validBlueprint(), manifest: {id: "", name: "Sample Slot"}};
+        const blueprint = {...validBlueprint(), info: {id: "", name: "Sample Slot"}};
 
         expect(codesOf(validator.validate(blueprint))).toEqual(
-            expect.arrayContaining(["blueprint-manifest-invalid-id", "blueprint-manifest-invalid-version"]),
+            expect.arrayContaining(["blueprint-info-invalid-id", "blueprint-info-invalid-version"]),
         );
     });
 

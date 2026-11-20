@@ -35,7 +35,7 @@ describe("RandomGameBlueprintGenerator", () => {
 
     test("different seeds usually produce different blueprints", () => {
         const generator = new RandomGameBlueprintGenerator();
-        const ids = [1, 2, 3, 4, 5].map((seed) => generator.generate({seed}).blueprint.manifest.id);
+        const ids = [1, 2, 3, 4, 5].map((seed) => generator.generate({seed}).blueprint.info.id);
 
         expect(new Set(ids).size).toBeGreaterThan(1);
     });
@@ -127,14 +127,14 @@ describe("RandomGameBlueprintGenerator", () => {
         test("a name override is used verbatim, with an id slugified from it", () => {
             const {blueprint} = new RandomGameBlueprintGenerator().generate({seed: 1, overrides: {name: "My Test Game!"}});
 
-            expect(blueprint.manifest.name).toBe("My Test Game!");
-            expect(blueprint.manifest.id).toBe("my-test-game");
+            expect(blueprint.info.name).toBe("My Test Game!");
+            expect(blueprint.info.id).toBe("my-test-game");
         });
 
         test("an explicit id override wins over the slugified name", () => {
             const {blueprint} = new RandomGameBlueprintGenerator().generate({seed: 1, overrides: {name: "My Game", id: "custom-id"}});
 
-            expect(blueprint.manifest.id).toBe("custom-id");
+            expect(blueprint.info.id).toBe("custom-id");
         });
 
         test("an override still produces a blueprint that validates cleanly", () => {

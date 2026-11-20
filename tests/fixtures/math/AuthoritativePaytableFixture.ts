@@ -13,7 +13,7 @@ export function authoritativePaytableBlueprint(kind: AuthoredAwardCase, bet = 1,
         paytable = {A: {3: 5}, B: {3: kind === "zero" ? 0 : 2}};
     }
     return {
-        manifest: {id: `authored-${kind}`, name: `Authored ${kind}`, version: "1.0.0"},
+        info: {id: `authored-${kind}`, name: `Authored ${kind}`, version: "1.0.0"},
         reels: screen.length, rows: 1, symbols: ["A", "B"], wilds: [], scatters: [],
         paylines: [screen.map(() => 0)], availableBets: [bet],
         reelStrips: reachable ? screen.map(() => ["A", "B"]) : screen.map(symbol => [symbol]),

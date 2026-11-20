@@ -21,7 +21,7 @@ import {
     StakeEngineImporting,
     ValidationIssue,
     describeWasmRecovery,
-    readWasmComponentManifest,
+    readWasmComponentInfo,
 } from "@fromstan/pokie";
 import fs from "fs";
 import path from "path";
@@ -240,7 +240,7 @@ export class ValidateCommand implements CliCommandHandling {
 
     private async validateWasm(project: import("@fromstan/pokie").PokieProject): Promise<ValidateReport> {
         try {
-            const result = await readWasmComponentManifest(project);
+            const result = await readWasmComponentInfo(project);
             if (!result.supported) return this.wasmValidationFailure(project.rootPath, result.diagnostic.message);
             if (result.manifest.artifact === undefined) {
                 return this.wasmValidationFailure(project.rootPath, "This legacy WASM component with a companion file cannot validate WASM game logic because it is inspectable but not runnable. Rebuild it with `pokie build <blueprint> --target wasm`.");

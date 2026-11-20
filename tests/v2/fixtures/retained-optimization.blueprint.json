@@ -1,5 +1,5 @@
 {
-    "manifest": {
+    "info": {
         "id": "retained-optimization",
         "name": "Retained optimization",
         "version": "0.1.0",

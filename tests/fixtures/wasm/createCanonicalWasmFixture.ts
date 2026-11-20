@@ -31,7 +31,7 @@ export function createCanonicalWasmFixture(options: CanonicalWasmFixtureOptions 
     const reelStrips = options.reelStrips ?? (options.stripLengths ?? [2, 2]).map(length => Array.from({length}, (_, i) => i % 2 === 0 ? "A" : "B"));
     const paytable = options.paytable ?? {A: {[String(reelStrips.length)]: 2}, B: {[String(reelStrips.length)]: 1}};
     const symbols = [...new Set([...reelStrips.flat(), ...(options.wilds ?? []), ...(options.scatters ?? []), ...Object.keys(paytable)])];
-    const ordinaryModel = resolveSharedSlotMathModel({manifest: {...component, name: component.id}, reels: reelStrips.length, rows: 1, symbols,
+    const ordinaryModel = resolveSharedSlotMathModel({info: {...component, name: component.id}, reels: reelStrips.length, rows: 1, symbols,
         availableBets: options.availableBets ? [...options.availableBets] : undefined, reelStrips: reelStrips.map(strip => [...strip]), paytable, winModel: options.winModel, wilds: options.wilds ? [...options.wilds] : undefined, scatters: options.scatters ? [...options.scatters] : undefined});
     const model = options.blueprint ? {...resolveSharedSlotMathModel(options.blueprint), features: {schemaVersion: "pokie.features.v1" as const, blueprint: options.blueprint}} : ordinaryModel;
     const configurationHash = sha256(new TextEncoder().encode(stableSlotMathJson(model)));
@@ -51,7 +51,7 @@ export function createCanonicalWasmFixture(options: CanonicalWasmFixtureOptions 
 export const evaluatorValidationCases = ["clusters", "explicit-clusters", "ways"].map(kind => {
     const ways = kind === "ways";
     const blueprint: GameBlueprint = {
-        manifest: {id: `invalid-${kind}`, name: "Evaluator validation", version: "1.0.0"},
+        info: {id: `invalid-${kind}`, name: "Evaluator validation", version: "1.0.0"},
         reels: 3, rows: 1, symbols: ways ? ["W", "S"] : ["A"],
         reelStrips: Array.from({length: 3}, () => ways ? ["W", "S"] : ["A"]),
         paytable: ways ? {W: {3: 2}, S: {3: 2}} : {A: {3: 2}},
@@ -61,9 +61,9 @@ export const evaluatorValidationCases = ["clusters", "explicit-clusters", "ways"
     const corrected: GameBlueprint = {...blueprint, symbols: ["A", ...(ways ? ["W", "S"] : [])],
         reelStrips: [["A"], ["A"], ["A"]], paytable: {A: {3: 2}},
         winModel: ways ? {type: "ways"} : {type: "clusters", minimumClusterSize: 3}};
-    const fixture = createCanonicalWasmFixture({id: blueprint.manifest.id, reelStrips: blueprint.reelStrips,
+    const fixture = createCanonicalWasmFixture({id: blueprint.info.id, reelStrips: blueprint.reelStrips,
         paytable: blueprint.paytable, wilds: blueprint.wilds, scatters: blueprint.scatters, winModel: blueprint.winModel});
-    const repaired = createCanonicalWasmFixture({id: corrected.manifest.id, reelStrips: corrected.reelStrips,
+    const repaired = createCanonicalWasmFixture({id: corrected.info.id, reelStrips: corrected.reelStrips,
         paytable: corrected.paytable, wilds: corrected.wilds, scatters: corrected.scatters, winModel: corrected.winModel});
     return {kind, blueprint, corrected, fixture, repaired, code: ways ? "ways-no-payable-symbols" : "cluster-grid-too-small"};
 });

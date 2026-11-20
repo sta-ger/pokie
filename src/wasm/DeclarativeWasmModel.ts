@@ -26,12 +26,12 @@ export function assertDeclarativeWasmBlueprint(value: unknown): asserts value is
     const errors = new GameBlueprintValidator().validate(value).filter(issue => issue.severity === "error");
     if (errors.length) throw new Error(errors.map(issue => `${issue.code} at ${issue.path ?? "$"}: ${issue.message}`).join("; "));
     const blueprint = value as GameBlueprint;
-    const allowed = ["manifest", "reels", "rows", "symbols", "wilds", "scatters", "paylines", "paytable", "reelStrips", "reelSequences", "availableBets", "winModel", "mechanics", "betModes", "screenGeometry"];
+    const allowed = ["info", "reels", "rows", "symbols", "wilds", "scatters", "paylines", "paytable", "reelStrips", "reelSequences", "availableBets", "winModel", "mechanics", "betModes", "screenGeometry"];
     for (const key of Object.keys(blueprint)) if (!allowed.includes(key)) throw new Error(`wasm-unsupported-field at ${key}: only resolved declarative data is executable; build a TypeScript package for custom code or services.`);
     const fields = (item: object | undefined, keys: string[], location: string): void => {
         for (const key of Object.keys(item ?? {})) if (!keys.includes(key)) throw new Error(`wasm-unsupported-field at ${location}.${key}: custom code and services require a TypeScript package.`);
     };
-    fields(blueprint.manifest, ["id", "name", "version", "description", "author"], "manifest");
+    fields(blueprint.info, ["id", "name", "version", "description", "author"], "info");
     fields(blueprint.winModel, ["type", "minimumClusterSize"], "winModel");
     blueprint.betModes?.forEach((mode, index) => fields(mode, ["id", "label", "costMultiplier", "runtimeType", "isDefault", "forcedFreeGames", "targetRtp"], `betModes[${index}]`));
     const visit = (item: unknown, location: string): void => {
@@ -61,7 +61,7 @@ export function assertCanonicalWasmGameModel(value: unknown): asserts value is C
 
 export function canonicalWasmBlueprint(model: CanonicalWasmGameModel): GameBlueprint {
     if (model.features) return model.features.blueprint;
-    return {manifest: {id: "portable", name: "Portable", version: "1"}, reels: model.reels, rows: model.rows, symbols: [...model.symbols],
+    return {info: {id: "portable", name: "Portable", version: "1"}, reels: model.reels, rows: model.rows, symbols: [...model.symbols],
         winModel: model.winModel as GameBlueprint["winModel"], reelStrips: model.reelStrips.map(strip => [...strip]), paylines: model.paylines.map(line => [...line]),
         paytable: JSON.parse(JSON.stringify(model.paytable)) as GameBlueprint["paytable"], availableBets: [...model.availableBets], wilds: [...model.wilds ?? []], scatters: [...model.scatters ?? []]};
 }

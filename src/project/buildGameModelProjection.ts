@@ -106,7 +106,7 @@ export function buildGameModelProjection(
     // neither the draft nor unrelated inspectable sections are discarded or repaired here.
 
     return {
-        basics: available({...blueprint.manifest}),
+        basics: available({...blueprint.info}),
         layout: available({
             reels: blueprint.reels,
             rows: blueprint.rows,
@@ -140,7 +140,7 @@ export function buildPackageGameModelProjection(extraction: PackageBlueprintExtr
     ));
     const effective = valid ? {...model, availableBets: model!.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100],
         paylines: model!.paylines ?? Array.from({length: model!.screenGeometry?.evaluated.rows ?? model!.rows!}, (_, row) => Array.from({length: model!.reels!}, () => row)),} as GameBlueprint : undefined;
-    const projection = valid ? buildGameModelProjection(effective!) : buildGameModelProjection(undefined, {manifest: model?.manifest, reason});
+    const projection = valid ? buildGameModelProjection(effective!) : buildGameModelProjection(undefined, {manifest: model?.info, reason});
     projection.packageExtraction = extraction;
     if (!valid && model && extraction.status === "partial") {
         if (Number.isInteger(model.reels) && Number.isInteger(model.rows) && model.reels! > 0 && model.rows! > 0) {

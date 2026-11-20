@@ -38,7 +38,7 @@ function generated(blueprint: GameBlueprint, typed = false): PokieGame {
 
 function authored(blueprint: GameBlueprint): PokieGame {
     return {
-        getInfo: () => blueprint.manifest,
+        getInfo: () => blueprint.info,
         getSessionCommandCapabilities: () => ({bets: blueprint.availableBets!, ...(blueprint.betModes?.some(mode => mode.runtimeType !== undefined) ? {modes: blueprint.betModes.map(mode => mode.id)} : {})}),
         getSessionStateSchema: () => {
             const base = {kind: "seeded-video-slot" as const, reels: blueprint.reels, symbols: blueprint.symbols};
@@ -1278,7 +1278,7 @@ describe("canonical runtime contracts", () => {
         // Generated packages own restorable RNG state even without a caller seed. This
         // custom package deliberately retains the default, snapshot-free RNG instead.
         const game: PokieGame = {
-            getInfo: () => blueprint.manifest,
+            getInfo: () => blueprint.info,
             getSessionCommandCapabilities: () => ({bets: [0.05]}),
             getSessionStateSchema: () => ({kind: "seeded-video-slot", reels: blueprint.reels, symbols: blueprint.symbols}),
             validateLiveSessionState: state => publicApi.validateExecutableState(state, game.getSessionStateSchema!(), undefined, true),

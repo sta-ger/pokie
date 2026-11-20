@@ -34,7 +34,7 @@ describe("canonical package extraction CLI", () => {
     it("keeps an unpublished CLI runtime installable and recognized by Studio before package-to-Blueprint review", async () => {
         const source = path.join(root, "source.json");
         const model = {
-            manifest: {id: "local-runtime", name: "Local runtime", version: "1.0.0"}, reels: 3, rows: 1,
+            info: {id: "local-runtime", name: "Local runtime", version: "1.0.0"}, reels: 3, rows: 1,
             symbols: ["A"], paytable: {A: {3: 1}}, reelStrips: [["A"], ["A"], ["A"]], availableBets: [0.05],
         };
         fs.writeFileSync(source, JSON.stringify(model));
@@ -61,7 +61,7 @@ describe("canonical package extraction CLI", () => {
     it("prints producer progress units and absent totals through automatic Stake and package builds", async () => {
         const source = path.join(root, "game.json");
         fs.writeFileSync(source, JSON.stringify({
-            manifest: {id: "progress", name: "Progress", version: "1.0.0"}, reels: 3, rows: 1,
+            info: {id: "progress", name: "Progress", version: "1.0.0"}, reels: 3, rows: 1,
             symbols: ["A"], paytable: {A: {3: 1}}, reelStrips: [["A", "A"], ["A", "A"], ["A", "A"]], availableBets: [1],
         }));
         const input = fs.readFileSync(source);
@@ -120,7 +120,7 @@ describe("canonical package extraction CLI", () => {
 
     it.each(["partial", "unsupported", "malformed"])("retains %s diagnostics and never publishes", async status => {
         let descriptorBody = 'throw new Error("broken descriptor");';
-        if (status === "partial") descriptorBody = 'return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model: {manifest: model.manifest}};';
+        if (status === "partial") descriptorBody = 'return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model: {info: model.info}};';
         if (status === "unsupported") descriptorBody = 'return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model, unsupported: [{path: "mechanics.custom", code: "opaque-feature", message: "Custom behavior cannot be represented"}]};';
         const source = writeDescriptorPackage(root, {descriptorBody});
         const bytes = fs.readFileSync(path.join(source, "index.js"));

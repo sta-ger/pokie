@@ -5,7 +5,7 @@ export const FRACTIONAL_BET_STAKES = [1, 0.01, 0.1, 1.5, 1e-7];
 /** Complete intake model; mixed strips have eight equally weighted stop tuples. */
 export function fractionalBetBlueprint(availableBets = [0.01], mixed = false): GameBlueprint {
     return {
-        manifest: {id: "math-probe", name: "Math probe", version: "0.1.0"},
+        info: {id: "math-probe", name: "Math probe", version: "0.1.0"},
         reels: 3, rows: 1, symbols: ["A", "B"], wilds: [], scatters: [],
         paylines: [[0, 0, 0]],
         reelStrips: Array.from({length: 3}, () => mixed ? ["A", "B"] : ["A"]),

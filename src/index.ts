@@ -324,7 +324,7 @@ export * from "./project/buildGameModelProjection.js";
 export * from "./project/buildGameModelReels.js";
 export * from "./project/describeUnsupportedProjectOperation.js";
 export * from "./project/diffOutcomeSourceProjects.js";
-export * from "./project/readWasmComponentManifest.js";
+export * from "./project/readWasmComponentInfo.js";
 export * from "./project/replayOutcomeSourceProject.js";
 export * from "./project/resolveOutcomeLibraryModeName.js";
 export * from "./project/sampleOutcomeSourceProject.js";

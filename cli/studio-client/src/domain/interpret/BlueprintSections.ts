@@ -23,7 +23,7 @@ export const BLUEPRINT_SECTIONS: {id: BlueprintSectionId; label: string}[] = [
 // isn't attributable to any single section -- that one deliberately falls through to `unclassified`
 // below rather than being force-matched into an arbitrary bucket.
 const SECTION_CODE_PREFIXES: Record<BlueprintSectionId, string[]> = {
-    basics: ["blueprint-manifest-"],
+    basics: ["blueprint-info-"],
     layout: ["blueprint-reels-", "blueprint-rows-", "blueprint-paylines-", "blueprint-payline-"],
     symbols: ["blueprint-symbols-", "blueprint-wilds-", "blueprint-scatters-"],
     // "blueprint-reelstrip" (no trailing "s") covers reelstrip-/reelstrips-/reelstripgeneration- alike.

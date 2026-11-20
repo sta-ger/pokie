@@ -2,7 +2,7 @@ import {GameBlueprint, resolveReelStripGeneration} from "@fromstan/pokie";
 
 function baseBlueprint(overrides: Partial<GameBlueprint> = {}): GameBlueprint {
     return {
-        manifest: {id: "generated-reels", name: "Generated Reels", version: "0.1.0"},
+        info: {id: "generated-reels", name: "Generated Reels", version: "0.1.0"},
         reels: 3,
         rows: 3,
         symbols: ["A", "B", "W"],
