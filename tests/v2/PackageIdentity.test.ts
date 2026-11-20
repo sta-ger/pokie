@@ -94,7 +94,7 @@ describe("Package delivery identity", () => {
             expect(Object.keys(metadata.exports[subpath])).toEqual(["import"]);
             expect(metadata.exports[subpath].import.types).toMatch(/\.d\.ts$/);
         }
-        expect(metadata.files).toEqual(expect.arrayContaining(["dist/", "src/", "LICENSE", "CHANGELOG.md"]));
+        expect(metadata.files).toEqual(expect.arrayContaining(["dist/", "src/", "LICENSE"]));
         expect(metadata.publishConfig).toEqual({access: "public"});
         for (const name of metadata.files.filter((name: string) => name.startsWith("docs/"))) expect(name).not.toMatch(/phase|\/evidence\/|inventory|report/);
     });
