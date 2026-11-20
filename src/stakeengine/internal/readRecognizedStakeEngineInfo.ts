@@ -2,10 +2,10 @@ import fs from "fs";
 import path from "path";
 import type {StakeEngineInfo} from "../StakeEngineInfo.js";
 
-const MANIFEST_FILE_NAME = "pokie-manifest.json";
+const MANIFEST_FILE_NAME = "pokie-info.json";
 const GENERATED_BY = "pokie stakeengine export";
 
-// Returns a directory's own pokie-manifest.json, or undefined if there's none there, it doesn't parse, or it
+// Returns a directory's own pokie-info.json, or undefined if there's none there, it doesn't parse, or it
 // wasn't written by "pokie stakeengine export" — the one shared recognition check both
 // assertSafeToReplaceStakeEngineExportDirectory (deciding whether re-exporting into an existing outDir is safe)
 // and StakeEngineImporter (deciding whether a directory can be imported at all) use, so the two can never

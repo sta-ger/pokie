@@ -26,7 +26,7 @@ const SAMPLE_OUTCOME_LIBRARY_MANIFEST = {
     game: {id: "sample", name: "Sample", version: "1.0.0"},
     artifactPokieVersion: "1.3.0",
     modes: [],
-    files: ["manifest.json"],
+    files: ["index.json"],
 };
 
 const SAMPLE_STAKE_ENGINE_MANIFEST = {
@@ -84,7 +84,7 @@ describe("ProjectTargetResolver", () => {
     it("resolves a recognized Stake Engine export directory as a stakeAdapter project", async () => {
         const stakeDir = path.join(workDir, "stake-export");
         fs.mkdirSync(stakeDir, {recursive: true});
-        fs.writeFileSync(path.join(stakeDir, "pokie-manifest.json"), JSON.stringify(SAMPLE_STAKE_ENGINE_MANIFEST));
+        fs.writeFileSync(path.join(stakeDir, "pokie-info.json"), JSON.stringify(SAMPLE_STAKE_ENGINE_MANIFEST));
 
         const project = await resolver.resolve(stakeDir);
 
@@ -92,14 +92,14 @@ describe("ProjectTargetResolver", () => {
             type: "stakeAdapter",
             rootPath: stakeDir,
             capabilities: ["stakeAdapter.exchange", "stakeAdapter.export", "outcomeSource.read"],
-            provenance: expect.stringContaining("pokie-manifest.json"),
+            provenance: expect.stringContaining("pokie-info.json"),
         });
     });
 
     it("resolves a recognized outcome-library bundle directory as an outcomeLibrary project", async () => {
         const libraryDir = path.join(workDir, "outcome-bundle");
         fs.mkdirSync(libraryDir, {recursive: true});
-        fs.writeFileSync(path.join(libraryDir, "manifest.json"), JSON.stringify(SAMPLE_OUTCOME_LIBRARY_MANIFEST));
+        fs.writeFileSync(path.join(libraryDir, "index.json"), JSON.stringify(SAMPLE_OUTCOME_LIBRARY_MANIFEST));
 
         const project = await resolver.resolve(libraryDir);
 
@@ -107,7 +107,7 @@ describe("ProjectTargetResolver", () => {
             type: "outcomeLibrary",
             rootPath: libraryDir,
             capabilities: ["outcomeLibrary.read", "outcomeLibrary.generate", "outcomeSource.read", "outcomeSource.sample", "stakeAdapter.export"],
-            provenance: expect.stringContaining("manifest.json"),
+            provenance: expect.stringContaining("index.json"),
         });
     });
 
@@ -136,27 +136,27 @@ describe("ProjectTargetResolver", () => {
         await expect(resolver.resolve(projectRoot)).rejects.toThrow(/pokie\.entry/);
     });
 
-    it("returns undefined for a directory with a manifest.json that never mentions \"schemaVersion\"", async () => {
+    it("returns undefined for a directory with a index.json that never mentions \"schemaVersion\"", async () => {
         const libraryDir = path.join(workDir, "unrelated-manifest");
         fs.mkdirSync(libraryDir, {recursive: true});
-        fs.writeFileSync(path.join(libraryDir, "manifest.json"), JSON.stringify({manifestVersion: 3, name: "some-extension"}));
+        fs.writeFileSync(path.join(libraryDir, "index.json"), JSON.stringify({manifestVersion: 3, name: "some-extension"}));
 
         expect(await resolver.resolve(libraryDir)).toBeUndefined();
     });
 
-    it("throws ProjectTargetMalformedError for an outcome-library bundle directory whose manifest.json isn't valid JSON", async () => {
+    it("throws ProjectTargetMalformedError for an outcome-library bundle directory whose index.json isn't valid JSON", async () => {
         const libraryDir = path.join(workDir, "broken-outcome-manifest");
         fs.mkdirSync(libraryDir, {recursive: true});
-        fs.writeFileSync(path.join(libraryDir, "manifest.json"), "{not valid json");
+        fs.writeFileSync(path.join(libraryDir, "index.json"), "{not valid json");
 
         await expect(resolver.resolve(libraryDir)).rejects.toThrow(ProjectTargetMalformedError);
     });
 
-    it("throws ProjectTargetMalformedError for an outcome-library bundle directory whose manifest.json declares \"schemaVersion\" but the wrong shape", async () => {
+    it("throws ProjectTargetMalformedError for an outcome-library bundle directory whose index.json declares \"schemaVersion\" but the wrong shape", async () => {
         const libraryDir = path.join(workDir, "invalid-shape-outcome-manifest");
         fs.mkdirSync(libraryDir, {recursive: true});
         fs.writeFileSync(
-            path.join(libraryDir, "manifest.json"),
+            path.join(libraryDir, "index.json"),
             JSON.stringify({...SAMPLE_OUTCOME_LIBRARY_MANIFEST, modes: "not-an-array"}),
         );
 

@@ -20,7 +20,7 @@ import {sha256OfBytes} from "./internal/sha256OfBytes.js";
 
 // Validates a candidate certification/evidence bundle directory *by itself* — never throws (top-level
 // catch-all "certification-pack-bundle-malformed"), mirroring OutcomeLibraryFolderValidator's own
-// never-throw contract, except explicit cancellation. Reads manifest.json plus every mode's own samples_<modeName>.jsonl, recomputing:
+// never-throw contract, except explicit cancellation. Reads index.json plus every mode's own samples_<modeName>.jsonl, recomputing:
 // - the whole manifest's own evidenceContentHash (covers schemaVersion/pokieVersion/game/configHash/
 //   artifactPokieVersion/sourceLibraryManifestHash/every mode's own metrics+samplesHash/deep-validation issues in
 //   one unified check — see computeCertificationPackContentHash);
@@ -53,12 +53,12 @@ export class CertificationPackValidator implements CertificationPackValidating {
 
     private async validateInternal(certDir: string, signal?: AbortSignal): Promise<ValidationIssue[]> {
         checkCancellation(signal);
-        const manifestPath = path.join(certDir, "manifest.json");
+        const manifestPath = path.join(certDir, "index.json");
         if (!fs.existsSync(manifestPath)) {
             return [{code: "certification-pack-bundle-manifest-missing", severity: "error", message: `"${manifestPath}" does not exist.`}];
         }
 
-        if (resolveSafeCertificationPackFilePath(certDir, "manifest.json") === undefined) throw new Error("Unsafe manifest path.");
+        if (resolveSafeCertificationPackFilePath(certDir, "index.json") === undefined) throw new Error("Unsafe manifest path.");
         let raw: string;
         try {
             raw = fs.readFileSync(manifestPath, "utf-8");
@@ -152,7 +152,7 @@ export class CertificationPackValidator implements CertificationPackValidating {
                 issues.push({
                     code: "certification-pack-bundle-mode-field-invalid",
                     severity: "error",
-                    message: `manifest.json has a "modes" entry that doesn't match the expected shape: ${JSON.stringify(modeEntry)}.`,
+                    message: `index.json has a "modes" entry that doesn't match the expected shape: ${JSON.stringify(modeEntry)}.`,
                 });
                 continue;
             }
@@ -359,7 +359,7 @@ export class CertificationPackValidator implements CertificationPackValidating {
     }
 
     private validateFilesInventory(certDir: string, manifest: import("./CertificationPackIndex.js").CertificationPackIndex, issues: ValidationIssue[]): void {
-        const expected = new Set<string>(["manifest.json", ...manifest.modes.map((modeEntry) => modeEntry.samplesFile), ...(Array.isArray(manifest.presentation.formats) ? manifest.presentation.formats.map(certificationPackFileName) : [])]);
+        const expected = new Set<string>(["index.json", ...manifest.modes.map((modeEntry) => modeEntry.samplesFile), ...(Array.isArray(manifest.presentation.formats) ? manifest.presentation.formats.map(certificationPackFileName) : [])]);
         const seen = new Set<string>();
 
         for (const file of manifest.files) {
@@ -367,7 +367,7 @@ export class CertificationPackValidator implements CertificationPackValidating {
                 issues.push({
                     code: "certification-pack-bundle-manifest-files-invalid",
                     severity: "error",
-                    message: `manifest.json's "files" entry is not a non-empty string: ${JSON.stringify(file)}.`,
+                    message: `index.json's "files" entry is not a non-empty string: ${JSON.stringify(file)}.`,
                 });
                 continue;
             }
@@ -375,7 +375,7 @@ export class CertificationPackValidator implements CertificationPackValidating {
                 issues.push({
                     code: "certification-pack-bundle-manifest-files-duplicate",
                     severity: "error",
-                    message: `manifest.json's "files" lists "${file}" more than once.`,
+                    message: `index.json's "files" lists "${file}" more than once.`,
                 });
                 continue;
             }
@@ -385,7 +385,7 @@ export class CertificationPackValidator implements CertificationPackValidating {
                 issues.push({
                     code: "certification-pack-bundle-manifest-files-entry-unsafe",
                     severity: "error",
-                    message: `manifest.json's "files" entry "${file}" is missing or not a safe physical file.`,
+                    message: `index.json's "files" entry "${file}" is missing or not a safe physical file.`,
                 });
             }
 
@@ -393,7 +393,7 @@ export class CertificationPackValidator implements CertificationPackValidating {
                 issues.push({
                     code: "certification-pack-bundle-manifest-files-unexpected-entry",
                     severity: "error",
-                    message: `manifest.json's "files" lists "${file}", which isn't "manifest.json" or any current mode's own samplesFile.`,
+                    message: `index.json's "files" lists "${file}", which isn't "index.json" or any current mode's own samplesFile.`,
                 });
             }
         }
@@ -406,7 +406,7 @@ export class CertificationPackValidator implements CertificationPackValidating {
                 issues.push({
                     code: "certification-pack-bundle-manifest-files-missing-entry",
                     severity: "error",
-                    message: `manifest.json's "files" is missing "${file}".`,
+                    message: `index.json's "files" is missing "${file}".`,
                 });
             }
         }

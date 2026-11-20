@@ -363,7 +363,7 @@ export class ValidateCommand implements CliCommandHandling {
                 "stake-engine",
                 "stakeengine-export-unavailable",
                 `The Stake Engine export at "${stakeDir}" could not be read for validation.`,
-                "Check its index.json, pokie-manifest.json, and mode files, then run validate again.",
+                "Check its index.json, pokie-info.json, and mode files, then run validate again.",
             );
         }
     }
@@ -509,15 +509,15 @@ export class ValidateCommand implements CliCommandHandling {
             : undefined;
 
         if (issue.code.includes("-manifest-")) {
-            return "manifest.json";
+            return "index.json";
         }
         if (issue.code.includes("-mode-index-")) {
-            return modeName === undefined ? "manifest.json" : `index_${modeName}.json`;
+            return modeName === undefined ? "index.json" : `index_${modeName}.json`;
         }
         if (issue.code.includes("-outcomes-") || issue.code.endsWith("-hash-mismatch") || issue.code.endsWith("-analysis-mismatch")) {
-            return modeName === undefined ? "manifest.json" : `outcomes_${modeName}.jsonl`;
+            return modeName === undefined ? "index.json" : `outcomes_${modeName}.jsonl`;
         }
-        return "manifest.json";
+        return "index.json";
     }
 
     private writeAndPrint(report: ValidateReport, format: ValidateFormat, out: string | undefined): void {

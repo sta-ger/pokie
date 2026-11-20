@@ -145,7 +145,7 @@ export class ImportCommand implements CliCommandHandling {
     private command(): Command {
         return createCommanderCliCommand("import")
             .description(this.getDescription())
-            .argument("<source>", "a PAR workbook or POKIE-produced Stake Engine export directory with pokie-manifest.json")
+            .argument("<source>", "a PAR workbook or POKIE-produced Stake Engine export directory with pokie-info.json")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
             .option("--out <path>", "where to write imported files")
             .option("--format <format>", 'only "json" is supported; it selects JSON output')

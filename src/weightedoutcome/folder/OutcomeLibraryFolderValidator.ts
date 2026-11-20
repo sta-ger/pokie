@@ -41,7 +41,7 @@ function isValidSha256Hash(value: unknown): value is string {
 // matters even more, since the whole point of a streaming bundle is to *avoid* loading everything, so a fast
 // structural check must never force a full materialization:
 //
-// - shallow (default): manifest.json plus every mode's own small index_<modeName>.json — never opens any
+// - shallow (default): index.json plus every mode's own small index_<modeName>.json — never opens any
 //   outcomes_<modeName>.jsonl for content, only a cheap fs.stat size sanity check plus (see validateEntries'
 //   caller) an exact byte-layout check of the index's own recorded ranges.
 // - deep (opt-in via {deep: true}): additionally streams every outcomes line per mode — never accumulating an
@@ -88,9 +88,9 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
     }
 
     private readManifest(libraryDir: string, issues: ValidationIssue[]): OutcomeLibraryFolderIndex | undefined {
-        const manifestPath = path.join(libraryDir, "manifest.json");
+        const manifestPath = path.join(libraryDir, "index.json");
         if (!fs.existsSync(manifestPath)) {
-            issues.push({code: "outcome-library-folder-manifest-missing", severity: "error", message: `"${libraryDir}" has no manifest.json.`});
+            issues.push({code: "outcome-library-folder-manifest-missing", severity: "error", message: `"${libraryDir}" has no index.json.`});
             return undefined;
         }
 
@@ -101,7 +101,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
             issues.push({
                 code: "outcome-library-folder-manifest-unreadable",
                 severity: "error",
-                message: `manifest.json could not be read: ${error instanceof Error ? error.message : String(error)}`,
+                message: `index.json could not be read: ${error instanceof Error ? error.message : String(error)}`,
             });
             return undefined;
         }
@@ -113,7 +113,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
             issues.push({
                 code: "outcome-library-folder-manifest-invalid-json",
                 severity: "error",
-                message: `manifest.json is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+                message: `index.json is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
             });
             return undefined;
         }
@@ -122,7 +122,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
             issues.push({
                 code: "outcome-library-folder-manifest-malformed",
                 severity: "error",
-                message: 'manifest.json must be {"modes": [...]} with at least one mode.',
+                message: 'index.json must be {"modes": [...]} with at least one mode.',
             });
             return undefined;
         }
@@ -132,7 +132,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
             issues.push({
                 code: "outcome-library-folder-manifest-schema-version-unsupported",
                 severity: "error",
-                message: `manifest.json's schemaVersion (${manifest.schemaVersion}) is not supported (expected ${OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION}).`,
+                message: `index.json's schemaVersion (${manifest.schemaVersion}) is not supported (expected ${OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION}).`,
             });
             return undefined;
         }
@@ -149,7 +149,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
     // Validates every manifest mode entry's own field types (betMode/stake/libraryId/libraryHash/outcomeCount/
     // totalWeight/indexFile/outcomesFile), the mode name itself (format, duplicates, case collisions — the same
     // rules OutcomeLibraryFolderWriteValidator enforces when a bundle is written, checked again here since a
-    // hand-edited or otherwise-produced manifest.json was never guaranteed to go through that writer), and the
+    // hand-edited or otherwise-produced index.json was never guaranteed to go through that writer), and the
     // exact filename convention every mode's own indexFile/outcomesFile must follow
     // ("index_<modeName>.json"/"outcomes_<modeName>.jsonl") — not just that they *resolve* safely (see
     // validateMode's own path-safety check), but that they're exactly the filenames this bundle format always
@@ -168,14 +168,14 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
                 issues.push({
                     code: "outcome-library-folder-manifest-mode-field-invalid",
                     severity: "error",
-                    message: `manifest.json's modes[${position}] must be an object.`,
+                    message: `index.json's modes[${position}] must be an object.`,
                     details: {position},
                 });
                 ok = false;
                 return;
             }
 
-            if (!this.validateModeName("manifest.json", entry.modeName, position, seenNames, issues)) {
+            if (!this.validateModeName("index.json", entry.modeName, position, seenNames, issues)) {
                 ok = false;
                 return;
             }
@@ -185,7 +185,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
                 issues.push({
                     code: "outcome-library-folder-manifest-mode-field-invalid",
                     severity: "error",
-                    message: `mode "${modeName}": manifest.json's "${field}" ${requirement}.`,
+                    message: `mode "${modeName}": index.json's "${field}" ${requirement}.`,
                     details: {modeName, field},
                 });
                 ok = false;
@@ -213,10 +213,10 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
                 fieldInvalid("analysis", "must be an object");
             }
 
-            if (!this.validateModeFilename("manifest.json", modeName, "indexFile", `index_${modeName}.json`, entry.indexFile, issues)) {
+            if (!this.validateModeFilename("index.json", modeName, "indexFile", `index_${modeName}.json`, entry.indexFile, issues)) {
                 ok = false;
             }
-            if (!this.validateModeFilename("manifest.json", modeName, "outcomesFile", `outcomes_${modeName}.jsonl`, entry.outcomesFile, issues)) {
+            if (!this.validateModeFilename("index.json", modeName, "outcomesFile", `outcomes_${modeName}.jsonl`, entry.outcomesFile, issues)) {
                 ok = false;
             }
         });
@@ -225,7 +225,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
     }
 
     // Shared mode-name validation: format ([A-Za-z0-9_-]+), duplicates, and case-insensitive collisions —
-    // "seenNames" is scoped to one caller's own pass (manifest.json here; a mode index never lists more than its
+    // "seenNames" is scoped to one caller's own pass (index.json here; a mode index never lists more than its
     // own single mode, so it never needs this).
     private validateModeName(source: string, modeName: unknown, position: number, seenNames: Map<string, string>, issues: ValidationIssue[]): boolean {
         if (!isNonEmptyString(modeName) || !MODE_NAME_PATTERN.test(modeName)) {
@@ -288,7 +288,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
         return true;
     }
 
-    // Validates manifest.files as an exact, unique set: "manifest.json" itself, and every current mode's own
+    // Validates manifest.files as an exact, unique set: "index.json" itself, and every current mode's own
     // indexFile/outcomesFile — nothing missing, nothing extra, no duplicate or case-colliding entry, and no
     // entry that isn't itself a safe filename. Only runs against modes whose own fields already validated
     // cleanly (validateManifestModeEntries runs first) — an inconsistent files list on top of an already-broken
@@ -298,7 +298,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
             issues.push({
                 code: "outcome-library-folder-manifest-files-invalid",
                 severity: "error",
-                message: 'manifest.json\'s "files" must be present as a non-empty array of non-empty strings.',
+                message: 'index.json\'s "files" must be present as a non-empty array of non-empty strings.',
             });
             return false;
         }
@@ -320,8 +320,8 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
                     severity: "error",
                     message:
                         existing === file
-                            ? `manifest.json's "files" lists "${file}" more than once.`
-                            : `manifest.json's "files" lists "${file}" and "${existing}", which differ only in case and would collide on a case-insensitive filesystem.`,
+                            ? `index.json's "files" lists "${file}" more than once.`
+                            : `index.json's "files" lists "${file}" and "${existing}", which differ only in case and would collide on a case-insensitive filesystem.`,
                     details: {file},
                 });
                 ok = false;
@@ -333,7 +333,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
                 issues.push({
                     code: "outcome-library-folder-manifest-files-entry-unsafe",
                     severity: "error",
-                    message: `manifest.json's "files" entry "${file}" is not a safe filename.`,
+                    message: `index.json's "files" entry "${file}" is not a safe filename.`,
                     details: {file},
                 });
                 ok = false;
@@ -343,14 +343,14 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
             actual.add(file);
         }
 
-        const expected = new Set<string>(["manifest.json", ...manifest.modes.flatMap((mode) => [mode.indexFile, mode.outcomesFile])]);
+        const expected = new Set<string>(["index.json", ...manifest.modes.flatMap((mode) => [mode.indexFile, mode.outcomesFile])]);
 
         for (const file of expected) {
             if (!actual.has(file)) {
                 issues.push({
                     code: "outcome-library-folder-manifest-files-missing-entry",
                     severity: "error",
-                    message: `manifest.json's "files" is missing the expected entry "${file}".`,
+                    message: `index.json's "files" is missing the expected entry "${file}".`,
                     details: {file},
                 });
                 ok = false;
@@ -361,7 +361,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
                 issues.push({
                     code: "outcome-library-folder-manifest-files-unexpected-entry",
                     severity: "error",
-                    message: `manifest.json's "files" lists "${file}", which is not manifest.json itself or a current mode's own index/outcomes file.`,
+                    message: `index.json's "files" lists "${file}", which is not index.json itself or a current mode's own index/outcomes file.`,
                     details: {file},
                 });
                 ok = false;
@@ -420,7 +420,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
             issues.push({
                 code: "outcome-library-folder-mode-index-mode-name-mismatch",
                 severity: "error",
-                message: `mode "${modeName}": index_${modeName}.json's own modeName ("${index.modeName}") does not match manifest.json's for this entry.`,
+                message: `mode "${modeName}": index_${modeName}.json's own modeName ("${index.modeName}") does not match index.json's for this entry.`,
                 details: {modeName},
             });
         }
@@ -428,7 +428,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
             issues.push({
                 code: "outcome-library-folder-mode-index-library-id-mismatch",
                 severity: "error",
-                message: `mode "${modeName}": index_${modeName}.json's libraryId ("${index.libraryId}") does not match manifest.json's ("${modeEntry.libraryId}").`,
+                message: `mode "${modeName}": index_${modeName}.json's libraryId ("${index.libraryId}") does not match index.json's ("${modeEntry.libraryId}").`,
                 details: {modeName},
             });
         }
@@ -436,7 +436,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
             issues.push({
                 code: "outcome-library-folder-mode-index-hash-mismatch-with-manifest",
                 severity: "error",
-                message: `mode "${modeName}": index_${modeName}.json's libraryHash does not match manifest.json's.`,
+                message: `mode "${modeName}": index_${modeName}.json's libraryHash does not match index.json's.`,
                 details: {modeName},
             });
         }
@@ -444,7 +444,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
             issues.push({
                 code: "outcome-library-folder-mode-index-outcomes-file-mismatch",
                 severity: "error",
-                message: `mode "${modeName}": index_${modeName}.json's own outcomesFile ("${index.outcomesFile}") does not match manifest.json's ("${modeEntry.outcomesFile}").`,
+                message: `mode "${modeName}": index_${modeName}.json's own outcomesFile ("${index.outcomesFile}") does not match index.json's ("${modeEntry.outcomesFile}").`,
                 details: {modeName},
             });
         }
@@ -753,7 +753,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
     // buildWeightedOutcomeLibrary itself would — and recomputes the mode's own hash incrementally, in this same
     // pass (see streamModeOutcomesToTempFile's own doc comment for why a hash never needs a second pass, unlike
     // the exact analyzer statistics, which do — see computeOnlineWeightedOutcomeLibraryAnalysis). Also cross-
-    // checks the outcomes' own common provenance/betMode/stake against manifest.json's own claimed game/
+    // checks the outcomes' own common provenance/betMode/stake against index.json's own claimed game/
     // configHash/artifactPokieVersion (top-level) and betMode/stake (per mode entry) — a check the cross-
     // *outcome* consistency check above can never catch on its own, since it only ever compares outcomes against
     // each other, never against the manifest itself. Deliberately compares against manifest.artifactPokieVersion,
@@ -888,10 +888,10 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
 
                     // Cross-checked once, against the first outcome only: every later outcome is already required
                     // (see the "inconsistent-provenance"/"inconsistent-bet-mode"/"inconsistent-stake" checks below)
-                    // to agree with this same reference, so checking the reference itself against manifest.json's
+                    // to agree with this same reference, so checking the reference itself against index.json's
                     // own claims is enough to catch a manifest whose game/version/configHash/betMode/stake doesn't
                     // actually match what this mode's outcomes were built from — a gap the existing cross-*outcome*
-                    // consistency check alone can't catch, since it never reads manifest.json at all.
+                    // consistency check alone can't catch, since it never reads index.json at all.
                     if (
                         current.gameId !== manifest.game.id ||
                     current.gameVersion !== manifest.game.version ||
@@ -904,7 +904,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
                             message:
                             `mode "${modeName}": this mode's outcomes have provenance (game id "${String(current.gameId)}", version ` +
                             `"${String(current.gameVersion)}", configHash "${String(current.configHash)}", pokieVersion ` +
-                            `"${String(current.pokieVersion)}") that does not match manifest.json's own game (id "${manifest.game.id}", version ` +
+                            `"${String(current.pokieVersion)}") that does not match index.json's own game (id "${manifest.game.id}", version ` +
                             `"${manifest.game.version}") / configHash ("${String(manifest.configHash)}") / artifactPokieVersion ` +
                             `("${String(manifest.artifactPokieVersion)}").`,
                             details: {modeName},
@@ -918,7 +918,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
                             severity: "error",
                             message:
                             `mode "${modeName}": this mode's outcomes have betMode ${JSON.stringify(current.betMode)}/stake ${String(current.stake)}, ` +
-                            `which does not match manifest.json's own betMode ${JSON.stringify(modeEntry.betMode)}/stake ${String(modeEntry.stake)} for this mode.`,
+                            `which does not match index.json's own betMode ${JSON.stringify(modeEntry.betMode)}/stake ${String(modeEntry.stake)} for this mode.`,
                             details: {modeName},
                         });
                         sawError = true;

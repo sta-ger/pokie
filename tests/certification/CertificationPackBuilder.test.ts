@@ -84,7 +84,7 @@ describe("CertificationPackBuilder", () => {
         expect(modeEntry.sampleCount).toBe(10);
         expect(modeEntry.samplesFile).toBe("samples_base.jsonl");
 
-        expect([...result.files].sort()).toEqual(["manifest.json", "samples_base.jsonl", "pack.json", "pack.txt", "pack.md", "pack.html", "pack.pdf"].sort());
+        expect([...result.files].sort()).toEqual(["index.json", "samples_base.jsonl", "pack.json", "pack.txt", "pack.md", "pack.html", "pack.pdf"].sort());
         for (const file of result.files) {
             expect(fs.existsSync(path.join(certDir, file))).toBe(true);
         }
@@ -113,7 +113,7 @@ describe("CertificationPackBuilder", () => {
             onStage: stage => {
                 if (stage !== "Publishing pack") return;
                 setImmediate(() => {
-                    const file = path.join(libraryDir, "manifest.json");
+                    const file = path.join(libraryDir, "index.json");
                     const source = JSON.parse(fs.readFileSync(file, "utf8"));
                     source.generatedAt = "changed-at-commit";
                     fs.writeFileSync(file, JSON.stringify(source));
@@ -155,10 +155,10 @@ describe("CertificationPackBuilder", () => {
         expect(fs.existsSync(certDir)).toBe(false);
         await expect(builder.buildFromBundle(libraryDir, [{modeName: "base", seed: "s", sampleCount: 1}], path.join(libraryDir, "nested"))).rejects.toThrow(/overlap/);
         fs.mkdirSync(certDir);
-        fs.writeFileSync(path.join(certDir, "manifest.json"), JSON.stringify({generatedBy: "pokie certification build"}));
-        const before = fs.readFileSync(path.join(certDir, "manifest.json"));
+        fs.writeFileSync(path.join(certDir, "index.json"), JSON.stringify({generatedBy: "pokie certification build"}));
+        const before = fs.readFileSync(path.join(certDir, "index.json"));
         await expect(builder.buildFromBundle(libraryDir, [{modeName: "base", seed: "s", sampleCount: 1}], certDir)).rejects.toThrow(/new or empty/);
-        expect(fs.readFileSync(path.join(certDir, "manifest.json"))).toEqual(before);
+        expect(fs.readFileSync(path.join(certDir, "index.json"))).toEqual(before);
     });
 
     it("writes sample records cross-checkable against the source bundle's own index recordHash/artifact", async () => {
@@ -203,7 +203,7 @@ describe("CertificationPackBuilder", () => {
         await builderA.buildFromBundle(libraryDir, modes, certDirA);
         await builderB.buildFromBundle(libraryDir, modes, certDirB);
 
-        expect(fs.readFileSync(path.join(certDirA, "manifest.json"), "utf-8")).toBe(fs.readFileSync(path.join(certDirB, "manifest.json"), "utf-8"));
+        expect(fs.readFileSync(path.join(certDirA, "index.json"), "utf-8")).toBe(fs.readFileSync(path.join(certDirB, "index.json"), "utf-8"));
         expect(fs.readFileSync(path.join(certDirA, "samples_base.jsonl"), "utf-8")).toBe(fs.readFileSync(path.join(certDirB, "samples_base.jsonl"), "utf-8"));
     });
 
@@ -238,7 +238,7 @@ describe("CertificationPackBuilder", () => {
             CERTIFICATION_TEST_POKIE_VERSION, undefined, undefined, undefined, undefined,
             undefined, undefined, undefined, undefined, undefined, undefined,
             () => {
-                expect(JSON.parse(fs.readFileSync(path.join(certDir, "manifest.json"), "utf8"))).toHaveProperty("evidenceContentHash");
+                expect(JSON.parse(fs.readFileSync(path.join(certDir, "index.json"), "utf8"))).toHaveProperty("evidenceContentHash");
                 expect(fs.readFileSync(path.join(certDir, "pack.pdf")).toString()).toContain("%PDF-1.4");
                 observed = true;
                 controller.abort();
@@ -625,7 +625,7 @@ describe("CertificationPackBuilder", () => {
         fs.rmSync(certDir, {recursive: true, force: true});
         claimOnCommit = false;
         await expect(builder.buildFromBundle(libraryDir, modes, certDir)).resolves.toMatchObject({outDir: certDir, issues: []});
-        expect(fs.existsSync(path.join(certDir, "manifest.json"))).toBe(true);
+        expect(fs.existsSync(path.join(certDir, "index.json"))).toBe(true);
         expect(siblingLeftovers(certDir)).toEqual([]);
     });
 

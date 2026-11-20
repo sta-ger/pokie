@@ -1,6 +1,6 @@
 import path from "path";
 
-// Resolves "fileName" (a value read from an untrusted index.json/pokie-manifest.json) against "stakeDir",
+// Resolves "fileName" (a value read from an untrusted index.json/pokie-info.json) against "stakeDir",
 // refusing anything that isn't a plain, single-segment basename that stays inside stakeDir: an absolute path, a
 // "."/".." segment, any "/" or "\" separator at all (Stake's own exporter never nests output files in
 // subdirectories, so a caller-controlled path with directory components is never legitimate), or anything that,

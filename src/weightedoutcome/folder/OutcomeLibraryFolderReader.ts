@@ -31,7 +31,7 @@ function isWeightedOutcomeShape(value: unknown): value is {id: string; weight: n
 // surprise" contract WeightedOutcomeSelector has toward WeightedOutcomeLibrary.
 export class OutcomeLibraryFolderReader<T extends string | number = string> implements OutcomeLibraryFolderReading<T> {
     public async readManifest(libraryDir: string): Promise<OutcomeLibraryFolderIndex> {
-        const raw = await fs.promises.readFile(path.join(libraryDir, "manifest.json"), "utf-8");
+        const raw = await fs.promises.readFile(path.join(libraryDir, "index.json"), "utf-8");
         return JSON.parse(raw) as OutcomeLibraryFolderIndex;
     }
 

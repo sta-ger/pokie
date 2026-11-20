@@ -19,7 +19,7 @@ function isSafeNonNegativeInteger(value: unknown): value is number {
 }
 
 // Validates a whole candidate Stake Engine outcome directory -- assembled into a StakeEngineStandaloneBundle by
-// StakeEngineOutcomeSourceReader (the only place that touches the filesystem) -- with no pokie-manifest.json
+// StakeEngineOutcomeSourceReader (the only place that touches the filesystem) -- with no pokie-info.json
 // involved anywhere: index.json's own field shapes, path-safety of every mode's own filenames (never a stricter
 // "must match lookup_<name>.csv" naming convention -- unlike StakeEngineImportValidator, this never assumes the
 // directory was written by "pokie stakeengine export"), mode-name rules (format, duplicates, case-insensitive

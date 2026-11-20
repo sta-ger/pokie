@@ -3,7 +3,7 @@
 # Stake Engine Standalone
 
 `stakeengine/standalone/` reads and analyzes **any** Stake Engine outcome directory — `index.json`, per-mode
-lookup CSV, per-mode zstd-compressed JSONL books — with **no `pokie-manifest.json` involved at any point**. This
+lookup CSV, per-mode zstd-compressed JSONL books — with **no `pokie-info.json` involved at any point**. This
 is deliberately different from [Stake Engine Import](stake-engine-import.md), which only ever round-trips a
 directory produced by POKIE's Stake Engine export workflow (it requires that run's own manifest to recover
 `betMode`/`stake`/provenance/`libraryId`, and fails outright without one). Standalone is for the other case: an

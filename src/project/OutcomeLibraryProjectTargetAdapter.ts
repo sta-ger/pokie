@@ -4,7 +4,7 @@ import {ProjectTargetMalformedError} from "./ProjectTargetMalformedError.js";
 import type {ProjectTargetTypeAdapter} from "./ProjectTargetTypeAdapter.js";
 
 // Recognizes a pre-built outcome-library bundle directory — see ProjectType.ts's own "outcomeLibrary" doc
-// comment. A manifest.json that declares a "schemaVersion" but fails validation (invalid JSON, wrong shape)
+// comment. A index.json that declares a "schemaVersion" but fails validation (invalid JSON, wrong shape)
 // throws ProjectTargetMalformedError rather than reporting undefined — see that class's own doc comment.
 export class OutcomeLibraryProjectTargetAdapter implements ProjectTargetTypeAdapter {
     public readonly type = "outcomeLibrary";
@@ -19,7 +19,7 @@ export class OutcomeLibraryProjectTargetAdapter implements ProjectTargetTypeAdap
             return Promise.resolve(undefined);
         }
         return Promise.resolve(
-            `"manifest.json" matches the outcome-library bundle manifest shape (schemaVersion ${OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION})`,
+            `"index.json" matches the outcome-library bundle manifest shape (schemaVersion ${OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION})`,
         );
     }
 }

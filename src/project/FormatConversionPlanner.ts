@@ -681,7 +681,7 @@ export class FormatConversionPlanner {
             return unavailable(
                 "unsupported-boundary",
                 `A ${outputKind} import requires a recognized ${expectedSource} exchange source, not ${source.kind}.`,
-                outputKind === "blueprint" ? "Choose a PAR workbook produced for POKIE import." : "Choose a POKIE-produced Stake Engine export with pokie-manifest.json.",
+                outputKind === "blueprint" ? "Choose a PAR workbook produced for POKIE import." : "Choose a POKIE-produced Stake Engine export with pokie-info.json.",
             );
         }
         if (!source.capabilities.includes(requiredCapability)) {

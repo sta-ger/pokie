@@ -227,7 +227,7 @@ export async function acquireOptimizationAdapter(
         if (policy.scope !== "native-outcomes") throw new OptimizationUnsupportedError(
             "Native weights establish only the selected native-outcomes population, not a generating game's logical round.",
         );
-        if (project.type === "stakeAdapter" && fs.existsSync(path.join(project.rootPath, "pokie-manifest.json")) && fs.existsSync(path.join(project.rootPath, "optimization-input-pokie-manifest.json"))) throw new OptimizationUnsupportedError("A prior Stake input-provenance archive already occupies the required companion path.");
+        if (project.type === "stakeAdapter" && fs.existsSync(path.join(project.rootPath, "pokie-info.json")) && fs.existsSync(path.join(project.rootPath, "optimization-input-pokie-info.json"))) throw new OptimizationUnsupportedError("A prior Stake input-provenance archive already occupies the required companion path.");
         const model = await readNative(project);
         if (!model.modes[policy.mode]) throw new OptimizationUnsupportedError(`Unknown native mode ${policy.mode}.`);
         if (project.type === "outcomeLibrary" && Object.values(model.modes[policy.mode].outcomes).some(outcome => outcome.artifact!.stake !== policy.stake)) throw new OptimizationUnsupportedError("Native library stake must match every selected artifact.");
@@ -273,7 +273,7 @@ export async function acquireOptimizationAdapter(
                     );
                     errors(written.issues);
                     const sourceManifest = await new OutcomeLibraryFolderReader().readManifest(project.rootPath);
-                    const canonicalFiles = new Set([...sourceManifest.files, "manifest.json"]);
+                    const canonicalFiles = new Set([...sourceManifest.files, "index.json"]);
                     for (const file of Object.keys(inventory(project.rootPath))) {
                         if (canonicalFiles.has(file)) continue;
                         const target = path.join(output, file);
@@ -283,9 +283,9 @@ export async function acquireOptimizationAdapter(
                 } else {
                     copyPackage(project.rootPath, output);
                     // Export/import metadata describes the old distribution, not these native uint64 weights.
-                    const priorManifest = path.join(output, "pokie-manifest.json");
+                    const priorManifest = path.join(output, "pokie-info.json");
                     if (fs.existsSync(priorManifest)) {
-                        fs.renameSync(priorManifest, path.join(output, "optimization-input-pokie-manifest.json"));
+                        fs.renameSync(priorManifest, path.join(output, "optimization-input-pokie-info.json"));
                     }
                     const index = readJson(path.join(output, "index.json")) as {
                         modes: {name: string; weights: string}[];

@@ -275,7 +275,7 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
     it("validates malformed outcome-library bundles deeply and reports the requested deep check in JSON", async () => {
         const libraryDir = path.join(outDir, "outcomes");
         fs.mkdirSync(libraryDir);
-        fs.writeFileSync(path.join(libraryDir, "manifest.json"), "{ bad JSON");
+        fs.writeFileSync(path.join(libraryDir, "index.json"), "{ bad JSON");
 
         const exitCode = await new ValidateCommand().run([libraryDir, "--deep", "--format", "json"]);
 
@@ -292,9 +292,9 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
         expect(report.issues).toHaveLength(1);
         expect(report.errors[0]).toMatchObject({
             code: "outcome-library-folder-manifest-invalid-json",
-            path: "manifest.json",
-            message: 'The outcome-library artifact at "manifest.json" is not valid JSON.',
-            suggestion: "Repair manifest.json to match the outcome-library bundle format, then run validate again.",
+            path: "index.json",
+            message: 'The outcome-library artifact at "index.json" is not valid JSON.',
+            suggestion: "Repair index.json to match the outcome-library bundle format, then run validate again.",
         });
     });
 
@@ -488,9 +488,9 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
         expect(report.errors).toContainEqual({
             code: "outcome-library-folder-manifest-missing",
             severity: "error",
-            path: "manifest.json",
-            message: 'The outcome-library artifact at "manifest.json" is missing.',
-            suggestion: "Repair manifest.json to match the outcome-library bundle format, then run validate again.",
+            path: "index.json",
+            message: 'The outcome-library artifact at "index.json" is missing.',
+            suggestion: "Repair index.json to match the outcome-library bundle format, then run validate again.",
         });
     });
 
@@ -505,7 +505,7 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
                 type: "stakeAdapter",
                 rootPath: stakeDir,
                 capabilities: ["stakeAdapter.exchange"],
-                provenance: 'recognized Stake Engine export manifest ("pokie-manifest.json")',
+                provenance: 'recognized Stake Engine export manifest ("pokie-info.json")',
             }),
         };
         const stakeEngineImporter = {

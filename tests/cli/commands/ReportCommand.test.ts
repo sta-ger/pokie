@@ -144,17 +144,17 @@ describe("ReportCommand", () => {
             const built = await new CertificationPackBuilder("1.3.0").buildFromBundle(source, [{modeName: "base", seed: "s", sampleCount: 2}], out);
             expect(built.manifest).toBeDefined();
             const command = new ReportCommand();
-            await command.run([path.join(out, "manifest.json"), "--format", "pdf", "--out", output]);
+            await command.run([path.join(out, "index.json"), "--format", "pdf", "--out", output]);
             const bytes = fs.readFileSync(output);
             expect(bytes.toString()).toContain("%PDF-1.4");
             expect(bytes.toString()).toContain("preparation only");
             expect(log.mock.calls.flat().join(" ")).toContain("preparation only");
-            await expect(command.run([path.join(out, "manifest.json"), "--format", "pdf", "--out", output])).rejects.toThrow();
+            await expect(command.run([path.join(out, "index.json"), "--format", "pdf", "--out", output])).rejects.toThrow();
             expect(fs.readFileSync(output)).toEqual(bytes);
             const template = path.join(root, "broken.json"),
                 missingOutput = path.join(root, "missing.html");
             fs.writeFileSync(template, JSON.stringify({schemaVersion: 99}));
-            await expect(command.run([path.join(out, "manifest.json"), "--format", "html", "--template", template, "--out", missingOutput])).rejects.toThrow(/template/);
+            await expect(command.run([path.join(out, "index.json"), "--format", "html", "--template", template, "--out", missingOutput])).rejects.toThrow(/template/);
             expect(fs.existsSync(missingOutput)).toBe(false);
         } finally {
             log.mockRestore();
@@ -630,7 +630,7 @@ describe("ReportCommand outcome-source project routing", () => {
         const report: OutcomeSourceProjectReport = {
             rootPath: "/libraries/broken",
             descriptor: {kind: "native", streaming: true, limitations: ["never re-derives the game model that produced these outcomes"]},
-            issues: [{code: "outcome-library-folder-manifest-invalid-json", severity: "error", message: "manifest.json is not valid JSON."}],
+            issues: [{code: "outcome-library-folder-manifest-invalid-json", severity: "error", message: "index.json is not valid JSON."}],
             modes: [],
         };
         const resolveProject = stubProjectResolver(outcomeLibraryProject);
@@ -759,7 +759,7 @@ describe("ReportCommand (integration, manifest-less Stake Engine outcome directo
 
             const printed = JSON.parse(logSpy.mock.calls[0][0]) as OutcomeSourceProjectReport;
             const written = JSON.parse(fs.readFileSync(reportFile, "utf-8")) as OutcomeSourceProjectReport;
-            expect(fs.existsSync(path.join(stakeDir, "pokie-manifest.json"))).toBe(false);
+            expect(fs.existsSync(path.join(stakeDir, "pokie-info.json"))).toBe(false);
             expect(printed).toEqual(written);
             expect(printed).toMatchObject({rootPath: path.resolve(stakeDir), descriptor: {kind: "stakeEngine"}, issues: []});
             expect(printed.modes[0]).toMatchObject({modeName: "base", analysis: {outcomeCount: 2, hitFrequency: 0.1}});

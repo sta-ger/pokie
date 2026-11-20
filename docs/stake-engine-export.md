@@ -23,7 +23,7 @@ SDK's per-target-fixed-descriptor model can't represent).
  index.json # Stake's own strict schema — never any extra fields
  lookup_<mode>.csv # per mode: no header, "simulationId,weight,payoutMultiplier"
  books_<mode>.jsonl.zst # per mode: zstd-compressed JSONL, one {id, events, payoutMultiplier} line per outcome
- pokie-manifest.json # POKIE's own provenance — never read by Stake's own tooling
+ pokie-info.json # POKIE's own provenance — never read by Stake's own tooling
 ```
 
 `index.json` is kept exactly to Stake's own schema:
@@ -38,7 +38,7 @@ SDK's per-target-fixed-descriptor model can't represent).
 ```
 
 POKIE's own provenance (which `pokie` version produced this export, each mode's library hash, when it ran,...)
-never gets added to `index.json` itself — it goes to a sibling `pokie-manifest.json` instead, the same way
+never gets added to `index.json` itself — it goes to a sibling `pokie-info.json` instead, the same way
 `GameBuildInfo`/`build-info.json` sits alongside a generated game package without polluting the package's own
 files (see [Game Packages](game-packages.md)).
 
@@ -184,7 +184,7 @@ if the publish rename fails, and never exposes a partially written directory. Bo
 
 Because the whole directory is discarded and rebuilt this way, using the programmatic writer with an existing `outDir` is only
 allowed when that directory is either empty or recognized as a prior POKIE connector-export run's own
-output (via that run's own `pokie-manifest.json`) — otherwise a caller pointing `--out` at an unrelated directory
+output (via that run's own `pokie-info.json`) — otherwise a caller pointing `--out` at an unrelated directory
 by mistake would have it wiped wholesale. An unrecognized non-empty directory is refused outright, with nothing
 touched. Conceptually the same rebuild-safety guarantee as `GamePackageGenerator`'s own (see
 [Game Packages](game-packages.md)), just applied to a whole directory instead of a fixed list of filenames.

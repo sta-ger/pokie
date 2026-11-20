@@ -25,7 +25,7 @@ export type OutcomeLibraryFolderIndexModeEntry = {
     readonly generator?: OutcomeLibraryGeneratorDiagnostics;
 };
 
-// POKIE's own provenance for a "pokie outcomelibrary build" run, written to "manifest.json" alongside each
+// POKIE's own provenance for a "pokie outcomelibrary build" run, written to "index.json" alongside each
 // mode's own small index and streaming outcomes file — same "who/what version/when" stamp convention as
 // StakeEngineInfo, and the same "files" inventory convention as StakeEngineInfo/GameBuildInfo (the
 // exact set of paths this run generated, relative to the bundle directory).

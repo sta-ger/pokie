@@ -67,7 +67,7 @@ describe("OutcomeLibraryFolderWriter", () => {
         }
     }
 
-    it("writes manifest.json, one index_<mode>.json, and one streaming outcomes_<mode>.jsonl per mode, consuming a genuinely async source", async () => {
+    it("writes index.json, one index_<mode>.json, and one streaming outcomes_<mode>.jsonl per mode, consuming a genuinely async source", async () => {
         const writer = new OutcomeLibraryFolderWriter("1.3.0");
         const base = buildOutcomeLibraryFolderModeInput("base", "base-lib");
         const bonus = buildOutcomeLibraryFolderModeInput("bonus", "bonus-lib");
@@ -82,11 +82,11 @@ describe("OutcomeLibraryFolderWriter", () => {
 
         expect(result.issues).toEqual([]);
         expect(new Set(result.files)).toEqual(
-            new Set(["manifest.json", "index_base.json", "outcomes_base.jsonl", "index_bonus.json", "outcomes_bonus.jsonl"]),
+            new Set(["index.json", "index_base.json", "outcomes_base.jsonl", "index_bonus.json", "outcomes_bonus.jsonl"]),
         );
         expect(new Set(fs.readdirSync(outDir))).toEqual(new Set(result.files));
 
-        const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "manifest.json"), "utf-8")) as OutcomeLibraryFolderIndex;
+        const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")) as OutcomeLibraryFolderIndex;
         expect(manifest.generatedBy).toBe("pokie outcomelibrary build");
         expect(manifest.pokieVersion).toBe("1.3.0");
         // The fixture's own outcomes were computed by pokieVersion "1.3.0" too, but this is a genuinely
@@ -129,7 +129,7 @@ describe("OutcomeLibraryFolderWriter", () => {
         expect(progress).toEqual(expect.arrayContaining([
             expect.objectContaining({message: expect.stringMatching(/^Analyzing Outcome mode base/), unit: "outcome records", total: BigInt(5)}),
             expect.objectContaining({message: "Building Outcome Library index", unit: "bytes"}),
-            expect.objectContaining({message: "Publishing Outcome file manifest.json", unit: "bundle files", total: BigInt(5)}),
+            expect.objectContaining({message: "Publishing Outcome file index.json", unit: "bundle files", total: BigInt(5)}),
         ]));
         for (const entry of progress.filter((item) => item.total !== undefined)) {
             expect(entry.completed <= entry.total!).toBe(true);
@@ -141,7 +141,7 @@ describe("OutcomeLibraryFolderWriter", () => {
         const result = await new OutcomeLibraryFolderWriter("1.3.0").writeToDirectory([mode], outDir);
 
         expect(result.issues).toEqual([]);
-        const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "manifest.json"), "utf-8")) as OutcomeLibraryFolderIndex;
+        const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")) as OutcomeLibraryFolderIndex;
         expect(manifest.modes[0].analysis).toEqual(new WeightedOutcomeLibraryAnalyzer().analyze(buildOutcomeLibraryFolderTestLibrary("base-lib")));
         expect(fs.readdirSync(outDir).some((name) => name.startsWith(".analysis_") || name.startsWith(".entries_"))).toBe(false);
         expect(siblingLeftovers(outDir)).toEqual([]);
@@ -150,7 +150,7 @@ describe("OutcomeLibraryFolderWriter", () => {
     it("honors cancellation during the cooperative analysis scan without replacing an existing destination", async () => {
         const writer = new OutcomeLibraryFolderWriter("1.3.0");
         await writer.writeToDirectory([modes()[0]], outDir);
-        const preservedManifest = fs.readFileSync(path.join(outDir, "manifest.json"));
+        const preservedManifest = fs.readFileSync(path.join(outDir, "index.json"));
         const controller = new AbortController();
         let timerRan = false;
 
@@ -167,14 +167,14 @@ describe("OutcomeLibraryFolderWriter", () => {
         })).rejects.toThrow(OutcomeLibraryFolderWriteCancelledError);
 
         expect(timerRan).toBe(true);
-        expect(fs.readFileSync(path.join(outDir, "manifest.json"))).toEqual(preservedManifest);
+        expect(fs.readFileSync(path.join(outDir, "index.json"))).toEqual(preservedManifest);
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
     it("cancels during writing without replacing an existing destination or leaving staging output", async () => {
         const writer = new OutcomeLibraryFolderWriter("1.3.0");
         await writer.writeToDirectory([modes()[0]], outDir);
-        const preservedManifest = fs.readFileSync(path.join(outDir, "manifest.json"));
+        const preservedManifest = fs.readFileSync(path.join(outDir, "index.json"));
         const controller = new AbortController();
         let timerRan = false;
         setImmediate(() => {
@@ -187,14 +187,14 @@ describe("OutcomeLibraryFolderWriter", () => {
         })).rejects.toThrow(OutcomeLibraryFolderWriteCancelledError);
 
         expect(timerRan).toBe(true);
-        expect(fs.readFileSync(path.join(outDir, "manifest.json"))).toEqual(preservedManifest);
+        expect(fs.readFileSync(path.join(outDir, "index.json"))).toEqual(preservedManifest);
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
     it("cancels while copying the native index without replacing an existing destination or leaving staging output", async () => {
         const writer = new OutcomeLibraryFolderWriter("1.3.0");
         await writer.writeToDirectory([modes()[0]], outDir);
-        const preservedManifest = fs.readFileSync(path.join(outDir, "manifest.json"));
+        const preservedManifest = fs.readFileSync(path.join(outDir, "index.json"));
         const controller = new AbortController();
         let timerRan = false;
 
@@ -211,7 +211,7 @@ describe("OutcomeLibraryFolderWriter", () => {
         })).rejects.toThrow(OutcomeLibraryFolderWriteCancelledError);
 
         expect(timerRan).toBe(true);
-        expect(fs.readFileSync(path.join(outDir, "manifest.json"))).toEqual(preservedManifest);
+        expect(fs.readFileSync(path.join(outDir, "index.json"))).toEqual(preservedManifest);
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
@@ -253,7 +253,7 @@ describe("OutcomeLibraryFolderWriter", () => {
         releaseDelayedStream?.();
 
         await expect(staleWriter).rejects.toBeInstanceOf(OutcomeLibraryFolderDestinationClaimedError);
-        const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "manifest.json"), "utf8")) as OutcomeLibraryFolderIndex;
+        const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "index.json"), "utf8")) as OutcomeLibraryFolderIndex;
         expect(manifest.modes.map((mode) => mode.modeName)).toEqual(["base", "ante"]);
     });
 
@@ -389,19 +389,19 @@ describe("OutcomeLibraryFolderWriter", () => {
     it("honors cancellation from the final temporary-publish callback without replacing an existing output", async () => {
         const writer = new OutcomeLibraryFolderWriter("1.3.0");
         await writer.writeToDirectory([modes()[0]], outDir);
-        const preservedManifest = fs.readFileSync(path.join(outDir, "manifest.json"));
+        const preservedManifest = fs.readFileSync(path.join(outDir, "index.json"));
         const controller = new AbortController();
 
         await expect(
             writer.writeToDirectory([modes()[0]], outDir, {
                 signal: controller.signal,
                 onProgress: (progress) => {
-                    if (progress.message === "Publishing Outcome file manifest.json") controller.abort();
+                    if (progress.message === "Publishing Outcome file index.json") controller.abort();
                 },
             }),
         ).rejects.toThrow(OutcomeLibraryFolderWriteCancelledError);
 
-        expect(fs.readFileSync(path.join(outDir, "manifest.json"))).toEqual(preservedManifest);
+        expect(fs.readFileSync(path.join(outDir, "index.json"))).toEqual(preservedManifest);
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
@@ -479,7 +479,7 @@ describe("OutcomeLibraryFolderWriter", () => {
         const writer = new OutcomeLibraryFolderWriter("1.3.0");
         await writer.writeToDirectory(modes(), outDir);
         const filesBefore = fs.readdirSync(outDir).sort();
-        const manifestBefore = fs.readFileSync(path.join(outDir, "manifest.json"), "utf-8");
+        const manifestBefore = fs.readFileSync(path.join(outDir, "index.json"), "utf-8");
 
         let callCount = 0;
         const failingWriteFile = (filePath: string, contents: string): void => {
@@ -494,7 +494,7 @@ describe("OutcomeLibraryFolderWriter", () => {
         await expect(failingWriter.writeToDirectory(modes(), outDir)).rejects.toThrow("simulated disk failure");
 
         expect(fs.readdirSync(outDir).sort()).toEqual(filesBefore);
-        expect(fs.readFileSync(path.join(outDir, "manifest.json"), "utf-8")).toBe(manifestBefore);
+        expect(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")).toBe(manifestBefore);
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
@@ -504,7 +504,7 @@ describe("OutcomeLibraryFolderWriter", () => {
         const filesBefore = fs.readdirSync(outDir).sort();
 
         // For a single-mode re-write, writeFilesIntoTempDir renames exactly 3 staged files (index_base.json,
-        // outcomes_base.jsonl, manifest.json) into publishDirectoryAtomically's own temp dir *before* that
+        // outcomes_base.jsonl, index.json) into publishDirectoryAtomically's own temp dir *before* that
         // helper's own atomic swap even begins — so the swap's own two renames (outDir -> stale, temp -> outDir)
         // are calls #4 and #5, not #1 and #2. Failing call #5 (the actual publish) exercises the "restore the
         // old directory" path; the restore itself is call #6.

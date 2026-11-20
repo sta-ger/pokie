@@ -47,8 +47,8 @@ source files. A matching game name/version or an asserted report hash is not eno
 ```sh
 pokie certification build sources/outcome-library pack-config.json --out assessment
 pokie certification verify assessment --source relocated/outcome-library --trusted-sources sources.json --template sources/presentation.json
-pokie report assessment/manifest.json --format pdf --out assessment-copy.pdf
-pokie report assessment/manifest.json --format html --template presentation.json --out assessment-copy.html
+pokie report assessment/index.json --format pdf --out assessment-copy.pdf
+pokie report assessment/index.json --format html --template presentation.json --out assessment-copy.html
 ```
 
 The trusted-sources file contains the **pack object**, with explicit relocated model, report and replay
@@ -159,7 +159,7 @@ Independent visual and PDF-reader review remains separate from source-level chec
 Destinations must be new or physically empty. Existing evidence is never replaced merely because
 `generatedBy` says POKIE. Source/output overlap and symlink aliases reject. All files render and validate
 in owned staging first. New folders publish by no-clobber namespace installation; a caller-owned empty
-folder keeps its inode and receives owned no-clobber file links with `manifest.json` last as the commit
+folder keeps its inode and receives owned no-clobber file links with `index.json` last as the commit
 marker. Readers must require that manifest. A competing entry causes rollback of only this operation's
 unchanged files, preserving the foreign entry and caller-owned folder. Authored models, packages,
 workbooks, source folders, reports, replays and templates are not rewritten.

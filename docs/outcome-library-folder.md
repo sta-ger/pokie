@@ -44,12 +44,12 @@ ever has to hold a whole mode's outcomes in memory at once:
 
 ```
 <libraryDir>/
- manifest.json # OutcomeLibraryFolderIndex
+ index.json # OutcomeLibraryFolderIndex
  index_<modeName>.json # OutcomeLibraryFolderModeIndex, one per mode
  outcomes_<modeName>.jsonl # one canonical-JSON WeightedOutcome<T> per line, one per mode
 ```
 
-`manifest.json` carries the "who/what version/when" provenance stamp every generated-artifact manifest in this
+`index.json` carries the "who/what version/when" provenance stamp every generated-artifact manifest in this
 codebase uses (`schemaVersion`/`generatedBy`/`pokieVersion`/`generatedAt`, matching
 [`StakeEngineInfo`](stake-engine-export.md)'s own convention), plus one entry per mode:
 
@@ -109,7 +109,7 @@ type OutcomeLibraryFolderIndexEntry = {
 
 `libraryHash`/`librarySchemaVersion` are duplicated onto the index (not only the manifest), so a caller that only
 ever needs one mode — the pre-generated runtime, typically — can load and self-identify a mode from just its own
-`index_<modeName>.json` + `outcomes_<modeName>.jsonl`, without ever reading `manifest.json`.
+`index_<modeName>.json` + `outcomes_<modeName>.jsonl`, without ever reading `index.json`.
 
 Each entry's own `recordHash` exists specifically to close a gap the id/weight checks alone can't: a record's
 *content* tampered in place (its artifact rewritten) while its id/weight — and the outcomes file's own byte
@@ -252,16 +252,16 @@ nothing, so a mode that no longer appears in this run never leaves its old index
 `OutcomeLibraryFolderValidating.validate(libraryDir, {deep?: boolean})` — never throws (top-level catch-all
 `outcome-library-folder-malformed`).
 
-**Shallow (default)** — reads `manifest.json` and every mode's own `index_<modeName>.json` (all small); never
+**Shallow (default)** — reads `index.json` and every mode's own `index_<modeName>.json` (all small); never
 opens an outcomes file's content, only an exact byte-layout check against the index's own recorded ranges:
 
 | Code | Meaning |
 |---|---|
-| `outcome-library-folder-manifest-missing` / `-unreadable` / `-invalid-json` / `-malformed` / `-schema-version-unsupported` | `manifest.json` doesn't exist / couldn't be read / doesn't parse / doesn't match the expected shape / has an unsupported `schemaVersion` |
+| `outcome-library-folder-manifest-missing` / `-unreadable` / `-invalid-json` / `-malformed` / `-schema-version-unsupported` | `index.json` doesn't exist / couldn't be read / doesn't parse / doesn't match the expected shape / has an unsupported `schemaVersion` |
 | `outcome-library-folder-manifest-mode-field-invalid` | a manifest mode entry's `betMode`/`stake`/`libraryId`/`libraryHash`/`outcomeCount`/`totalWeight`/`analysis` isn't the expected type/shape |
 | `outcome-library-folder-mode-name-invalid` / `-duplicate-mode-name` / `-mode-name-case-collision` | a mode name doesn't match `[A-Za-z0-9_-]+`, is used by more than one mode, or two mode names differ only in case |
 | `outcome-library-folder-mode-filename-mismatch` | a mode's `indexFile`/`outcomesFile` isn't exactly `index_<modeName>.json`/`outcomes_<modeName>.jsonl` — this format's own fixed naming convention |
-| `outcome-library-folder-manifest-files-invalid` / `-duplicate` / `-entry-unsafe` / `-missing-entry` / `-unexpected-entry` | `manifest.json`'s `files` isn't a non-empty array of unique, safe filenames that exactly match `"manifest.json"` plus every current mode's own `indexFile`/`outcomesFile` — nothing missing, nothing extra |
+| `outcome-library-folder-manifest-files-invalid` / `-duplicate` / `-entry-unsafe` / `-missing-entry` / `-unexpected-entry` | `index.json`'s `files` isn't a non-empty array of unique, safe filenames that exactly match `"index.json"` plus every current mode's own `indexFile`/`outcomesFile` — nothing missing, nothing extra |
 | `outcome-library-folder-path-unsafe` | a mode's `indexFile`/`outcomesFile` is absolute, contains `..`, contains a path separator, or otherwise resolves outside `libraryDir` |
 | `outcome-library-folder-mode-index-missing` / `-unreadable` / `-invalid-json` / `-malformed` / `-schema-version-unsupported` | the same five outcomes, for a mode's own index file |
 | `outcome-library-folder-mode-index-library-schema-version-unsupported` | the index's `librarySchemaVersion` isn't the currently-supported `WeightedOutcomeLibrary` schema version |
@@ -291,8 +291,8 @@ versa):
 | `outcome-library-folder-outcomes-weight-mismatch` | the same id's weight disagrees between the outcomes file and the index |
 | `outcome-library-folder-outcomes-artifact-invalid` | an outcome's artifact fails `RoundRecordValidator` — never a second definition of "valid" |
 | `outcome-library-folder-outcomes-inconsistent-provenance` / `-inconsistent-bet-mode` / `-inconsistent-stake` | an outcome's game/config/pokieVersion, `betMode`, or `stake` disagrees with this mode's other outcomes |
-| `outcome-library-folder-outcomes-manifest-provenance-mismatch` | this mode's outcomes' own (mutually-consistent) game id/version/configHash/pokieVersion doesn't match `manifest.json`'s own top-level `game`/`configHash`/`artifactPokieVersion` — a gap the cross-*outcome* check above can't catch on its own, since it never reads the index file. Deliberately never compares against `manifest.pokieVersion` (which pokie *tool* version built this folder index, a different, unrelated quantity from `artifactPokieVersion`) |
-| `outcome-library-folder-outcomes-manifest-mode-mismatch` | this mode's outcomes' own betMode/stake doesn't match `manifest.json`'s own per-mode `betMode`/`stake` entry |
+| `outcome-library-folder-outcomes-manifest-provenance-mismatch` | this mode's outcomes' own (mutually-consistent) game id/version/configHash/pokieVersion doesn't match `index.json`'s own top-level `game`/`configHash`/`artifactPokieVersion` — a gap the cross-*outcome* check above can't catch on its own, since it never reads the index file. Deliberately never compares against `manifest.pokieVersion` (which pokie *tool* version built this folder index, a different, unrelated quantity from `artifactPokieVersion`) |
+| `outcome-library-folder-outcomes-manifest-mode-mismatch` | this mode's outcomes' own betMode/stake doesn't match `index.json`'s own per-mode `betMode`/`stake` entry |
 | `outcome-library-folder-outcomes-not-json-safe` | an outcome can't be re-canonicalized via `toCanonicalJson` (used to recompute the hash) |
 | `outcome-library-folder-outcomes-count-mismatch` | the outcomes file's own valid-record count disagrees with the index's entry count |
 | `outcome-library-folder-hash-mismatch` | the recomputed `libraryHash` doesn't match the manifest's recorded one |

@@ -1119,7 +1119,7 @@ export class StudioOutcomeLibraryGenerateService {
         // claimed after a bound preflight is caller-owned data, not a corrupt
         // retained library merely because the canonical validator later sees
         // a missing manifest.
-        const manifestPath = path.join(resolvedOutDir, "manifest.json");
+        const manifestPath = path.join(resolvedOutDir, "index.json");
         if (!fs.existsSync(manifestPath) || !fs.statSync(manifestPath).isFile()) {
             return {
                 status: "error",

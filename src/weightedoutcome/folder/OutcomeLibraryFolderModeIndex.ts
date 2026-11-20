@@ -24,7 +24,7 @@ export type OutcomeLibraryFolderIndexEntry = {
 // do a single-outcome random-access read or a weighted draw against "outcomes_<modeName>.jsonl" without ever
 // reading the rest of that (potentially huge) file. "libraryHash"/"librarySchemaVersion" are duplicated from
 // the bundle manifest so a caller that only ever needs one mode (the pre-generated runtime, say) can load and
-// self-identify a mode without reading manifest.json at all.
+// self-identify a mode without reading index.json at all.
 export type OutcomeLibraryFolderModeIndex = {
     readonly schemaVersion: number;
     readonly modeName: string;

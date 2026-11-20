@@ -243,7 +243,7 @@ describe("InspectCommand (integration, real GamePackageInspector)", () => {
         fs.writeFileSync(path.join(packageDir, "package.json"), JSON.stringify({name: "game", pokie: {entry: "./index.js"}}));
         fs.mkdirSync(outcomeDir);
         fs.writeFileSync(
-            path.join(outcomeDir, "manifest.json"),
+            path.join(outcomeDir, "index.json"),
             JSON.stringify({
                 schemaVersion: 1,
                 generatedBy: "pokie outcomelibrary build",
@@ -252,11 +252,11 @@ describe("InspectCommand (integration, real GamePackageInspector)", () => {
                 game: {id: "sample", name: "Sample", version: "1.0.0"},
                 artifactPokieVersion: "1.3.0",
                 modes: [],
-                files: ["manifest.json"],
+                files: ["index.json"],
             }),
         );
         fs.mkdirSync(stakeDir);
-        fs.writeFileSync(path.join(stakeDir, "pokie-manifest.json"), JSON.stringify({generatedBy: "pokie stakeengine export", generatedAt: new Date(0).toISOString()}));
+        fs.writeFileSync(path.join(stakeDir, "pokie-info.json"), JSON.stringify({generatedBy: "pokie stakeengine export", generatedAt: new Date(0).toISOString()}));
         const workbook = new ExcelJS.Workbook();
         workbook.addWorksheet("Manifest");
         workbook.addWorksheet("Symbols");

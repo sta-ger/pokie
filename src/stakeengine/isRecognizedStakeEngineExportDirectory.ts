@@ -2,7 +2,7 @@ import fs from "fs";
 import {readRecognizedStakeEngineManifest} from "./internal/readRecognizedStakeEngineInfo.js";
 
 // Reports whether `outDir` is recognized as a previous "pokie stakeengine export" run's own output (via that
-// run's own pokie-manifest.json) — the exact same recognition check assertSafeToReplaceStakeEngineExportDirectory
+// run's own pokie-info.json) — the exact same recognition check assertSafeToReplaceStakeEngineExportDirectory
 // itself uses internally to decide whether re-exporting into an existing, non-empty outDir is safe. Exposed
 // publicly (unlike readRecognizedStakeEngineManifest, which stays internal) so a caller that needs to classify a
 // pre-existing directory *before* attempting a write — e.g. Studio's own conflict/overwrite confirmation step —

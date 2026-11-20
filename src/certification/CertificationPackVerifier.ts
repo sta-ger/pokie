@@ -24,7 +24,7 @@ import type {CertificationPackVerifyOptions} from "./CertificationPackVerifyOpti
 import {isManifestShape, isModeEntryShape, isSampleRecordShape} from "./internal/certificationPackBundleShapeGuards.js";
 import {sha256OfBytes} from "./internal/sha256OfBytes.js";
 
-// Structural-only codes CertificationPackValidating can report when manifest.json itself couldn't
+// Structural-only codes CertificationPackValidating can report when index.json itself couldn't
 // even be parsed far enough to know what source bundle to cross-check against — a genuine "nothing to verify"
 // case, as opposed to a structural issue against one particular mode/sample that still leaves the rest
 // cross-checkable.
@@ -47,7 +47,7 @@ function canonicalJsonEqual(a: unknown, b: unknown): boolean {
 // Requires an explicit options.sourceLibraryDir — the manifest's own recorded sourceLibraryDir is purely
 // informational (a hand-crafted or tampered manifest could point it anywhere) and is NEVER read or trusted
 // here; without it, verify() returns a diagnostic and reads nothing beyond certDir's own structural self-
-// consistency check. Never throws — every fallible step (re-reading manifest.json, reading a samples file,
+// consistency check. Never throws — every fallible step (re-reading index.json, reading a samples file,
 // parsing a sample line, reading the live bundle) is individually guarded, and a top-level try/catch is the
 // final safety net — and never reads a path outside certDir/sourceLibraryDir: every filename this class reads
 // off manifest data (a mode's own samplesFile) is resolved through resolveSafeStakeEngineFilePath first, the
@@ -114,7 +114,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
 
         // manifest.sourceLibraryDir is informational only (see its own doc comment) and is NEVER read or
         // trusted here — a caller must always give an explicit sourceLibraryDir. Checked before anything else
-        // below touches a path outside certDir (including re-parsing manifest.json, which is only ever needed
+        // below touches a path outside certDir (including re-parsing index.json, which is only ever needed
         // for the live cross-check that follows), so a caller who omits it gets a diagnostic without this class
         // ever reading anything beyond certDir's own structural self-consistency check above.
         if (options?.sourceLibraryDir === undefined) {
@@ -134,14 +134,14 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
 
         let manifest: CertificationPackIndex;
         try {
-            const parsed: unknown = parseCertificationJson(fs.readFileSync(path.join(certDir, "manifest.json"), "utf-8"));
+            const parsed: unknown = parseCertificationJson(fs.readFileSync(path.join(certDir, "index.json"), "utf-8"));
             if (!isManifestShape(parsed)) {
                 return [
                     ...structuralIssues,
                     {
                         code: "certification-pack-verify-manifest-unreadable",
                         severity: "error",
-                        message: `"${certDir}"'s own manifest.json no longer matches the expected shape.`,
+                        message: `"${certDir}"'s own index.json no longer matches the expected shape.`,
                     },
                 ];
             }
@@ -152,14 +152,14 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
                 {
                     code: "certification-pack-verify-manifest-unreadable",
                     severity: "error",
-                    message: `could not re-read "${certDir}"'s own manifest.json: ${error instanceof Error ? error.message : String(error)}.`,
+                    message: `could not re-read "${certDir}"'s own index.json: ${error instanceof Error ? error.message : String(error)}.`,
                 },
             ];
         }
 
         const issues: ValidationIssue[] = [...structuralIssues];
 
-        if (!resolveSafeCertificationPackFilePath(sourceLibraryDir, "manifest.json")) return [...issues, {code: "certification-pack-source-unsafe", severity: "error", message: "Explicit source manifest is missing or symlinked."}];
+        if (!resolveSafeCertificationPackFilePath(sourceLibraryDir, "index.json")) return [...issues, {code: "certification-pack-source-unsafe", severity: "error", message: "Explicit source manifest is missing or symlinked."}];
         let sourceManifest: OutcomeLibraryFolderIndex;
         try {
             sourceManifest = await this.reader.readManifest(sourceLibraryDir);
@@ -167,7 +167,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
             issues.push({
                 code: "certification-pack-verify-source-bundle-unreadable",
                 severity: "error",
-                message: `could not read "${sourceLibraryDir}"'s own manifest.json: ${error instanceof Error ? error.message : String(error)}.`,
+                message: `could not read "${sourceLibraryDir}"'s own index.json: ${error instanceof Error ? error.message : String(error)}.`,
             });
             return issues;
         }
@@ -202,7 +202,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
             issues.push({
                 code: "certification-pack-verify-source-bundle-manifest-changed",
                 severity: "error",
-                message: `"${sourceLibraryDir}"'s own manifest.json no longer hashes to what this evidence bundle recorded at build time.`,
+                message: `"${sourceLibraryDir}"'s own index.json no longer hashes to what this evidence bundle recorded at build time.`,
             });
         }
 
@@ -215,7 +215,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
             issues.push({
                 code: "certification-pack-verify-manifest-provenance-mismatch",
                 severity: "error",
-                message: `this evidence bundle's own game/configHash/artifactPokieVersion no longer matches "${sourceLibraryDir}"'s own manifest.json.`,
+                message: `this evidence bundle's own game/configHash/artifactPokieVersion no longer matches "${sourceLibraryDir}"'s own index.json.`,
             });
         }
 
@@ -224,7 +224,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
                 issues.push({
                     code: "certification-pack-bundle-mode-field-invalid",
                     severity: "error",
-                    message: `manifest.json has a "modes" entry that doesn't match the expected shape — skipping its cross-check: ${JSON.stringify(rawModeEntry)}.`,
+                    message: `index.json has a "modes" entry that doesn't match the expected shape — skipping its cross-check: ${JSON.stringify(rawModeEntry)}.`,
                 });
                 continue;
             }
@@ -248,7 +248,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
             issues.push({
                 code: "certification-pack-verify-source-mode-missing",
                 severity: "error",
-                message: `mode "${modeEntry.modeName}" is no longer present in "${sourceLibraryDir}"'s own manifest.json.`,
+                message: `mode "${modeEntry.modeName}" is no longer present in "${sourceLibraryDir}"'s own index.json.`,
                 details: {modeName: modeEntry.modeName},
             });
             return;
@@ -263,7 +263,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
             issues.push({
                 code: "certification-pack-verify-manifest-mode-mismatch",
                 severity: "error",
-                message: `mode "${modeEntry.modeName}": libraryId/betMode/stake/libraryHash no longer match "${sourceLibraryDir}"'s own manifest.json.`,
+                message: `mode "${modeEntry.modeName}": libraryId/betMode/stake/libraryHash no longer match "${sourceLibraryDir}"'s own index.json.`,
                 details: {modeName: modeEntry.modeName},
             });
         }
@@ -276,7 +276,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
             issues.push({
                 code: "certification-pack-verify-metrics-mismatch",
                 severity: "error",
-                message: `mode "${modeEntry.modeName}": outcomeCount/totalWeight/analysis no longer match "${sourceLibraryDir}"'s own manifest.json.`,
+                message: `mode "${modeEntry.modeName}": outcomeCount/totalWeight/analysis no longer match "${sourceLibraryDir}"'s own index.json.`,
                 details: {modeName: modeEntry.modeName},
             });
         }

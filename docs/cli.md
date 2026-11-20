@@ -1025,7 +1025,7 @@ pokie par import starter.par.xlsx --out starter.blueprint.json
 The builds use these same physical PAR paths: `pokie build <config.json> --target parWorkbook` exports the identical workbook, and `pokie import <input.xlsx>` imports it. The
 workbook suffix is case-insensitive (`.xlsx` and `.XLSX` both select the PAR importer); the
 generic import command only routes a directory to Stake Engine reconstruction when it is a
-POKIE-produced export with `pokie-manifest.json`. For a compatible foreign Stake directory,
+POKIE-produced export with `pokie-info.json`. For a compatible foreign Stake directory,
 use `pokie report` or `pokie diff`, which intentionally do not require that
 manifest and do not claim to reconstruct missing POKIE origin.
 
@@ -1277,7 +1277,7 @@ a different `--out` path, then run the command again without `--dry-run` to publ
 When `<source>` is a Blueprint or runnable game package, `outcomeLibrary` and `stakeAdapter` share the managed Outcome
 Library status described in [`pokie build`](#pokie-build-project). Large reel-stop spaces automatically use its
 deterministic bounded-coverage library, so a random Blueprint can then use either format conversion on the
-standard Node heap; inspect `manifest.json` to see the recorded strategy and seed.
+standard Node heap; inspect `index.json` to see the recorded strategy and seed.
 
 Standalone descriptors use the same command and prepared planner operation. Outcome descriptors
 support `libraryPath` or streamed `outcomesPath` with `libraryId`; Stake descriptors support `libraryPath` or
@@ -1347,10 +1347,10 @@ import alias. It uses the same prepared Blueprint/evidence publication as `pokie
 without writing. A Stake Engine export directory continues to import as an Outcome Library.
 
 Imports a Stake Engine export directory (`index.json`, per-mode lookup CSV/books, and its own sibling
-`pokie-manifest.json`) back into one `WeightedOutcomeLibrary` per mode — see
+`pokie-info.json`) back into one `WeightedOutcomeLibrary` per mode — see
 [Stake Engine Import](stake-engine-import.md) for the full lossy/lossless boundary, the events reconstruction,
 and the validation-code table. Only ever round-trips a directory `pokie build <config.json> --target stakeAdapter` itself produced —
-`pokie-manifest.json` is required, not optional.
+`pokie-info.json` is required, not optional.
 
 ```
 pokie import stakeengine --out imported
@@ -1390,7 +1390,7 @@ reconstructed `roundId`/win breakdown/`provenance.pokieVersion` don't match the 
 
 Resolves, validates, and computes exact weighted statistics over **any** Stake Engine outcome directory
 (`index.json`, per-mode lookup CSV, per-mode zstd-compressed JSONL books) through its reader — no
-`pokie-manifest.json` required. See [Stake Engine Standalone](stake-engine-standalone.md) for the full data
+`pokie-info.json` required. See [Stake Engine Standalone](stake-engine-standalone.md) for the full data
 shapes, validation-code table, and pluggable event classification.
 
 ```
@@ -1510,7 +1510,7 @@ Builds a [certification pack](certification-pack.md) from an already-built
 [outcome library folder](outcome-library-folder.md): a manifest with game and library hashes, per-mode exact
 metrics and the source folder's deep-validation diagnostics, plus one JSONL file per mode of sampled,
 independently verifiable `RoundRecord` entries. POKIE does not recalculate anything: every hash and metric is
-read from the source folder's `manifest.json`, and every sample is drawn with the same weighted-draw algorithm
+read from the source folder's `index.json`, and every sample is drawn with the same weighted-draw algorithm
 the pre-generated runtime uses.
 
 ```
@@ -2437,11 +2437,11 @@ Checks one supported POKIE project without running a game. `<project>` may be:
 - a [game package](game-packages.md) directory, checked through `package.json#pokie.entry` and its game
  metadata (`id`, `name`, and `version`);
 - a Blueprint JSON file, checked for structural errors and math warnings; or
-- an [Outcome Library Folder](outcome-library-folder.md) directory, checked through its `manifest.json` and
+- an [Outcome Library Folder](outcome-library-folder.md) directory, checked through its `index.json` and
  per-mode indexes.
 
 An existing directory without `package.json` is treated as an outcome-library candidate. This means an incomplete
-folder gets the actionable `manifest.json` diagnostic instead of a package-loading error.
+folder gets the actionable `index.json` diagnostic instead of a package-loading error.
 
 ```
 pokie validate./sample-slot
@@ -2460,7 +2460,7 @@ Options:
 
 - `--deep` — for outcome-library inputs, additionally streams every outcome and rebuilds each mode's library to
  catch corruption that a structural check cannot (for example, a tampered record or mismatched hash). It is off
- by default so normal folder validation reads only `manifest.json` and the small per-mode indexes. It does not
+ by default so normal folder validation reads only `index.json` and the small per-mode indexes. It does not
  add checks to package or Blueprint inputs.
 - `--format json` — print the JSON report to stdout instead of the default human-readable summary.
 - `--out <file>` — write the JSON report to `<file>`. Independent of `--format json`: combine both to see the
@@ -4192,4 +4192,4 @@ output preview/build and pollable jobs.
 
 ## Certification pack preparation
 
-Certification packs use `pokie certification build FOLDER CONFIG.json --out NEW_OR_EMPTY_DIRECTORY`, with an explicit `pack` object in the config and `output` formats/template. Verify with `--source FOLDER --trusted-sources sources.json`; render a validated pack with `pokie report PACK/manifest.json --format json|console|markdown|html|pdf [--template presentation.json] [--out NEW_FILE]`. PDF requires `--out`. Simulation and outcome reporting keep JSON/Markdown/HTML. See [Certification pack](certification-pack.md). Preparation only; successful verification is not regulatory or RNG certification.
+Certification packs use `pokie certification build FOLDER CONFIG.json --out NEW_OR_EMPTY_DIRECTORY`, with an explicit `pack` object in the config and `output` formats/template. Verify with `--source FOLDER --trusted-sources sources.json`; render a validated pack with `pokie report PACK/index.json --format json|console|markdown|html|pdf [--template presentation.json] [--out NEW_FILE]`. PDF requires `--out`. Simulation and outcome reporting keep JSON/Markdown/HTML. See [Certification pack](certification-pack.md). Preparation only; successful verification is not regulatory or RNG certification.

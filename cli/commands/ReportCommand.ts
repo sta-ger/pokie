@@ -137,7 +137,7 @@ export class ReportCommand implements CliCommandHandling {
             } else console.log(result);
             return;
         }
-        if (format === "pdf" || format === "console" || template) throw new Error("PDF/console and template selection require a canonical pack manifest.json; simulation reports support json, markdown, html.");
+        if (format === "pdf" || format === "console" || template) throw new Error("PDF/console and template selection require a canonical pack index.json; simulation reports support json, markdown, html.");
         let rendered: string;
         if (format === "json") {
             rendered = JSON.stringify(parsed, null, 4);
@@ -298,7 +298,7 @@ export class ReportCommand implements CliCommandHandling {
     }
 
     // ProjectTargetResolver intentionally recognizes only POKIE-produced Stake exports: its result feeds
-    // reconstruction and other project operations that require pokie-manifest.json provenance. Reporting is
+    // reconstruction and other project operations that require pokie-info.json provenance. Reporting is
     // different: the standalone Stake reader is explicitly designed for a compatible foreign directory, so
     // recognize the minimal on-disk intent signal here and route it through that same canonical reader. Merely
     // finding index.json is deliberate -- malformed contents must reach the reader to produce its actionable
@@ -317,7 +317,7 @@ export class ReportCommand implements CliCommandHandling {
             type: "stakeAdapter",
             rootPath,
             capabilities: PROJECT_TYPE_CAPABILITIES.stakeAdapter,
-            provenance: 'recognized compatible Stake Engine outcome directory ("index.json"; no pokie-manifest.json required)',
+            provenance: 'recognized compatible Stake Engine outcome directory ("index.json"; no pokie-info.json required)',
         };
     }
 

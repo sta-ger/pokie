@@ -48,7 +48,7 @@ function isSafePositiveInteger(value: unknown): value is number {
 }
 
 // Validates a whole candidate Stake Engine export directory — assembled into a StakeEngineImportBundle by
-// StakeEngineImporter (the only place that touches the filesystem) — additively: index.json/pokie-manifest.json
+// StakeEngineImporter (the only place that touches the filesystem) — additively: index.json/pokie-info.json
 // field-level shape (every required field and its type, not just "is this an object"), path-safety of every
 // mode's own filenames, mode-name rules identical to StakeEngineExportValidator's own (format, duplicates,
 // case-insensitive collisions), index/manifest cross-checks, and per-mode CSV/books cross-checks matched by id
@@ -90,19 +90,19 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
             issues.push({
                 code: "stakeengine-import-manifest-missing",
                 severity: "error",
-                message: `"${bundle.stakeDir}" has no pokie-manifest.json — import only ever round-trips a directory "pokie stakeengine export" itself produced.`,
+                message: `"${bundle.stakeDir}" has no pokie-info.json — import only ever round-trips a directory "pokie stakeengine export" itself produced.`,
             });
         } else if (bundle.manifest.status === "unreadable") {
             issues.push({
                 code: "stakeengine-import-manifest-unreadable",
                 severity: "error",
-                message: `pokie-manifest.json could not be read: ${bundle.manifest.error}`,
+                message: `pokie-info.json could not be read: ${bundle.manifest.error}`,
             });
         } else if (bundle.manifest.status === "invalid") {
             issues.push({
                 code: "stakeengine-import-manifest-invalid-json",
                 severity: "error",
-                message: `pokie-manifest.json is not valid JSON: ${bundle.manifest.error}`,
+                message: `pokie-info.json is not valid JSON: ${bundle.manifest.error}`,
             });
         } else {
             manifest = this.parseManifest(bundle.stakeDir, bundle.manifest.value, issues);
@@ -116,7 +116,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
             issues.push({
                 code: "stakeengine-import-manifest-schema-version-unsupported",
                 severity: "error",
-                message: `pokie-manifest.json's schemaVersion (${manifest.schemaVersion}) is not supported (expected ${STAKE_ENGINE_INFO_SCHEMA_VERSION}).`,
+                message: `pokie-info.json's schemaVersion (${manifest.schemaVersion}) is not supported (expected ${STAKE_ENGINE_INFO_SCHEMA_VERSION}).`,
             });
             return issues;
         }
@@ -132,7 +132,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
                 issues.push({
                     code: "stakeengine-import-mode-missing-in-index",
                     severity: "error",
-                    message: `mode "${manifestMode.name}" is in pokie-manifest.json but not in index.json.`,
+                    message: `mode "${manifestMode.name}" is in pokie-info.json but not in index.json.`,
                     details: {modeName: manifestMode.name},
                 });
             }
@@ -161,7 +161,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
             issues.push({
                 code: "stakeengine-import-mode-missing-in-manifest",
                 severity: "error",
-                message: `mode "${indexMode.name}" is in index.json but not in pokie-manifest.json.`,
+                message: `mode "${indexMode.name}" is in index.json but not in pokie-info.json.`,
                 details: {modeName: indexMode.name},
             });
             return;
@@ -170,7 +170,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
             issues.push({
                 code: "stakeengine-import-mode-cost-mismatch",
                 severity: "error",
-                message: `mode "${indexMode.name}": index.json's cost (${indexMode.cost}) does not match pokie-manifest.json's (${manifestMode.cost}).`,
+                message: `mode "${indexMode.name}": index.json's cost (${indexMode.cost}) does not match pokie-info.json's (${manifestMode.cost}).`,
                 details: {modeName: indexMode.name},
             });
         }
@@ -223,7 +223,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
             issues.push({
                 code: "stakeengine-import-outcome-count-mismatch",
                 severity: "error",
-                message: `mode "${modeName}": pokie-manifest.json's outcomeCount (${manifestMode.outcomeCount}) does not match the actual row/line count (${csvRows.length}).`,
+                message: `mode "${modeName}": pokie-info.json's outcomeCount (${manifestMode.outcomeCount}) does not match the actual row/line count (${csvRows.length}).`,
                 details: {modeName},
             });
         }
@@ -420,7 +420,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
     }
 
     private validateModeName(
-        source: "index.json" | "pokie-manifest.json",
+        source: "index.json" | "pokie-info.json",
         modeName: unknown,
         position: number,
         seenNames: Map<string, string>,
@@ -465,7 +465,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
     // convention exactly (the same one StakeEngineExporter itself always writes — see its buildMode): a mode
     // named "base" must use "books_base.jsonl.zst"/"lookup_base.csv", nothing else. This closes filename reuse
     // structurally (two distinct, already-unique mode names can never derive the same filename), but "seenFiles"
-    // (scoped per source — index.json and pokie-manifest.json each get their own map, mirroring how mode-name
+    // (scoped per source — index.json and pokie-info.json each get their own map, mirroring how mode-name
     // collisions are tracked per source) still catches it explicitly and reports a dedicated diagnostic, rather
     // than relying solely on the naming-convention check to make it structurally unreachable.
     private validateModeFilename(
@@ -594,7 +594,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
             issues.push({
                 code: "stakeengine-import-manifest-unrecognized",
                 severity: "error",
-                message: 'pokie-manifest.json does not match the expected shape, or was not written by "pokie stakeengine export".',
+                message: 'pokie-info.json does not match the expected shape, or was not written by "pokie stakeengine export".',
             });
             return undefined;
         }
@@ -614,7 +614,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
             issues.push({
                 code: "stakeengine-import-manifest-field-invalid",
                 severity: "error",
-                message: `pokie-manifest.json's "${field}" ${requirement}.`,
+                message: `pokie-info.json's "${field}" ${requirement}.`,
                 details: {field},
             });
             sawError = true;
@@ -657,7 +657,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
                 issues.push({
                     code: "stakeengine-import-manifest-mode-field-invalid",
                     severity: "error",
-                    message: `pokie-manifest.json modes[${position}] must be an object.`,
+                    message: `pokie-info.json modes[${position}] must be an object.`,
                     details: {position},
                 });
                 sawError = true;
@@ -677,7 +677,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
                 generator?: unknown;
             };
 
-            if (!this.validateModeName("pokie-manifest.json", mode.name, position, seenNames, issues)) {
+            if (!this.validateModeName("pokie-info.json", mode.name, position, seenNames, issues)) {
                 sawError = true;
                 return;
             }
@@ -687,7 +687,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
                 issues.push({
                     code: "stakeengine-import-manifest-mode-field-invalid",
                     severity: "error",
-                    message: `mode "${modeName}": pokie-manifest.json's "${field}" ${requirement}.`,
+                    message: `mode "${modeName}": pokie-info.json's "${field}" ${requirement}.`,
                     details: {modeName, field},
                 });
                 sawError = true;
@@ -700,7 +700,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
                 issues.push({
                     code: "stakeengine-import-mode-stake-invalid",
                     severity: "error",
-                    message: `mode "${modeName}": pokie-manifest.json's stake (${JSON.stringify(mode.stake)}) must be a finite number > 0.`,
+                    message: `mode "${modeName}": pokie-info.json's stake (${JSON.stringify(mode.stake)}) must be a finite number > 0.`,
                     details: {modeName},
                 });
                 sawError = true;
@@ -709,7 +709,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
                 issues.push({
                     code: "stakeengine-import-mode-cost-invalid",
                     severity: "error",
-                    message: `mode "${modeName}": pokie-manifest.json's cost (${JSON.stringify(mode.cost)}) must be a finite number > 0.`,
+                    message: `mode "${modeName}": pokie-info.json's cost (${JSON.stringify(mode.cost)}) must be a finite number > 0.`,
                     details: {modeName},
                 });
                 sawError = true;
@@ -718,7 +718,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
                 issues.push({
                     code: "stakeengine-import-manifest-outcome-count-invalid",
                     severity: "error",
-                    message: `mode "${modeName}": pokie-manifest.json's outcomeCount (${JSON.stringify(mode.outcomeCount)}) must be a positive safe integer.`,
+                    message: `mode "${modeName}": pokie-info.json's outcomeCount (${JSON.stringify(mode.outcomeCount)}) must be a positive safe integer.`,
                     details: {modeName},
                 });
                 sawError = true;
@@ -727,7 +727,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
                 issues.push({
                     code: "stakeengine-import-manifest-library-id-invalid",
                     severity: "error",
-                    message: `mode "${modeName}": pokie-manifest.json's libraryId must be a non-empty string.`,
+                    message: `mode "${modeName}": pokie-info.json's libraryId must be a non-empty string.`,
                     details: {modeName},
                 });
                 sawError = true;
@@ -736,7 +736,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
                 issues.push({
                     code: "stakeengine-import-manifest-library-hash-invalid",
                     severity: "error",
-                    message: `mode "${modeName}": pokie-manifest.json's libraryHash (${JSON.stringify(mode.libraryHash)}) must match "sha256:<64 hex chars>".`,
+                    message: `mode "${modeName}": pokie-info.json's libraryHash (${JSON.stringify(mode.libraryHash)}) must match "sha256:<64 hex chars>".`,
                     details: {modeName},
                 });
                 sawError = true;
@@ -800,7 +800,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
         };
     }
 
-    // Validates pokie-manifest.json's own "files" field as an exact, unique set: index.json, pokie-manifest.json
+    // Validates pokie-info.json's own "files" field as an exact, unique set: index.json, pokie-info.json
     // itself, and every *current* mode's own CSV/books filenames — nothing missing, nothing extra, no duplicate
     // or case-colliding entry, and no entry that isn't itself a safe filename. This is deliberately independent
     // of index.json's own filenames (which are cross-checked against the manifest's own mode entries elsewhere,
@@ -820,8 +820,8 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
                     severity: "error",
                     message:
                         existing === file
-                            ? `pokie-manifest.json's "files" lists "${file}" more than once.`
-                            : `pokie-manifest.json's "files" lists "${file}" and "${existing}", which differ only in case and would collide on a case-insensitive filesystem.`,
+                            ? `pokie-info.json's "files" lists "${file}" more than once.`
+                            : `pokie-info.json's "files" lists "${file}" and "${existing}", which differ only in case and would collide on a case-insensitive filesystem.`,
                     details: {file},
                 });
                 sawError = true;
@@ -833,7 +833,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
                 issues.push({
                     code: "stakeengine-import-manifest-files-entry-unsafe",
                     severity: "error",
-                    message: `pokie-manifest.json's "files" entry "${file}" is not a safe filename — absolute paths, ".."/nested paths, and anything resolving outside the export directory are refused.`,
+                    message: `pokie-info.json's "files" entry "${file}" is not a safe filename — absolute paths, ".."/nested paths, and anything resolving outside the export directory are refused.`,
                     details: {file},
                 });
                 sawError = true;
@@ -843,14 +843,14 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
             actual.add(file);
         }
 
-        const expected = new Set<string>(["index.json", "pokie-manifest.json", ...modes.flatMap((mode) => [mode.weights, mode.events])]);
+        const expected = new Set<string>(["index.json", "pokie-info.json", ...modes.flatMap((mode) => [mode.weights, mode.events])]);
 
         for (const file of expected) {
             if (!actual.has(file)) {
                 issues.push({
                     code: "stakeengine-import-manifest-files-missing-entry",
                     severity: "error",
-                    message: `pokie-manifest.json's "files" is missing the expected entry "${file}".`,
+                    message: `pokie-info.json's "files" is missing the expected entry "${file}".`,
                     details: {file},
                 });
                 sawError = true;
@@ -861,7 +861,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
                 issues.push({
                     code: "stakeengine-import-manifest-files-unexpected-entry",
                     severity: "error",
-                    message: `pokie-manifest.json's "files" lists "${file}", which is not index.json, pokie-manifest.json, or a current mode's own CSV/books file.`,
+                    message: `pokie-info.json's "files" lists "${file}", which is not index.json, pokie-info.json, or a current mode's own CSV/books file.`,
                     details: {file},
                 });
                 sawError = true;

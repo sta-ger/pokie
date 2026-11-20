@@ -879,7 +879,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                                 return downloadPack(file);
                             }}>Download {file}</Button>)}
                             <Button onClick={() => {
-                                return downloadPack("manifest.json");
+                                return downloadPack("index.json");
                             }}>Download package info</Button>
                         </QuickActions>
                     </div>

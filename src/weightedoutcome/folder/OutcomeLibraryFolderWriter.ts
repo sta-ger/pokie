@@ -41,7 +41,7 @@ function provenanceKeyOf(firstOutcome: {readonly artifact: {readonly origin: {re
 }
 
 // Persists one or more streaming outcome sources (one per mode) as the canonical POKIE outcome-library bundle:
-// a small manifest.json, one small index_<modeName>.json per mode, and one streaming outcomes_<modeName>.jsonl
+// a small index.json, one small index_<modeName>.json per mode, and one streaming outcomes_<modeName>.jsonl
 // per mode. This is the ONE writer both the pre-generated runtime and the Stake Engine exporter's own loaded
 // data ultimately trace back to (see loadWeightedOutcomeLibraryFromFolder) — never a second calculation path:
 // every hash/metric/outcome written here is derived directly from the outcomes the caller streams in, by the
@@ -273,7 +273,7 @@ export class OutcomeLibraryFolderWriter<T extends string | number = string> impl
             }
 
             const orderedManifestEntries = orderManifestEntries(manifestEntries, options?.manifestModeOrder);
-            const relativeFiles = [...orderedManifestEntries.flatMap((entry) => [entry.indexFile, entry.outcomesFile]), "manifest.json"];
+            const relativeFiles = [...orderedManifestEntries.flatMap((entry) => [entry.indexFile, entry.outcomesFile]), "index.json"];
             const manifest: OutcomeLibraryFolderIndex = {
                 schemaVersion: OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION,
                 generatedBy: options?.generatedBy ?? "pokie outcomelibrary build",
@@ -286,7 +286,7 @@ export class OutcomeLibraryFolderWriter<T extends string | number = string> impl
                 files: relativeFiles,
             };
             assertNotCancelled(options);
-            this.writeFile(path.join(stagingDir, "manifest.json"), `${JSON.stringify(manifest, null, 4)}\n`);
+            this.writeFile(path.join(stagingDir, "index.json"), `${JSON.stringify(manifest, null, 4)}\n`);
             for (const file of supplementalFiles) {
                 this.writeFile(path.join(stagingDir, file.fileName), file.contents);
             }
@@ -395,7 +395,7 @@ function validateSupplementalFiles<T extends string | number>(
     issues: ValidationIssue[],
 ): readonly {readonly fileName: string; readonly contents: string}[] {
     const files = supplementalFiles ?? [];
-    const reservedNames = new Set(["manifest.json", ...modes.flatMap((mode) => [`index_${mode.modeName}.json`, `outcomes_${mode.modeName}.jsonl`])].map((name) => name.toLowerCase()));
+    const reservedNames = new Set(["index.json", ...modes.flatMap((mode) => [`index_${mode.modeName}.json`, `outcomes_${mode.modeName}.jsonl`])].map((name) => name.toLowerCase()));
     const seen = new Set<string>();
 
     for (const file of files) {

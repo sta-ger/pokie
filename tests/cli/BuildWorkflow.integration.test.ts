@@ -189,9 +189,9 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         const replayFile = path.join(workDir, "outcomes-replay.json");
 
         expect(await new BuildCommand("1.3.0").run([finiteBlueprintPath, "--target", "outcomeLibrary", "--exact", "--out", outcomeDir])).toBe(0);
-        expect(fs.existsSync(path.join(outcomeDir, "manifest.json"))).toBe(true);
+        expect(fs.existsSync(path.join(outcomeDir, "index.json"))).toBe(true);
         expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(true);
-        expect(JSON.parse(fs.readFileSync(path.join(outcomeDir, "manifest.json"), "utf-8")).modes[0].generator).toEqual(expect.objectContaining({
+        expect(JSON.parse(fs.readFileSync(path.join(outcomeDir, "index.json"), "utf-8")).modes[0].generator).toEqual(expect.objectContaining({
             strategy: "exact",
             totalOutcomeSpaceSize: 6,
             sampledRawCount: 6,
@@ -199,7 +199,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
 
         const secondOutcomeDir = path.join(workDir, "second-outcomes");
         expect(await new BuildCommand("1.3.0").run([finiteBlueprintPath, "--target", "outcomeLibrary", "--out", secondOutcomeDir])).toBe(0);
-        expect(fs.existsSync(path.join(secondOutcomeDir, "manifest.json"))).toBe(true);
+        expect(fs.existsSync(path.join(secondOutcomeDir, "index.json"))).toBe(true);
 
         const occupiedOutcomeDir = path.join(workDir, "occupied-outcomes");
         fs.mkdirSync(occupiedOutcomeDir);
@@ -252,7 +252,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
                 outcomeDir,
             ]),
         ).toBe(0);
-        const manifest = JSON.parse(fs.readFileSync(path.join(outcomeDir, "manifest.json"), "utf-8")) as {modes: Array<{generator: {strategy: string; totalOutcomeSpaceSize: number; sampledRawCount: number; seed?: string}}>};
+        const manifest = JSON.parse(fs.readFileSync(path.join(outcomeDir, "index.json"), "utf-8")) as {modes: Array<{generator: {strategy: string; totalOutcomeSpaceSize: number; sampledRawCount: number; seed?: string}}>};
         expect(manifest.modes[0].generator).toEqual(expect.objectContaining({
             strategy: "bounded-coverage",
             totalOutcomeSpaceSize: 27_000_000,
@@ -305,16 +305,16 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         expect(fs.readFileSync(reportFile, "utf-8")).toContain("# Simulation Report: Code-first Registry Slot");
 
         expect(await new BuildCommand("1.3.0").run([packageRoot, "--target", "outcomeLibrary", "--out", outcomeDir])).toBe(0);
-        const outcomeManifest = JSON.parse(fs.readFileSync(path.join(outcomeDir, "manifest.json"), "utf-8")) as {modes: Array<{modeName: string; betMode: string; stake: number}>};
+        const outcomeManifest = JSON.parse(fs.readFileSync(path.join(outcomeDir, "index.json"), "utf-8")) as {modes: Array<{modeName: string; betMode: string; stake: number}>};
         expect(outcomeManifest.modes).toEqual([
             expect.objectContaining({modeName: "base", betMode: "base", stake: 1}),
             expect.objectContaining({modeName: "ante", betMode: "ante", stake: 2}),
         ]);
 
         expect(await new BuildCommand("1.3.0").run([packageRoot, "--target", "outcomeLibrary", "--out", secondOutcomeDir])).toBe(0);
-        expect(fs.existsSync(path.join(secondOutcomeDir, "manifest.json"))).toBe(true);
+        expect(fs.existsSync(path.join(secondOutcomeDir, "index.json"))).toBe(true);
         expect(await new BuildCommand("1.3.0").run([packageRoot, "--target", "stakeAdapter", "--out", stakeDir])).toBe(0);
-        const stakeManifest = JSON.parse(fs.readFileSync(path.join(stakeDir, "pokie-manifest.json"), "utf-8")) as {modes: Array<{name: string; betMode: string; stake: number; cost: number}>};
+        const stakeManifest = JSON.parse(fs.readFileSync(path.join(stakeDir, "pokie-info.json"), "utf-8")) as {modes: Array<{name: string; betMode: string; stake: number; cost: number}>};
         expect(stakeManifest.modes).toEqual([
             expect.objectContaining({name: "base", betMode: "base", stake: 1, cost: 1}),
             expect.objectContaining({name: "ante", betMode: "ante", stake: 2, cost: 2}),

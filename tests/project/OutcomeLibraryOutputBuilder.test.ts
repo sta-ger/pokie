@@ -70,8 +70,8 @@ describe("OutcomeLibraryOutputBuilder", () => {
         expect(fs.readFileSync(path.join(destinationDir, "outcomes_base.jsonl"), "utf-8")).toBe(
             fs.readFileSync(path.join(sourceDir, "outcomes_base.jsonl"), "utf-8"),
         );
-        const sourceManifest = JSON.parse(fs.readFileSync(path.join(sourceDir, "manifest.json"), "utf-8")) as {modes: unknown[]};
-        const destinationManifest = JSON.parse(fs.readFileSync(path.join(destinationDir, "manifest.json"), "utf-8")) as {modes: unknown[]};
+        const sourceManifest = JSON.parse(fs.readFileSync(path.join(sourceDir, "index.json"), "utf-8")) as {modes: unknown[]};
+        const destinationManifest = JSON.parse(fs.readFileSync(path.join(destinationDir, "index.json"), "utf-8")) as {modes: unknown[]};
         expect(destinationManifest.modes).toEqual(sourceManifest.modes);
     });
 
@@ -100,17 +100,17 @@ describe("OutcomeLibraryOutputBuilder", () => {
         await expect(builder.build(outcomeLibraryProjectOf(sourceDir), nestedDestination)).rejects.toThrow(BuildConflictError);
         await expect(builder.build(outcomeLibraryProjectOf(sourceDir), path.join(linkedParent, "republished"))).rejects.toThrow(BuildConflictError);
         expect(fs.existsSync(nestedDestination)).toBe(false);
-        expect(fs.existsSync(path.join(sourceDir, "manifest.json"))).toBe(true);
+        expect(fs.existsSync(path.join(sourceDir, "index.json"))).toBe(true);
         fs.unlinkSync(linkedParent);
     });
 
     it("refuses the source bundle itself without changing its valid-looking manifest", async () => {
-        const manifestBefore = fs.readFileSync(path.join(sourceDir, "manifest.json"), "utf-8");
+        const manifestBefore = fs.readFileSync(path.join(sourceDir, "index.json"), "utf-8");
 
         await expect(new OutcomeLibraryOutputBuilder("1.3.0").build(outcomeLibraryProjectOf(sourceDir), sourceDir)).rejects.toThrow(
             BuildConflictError,
         );
-        expect(fs.readFileSync(path.join(sourceDir, "manifest.json"), "utf-8")).toBe(manifestBefore);
+        expect(fs.readFileSync(path.join(sourceDir, "index.json"), "utf-8")).toBe(manifestBefore);
     });
 
     it("reports preflight/cancellation before publishing and leaves no Outcome bundle", async () => {
@@ -140,12 +140,12 @@ describe("OutcomeLibraryOutputBuilder", () => {
                 signal: controller.signal,
                 onProgress: (event) => {
                     progress.push(event.message ?? event.status);
-                    if (event.message === "Publishing Outcome file manifest.json") controller.abort();
+                    if (event.message === "Publishing Outcome file index.json") controller.abort();
                 },
             }),
         ).rejects.toBeInstanceOf(BuildCancelledError);
 
-        expect(progress).toContain("Publishing Outcome file manifest.json");
+        expect(progress).toContain("Publishing Outcome file index.json");
         expect(fs.existsSync(unicodeDestination)).toBe(false);
         expect(fs.readdirSync(path.dirname(unicodeDestination)).filter((entry) => entry.startsWith(`${path.basename(unicodeDestination)}.`))).toEqual([]);
     });

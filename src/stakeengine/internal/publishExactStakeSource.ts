@@ -44,8 +44,8 @@ export function validateExactStakeSource(source: StakeEngineExactSource): void {
         })) : [],
     };
     const issues = new StakeEngineStandaloneValidator().validate(bundle);
-    if (source.files["pokie-manifest.json"] !== undefined) {
-        const manifestFile = file("pokie-manifest.json", bytes => JSON.parse(bytes.toString("utf8")));
+    if (source.files["pokie-info.json"] !== undefined) {
+        const manifestFile = file("pokie-info.json", bytes => JSON.parse(bytes.toString("utf8")));
         issues.push(...new StakeEngineImportValidator().validate({...bundle, manifest: manifestFile}));
         if (!issues.some(issue => issue.severity === "error") && manifestFile.status === "ok") {
             const manifest = manifestFile.value as StakeEngineInfo;
@@ -84,7 +84,7 @@ export function publishExactStakeSource(source: StakeEngineExactSource, outDir: 
     assertArtifactDestinationAvailable(outDir, "directory");
     const ownership = options?.destinationOwnership ?? capturePublishDirectoryOwnership(outDir);
     const files = Object.keys(source.files);
-    const manifest = source.files["pokie-manifest.json"] === undefined ? undefined : JSON.parse(Buffer.from(source.files["pokie-manifest.json"], "base64").toString("utf8")) as StakeEngineInfo;
+    const manifest = source.files["pokie-info.json"] === undefined ? undefined : JSON.parse(Buffer.from(source.files["pokie-info.json"], "base64").toString("utf8")) as StakeEngineInfo;
     const {publication} = publishDirectoryAtomically({
         outDir, ownership,
         beforeCommit: cancelled,

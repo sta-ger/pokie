@@ -20,7 +20,7 @@ export type StakeEngineInfoModeEntry = {
     readonly generator?: OutcomeLibraryGeneratorDiagnostics;
 };
 
-// POKIE's own provenance for a "pokie stakeengine export" run, written to "pokie-manifest.json" alongside
+// POKIE's own provenance for a "pokie stakeengine export" run, written to "pokie-info.json" alongside
 // Stake's own strict "index.json" (see StakeEngineIndex) so the output stays inspectable — what produced it,
 // from what, when — without Stake's own file ever carrying a field it doesn't expect.
 //

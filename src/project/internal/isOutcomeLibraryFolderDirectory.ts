@@ -5,12 +5,12 @@ import type {ProjectTargetInfoRecognition} from "./ProjectTargetInfoRecognition.
 
 // A recognition check for ProjectTargetResolver's outcomeLibrary adapter — deliberately not a structural
 // validation pass (OutcomeLibraryFolderValidator already owns that, against an already-recognized bundle
-// directory): just enough of manifest.json's own shape to tell "this directory is an outcome-library bundle"
+// directory): just enough of index.json's own shape to tell "this directory is an outcome-library bundle"
 // apart from any other directory, the same "recognize, don't validate" split isRecognizedStakeEngineExportDirectory
-// draws for Stake Engine export directories. A directory with no manifest.json, or one whose manifest.json
-// never declares a "schemaVersion" field at all, is "unrelated" — manifest.json is a common filename well
+// draws for Stake Engine export directories. A directory with no index.json, or one whose index.json
+// never declares a "schemaVersion" field at all, is "unrelated" — index.json is a common filename well
 // outside outcome-library bundles (e.g. web app / extension manifests), so its mere presence isn't a POKIE
-// signal on its own. But a manifest.json that fails to parse as JSON, or that does declare a "schemaVersion"
+// signal on its own. But a index.json that fails to parse as JSON, or that does declare a "schemaVersion"
 // yet doesn't match this bundle's required shape (wrong schemaVersion, non-array "modes", non-object "game"),
 // has already signalled intent to be an outcome-library bundle manifest and gotten the shape wrong — that's
 // "malformed", not "unrelated" (see ProjectTargetInfoRecognition's own doc comment).
@@ -19,7 +19,7 @@ export function recognizeOutcomeLibraryFolderDirectory(libraryDir: string): Proj
         return {kind: "unrelated"};
     }
 
-    const manifestPath = path.join(libraryDir, "manifest.json");
+    const manifestPath = path.join(libraryDir, "index.json");
     if (!fs.existsSync(manifestPath)) {
         return {kind: "unrelated"};
     }

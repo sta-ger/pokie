@@ -285,7 +285,7 @@ describe("Package delivery identity", () => {
     it.each([
         'npx --package @fromstan/pokie pokie dev ./game', 'from "@fromstan/pokie"',
         'npx --no-install pokie inspect .', 'npx --no-install\n  pokie dev ./game',
-        'pokie.entry .pokie pokie-manifest.json pokie.state.v2', 'https://github.com/sta-ger/pokie-examples',
+        'pokie.entry .pokie pokie-info.json pokie.state.v2', 'https://github.com/sta-ger/pokie-examples',
     ])("preserves product contracts and explicit scoped launch guidance: %s", text => {
         expect(staleDeliveryIdentity.test(text)).toBe(false);
     });

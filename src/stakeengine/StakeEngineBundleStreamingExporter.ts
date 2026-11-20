@@ -118,7 +118,7 @@ type BuiltMode = {
 // stabilized across several prior passes, and this class exists specifically to support a genuinely different
 // input shape (a bundle reference, not a WeightedOutcomeLibrary) without touching that file. It still produces
 // byte-for-byte the same Stake output shape (index.json, lookup_<mode>.csv, books_<mode>.jsonl.zst, pokie-
-// manifest.json) and reuses the same shared internals (assertSafeToReplaceStakeEngineExportDirectory,
+// index.json) and reuses the same shared internals (assertSafeToReplaceStakeEngineExportDirectory,
 // publishDirectoryAtomically, convertRatioToStakeUnits, parseStakeEngineOutcomeId, StakeEngineRoundEventsProjector)
 // so the two exporters can never silently disagree about what "the same mode, exported" looks like.
 //
@@ -218,7 +218,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
             const index: StakeEngineIndex = {
                 modes: manifestEntries.map((entry) => ({name: entry.name, cost: entry.cost, events: entry.events, weights: entry.weights})),
             };
-            const relativeFiles = [...manifestEntries.flatMap((entry) => [entry.weights, entry.events]), "index.json", "pokie-manifest.json"];
+            const relativeFiles = [...manifestEntries.flatMap((entry) => [entry.weights, entry.events]), "index.json", "pokie-info.json"];
             const manifest: StakeEngineInfo = {
                 schemaVersion: STAKE_ENGINE_INFO_SCHEMA_VERSION,
                 generatedBy: GENERATED_BY,
@@ -231,7 +231,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
                 files: relativeFiles,
             };
             fs.writeFileSync(path.join(stagingDir, "index.json"), `${JSON.stringify(index, null, 4)}\n`);
-            fs.writeFileSync(path.join(stagingDir, "pokie-manifest.json"), `${JSON.stringify(manifest, null, 4)}\n`);
+            fs.writeFileSync(path.join(stagingDir, "pokie-info.json"), `${JSON.stringify(manifest, null, 4)}\n`);
 
             assertSafeToReplaceStakeEngineExportDirectory(outDir);
             assertNotCancelled(options);

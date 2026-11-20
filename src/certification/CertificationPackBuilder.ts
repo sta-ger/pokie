@@ -56,7 +56,7 @@ function hashIndex(index: OutcomeLibraryFolderModeIndex): string {
 
 // Builds a canonical POKIE certification/evidence bundle *on top of* an already-built, already-valid Outcome
 // Library Bundle — deliberately never a second calculation path: every hash/metric this writes is either read
-// verbatim off the source bundle's own manifest.json (libraryHash/outcomeCount/totalWeight/analysis), or
+// verbatim off the source bundle's own index.json (libraryHash/outcomeCount/totalWeight/analysis), or
 // produced by selecting and reading samples directly against one pinned-in-memory snapshot of a mode's own
 // index (see "Pinned-snapshot sampling" below) — the exact same selection/verification algorithms the
 // pre-generated runtime and OutcomeLibraryFolderReader themselves use, just invoked directly against a snapshot
@@ -161,14 +161,14 @@ export class CertificationPackBuilder<T extends string | number = string> implem
 
         let sourceManifest: OutcomeLibraryFolderIndex;
         try {
-            if (!resolveSafeCertificationPackFilePath(libraryDir, "manifest.json")) throw new Error("Source manifest is missing, symlinked or unsafe.");
+            if (!resolveSafeCertificationPackFilePath(libraryDir, "index.json")) throw new Error("Source manifest is missing, symlinked or unsafe.");
             sourceManifest = await this.reader.readManifest(libraryDir);
         } catch (error) {
             return this.failed(outDir, upfrontIssues, [
                 {
                     code: "certification-pack-build-source-bundle-manifest-unreadable",
                     severity: "error",
-                    message: `Could not read "${libraryDir}"'s own manifest.json: ${error instanceof Error ? error.message : String(error)}.`,
+                    message: `Could not read "${libraryDir}"'s own index.json: ${error instanceof Error ? error.message : String(error)}.`,
                 },
             ]);
         }
@@ -187,7 +187,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
                 missingModeIssues.push({
                     code: "certification-pack-build-mode-not-found-in-bundle",
                     severity: "error",
-                    message: `mode "${modeInput.modeName}" is not present in "${libraryDir}"'s own manifest.json.`,
+                    message: `mode "${modeInput.modeName}" is not present in "${libraryDir}"'s own index.json.`,
                     details: {modeName: modeInput.modeName},
                 });
             }
@@ -261,7 +261,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
                 return this.failed(outDir, upfrontIssues, [...deepValidationIssues, driftIssue]);
             }
 
-            const relativeFiles = [...modeEntries.map((entry) => entry.samplesFile), ...formats.map(certificationPackFileName), "manifest.json"];
+            const relativeFiles = [...modeEntries.map((entry) => entry.samplesFile), ...formats.map(certificationPackFileName), "index.json"];
             const generatedAt = this.now().toISOString();
 
             const draftManifest = {
@@ -292,7 +292,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
                 this.writeFile(path.join(stagingDir, certificationPackFileName(format)), rendered);
             }
             assertNotCancelled(options);
-            this.writeFile(path.join(stagingDir, "manifest.json"), `${JSON.stringify(manifest, null, 4)}\n`);
+            this.writeFile(path.join(stagingDir, "index.json"), `${JSON.stringify(manifest, null, 4)}\n`);
 
             // Publish-time self-check: validates the fully-assembled staging directory exactly the way any
             // other consumer would validate a published bundle — an internal inconsistency here is a bug in
@@ -425,7 +425,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
             return {
                 code: "certification-pack-build-source-bundle-drift",
                 severity: "error",
-                message: `the source bundle's own manifest.json at "${libraryDir}" changed while evidence was being sampled; refusing to publish evidence against an inconsistent snapshot.`,
+                message: `the source bundle's own index.json at "${libraryDir}" changed while evidence was being sampled; refusing to publish evidence against an inconsistent snapshot.`,
             };
         }
 

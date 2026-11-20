@@ -4,7 +4,7 @@ import type {StakeEngineEvent} from "../StakeEngineEvent.js";
 // normalized into POKIE's own canonical shape -- deliberately NOT a RoundRecord/WeightedOutcome. Reconstructing
 // either of those (see StakeEngineImporting) requires POKIE-specific knowledge a genuinely foreign export never
 // carries and this standalone pipeline never assumes: a fixed reveal/win/finalWin event vocabulary, a per-round
-// win breakdown, betMode/stake, a pokie-manifest.json. This DTO only ever holds what index.json/CSV/books
+// win breakdown, betMode/stake, a pokie-info.json. This DTO only ever holds what index.json/CSV/books
 // themselves actually contain, reversed exactly where that's possible.
 //
 // "ratio" is "payoutMultiplier" (Stake's own integer unit, see docs/stake-engine-export.md#stake-unit-conversion)

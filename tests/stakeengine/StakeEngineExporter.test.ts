@@ -78,14 +78,14 @@ describe("StakeEngineExporter", () => {
         fs.rmSync(tmpRoot, {recursive: true, force: true});
     });
 
-    it("writes index.json, per-mode lookup CSVs, per-mode zstd books, and pokie-manifest.json that all round-trip exactly, in Stake units", async () => {
+    it("writes index.json, per-mode lookup CSVs, per-mode zstd books, and pokie-info.json that all round-trip exactly, in Stake units", async () => {
         const exporter = new StakeEngineExporter<string>("1.3.0");
 
         const result = await exporter.exportToDirectory(modes, outDir);
 
         expect(result.issues).toEqual([]);
         expect(new Set(result.files)).toEqual(
-            new Set(["lookup_base.csv", "books_base.jsonl.zst", "lookup_bonus.csv", "books_bonus.jsonl.zst", "index.json", "pokie-manifest.json"]),
+            new Set(["lookup_base.csv", "books_base.jsonl.zst", "lookup_bonus.csv", "books_bonus.jsonl.zst", "index.json", "pokie-info.json"]),
         );
         expect(new Set(fs.readdirSync(outDir))).toEqual(new Set(result.files));
 
@@ -98,7 +98,7 @@ describe("StakeEngineExporter", () => {
             ],
         });
 
-        const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "pokie-manifest.json"), "utf-8")) as StakeEngineInfo;
+        const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "pokie-info.json"), "utf-8")) as StakeEngineInfo;
         expect(manifest.generatedBy).toBe("pokie stakeengine export");
         expect(manifest.pokieVersion).toBe("1.3.0");
         expect(manifest.files).toEqual(result.files);
@@ -210,7 +210,7 @@ describe("StakeEngineExporter", () => {
             exporter.exportToDirectory(modes, outDir, {
                 signal: controller.signal,
                 onProgress: (progress) => {
-                    if (progress.message === "Publishing Stake file pokie-manifest.json") controller.abort();
+                    if (progress.message === "Publishing Stake file pokie-info.json") controller.abort();
                 },
             }),
         ).rejects.toThrow(StakeEngineExportCancelledError);
@@ -323,7 +323,7 @@ describe("StakeEngineExporter", () => {
         expect(fs.existsSync(outDir)).toBe(false);
     });
 
-    it("is safe to re-export into the same directory (recognizes its own pokie-manifest.json)", async () => {
+    it("is safe to re-export into the same directory (recognizes its own pokie-info.json)", async () => {
         const exporter = new StakeEngineExporter<string>("1.3.0");
 
         await exporter.exportToDirectory(modes, outDir);
@@ -343,7 +343,7 @@ describe("StakeEngineExporter", () => {
         expect(result.issues).toEqual([]);
         expect(fs.existsSync(path.join(outDir, "lookup_bonus.csv"))).toBe(false);
         expect(fs.existsSync(path.join(outDir, "books_bonus.jsonl.zst"))).toBe(false);
-        expect(new Set(fs.readdirSync(outDir))).toEqual(new Set(["lookup_base.csv", "books_base.jsonl.zst", "index.json", "pokie-manifest.json"]));
+        expect(new Set(fs.readdirSync(outDir))).toEqual(new Set(["lookup_base.csv", "books_base.jsonl.zst", "index.json", "pokie-info.json"]));
 
         const index = JSON.parse(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")) as StakeEngineIndex;
         expect(index.modes.map((entry) => entry.name)).toEqual(["base"]);
@@ -457,7 +457,7 @@ describe("StakeEngineExporter", () => {
         let claimed = false;
         const racingExportOptions = {
             onProgress: ({message}: {readonly message: string}): void => {
-                if (!claimed && message === "Publishing Stake file pokie-manifest.json") {
+                if (!claimed && message === "Publishing Stake file pokie-info.json") {
                     claimed = true;
                     fs.rmSync(outDir, {recursive: true, force: true});
                     fs.mkdirSync(outDir);

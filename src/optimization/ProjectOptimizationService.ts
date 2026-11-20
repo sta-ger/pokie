@@ -553,14 +553,14 @@ function validateProtectedFiles(project: PokieProject, policy: OptimizationPolic
         }
     }
     if (project.type === "outcomeLibrary") {
-        const manifest = JSON.parse(fs.readFileSync(path.join(project.rootPath, "manifest.json"), "utf8")) as {files: string[]};
+        const manifest = JSON.parse(fs.readFileSync(path.join(project.rootPath, "index.json"), "utf8")) as {files: string[]};
         for (const file of manifest.files) writableFiles.add(file);
-        writableFiles.add("manifest.json");
+        writableFiles.add("index.json");
     }
     if (project.type === "stakeAdapter") {
         const index = JSON.parse(fs.readFileSync(path.join(project.rootPath, "index.json"), "utf8")) as {modes: {name: string; weights: string}[]};
         for (const mode of index.modes) if (mode.name === policy.mode) writableFiles.add(mode.weights);
-        writableFiles.add("pokie-manifest.json");
+        writableFiles.add("pokie-info.json");
         writableFiles.add("pokie-native-weights.json");
     }
     for (const file of policy.protectedFiles) {

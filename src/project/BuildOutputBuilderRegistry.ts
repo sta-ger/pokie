@@ -1162,7 +1162,7 @@ export class BuildOutputBuilderRegistry {
             const root = path.resolve(options.destinationPath);
             const rootStat = fs.lstatSync(root);
             if (!rootStat.isDirectory() || rootStat.isSymbolicLink() || this.containsSymbolicLink(root)) return false;
-            const manifestPath = path.join(root, "manifest.json");
+            const manifestPath = path.join(root, "index.json");
             if (!fs.lstatSync(manifestPath).isFile()) return false;
             const manifest: unknown = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
             return typeof manifest === "object" && manifest !== null && Array.isArray((manifest as {modes?: unknown}).modes);

@@ -54,9 +54,9 @@ type RawSourceBytes = {
 };
 
 // Imports a Stake Engine export directory (index.json, per-mode lookup CSV, per-mode zstd-compressed JSONL
-// books, and its own sibling pokie-manifest.json) back into one WeightedOutcomeLibrary per mode — the reverse of
+// books, and its own sibling pokie-info.json) back into one WeightedOutcomeLibrary per mode — the reverse of
 // StakeEngineExporter. Only ever round-trips a directory "pokie stakeengine export" itself produced: betMode/
-// stake/game/configHash/pokieVersion/libraryId are recovered from pokie-manifest.json (the only place they ever
+// stake/game/configHash/pokieVersion/libraryId are recovered from pokie-info.json (the only place they ever
 // survive — Stake's own index.json/CSV/books never store them), never invented.
 //
 // This is inherently lossy at the POKIE-object level (see docs/stake-engine-import.md): the original RoundRecord
@@ -116,7 +116,7 @@ export class StakeEngineImporter<T extends string | number = string> implements 
                     }
                 }
                 if (issues.some(issue => issue.severity === "error")) return Promise.resolve({stakeDir, manifest: undefined, modes: [], sourceProvenance: undefined, issues});
-                const files: Record<string, string> = {"index.json": rawBytes.indexBuffer!.toString("base64"), "pokie-manifest.json": rawBytes.manifestBuffer!.toString("base64")};
+                const files: Record<string, string> = {"index.json": rawBytes.indexBuffer!.toString("base64"), "pokie-info.json": rawBytes.manifestBuffer!.toString("base64")};
                 for (const mode of index.modes) {
                     files[mode.weights] = rawBytes.modes.get(mode.name)!.csvBuffer!.toString("base64");
                     files[mode.events] = rawBytes.modes.get(mode.name)!.booksBuffer!.toString("base64");
@@ -231,7 +231,7 @@ export class StakeEngineImporter<T extends string | number = string> implements 
                 code: "stakeengine-import-library-hash-differs-from-manifest",
                 severity: "info",
                 message:
-                    `mode "${context.modeName}": the reconstructed library's hash is expected to differ from pokie-manifest.json's recorded ` +
+                    `mode "${context.modeName}": the reconstructed library's hash is expected to differ from pokie-info.json's recorded ` +
                     `libraryHash (${context.manifestMode.libraryHash}) — roundId, the real win breakdown, and provenance.pokieVersion are not ` +
                     "recoverable from the Stake export and are substituted (see docs/stake-engine-import.md). " +
                     "Reconstructed fractional native ratios/amounts are binary64 approximations; raw Stake units are forward-checked.",
@@ -332,7 +332,7 @@ export class StakeEngineImporter<T extends string | number = string> implements 
 
     private assembleBundle(stakeDir: string): {bundle: StakeEngineImportBundle; rawBytes: RawSourceBytes} {
         const index = this.readJsonFile(path.join(stakeDir, "index.json"));
-        const manifest = this.readJsonFile(path.join(stakeDir, "pokie-manifest.json"));
+        const manifest = this.readJsonFile(path.join(stakeDir, "pokie-info.json"));
 
         const modeFiles: StakeEngineImportModeFiles[] = [];
         const modeBytes = new Map<string, RawModeBytes>();

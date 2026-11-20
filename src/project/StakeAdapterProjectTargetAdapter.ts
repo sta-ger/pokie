@@ -15,6 +15,6 @@ export class StakeAdapterProjectTargetAdapter implements ProjectTargetTypeAdapte
         if (!isRecognizedStakeEngineExportDirectory(resolvedPath)) {
             return Promise.resolve(undefined);
         }
-        return Promise.resolve('recognized Stake Engine export manifest ("pokie-manifest.json")');
+        return Promise.resolve('recognized Stake Engine export manifest ("pokie-info.json")');
     }
 }

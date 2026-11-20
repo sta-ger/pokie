@@ -280,8 +280,8 @@ export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOp
             const publication: PublishedDirectoryOwnership = {outDir, identity: ownership.destinationIdentity!, members, retainEmptyDirectory: true};
             try {
                 const names = fs.readdirSync(tempDir).sort((a, b) => {
-                    if (a === "manifest.json") return 1;
-                    if (b === "manifest.json") return -1;
+                    if (a === "index.json") return 1;
+                    if (b === "index.json") return -1;
                     return a.localeCompare(b);
                 });
                 for (const name of names) {

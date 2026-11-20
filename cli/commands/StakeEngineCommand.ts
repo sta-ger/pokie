@@ -62,17 +62,17 @@ const CONFIG_HINT =
     "of \"libraryPath\"/\"libraryDir\" is required per mode — see docs/stake-engine-export.md for the format.";
 const STAKE_DIR_HINT =
     '<stakeDir> must be a directory produced by "pokie stakeengine export" (index.json, per-mode lookup ' +
-    "CSV/books, and its own pokie-manifest.json). Reconstruction does not accept a compatible foreign directory " +
+    "CSV/books, and its own pokie-info.json). Reconstruction does not accept a compatible foreign directory " +
     'without that manifest; use "pokie stakeengine analyze" (including its --out report) or "pokie stakeengine diff" ' +
     "instead — see docs/stake-engine-import.md for details.";
 const ANALYZE_STAKE_DIR_HINT =
     "<stakeDir> is any Stake Engine outcome directory (index.json, per-mode lookup CSV, per-mode zstd-compressed " +
-    'JSONL books) — POKIE\'s own export or a third party\'s, with or without a pokie-manifest.json — see ' +
+    'JSONL books) — POKIE\'s own export or a third party\'s, with or without a pokie-info.json — see ' +
     "docs/stake-engine-standalone.md for details.";
 const DIFF_STAKE_DIR_HINT =
     "<leftStakeDir> and <rightStakeDir> are each any Stake Engine outcome directory (index.json, per-mode lookup " +
     'CSV, per-mode zstd-compressed JSONL books) — POKIE\'s own export or a third party\'s, with or without a ' +
-    "pokie-manifest.json — see docs/stake-engine-standalone.md for details.";
+    "pokie-info.json — see docs/stake-engine-standalone.md for details.";
 
 // Exit codes for "pokie stakeengine diff", deliberately distinct from every other stakeengine subcommand's plain
 // 0/1: modeled on the Unix diff(1) convention (0 identical, 1 differs, 2 trouble) so a caller can tell "the two
@@ -350,7 +350,7 @@ export class StakeEngineCommand implements CliCommandHandling {
         parent
             .command("import")
             .description(
-                "Reconstruct WeightedOutcomeLibrary JSON files only from a POKIE-produced Stake Engine export with pokie-manifest.json; " +
+                "Reconstruct WeightedOutcomeLibrary JSON files only from a POKIE-produced Stake Engine export with pokie-info.json; " +
                 "use analyze/report or diff for compatible foreign directories.",
             )
             .argument("<stakeDir>", STAKE_DIR_HINT)
@@ -377,7 +377,7 @@ export class StakeEngineCommand implements CliCommandHandling {
 
         parent
             .command("analyze")
-            .description("Standalone-analyze an arbitrary Stake Engine outcome directory with no pokie-manifest.json required.")
+            .description("Standalone-analyze an arbitrary Stake Engine outcome directory with no pokie-info.json required.")
             .argument("<stakeDir>", ANALYZE_STAKE_DIR_HINT)
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
             .option(
@@ -590,7 +590,7 @@ export class StakeEngineCommand implements CliCommandHandling {
             const diagnostic = describeUnsupportedProjectOperation(project, STAKE_ENGINE_IMPORT_OPERATION);
             if (diagnostic !== undefined) throw new Error(diagnostic.message);
         }
-        throw new Error(`"${stakeDir}" is not a recognized POKIE-produced Stake Engine export with pokie-manifest.json.`);
+        throw new Error(`"${stakeDir}" is not a recognized POKIE-produced Stake Engine export with pokie-info.json.`);
     }
 
     /** Adapters present an import operation's result; the prepared plan owns its durable publication boundary. */
@@ -623,7 +623,7 @@ export class StakeEngineCommand implements CliCommandHandling {
         }
 
         const files = result.exactSource === undefined ? [
-            "manifest.json",
+            "index.json",
             ...result.modes.flatMap((mode) => [`index_${mode.modeName}.json`, `outcomes_${mode.modeName}.jsonl`]),
             "config.json",
             ...(result.sourceProvenance === undefined ? [] : ["source-provenance.json"]),
@@ -645,7 +645,7 @@ export class StakeEngineCommand implements CliCommandHandling {
         return 0;
     }
 
-    // Standalone counterpart to runImport: never requires a pokie-manifest.json, and never round-trips against a
+    // Standalone counterpart to runImport: never requires a pokie-info.json, and never round-trips against a
     // known WeightedOutcomeLibrary source -- it reads+normalizes (StakeEngineOutcomeSourceReader), validates, and
     // computes exact weighted statistics (StakeEngineStandaloneAnalyzer) over whatever the directory actually
     // contains, printing/writing the same machine-readable JSON shape ValidateCommand/SimCommand already use

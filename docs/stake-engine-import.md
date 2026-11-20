@@ -3,7 +3,7 @@
 # Stake Engine Import
 
 `stakeengine/` also imports a Stake Engine export directory (`index.json`, per-mode lookup CSV, per-mode
-zstd-compressed JSONL books, and its own sibling `pokie-manifest.json`) back into one
+zstd-compressed JSONL books, and its own sibling `pokie-info.json`) back into one
 [`WeightedOutcomeLibrary`](weighted-outcome-library.md) per mode — the reverse of
 [Stake Engine Export](stake-engine-export.md). Like every exporter/importer in the project, it never introduces
 a second calculation path: every reconstructed number already existed in the Stake export, converted back, never
@@ -21,7 +21,7 @@ this importer. Rather than invent plausible-looking stand-ins, the importer uses
 |---|---|
 | `roundId` | synthesized deterministically as `` `stakeengine-import:<modeName>:<id>` `` |
 | `wins` | one synthetic win component per step with `totalWin > 0`, flagged via `metadata.stakeEngineImportSynthetic: true` — see below |
-| `provenance.pokieVersion` | substituted with `pokie-manifest.json`'s own `pokieVersion` |
+| `provenance.pokieVersion` | substituted with `pokie-info.json`'s own `pokieVersion` |
 
 Within the supported format, Stake-facing outcome IDs, weights and raw integer payout multipliers
 round-trip exactly. Package fields (`cost`, `betMode`, `stake`, `libraryId`, game and config identity)
@@ -29,7 +29,7 @@ are saved. Reconstructed native fractional ratios and currency amounts are binar
 their floating-point bits need not match the original native objects. Each accepted reversal must
 reproduce the original raw Stake integer under the shared forward calculation.
 
-**Do not expect `computeWeightedOutcomeLibraryHash(importedLibrary)` to match `pokie-manifest.json`'s own recorded
+**Do not expect `computeWeightedOutcomeLibraryHash(importedLibrary)` to match `pokie-info.json`'s own recorded
 `libraryHash`** — it won't, because `roundId`/`wins`/`provenance.pokieVersion` differ from the original by design.
 `StakeEngineImporter` reports this as an expected, informational `stakeengine-import-library-hash-differs-from-manifest`
 issue on every successful mode, not a warning or error.
@@ -50,7 +50,7 @@ come back exactly from the manifest. `StakeEngineImportResult.modes` is typed as
 — the exporter's own input type — specifically so this round trip is a one-line operation, both in code and from
 the CLI (`pokie import <stakeDir>` writes exactly what `pokie build --target stakeAdapter` reads back in).
 
-## `pokie-manifest.json` is required
+## `pokie-info.json` is required
 
 Import only ever round-trips a directory produced by `pokie build --target stakeAdapter` — there is no path for
 importing a hand-crafted or foreign Stake package with caller-supplied fallback fields. Without a recognized
@@ -134,7 +134,7 @@ importer entirely still can't write outside `libraries/`.
 Beyond bare path safety, a mode's own `weights`/`events` filename must match Stake's naming convention
 *exactly* — the same one `StakeEngineExporter` itself always writes: a mode named `"base"` must use
 `"lookup_base.csv"`/`"books_base.jsonl.zst"`, checked independently in both `index.json` and
-`pokie-manifest.json` (mismatch reported as `stakeengine-import-mode-filename-mismatch`). Since mode names are
+`pokie-info.json` (mismatch reported as `stakeengine-import-mode-filename-mismatch`). Since mode names are
 already required unique (including case-insensitively — see above), this makes filename reuse structurally
 unreachable between two validly-named modes; `StakeEngineImportValidator` still tracks every filename it sees
 explicitly and reports a dedicated `stakeengine-import-filename-reused` / `stakeengine-import-filename-case-collision`
@@ -151,7 +151,7 @@ importer actually read, computed over the exact bytes on disk, before any parsin
 ```ts
 type StakeEngineImportSourceProvenance = {
  indexHash: string; // sha256:<hex>, of the raw index.json bytes
- manifestHash: string; // sha256:<hex>, of the raw pokie-manifest.json bytes
+ manifestHash: string; // sha256:<hex>, of the raw pokie-info.json bytes
  modes: {modeName: string; csvHash: string; booksHash: string}[]; // per mode, of the raw CSV/books.jsonl.zst bytes
 };
 ```
@@ -181,13 +181,13 @@ Two layers, mirroring the exporter's own "validate everything before building" d
 | `stakeengine-import-mode-filename-unsafe` | a mode's `weights`/`events` filename (in `index.json` or the manifest) is absolute, contains `..`, contains a path separator, or otherwise resolves outside `stakeDir` — see "Path safety" above |
 | `stakeengine-import-mode-filename-mismatch` | a mode's `weights`/`events` filename doesn't exactly match `lookup_<name>.csv`/`books_<name>.jsonl.zst` |
 | `stakeengine-import-filename-reused` / `stakeengine-import-filename-case-collision` | two modes' `weights`/`events` filenames are exactly the same, or differ only in case |
-| `stakeengine-import-manifest-missing` / `stakeengine-import-manifest-unreadable` / `stakeengine-import-manifest-invalid-json` | `pokie-manifest.json` doesn't exist / couldn't be read / doesn't parse as JSON |
+| `stakeengine-import-manifest-missing` / `stakeengine-import-manifest-unreadable` / `stakeengine-import-manifest-invalid-json` | `pokie-info.json` doesn't exist / couldn't be read / doesn't parse as JSON |
 | `stakeengine-import-manifest-unrecognized` | it parses but was not written by POKIE's connector export, or its `modes` isn't an array |
 | `stakeengine-import-manifest-schema-version-unsupported` | its `schemaVersion` isn't the currently supported one |
 | `stakeengine-import-manifest-field-invalid` | a required top-level manifest field (`game`, `pokieVersion`, `generatedAt`, `files`,...) is missing or the wrong type |
 | `stakeengine-import-manifest-mode-field-invalid` / `stakeengine-import-manifest-library-id-invalid` / `stakeengine-import-manifest-library-hash-invalid` / `stakeengine-import-manifest-outcome-count-invalid` | a manifest mode entry, or one of its `libraryId`/`libraryHash`/`outcomeCount` fields specifically, is missing or malformed (`libraryHash` must match `^sha256:[0-9a-f]{64}$`; `outcomeCount` must be a *positive* safe integer — zero outcomes is rejected, not silently accepted) |
-| `stakeengine-import-manifest-files-duplicate` / `stakeengine-import-manifest-files-entry-unsafe` | `pokie-manifest.json`'s own `files` list has an exact or case-only duplicate entry, or an entry that isn't itself a safe filename |
-| `stakeengine-import-manifest-files-missing-entry` / `stakeengine-import-manifest-files-unexpected-entry` | `files` doesn't match the exact expected set — `index.json`, `pokie-manifest.json`, and every *current* mode's own CSV/books filename, nothing missing, nothing extra |
+| `stakeengine-import-manifest-files-duplicate` / `stakeengine-import-manifest-files-entry-unsafe` | `pokie-info.json`'s own `files` list has an exact or case-only duplicate entry, or an entry that isn't itself a safe filename |
+| `stakeengine-import-manifest-files-missing-entry` / `stakeengine-import-manifest-files-unexpected-entry` | `files` doesn't match the exact expected set — `index.json`, `pokie-info.json`, and every *current* mode's own CSV/books filename, nothing missing, nothing extra |
 | `stakeengine-import-mode-missing-in-manifest` / `stakeengine-import-mode-missing-in-index` | a mode name is in one file but not the other |
 | `stakeengine-import-mode-cost-mismatch` | `index.json` and the manifest disagree on a mode's `cost` |
 | `stakeengine-import-csv-missing` / `stakeengine-import-csv-unreadable` | a mode's lookup CSV is absent / couldn't be read |

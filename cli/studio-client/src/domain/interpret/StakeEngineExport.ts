@@ -110,7 +110,7 @@ export function describeStakeEngineExportModeSourceStatus(status: StakeEngineExp
 // since even a validation failure still has real input/output/destination semantics worth explaining.
 export function describeStakeEngineExportDestinationNote(modeNames: readonly string[]): string {
     const perModeFiles = modeNames.flatMap((name) => [`lookup_${name}.csv`, `books_${name}.jsonl.zst`]);
-    const files = ["index.json", ...perModeFiles, "pokie-manifest.json"];
+    const files = ["index.json", ...perModeFiles, "pokie-info.json"];
 
     const inputOutput =
         `Input: each mode's own canonical outcome library, read only -- never modified by this pipeline.\n\n` +

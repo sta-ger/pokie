@@ -21,7 +21,7 @@ import type {StakeEngineStandaloneValidating} from "./StakeEngineStandaloneValid
 
 // Reads and normalizes an arbitrary Stake Engine outcome directory into StakeEngineOutcomeRecord DTOs -- the only
 // place in the standalone pipeline that ever touches the filesystem. Deliberately never looks for a
-// pokie-manifest.json (see StakeEngineOutcomeSourceReading): "cost" per mode comes straight out of index.json,
+// pokie-info.json (see StakeEngineOutcomeSourceReading): "cost" per mode comes straight out of index.json,
 // the one place a manifest-less directory ever records it, and events are normalized verbatim -- no attempt to
 // reconstruct a RoundRecord-shaped step model out of them (see StakeEngineOutcomeRecord's own doc comment for
 // why).

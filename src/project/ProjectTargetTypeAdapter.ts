@@ -14,7 +14,7 @@ export type ProjectTargetKind = "file" | "directory";
 // target that never looked like this type at all (no trace of the manifest/shape this adapter keys off) is
 // simply not recognized, same as one that superficially could be this type but turns out not to be. But a
 // target whose own manifest already signals intent to be this exact type — e.g. a package.json declaring a
-// "pokie" field, or a manifest.json declaring a "schemaVersion" — and then fails a deeper read (invalid JSON,
+// "pokie" field, or a index.json declaring a "schemaVersion" — and then fails a deeper read (invalid JSON,
 // a missing required field) is a different case: recognize() throws ProjectTargetMalformedError for that one
 // instead of reporting undefined, so a caller learns their target was recognized-but-broken rather than
 // mistaking it for an unrelated path (see that class's own doc comment; TsPackageProjectTargetAdapter/

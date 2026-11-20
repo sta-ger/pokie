@@ -51,5 +51,5 @@ export async function withRareStakeDirectory(run: (dir: string) => Promise<void>
 
 // Project resolution intentionally requires recognized POKIE provenance; standalone readers do not.
 export function markRecognizedStakeProject(dir: string): void {
-    fs.writeFileSync(path.join(dir, "pokie-manifest.json"), JSON.stringify({generatedBy: "pokie stakeengine export", generatedAt: new Date(0).toISOString()}));
+    fs.writeFileSync(path.join(dir, "pokie-info.json"), JSON.stringify({generatedBy: "pokie stakeengine export", generatedAt: new Date(0).toISOString()}));
 }

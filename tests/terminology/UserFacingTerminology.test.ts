@@ -30,7 +30,7 @@ const removedStudioLabels = [
     "Canonical symbol/line/scatter hits unavailable.",
     "Continue to Preview canonical model",
     "Declared capabilities",
-    "Download manifest.json",
+    "Download index.json",
     "Feature lifecycle",
     "Full evidence and provenance",
     "Generation preflight",

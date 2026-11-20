@@ -66,7 +66,7 @@ export class StudioCertificationService {
         const out = this.resolveOutputDirectory(projectRoot, request.outDir);
         if (out.status === "error") throw new Error(out.message);
         if (source.status === "error") throw new Error(source.message);
-        return packHash({outDir: out.resolvedPath, sourceManifest: certificationSourceHash(path.join(source.resolvedPath, "manifest.json")), inputs: [inputs.pack?.modelSource, ...(inputs.pack?.reportFiles ?? []), ...(inputs.pack?.replayFiles ?? []), inputs.output?.templateFile].filter((file): file is string => file !== undefined).map(certificationSourceHash)});
+        return packHash({outDir: out.resolvedPath, sourceManifest: certificationSourceHash(path.join(source.resolvedPath, "index.json")), inputs: [inputs.pack?.modelSource, ...(inputs.pack?.reportFiles ?? []), ...(inputs.pack?.replayFiles ?? []), inputs.output?.templateFile].filter((file): file is string => file !== undefined).map(certificationSourceHash)});
     }
 
     public async download(projectRoot: string, request: ValidatedCertificationBuildRequest, file: string, identity: string, signal?: AbortSignal): Promise<{bytes: Buffer; mime: string}> {
@@ -79,7 +79,7 @@ export class StudioCertificationService {
         if (cleanupFailure) throw new Error(cleanupFailure.message);
         if (signal?.aborted) throw new CertificationPackBuildCancelledError();
         if (issues.some(issue => issue.severity === "error")) throw new Error(`Pack inputs are stale or invalid: ${issues.map(issue => issue.message).join("; ")}`);
-        const manifest = JSON.parse(fs.readFileSync(path.join(out.resolvedPath, "manifest.json"), "utf8")) as {evidenceContentHash: string; files: string[]};
+        const manifest = JSON.parse(fs.readFileSync(path.join(out.resolvedPath, "index.json"), "utf8")) as {evidenceContentHash: string; files: string[]};
         if (manifest.evidenceContentHash !== identity || !manifest.files.includes(file)) throw new Error("Pack identity/file is stale or unknown.");
         const safe = resolveSafeCertificationPackFilePath(out.resolvedPath, file);
         if (!safe) throw new Error("Unsafe pack download path.");

@@ -48,7 +48,7 @@ type ModeBuildResult = {
 // Exports one or more canonical WeightedOutcomeLibrary instances (one per Stake "mode") to the real Stake
 // Engine math-sdk static file format (see https://stakeengine.github.io/math-sdk/rgs_docs/data_format/):
 // index.json (Stake's own strict shape), a per-mode lookup CSV, and per-mode zstd-compressed JSONL books — plus
-// a sibling pokie-manifest.json carrying POKIE's own provenance (index.json itself never gets extra fields).
+// a sibling pokie-info.json carrying POKIE's own provenance (index.json itself never gets extra fields).
 // Never a second calculation path: every number written here already exists on the library's own outcomes/
 // artifacts, converted into Stake's own integer unit convention (see convertRatioToStakeUnits), never recomputed
 // or rounded.
@@ -148,7 +148,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
             const relativeFiles = [
                 ...builtModes.flatMap((builtMode) => [builtMode.csvFileName, builtMode.booksFileName]),
                 "index.json",
-                "pokie-manifest.json",
+                "pokie-info.json",
             ];
 
             const firstOutcome = modes[0].library.outcomes[0];
@@ -222,8 +222,8 @@ export class StakeEngineExporter<T extends string | number = string> implements 
                 reportFile("Publishing Stake file index.json");
                 assertNotCancelled(options);
                 assertNotCancelled(options);
-                this.writeFile(path.join(tempDir, "pokie-manifest.json"), `${JSON.stringify(manifest, null, 4)}\n`);
-                reportFile("Publishing Stake file pokie-manifest.json");
+                this.writeFile(path.join(tempDir, "pokie-info.json"), `${JSON.stringify(manifest, null, 4)}\n`);
+                reportFile("Publishing Stake file pokie-info.json");
                 // The final callback is still a cancellation boundary: returning from this closure
                 // authorizes publishDirectoryAtomically to commit its temp directory.
                 assertNotCancelled(options);

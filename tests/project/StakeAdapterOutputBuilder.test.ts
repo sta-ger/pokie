@@ -55,7 +55,7 @@ describe("StakeAdapterOutputBuilder", () => {
 
         expect(result.outputPath).toBe(destinationDir);
         expect(new Set(fs.readdirSync(destinationDir))).toEqual(new Set(fs.readdirSync(sourceDir)));
-        for (const name of fs.readdirSync(sourceDir).filter(file => file !== "pokie-manifest.json")) {
+        for (const name of fs.readdirSync(sourceDir).filter(file => file !== "pokie-info.json")) {
             expect(fs.readFileSync(path.join(destinationDir, name))).toEqual(fs.readFileSync(path.join(sourceDir, name)));
         }
     });
@@ -106,7 +106,7 @@ describe("StakeAdapterOutputBuilder", () => {
 
         expect(result.outputPath).toBe(stakeDir);
         expect(fs.existsSync(path.join(stakeDir, "index.json"))).toBe(true);
-        expect(fs.existsSync(path.join(stakeDir, "pokie-manifest.json"))).toBe(true);
+        expect(fs.existsSync(path.join(stakeDir, "pokie-info.json"))).toBe(true);
         fs.rmSync(outcomeDir, {recursive: true, force: true});
         fs.rmSync(stakeDir, {recursive: true, force: true});
     });
@@ -174,12 +174,12 @@ describe("StakeAdapterOutputBuilder", () => {
                 signal: controller.signal,
                 onProgress: (event) => {
                     progress.push(event.message ?? event.status);
-                    if (event.message === "Publishing Stake file pokie-manifest.json") controller.abort();
+                    if (event.message === "Publishing Stake file pokie-info.json") controller.abort();
                 },
             }),
         ).rejects.toBeInstanceOf(BuildCancelledError);
 
-        expect(progress).toContain("Publishing Stake file pokie-manifest.json");
+        expect(progress).toContain("Publishing Stake file pokie-info.json");
         expect(fs.existsSync(unicodeDestination)).toBe(false);
         expect(fs.readdirSync(path.dirname(unicodeDestination)).filter((entry) => entry.startsWith(`${path.basename(unicodeDestination)}.`))).toEqual([]);
     });
@@ -227,6 +227,6 @@ describe("StakeAdapterOutputBuilder", () => {
         fs.rmSync(destinationDir, {recursive: true, force: true});
         claimOnCommit = false;
         await expect(builder.build(stakeAdapterProjectOf(sourceDir), destinationDir)).resolves.toMatchObject({outputPath: destinationDir});
-        expect(fs.existsSync(path.join(destinationDir, "pokie-manifest.json"))).toBe(true);
+        expect(fs.existsSync(path.join(destinationDir, "pokie-info.json"))).toBe(true);
     });
 });

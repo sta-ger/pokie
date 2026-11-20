@@ -25,7 +25,7 @@ export type StakeEngineStandaloneModeFiles = {
 // Everything read from a candidate Stake Engine outcome directory, before any validation has run -- assembled by
 // StakeEngineOutcomeSourceReader (the only place that touches the filesystem for standalone reading), then handed
 // to StakeEngineStandaloneValidator (which never does). Deliberately has no "manifest" field at all -- this
-// pipeline never looks for a pokie-manifest.json, unlike StakeEngineImportBundle.
+// pipeline never looks for a pokie-info.json, unlike StakeEngineImportBundle.
 export type StakeEngineStandaloneBundle = {
     readonly stakeDir: string;
     readonly index: StakeEngineStandaloneFileResult<unknown>;

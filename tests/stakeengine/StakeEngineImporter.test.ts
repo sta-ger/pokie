@@ -114,12 +114,12 @@ describe("StakeEngineImporter", () => {
         // "generatedAt" (a fresh timestamp) and each mode's "libraryHash" — the
         // reconstructed library legitimately hashes differently (roundId/wins/provenance.pokieVersion are
         // substituted, not reproduced) even though everything Stake actually cares about round-trips exactly.
-        const originalManifest = JSON.parse(fs.readFileSync(path.join(outDir, "pokie-manifest.json"), "utf-8")) as StakeEngineInfo;
-        const reExportedManifest = JSON.parse(fs.readFileSync(path.join(importedOutDir, "pokie-manifest.json"), "utf-8")) as StakeEngineInfo;
+        const originalManifest = JSON.parse(fs.readFileSync(path.join(outDir, "pokie-info.json"), "utf-8")) as StakeEngineInfo;
+        const reExportedManifest = JSON.parse(fs.readFileSync(path.join(importedOutDir, "pokie-info.json"), "utf-8")) as StakeEngineInfo;
         const hashOf = (fileName: string) => `sha256:${crypto.createHash("sha256").update(fs.readFileSync(path.join(outDir, fileName))).digest("hex")}`;
         const expectedSourceProvenance = {
             indexHash: hashOf("index.json"),
-            manifestHash: hashOf("pokie-manifest.json"),
+            manifestHash: hashOf("pokie-info.json"),
             modes: ["base", "bonus"].map(modeName => ({
                 modeName,
                 csvHash: hashOf(`lookup_${modeName}.csv`),
@@ -163,7 +163,7 @@ describe("StakeEngineImporter", () => {
         expect(imported.modes).toEqual([expect.objectContaining({modeName: "base", generator})]);
 
         await exporter.exportToDirectory(imported.modes.map((mode) => ({...mode, sourceProvenance: imported.sourceProvenance})), importedOutDir);
-        const reexported = JSON.parse(fs.readFileSync(path.join(importedOutDir, "pokie-manifest.json"), "utf-8")) as StakeEngineInfo;
+        const reexported = JSON.parse(fs.readFileSync(path.join(importedOutDir, "pokie-info.json"), "utf-8")) as StakeEngineInfo;
         expect(reexported.modes).toEqual([expect.objectContaining({name: "base", generator})]);
         expect(reexported.sourceProvenance).toEqual(imported.sourceProvenance);
     });
@@ -179,7 +179,7 @@ describe("StakeEngineImporter", () => {
         const hashOf = (filePath: string) => `sha256:${crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex")}`;
 
         expect(result.sourceProvenance?.indexHash).toBe(hashOf(path.join(outDir, "index.json")));
-        expect(result.sourceProvenance?.manifestHash).toBe(hashOf(path.join(outDir, "pokie-manifest.json")));
+        expect(result.sourceProvenance?.manifestHash).toBe(hashOf(path.join(outDir, "pokie-info.json")));
         expect(result.sourceProvenance?.modes).toEqual([
             {
                 modeName: "base",
@@ -218,9 +218,9 @@ describe("StakeEngineImporter", () => {
             await new StakeEngineExporter("1.3.0").exportToDirectory(modes, outDir);
         }
 
-        it("reports stakeengine-import-manifest-missing when pokie-manifest.json is removed", async () => {
+        it("reports stakeengine-import-manifest-missing when pokie-info.json is removed", async () => {
             await exportSingleOutcome(1, 5);
-            fs.rmSync(path.join(outDir, "pokie-manifest.json"));
+            fs.rmSync(path.join(outDir, "pokie-info.json"));
 
             const result = await new StakeEngineImporter().importFromDirectory(outDir);
 
@@ -257,7 +257,7 @@ describe("StakeEngineImporter", () => {
             const indexPath = path.join(outDir, "index.json");
             // Renames "base" everywhere in index.json (name *and* its own events/weights filenames, consistently
             // with Stake's naming convention) — a real disk rename of the same two files would need to follow,
-            // but doesn't here, which is exactly the point: index.json now names a mode pokie-manifest.json has
+            // but doesn't here, which is exactly the point: index.json now names a mode pokie-info.json has
             // never heard of.
             fs.writeFileSync(indexPath, fs.readFileSync(indexPath, "utf-8").replace(/base/g, "renamed"));
 
@@ -340,7 +340,7 @@ describe("StakeEngineImporter", () => {
 
         it("reports stakeengine-import-manifest-outcome-count-invalid when the manifest's outcomeCount is edited to zero", async () => {
             await exportSingleOutcome(1, 5);
-            const manifestPath = path.join(outDir, "pokie-manifest.json");
+            const manifestPath = path.join(outDir, "pokie-info.json");
             const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as StakeEngineInfo;
             fs.writeFileSync(manifestPath, JSON.stringify({...manifest, modes: [{...manifest.modes[0], outcomeCount: 0}]}));
 
@@ -352,7 +352,7 @@ describe("StakeEngineImporter", () => {
 
         it("reports stakeengine-import-manifest-files-missing-entry when the manifest's own files list drops a current mode's file", async () => {
             await exportSingleOutcome(1, 5);
-            const manifestPath = path.join(outDir, "pokie-manifest.json");
+            const manifestPath = path.join(outDir, "pokie-info.json");
             const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as StakeEngineInfo;
             fs.writeFileSync(manifestPath, JSON.stringify({...manifest, files: manifest.files.filter((file) => file !== "books_base.jsonl.zst")}));
 
@@ -404,7 +404,7 @@ describe("StakeEngineImporter", () => {
         expect(result.issues.some((issue) => issue.severity === "error")).toBe(false);
         expect(result.sourceProvenance).toBeDefined();
         expect(result.sourceProvenance?.indexHash).toBe(`sha256:${crypto.createHash("sha256").update(fs.readFileSync(path.join(outDir, "index.json"))).digest("hex")}`);
-        for (const filePath of [path.join(outDir, "index.json"), path.join(outDir, "pokie-manifest.json"), path.join(outDir, "lookup_base.csv"), path.join(outDir, "books_base.jsonl.zst")]) {
+        for (const filePath of [path.join(outDir, "index.json"), path.join(outDir, "pokie-info.json"), path.join(outDir, "lookup_base.csv"), path.join(outDir, "books_base.jsonl.zst")]) {
             expect(readCounts.get(filePath)).toBe(1);
         }
     });
