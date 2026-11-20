@@ -130,7 +130,7 @@ type OutcomeLibraryGenerationOptions = {
     configHash: string;
     outDir: string;
     maxOutcomeSpaceSize: string;
-    generation: "default" | "exact" | "sampled" | "bounded";
+    generation: "default" | "exact" | "sampled" | "capped";
     sampleSize: string;
     seed: string;
 };
@@ -239,7 +239,7 @@ function generationStrategyLabel(generation: OutcomeLibraryGenerationOptions["ge
         default: "Default (exact until cap)",
         exact: "Exact",
         sampled: "Sampled",
-        bounded: "Conditional bounded",
+        capped: "Conditional capped",
     };
     return labels[generation];
 }
@@ -418,10 +418,10 @@ function TargetCard({
     else if (artifactPreview.status === "conflict") artifactBuildDisabledReason = "Choose a different destination before building; Studio will not overwrite existing files.";
     else if (artifactPreview.status === "unsupported") artifactBuildDisabledReason = "This project cannot build this output until the displayed requirement is available.";
     const outcomeLibraryPending = outcomeLibraryRun.status === "starting" || outcomeLibraryRun.status === "running";
-    const outcomeLibraryDisabled = outcomeLibraryPending || outcomeLibraryPreflight.status !== "ok" || (outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded");
+    const outcomeLibraryDisabled = outcomeLibraryPending || outcomeLibraryPreflight.status !== "ok" || (outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "capped");
     let outcomeLibraryDisabledReason = outcomeLibraryPreflight.status !== "ok"
         ? "Outcome Library generation becomes available after its check succeeds."
-        : "Choose sampled or conditional bounded coverage before generating this Outcome Library.";
+        : "Choose sampled or conditional capped coverage before generating this Outcome Library.";
     if (outcomeLibraryPending) outcomeLibraryDisabledReason = "Wait for the current generation request to finish.";
     let lifecycleForm: string | undefined;
     if (card.kind === "outcomeLibrary") lifecycleForm = "outcome-library";
@@ -491,15 +491,15 @@ function TargetCard({
                             }
                         />
                         <Text size="sm" mt="sm" fw={600}>Generation strategy</Text>
-                        <Text size="xs" c="dimmed">Default follows the supported safe policy. Exact enumerates every combination. Sampled always takes a repeatable sample. Conditional bounded stays exact below the cap and samples only above it.</Text>
+                        <Text size="xs" c="dimmed">Default follows the supported safe policy. Exact enumerates every combination. Sampled always takes a repeatable sample. Conditional capped stays exact below the limit and samples only above it.</Text>
                         <Group gap="xs" mt={4}>
-                            {(["default", "exact", "sampled", "bounded"] as const).map((generation) => (
+                            {(["default", "exact", "sampled", "capped"] as const).map((generation) => (
                                 <Button key={generation} id={`outcome-library-generation-${generation}`} size="xs" variant={outcomeLibraryGenerationOptions.generation === generation ? "filled" : "default"} onClick={() => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, generation})}>
                                     {generationStrategyLabel(generation)}
                                 </Button>
                             ))}
                         </Group>
-                        {(outcomeLibraryGenerationOptions.generation === "sampled" || outcomeLibraryGenerationOptions.generation === "bounded") && (
+                        {(outcomeLibraryGenerationOptions.generation === "sampled" || outcomeLibraryGenerationOptions.generation === "capped") && (
                             <TextInput
                                 mt="sm"
                                 label="Sample size"
@@ -549,7 +549,7 @@ function TargetCard({
                                 value={outcomeLibraryGenerationOptions.maxOutcomeSpaceSize}
                                 onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, maxOutcomeSpaceSize: event.currentTarget.value})}
                             />
-                            {(outcomeLibraryGenerationOptions.generation === "sampled" || outcomeLibraryGenerationOptions.generation === "bounded") && (
+                            {(outcomeLibraryGenerationOptions.generation === "sampled" || outcomeLibraryGenerationOptions.generation === "capped") && (
                                 <TextInput
                                     mt="sm"
                                     label="Coverage seed"
@@ -583,8 +583,8 @@ function TargetCard({
                                     Estimated records: {operationalEstimates.recordCount}; output size: {operationalEstimates.outputSize}; memory/disk risk: {operationalEstimates.memoryRisk}/{operationalEstimates.diskRisk}; likely duration: {operationalEstimates.likelyDuration}. These stay unknown until measured calibration supports an estimate.
                                 </Text>
                             )}
-                            {outcomeLibraryPreflight.status === "ok" && outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded" && (
-                                <Text size="sm" c="orange">Choose sampled or conditional bounded coverage with a sample size and seed, or raise the exact limit before generating.</Text>
+                            {outcomeLibraryPreflight.status === "ok" && outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "capped" && (
+                                <Text size="sm" c="orange">Choose sampled or conditional capped coverage with a sample size and seed, or raise the exact limit before generating.</Text>
                             )}
                         </div>
                         <Button
@@ -644,7 +644,7 @@ function TargetCard({
                                 <Text size="sm" mt={4}>
                                     Generated {outcomeLibraryRun.result.mode.outcomeCount.toLocaleString()} outcomes for mode &quot;
                                     {outcomeLibraryRun.result.mode.modeName}&quot; using {outcomeLibraryRun.result.generator.strategy}
-                                    {outcomeLibraryRun.result.generator.strategy === "bounded-coverage"
+                                    {outcomeLibraryRun.result.generator.strategy === "capped-coverage"
                                         ? ` (${(outcomeLibraryRun.result.coverage * 100).toFixed(4)}% of the raw space)`
                                         : ""}
                                     {" "}(RTP {(outcomeLibraryRun.result.mode.rtp * 100).toFixed(2)}%) into{" "}
@@ -1229,14 +1229,14 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             ...(outcomeLibraryGenerationOptions.outDir.trim() === "" || outcomeLibraryGenerationOptions.outDir.trim() === "outcomelibrary" ? {} : {outDir: outcomeLibraryGenerationOptions.outDir.trim()}),
             generation,
             ...(outcomeLibraryGenerationOptions.maxOutcomeSpaceSize.trim() === "" ? {} : {maxOutcomeSpaceSize: outcomeLibraryGenerationOptions.maxOutcomeSpaceSize}),
-            ...(generation === "sampled" || generation === "bounded" ? {sample: {sampleSize: outcomeLibraryGenerationOptions.sampleSize, seed: outcomeLibraryGenerationOptions.seed}} : {}),
+            ...(generation === "sampled" || generation === "capped" ? {sample: {sampleSize: outcomeLibraryGenerationOptions.sampleSize, seed: outcomeLibraryGenerationOptions.seed}} : {}),
         })
             .then((result) => {
                 if (cancelled) return;
                 if (result.status === "ok" && result.defaults !== undefined) {
                     const maxOutcomeSpaceSize = outcomeLibraryGenerationOptions.maxOutcomeSpaceSize || String(result.defaults.maxExactOutcomeSpaceSize);
-                    const sampleSize = outcomeLibraryGenerationOptions.sampleSize || String(result.defaults.boundedSample.sampleSize);
-                    const seed = outcomeLibraryGenerationOptions.seed || result.defaults.boundedSample.seed;
+                    const sampleSize = outcomeLibraryGenerationOptions.sampleSize || String(result.defaults.cappedSample.sampleSize);
+                    const seed = outcomeLibraryGenerationOptions.seed || result.defaults.cappedSample.seed;
                     if (maxOutcomeSpaceSize !== outcomeLibraryGenerationOptions.maxOutcomeSpaceSize || sampleSize !== outcomeLibraryGenerationOptions.sampleSize || seed !== outcomeLibraryGenerationOptions.seed) {
                         // The token is bound to every request option. Do not
                         // leave the action enabled for the render that fills
@@ -1347,7 +1347,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         ) {
             const sample = recoveryRequest.sample;
             const sampleRecord = sample !== null && typeof sample === "object" ? sample as Readonly<Record<string, unknown>> : undefined;
-            const generation = recoveryRequest.generation === "exact" || recoveryRequest.generation === "sampled" || recoveryRequest.generation === "bounded"
+            const generation = recoveryRequest.generation === "exact" || recoveryRequest.generation === "sampled" || recoveryRequest.generation === "capped"
                 ? recoveryRequest.generation
                 : "default";
             setOutcomeLibraryGenerationOptions((current) => ({
@@ -1554,7 +1554,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             ...(outcomeLibraryGenerationOptions.libraryId.trim() === "" ? {} : {libraryId: outcomeLibraryGenerationOptions.libraryId.trim()}),
             ...(outcomeLibraryGenerationOptions.configHash.trim() === "" ? {} : {configHash: outcomeLibraryGenerationOptions.configHash.trim()}),
             ...(outcomeLibraryGenerationOptions.outDir.trim() === "" || outcomeLibraryGenerationOptions.outDir.trim() === "outcomelibrary" ? {} : {outDir: outcomeLibraryGenerationOptions.outDir.trim()}),
-            ...(outcomeLibraryGenerationOptions.generation === "sampled" || outcomeLibraryGenerationOptions.generation === "bounded"
+            ...(outcomeLibraryGenerationOptions.generation === "sampled" || outcomeLibraryGenerationOptions.generation === "capped"
                 ? {sample: {sampleSize: outcomeLibraryGenerationOptions.sampleSize, seed: outcomeLibraryGenerationOptions.seed}}
                 : {}),
             preflightToken: outcomeLibraryPreflight.result.preflightToken,

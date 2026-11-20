@@ -60,14 +60,14 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
     const last = artifacts[artifacts.length - 1];
     if (!last) throw new Error("Missing retained mathematical observation.");
     const event = (type: string) => last.featureEvents?.find(event => event.type === type)?.data;
-    const bounded = event("boundedMechanics") as FeatureChainObservation | undefined;
+    const bounded = event("featureChains") as FeatureChainObservation | undefined;
     const modifiers = event("screenModifiers") as ScreenModifierObservation<string> | undefined;
     const mechanics = blueprint.mechanics;
     const boundedModel = !!(mechanics?.cascade || mechanics?.respins || mechanics?.collection || mechanics?.weightedBonus);
-    if (boundedModel !== !!bounded || bounded && (typeof bounded !== "object" || Array.isArray(bounded))) throw new Error("Missing or unexpected retained boundedMechanics observation for artifact model.");
+    if (boundedModel !== !!bounded || bounded && (typeof bounded !== "object" || Array.isArray(bounded))) throw new Error("Missing or unexpected retained featureChains observation for artifact model.");
     if (!!mechanics?.modifiers !== !!modifiers || modifiers && (typeof modifiers !== "object" || Array.isArray(modifiers))) throw new Error("Missing or unexpected retained screenModifiers observation for artifact model.");
     for (const retained of last.featureEvents ?? []) {
-        if (["boundedMechanics", "screenModifiers", "holdAndWin", "jackpot", "chargedBetMode"].includes(retained.type) &&
+        if (["featureChains", "screenModifiers", "holdAndWin", "jackpot", "chargedBetMode"].includes(retained.type) &&
             stableSlotMathJson(retained.data ?? {}) !== stableSlotMathJson(projectPublicFeatureEvent(retained).data ?? {})) throw new Error(`Invalid retained ${retained.type} observation fields.`);
     }
     const current = observeVideoSlotFeatures(session);
@@ -85,7 +85,7 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
         const retained = artifacts.flatMap(step => step.featureEvents ?? []).filter(event => event.type === type);
         if (retained.length !== (expected ? 1 : 0) || stableSlotMathJson(event(type)) !== stableSlotMathJson(expected)) throw new Error(`Retained ${type} event contradicts its executable observation.`);
     }
-    for (const type of ["boundedMechanics", "screenModifiers"]) {
+    for (const type of ["featureChains", "screenModifiers"]) {
         if (artifacts.flatMap(step => step.featureEvents ?? []).filter(event => event.type === type).length !== (event(type) ? 1 : 0)) throw new Error(`Duplicate or misplaced retained ${type} event.`);
     }
     if (mechanics?.modifiers) {

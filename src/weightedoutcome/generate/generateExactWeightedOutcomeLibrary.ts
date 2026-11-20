@@ -66,10 +66,10 @@ function defaultHeapUsedLimitBytes(): number {
     return v8.getHeapStatistics().heap_size_limit * HEAP_SAFETY_FRACTION;
 }
 
-export type BoundedCoverageGenerationOptions = {
+export type CappedCoverageGenerationOptions = {
     // How many independent reel-stop draws to sample (with replacement) through the real calculation path.
     readonly sampleSize: bigint;
-    // Deterministic -- the same seed always draws the same sample, so a "bounded-coverage" library can be
+    // Deterministic -- the same seed always draws the same sample, so a "capped-coverage" library can be
     // reproduced exactly later (see OutcomeLibraryGeneratorDiagnostics.seed).
     readonly seed: string;
 };
@@ -115,7 +115,7 @@ export type GenerateExactWeightedOutcomeLibraryOptions = {
     readonly exact?: boolean;
     // Explicit opt-in: only consulted once the space actually exceeds maxOutcomeSpaceSize. Its mere presence
     // never downgrades an otherwise-exact run -- a space within maxOutcomeSpaceSize is always swept exactly.
-    readonly bounded?: BoundedCoverageGenerationOptions;
+    readonly capped?: CappedCoverageGenerationOptions;
     // Explicit sampled generation: performs exactly sampleSize deterministic raw draws through the
     // canonical runtime path, without sweeping the complete reel-stop space first.  This is separate
     // from `bounded`, whose historical contract only takes effect once the exact cap is exceeded.
@@ -126,7 +126,7 @@ export type GenerateExactWeightedOutcomeLibraryOptions = {
     // cancel/resume calls over a single logical sweep merges into the exact same complete library an
     // uninterrupted sweep would have produced; nothing labelled "exact" is ever returned from a partial
     // portion of the space alone. Only valid when this run itself resolves to the "exact" strategy -- passing
-    // it alongside a space that now requires "bounded-coverage" fails closed instead of silently discarding
+    // it alongside a space that now requires "capped-coverage" fails closed instead of silently discarding
     // it, and so does a checkpoint whose own progressTotal doesn't match this run's outcome space size, or
     // whose sourceEnumerationId (see computeExactEnumerationSourceId) doesn't match this run's own game/
     // config/reel-layout -- two games or configs can coincidentally share the same raw outcome-space size, so
@@ -203,7 +203,7 @@ function legacyOptionsForRequest(
         ...(prepared.recoveryAuthority === undefined ? {} : {recoveryAuthority: prepared.recoveryAuthority}),
         ...(prepared.generation === "exact" ? {exact: true} : {}),
         ...(prepared.generation === "sampled" ? {sampled: prepared.sample!} : {}),
-        ...(prepared.generation === "bounded" ? {bounded: prepared.sample!} : {}),
+        ...(prepared.generation === "capped" ? {capped: prepared.sample!} : {}),
         ...(prepared.resumeFrom === undefined ? {} : {resumeFrom: prepared.resumeFrom}),
         ...(prepared.signal === undefined ? {} : {signal: prepared.signal}),
         ...(prepared.onProgress === undefined ? {} : {onProgress: prepared.onProgress}),
@@ -249,7 +249,7 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
             "weighted-outcome-library-generation-space-exceeded",
             `"${manifest.id}"'s exact outcome space (${estimate.totalOutcomeSpaceSize} reel-stop combinations) exceeds ` +
                 `maxOutcomeSpaceSize (${request.maxExactOutcomeSpaceSize}). Pass a larger maxOutcomeSpaceSize, or opt into an explicitly-labelled ` +
-                'bounded-coverage strategy with `pokie generate <packageRoot> --sample <n> --seed <string>` or `pokie build <project> --target outcomeLibrary --sample <n> --seed <string>` (or the `sampled` option).',
+                'capped-coverage strategy with `pokie generate <packageRoot> --sample <n> --seed <string>` or `pokie build <project> --target outcomeLibrary --sample <n> --seed <string>` (or the `sampled` option).',
         );
     }
 
@@ -358,7 +358,7 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
         };
     }
 
-    const bounded = sampled as BoundedCoverageGenerationOptions;
+    const bounded = sampled as CappedCoverageGenerationOptions;
     return {
         strategy,
         maxExactOutcomeSpaceSize: request.maxExactOutcomeSpaceSize,
@@ -387,7 +387,7 @@ function toSafeWeightNumber(weight: bigint, id: string): number {
 
 // The core, reusable public producer: an executable built package (a loaded PokieGame -- see loadPokieGame) to
 // a canonical WeightedOutcomeLibrary, exact whenever the game's own reel-stop space is finite and within
-// bounds, and only ever an explicitly-labelled "bounded-coverage" sample otherwise (see
+// bounds, and only ever an explicitly-labelled "capped-coverage" sample otherwise (see
 // GenerateExactWeightedOutcomeLibraryOptions.bounded) -- never silently downgraded and never mislabeled.
 //
 // Every outcome is built by driving the SAME session/win-calculation runtime a live round uses --
@@ -551,7 +551,7 @@ async function *streamExactWeightedOutcomesInternal(
         totalOutcomeSpaceSize: toBigIntSafeDecimal(prepared.totalOutcomeSpaceSize),
         sampledRawCount: toBigIntSafeDecimal(processedRawCount),
         maxExactOutcomeSpaceSize: toBigIntSafeDecimal(prepared.maxExactOutcomeSpaceSize),
-        ...(prepared.strategy === "bounded-coverage" ? {seed: (options.sampled ?? options.bounded as BoundedCoverageGenerationOptions).seed} : {}),
+        ...(prepared.strategy === "capped-coverage" ? {seed: (options.sampled ?? options.capped as CappedCoverageGenerationOptions).seed} : {}),
         pokieVersion: options.pokieVersion,
         game: manifest,
         ...(prepared.configHash !== undefined ? {configHash: prepared.configHash} : {}),
@@ -770,7 +770,7 @@ export async function generateExactWeightedOutcomeLibrary(
 // calculation path: it samples exactly N reel-stop tuples (with replacement) and only then plays the
 // distinct sampled grids.  It never sweeps the full outcome space before sampling.
 export function generateSampledWeightedOutcomeLibrary(
-    options: Omit<GenerateExactWeightedOutcomeLibraryOptions, "bounded" | "sampled"> & {readonly sampled: SampledWeightedOutcomeLibraryOptions},
+    options: Omit<GenerateExactWeightedOutcomeLibraryOptions, "capped" | "sampled"> & {readonly sampled: SampledWeightedOutcomeLibraryOptions},
 ): Promise<GenerateExactWeightedOutcomeLibraryResult> {
     return generateExactWeightedOutcomeLibrary(options);
 }

@@ -3045,7 +3045,7 @@ export class StudioServer implements StudioServerHandling {
                     // transport conflict.
                     // This is deliberately a first-class transport outcome,
                     // not merely a 409 containing a convenient message.  The
-                    // browser can therefore render the same bounded-coverage
+                    // browser can therefore render the same capped-coverage
                     // recovery for either retained start route without
                     // guessing from a conflict string.
                     status: preflight.status === "ok" && preflight.requiresBounded ? "requires-bounded" : preflight.status,

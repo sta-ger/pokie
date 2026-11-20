@@ -144,7 +144,7 @@ describe("StakeEngineImporter", () => {
         const library = buildStakeEngineTestLibrary({libraryId: "generated-lib", betMode: "base", stake: 1});
         const generator = {
             algorithm: "enumerate-reel-stops-v1",
-            strategy: "bounded-coverage" as const,
+            strategy: "capped-coverage" as const,
             totalOutcomeSpaceSize: "10000",
             sampledRawCount: "128",
             seed: "retained-seed",

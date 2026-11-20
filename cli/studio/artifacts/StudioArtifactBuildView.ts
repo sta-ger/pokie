@@ -35,7 +35,7 @@ export type StudioArtifactBuildView =
               readonly sourceGameVersion?: string;
               readonly sourceConfigurationHash?: string;
               readonly sourcePokieVersion?: string;
-              readonly generationSemantics?: "exact" | "boundedSample";
+              readonly generationSemantics?: "exact" | "cappedSample";
               readonly sampleCount?: string;
               readonly sampleSeed?: string;
               readonly maxExactOutcomeSpaceSize?: string;

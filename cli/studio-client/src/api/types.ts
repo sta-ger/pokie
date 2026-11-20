@@ -1162,7 +1162,7 @@ export type WeightedOutcomeLibraryAnalysis = {
     payoutDistribution: WeightedOutcomePayoutBucket[];
 };
 
-export type OutcomeLibraryGenerationStrategy = "exact" | "bounded-coverage";
+export type OutcomeLibraryGenerationStrategy = "exact" | "capped-coverage";
 
 // POST /api/project/outcome-libraries/generate/estimate's own DTO — see
 // cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateEstimateView.ts's own doc comment. Mirrors "pokie
@@ -1194,7 +1194,7 @@ export type StudioOutcomeLibraryGenerateEstimateView =
           defaults: {
               compatibilityVersion: string;
               maxExactOutcomeSpaceSize: number | string;
-              boundedSample: {sampleSize: number | string; seed: string};
+              cappedSample: {sampleSize: number | string; seed: string};
           };
           preflightToken: string;
       }
@@ -1501,8 +1501,8 @@ export type StudioArtifactConversionPlan = {
     parConversion?: ParSheetConversionReport;
     packageExtraction?: PackageBlueprintExtractionResult;
     status: "planned" | "unavailable" | "conflict";
-    source: {kind: string; canonicalLocation?: string; recognitionProvenance?: string; capabilities: string[]; configurationProvenance?: {inputBindingHash?: string; configurationHash?: string; pokieVersion?: string; generationSemantics?: "exact" | "boundedSample"; gameId?: string; gameVersion?: string; manifestIdentity?: string; sampleCount?: string; sampleSeed?: string}};
-    target: {kind: string; canonicalLocation?: string; capabilities: string[]; configurationProvenance?: {generationSemantics?: "exact" | "boundedSample"; sampleCount?: string; sampleSeed?: string}};
+    source: {kind: string; canonicalLocation?: string; recognitionProvenance?: string; capabilities: string[]; configurationProvenance?: {inputBindingHash?: string; configurationHash?: string; pokieVersion?: string; generationSemantics?: "exact" | "cappedSample"; gameId?: string; gameVersion?: string; manifestIdentity?: string; sampleCount?: string; sampleSeed?: string}};
+    target: {kind: string; canonicalLocation?: string; capabilities: string[]; configurationProvenance?: {generationSemantics?: "exact" | "cappedSample"; sampleCount?: string; sampleSeed?: string}};
     steps: {kind: "extractPackageModel" | "importParWorkbook" | "publish" | "materializeRuntime" | "generateOutcomeLibrary" | "reuseManagedOutcomeLibrary"; choice: "materialize" | "reuse" | "publish"; estimatedWork: "none" | "read" | "materialize" | "generate" | "publish"; output: {kind: string; canonicalLocation?: string; recognitionProvenance?: string; capabilities: string[]}; losses?: string[]}[];
     preflight: {destinationKind: "file" | "directory"; estimatedWork: "none" | "read" | "materialize" | "generate" | "publish"; losses: string[]; oneWay: boolean};
     managedOutcome?: {disposition: "reused" | "ineligible"; reason?: string};
@@ -1536,7 +1536,7 @@ export type StudioArtifactBuildView =
           preflight?: {estimatedItemCount?: string; estimatedBytes?: string; complexityWarning?: string};
           stakeManifest?: StakeEngineInfo;
           stakeFiles?: string[];
-          stakePrerequisiteProvenance?: {route: "reuse" | "generate" | "publish"; selectedPrerequisiteLocation?: string; disposition: "borrowed" | "owned" | "transient" | "none"; sourceGameId?: string; sourceGameVersion?: string; sourceConfigurationHash?: string; sourcePokieVersion?: string; generationSemantics?: "exact" | "boundedSample"; sampleCount?: string; sampleSeed?: string; maxExactOutcomeSpaceSize?: string; compatibilityPolicyVersion?: string};
+          stakePrerequisiteProvenance?: {route: "reuse" | "generate" | "publish"; selectedPrerequisiteLocation?: string; disposition: "borrowed" | "owned" | "transient" | "none"; sourceGameId?: string; sourceGameVersion?: string; sourceConfigurationHash?: string; sourcePokieVersion?: string; generationSemantics?: "exact" | "cappedSample"; sampleCount?: string; sampleSeed?: string; maxExactOutcomeSpaceSize?: string; compatibilityPolicyVersion?: string};
           importedBlueprintPath?: string;
           conversionEvidencePath?: string;
           parConversion?: ParSheetConversionReport;

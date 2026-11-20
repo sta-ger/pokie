@@ -14,7 +14,7 @@ export function validateMechanicState(state: Record<string, unknown>, schema: Se
     const compositionError = getSessionCompositionError(schema.kind, baseKinds);
     if (compositionError) throw new Error(compositionError);
     const finite = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n >= 0;
-    if (schema.kind === "bounded-mechanics") {
+    if (schema.kind === "feature-chains") {
         const {collection, respins, weightedBonus} = schema.rules;
         if (weightedBonus) {
             const root = schema.base;

@@ -83,7 +83,7 @@ it("continues a declarative bonus through portable JSON restore and independent 
     try {
         const session = runtime.createSession("browser-feature", {trace});
         const entry = await session.play({bet: 0.05, roundId: "bonus", delivery: "stepwise"});
-        expect(entry).toMatchObject({stake: 0.05, win: 0.35, network: {boundedMechanics: {weightedBonus: {remaining: 2, selectedNow: true}}}});
+        expect(entry).toMatchObject({stake: 0.05, win: 0.35, network: {featureChains: {weightedBonus: {remaining: 2, selectedNow: true}}}});
         const state = JSON.parse(JSON.stringify(session.serialize()));
         const fresh = await browser.instantiatePokieWasm(fixture.bytes, fixture.manifest, new browser.SeededPokieWasmHost("fresh"));
         try {

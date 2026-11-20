@@ -247,7 +247,7 @@ function generateExactWeightedOutcomeLibrary(options: GenerateExactWeightedOutco
 
 function streamExactWeightedOutcomes(options: GenerateExactWeightedOutcomeLibraryOptions): AsyncGenerator<WeightedOutcomeInput, OutcomeLibraryGeneratorDiagnostics>;
 
-function generateSampledWeightedOutcomeLibrary(options: Omit<GenerateExactWeightedOutcomeLibraryOptions, "bounded" | "sampled"> & {
+function generateSampledWeightedOutcomeLibrary(options: Omit<GenerateExactWeightedOutcomeLibraryOptions, "capped" | "sampled"> & {
  sampled: {sampleSize: bigint; seed: string};
 }): Promise<{library: WeightedOutcomeLibrary; diagnostics: OutcomeLibraryGeneratorDiagnostics}>;
 ```
@@ -270,7 +270,7 @@ JSON-safety, and every other existing invariant are still checked by that one re
 `OutcomeLibraryFolderModeInput`'s own `outcomes` (see [Outcome Library Folder](outcome-library-folder.md)) — both
 are the exact same underlying generation.
 
-### Large spaces: bounds, bounded-coverage, cancel/resume/progress
+### Large spaces: bounds, capped-coverage, cancel/resume/progress
 
 Above `maxOutcomeSpaceSize` (a `bigint`, defaulting to 20,000,000 raw combinations), exact generation refuses to
 sweep exhaustively and fails closed with `weighted-outcome-library-generation-space-exceeded`, never silently
@@ -278,7 +278,7 @@ truncating. Recover with the public sampled workflow: `pokie generate <packageRo
 `pokie build <project> --target outcomeLibrary --sample <n> --seed <string>`, or the exported
 `generateSampledWeightedOutcomeLibrary({..., sampled: {sampleSize, seed}})` API. It directly performs `sampleSize`
 independent seeded reel-stop draws (with replacement) through the same calculation path, without first enumerating
-the raw space, and labels the result `"bounded-coverage"`. `bounded: {sampleSize, seed}` remains a backwards-compatible
+the raw space, and labels the result `"capped-coverage"`. `bounded: {sampleSize, seed}` remains a backwards-compatible
 API option that samples only when the exact cap is exceeded; a space within `maxOutcomeSpaceSize` is always swept
 exactly when using that legacy option. `sampleSize` must be a positive `bigint`; an invalid value fails with
 `weighted-outcome-library-generation-invalid-sample-size` and points to the same public `--sample <n> --seed <string>`
@@ -347,21 +347,21 @@ Outcome library folder; it can then be used with `pokie validate`, `pokie sim`, 
  option, so an invocation can never silently change from an exact sweep into a sample.
 - `--sample <n> --seed <string>` — directly performs exactly `n` deterministic reel-stop draws through the same
  runtime calculation path, without first sweeping the full outcome space. The resulting library is honestly
- labelled `"bounded-coverage"` and records both its sampled raw count and seed, so the same game/count/seed is
+ labelled `"capped-coverage"` and records both its sampled raw count and seed, so the same game/count/seed is
  reproducible. This is useful even for a small game when a deliberately limited Monte-Carlo library is wanted.
-- `--bounded --sample-size <n> --seed <string>` — opts into the honestly-labelled `"bounded-coverage"` strategy
+- `--bounded --sample-size <n> --seed <string>` — opts into the honestly-labelled `"capped-coverage"` strategy
  once the raw space exceeds `--max-outcome-space-size`; all three must be given together — `--sample-size`/`--seed`
  without `--bounded`, or `--bounded` without both of the other two, are rejected rather than silently ignored. A
  space within `--max-outcome-space-size` is always swept exactly regardless of whether `--bounded` was also given.
 - `--estimate` / `--dry-run` — run only the cheap, non-enumerating `estimateExactOutcomeSpaceSize` probe and print
- the raw space size plus which strategy (`"exact"` or `"bounded-coverage"`) a real run would resolve to, without
+ the raw space size plus which strategy (`"exact"` or `"capped-coverage"`) a real run would resolve to, without
  sweeping a single reel-stop tuple or playing a round.
 - `--out <file>` — write the generated `WeightedOutcomeLibrary` JSON to `<file>` in addition to the summary/JSON
  printed to stdout.
 - `--resume <file>` — on a run cancelled by `Ctrl-C` (`SIGINT`), `generate` writes a resumable checkpoint to
  `<file>` and exits with code `130`, printing the exact command to rerun; passing the same `--resume <file>` on
  the next invocation reads that checkpoint back and continues the sweep from where it left off (see "Large
- spaces: bounds, bounded-coverage, cancel/resume/progress" above — only ever valid for a run that itself resolves
+ spaces: bounds, capped-coverage, cancel/resume/progress" above — only ever valid for a run that itself resolves
  to `"exact"`). `Ctrl-C` without `--resume` still cancels (also exit code `130`) but loses all progress, since
  there's nowhere to persist the checkpoint to. On a run that completes normally, a stale checkpoint left over at
  `--resume <file>` from an earlier cancelled attempt is deleted, never silently reused by a later run.
@@ -373,7 +373,7 @@ Outcome library folder; it can then be used with `pokie validate`, `pokie sim`, 
 
 `OutcomeLibraryGeneratorDiagnostics` (`algorithm`, `strategy`, `totalOutcomeSpaceSize`/`sampledRawCount` — using the
 same bigint-safe number-or-decimal-string convention `stake-engine-standalone.md`'s own `StakeEngineStandaloneExactDecimal`
-uses, `seed` when `"bounded-coverage"`, `pokieVersion`/`game`/`configHash`/`generatedAt`) is returned alongside every
+uses, `seed` when `"capped-coverage"`, `pokieVersion`/`game`/`configHash`/`generatedAt`) is returned alongside every
 generated library. Threading it into `OutcomeLibraryFolderModeInput.generator` copies it verbatim into that mode's
 own library index entry (see [Outcome Library Folder](outcome-library-folder.md)) — present only for a mode
 actually built by this generator, absent for one built from an already-computed outcome source.

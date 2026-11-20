@@ -43,7 +43,7 @@ export type StudioOutcomeLibraryGenerateEstimateView =
           readonly defaults: {
               readonly compatibilityVersion: string;
               readonly maxExactOutcomeSpaceSize: number | string;
-              readonly boundedSample: {readonly sampleSize: number | string; readonly seed: string};
+              readonly cappedSample: {readonly sampleSize: number | string; readonly seed: string};
           };
           /** Opaque server snapshot. Pass it unchanged to generate to reject source/configuration/destination drift. */
           readonly preflightToken: string;

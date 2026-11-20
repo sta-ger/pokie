@@ -6,7 +6,7 @@
 //     mechanic, or simply a game that hasn't opted in. There is no strategy to fall back to here.
 //   - "weighted-outcome-library-generation-space-exceeded": the reel-stop combination space (product of
 //     every reel's SymbolsSequence size) is larger than the caller's own maxOutcomeSpaceSize, and the
-//     caller did not explicitly opt into a bounded/coverage strategy (see BoundedCoverageGenerationOptions)
+//     caller did not explicitly opt into a bounded/coverage strategy (see CappedCoverageGenerationOptions)
 //     — thrown instead of silently truncating or silently switching strategy.
 //   - "weighted-outcome-library-generation-invalid-sample-size": a direct or legacy sampled strategy was
 //     given a non-positive raw-draw count. Sampling always needs an explicit positive integer count.
@@ -25,7 +25,7 @@
 //     heapUsedLimitBytes) -- this game's reel/row layout evidently doesn't keep the distinct-grid count small
 //     relative to the raw outcome-space size, so an exact sweep cannot safely complete in this process's
 //     available memory. Not resumable (unlike a cancellation): the same memory ceiling would just be hit again
-//     immediately on retry -- the caller needs a bounded-coverage sample instead.
+//     immediately on retry -- the caller needs a capped-coverage sample instead.
 export class WeightedOutcomeLibraryGenerationError extends Error {
     private readonly code: string;
 

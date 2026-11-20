@@ -231,7 +231,7 @@ describe("FormatConversionPlanner", () => {
                 gameVersion: "1.0.0",
                 manifestIdentity: "slot@1.0.0",
                 pokieVersion: "1.3.0",
-                generationSemantics: "boundedSample" as const,
+                generationSemantics: "cappedSample" as const,
                 sampleCount: "100",
                 sampleSeed: "seed-a",
             },
@@ -257,13 +257,13 @@ describe("FormatConversionPlanner", () => {
     it("binds bounded sample count and seed into the requested output identity", () => {
         const plan = planner.plan(project("blueprint"), "outcomeLibrary", {
             destinationPath: "/exports/bounded-outcomes",
-            generationSemantics: "boundedSample",
+            generationSemantics: "cappedSample",
             sampleCount: BigInt(100),
             sampleSeed: "seed-a",
         });
 
         expect(plan.target.configurationProvenance).toEqual({
-            generationSemantics: "boundedSample",
+            generationSemantics: "cappedSample",
             sampleCount: "100",
             sampleSeed: "seed-a",
         });

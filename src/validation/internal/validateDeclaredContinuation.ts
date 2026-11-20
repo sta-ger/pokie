@@ -17,7 +17,7 @@ export function validateDeclaredContinuation(before: Record<string, unknown>, af
     const require = (valid: boolean, property: string, expected: unknown, actual: unknown): void => {
         if (!valid) throw new DeclaredContinuationError(`${path}.${property}`, expected, actual);
     };
-    if (schema.kind === "bounded-mechanics") {
+    if (schema.kind === "feature-chains") {
         const continuing = Number(before.remaining) > 0;
         const executed = continuing ? Number(before.executed) + 1 : 0;
         require(continuing ? after.entryBet === before.entryBet : Number(after.entryBet) > 0, "entryBet", continuing ? before.entryBet : "Positive accepted entry denomination", after.entryBet);
@@ -110,7 +110,7 @@ type AccountingOwnership = {continuation: boolean; bet?: number; multiplier?: nu
  */
 export function declaredAccountingOwnership(before: Record<string, unknown>, after: Record<string, unknown>, schema: SessionStateSchema): AccountingOwnership | undefined {
     if (schema.kind === "custom") return undefined;
-    if (schema.kind === "bounded-mechanics") {
+    if (schema.kind === "feature-chains") {
         const continuation = Number(before.remaining) > 0;
         const bet = continuation ? before.entryBet : after.entryBet;
         let minimum = 0;

@@ -12,7 +12,7 @@ export function describePreparedArtifactPlanDrift(
     sourcePath: string,
     target: OutputFormat,
     destinationPath?: string,
-    generationSemantics?: "exact" | "boundedSample",
+    generationSemantics?: "exact" | "cappedSample",
     sampleCount?: bigint | string,
     sampleSeed?: string,
 ): string | undefined {

@@ -1079,7 +1079,7 @@ export type OutcomeLibraryGenerationPreflightOptions = {
     libraryId?: string;
     outDir?: string;
     maxOutcomeSpaceSize?: string;
-    generation?: "default" | "exact" | "sampled" | "bounded";
+    generation?: "default" | "exact" | "sampled" | "capped";
     sample?: {sampleSize: string; seed: string};
     // Compatibility aliases accepted by the server for saved pre-PC-09
     // requests. New callers should use generation/sample.
@@ -1128,7 +1128,7 @@ export type OutcomeLibraryGenerateRequestOptions = {
     configHash?: string;
     libraryId?: string;
     maxOutcomeSpaceSize?: string;
-    generation?: "default" | "exact" | "sampled" | "bounded";
+    generation?: "default" | "exact" | "sampled" | "capped";
     sample?: {sampleSize: string; seed: string};
     bounded?: {sampleSize: string; seed: string};
     sampled?: {sampleSize: string; seed: string};

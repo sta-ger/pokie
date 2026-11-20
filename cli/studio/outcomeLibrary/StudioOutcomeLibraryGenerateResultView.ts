@@ -35,7 +35,7 @@ export type StudioOutcomeLibraryGenerateResultView =
           // generateExactWeightedOutcomeLibrary's own result -- never recomputed here.
           readonly generator: OutcomeLibraryGeneratorDiagnostics;
           // sampledRawCount / totalOutcomeSpaceSize as a plain 0..1 fraction -- always 1 for an "exact"
-          // strategy (every reachable reel-stop tuple was swept), less than 1 for "bounded-coverage".
+          // strategy (every reachable reel-stop tuple was swept), less than 1 for "capped-coverage".
           // Derived purely for display; the authoritative numbers are still generator's own fields.
           readonly coverage: number;
           // A ready-to-use OutcomeLibrarySelector pointing at the bundle mode this run just wrote, so a

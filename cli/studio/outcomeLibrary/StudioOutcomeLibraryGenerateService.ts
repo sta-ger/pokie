@@ -22,8 +22,8 @@ import {
     FormatConversionPlan,
     assertPreparedOutputDestinationAvailable,
     capturePublishDirectoryOwnership,
-    DEFAULT_BOUNDED_OUTCOME_LIBRARY_SAMPLE_SIZE,
-    DEFAULT_BOUNDED_OUTCOME_LIBRARY_SEED,
+    DEFAULT_CAPPED_OUTCOME_LIBRARY_SAMPLE_SIZE,
+    DEFAULT_CAPPED_OUTCOME_LIBRARY_SEED,
     DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
     OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_VERSION,
     describeFormatConversionPlanDiagnostic,
@@ -64,15 +64,15 @@ function toNumberApprox(value: number | string): number {
 // Service methods remain callable by existing in-process users that supplied
 // the pre-PC-09 validated shape directly. HTTP validation always fills the
 // canonical fields; this adapter is deliberately the one compatibility seam.
-function resolveGeneration(request: {generation?: "default" | "exact" | "sampled" | "bounded"; sampled?: {sampleSize: bigint; seed: string}; bounded?: {sampleSize: bigint; seed: string}}): "default" | "exact" | "sampled" | "bounded" {
+function resolveGeneration(request: {generation?: "default" | "exact" | "sampled" | "capped"; sampled?: {sampleSize: bigint; seed: string}; capped?: {sampleSize: bigint; seed: string}; bounded?: {sampleSize: bigint; seed: string}}): "default" | "exact" | "sampled" | "capped" {
     if (request.generation !== undefined) return request.generation;
     if (request.sampled !== undefined) return "sampled";
-    if (request.bounded !== undefined) return "bounded";
+    if (request.capped !== undefined) return "capped";
     return "default";
 }
 
-function resolveSample(request: {sample?: {sampleSize: bigint; seed: string}; sampled?: {sampleSize: bigint; seed: string}; bounded?: {sampleSize: bigint; seed: string}}): {sampleSize: bigint; seed: string} | undefined {
-    return request.sample ?? request.sampled ?? request.bounded;
+function resolveSample(request: {sample?: {sampleSize: bigint; seed: string}; sampled?: {sampleSize: bigint; seed: string}; capped?: {sampleSize: bigint; seed: string}; bounded?: {sampleSize: bigint; seed: string}}): {sampleSize: bigint; seed: string} | undefined {
+    return request.sample ?? request.sampled ?? request.capped;
 }
 
 type OtherModesResult = {readonly status: "ok"; readonly modes: readonly OutcomeLibraryFolderModeInput<string>[]; readonly manifestModeOrder: readonly string[]} | {readonly status: "error"; readonly message: string};
@@ -311,9 +311,9 @@ export class StudioOutcomeLibraryGenerateService {
                 defaults: {
                     compatibilityVersion: OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_VERSION,
                     maxExactOutcomeSpaceSize: formatBigIntSafely(DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE),
-                    boundedSample: {
-                        sampleSize: formatBigIntSafely(DEFAULT_BOUNDED_OUTCOME_LIBRARY_SAMPLE_SIZE),
-                        seed: DEFAULT_BOUNDED_OUTCOME_LIBRARY_SEED,
+                    cappedSample: {
+                        sampleSize: formatBigIntSafely(DEFAULT_CAPPED_OUTCOME_LIBRARY_SAMPLE_SIZE),
+                        seed: DEFAULT_CAPPED_OUTCOME_LIBRARY_SEED,
                     },
                 },
                 preflightToken,
@@ -1359,8 +1359,8 @@ export function generationRequestKey(request: {mode?: string; stake?: number; co
 
 function requestedGenerationFor(preflight: {readonly strategy: string; readonly sample?: {readonly sampleSize: bigint; readonly seed: string}}):
     | {readonly generationSemantics: "exact"}
-    | {readonly generationSemantics: "boundedSample"; readonly sampleCount: bigint; readonly sampleSeed: string} {
-    return preflight.strategy === "bounded-coverage" && preflight.sample !== undefined
-        ? {generationSemantics: "boundedSample", sampleCount: preflight.sample.sampleSize, sampleSeed: preflight.sample.seed}
+    | {readonly generationSemantics: "cappedSample"; readonly sampleCount: bigint; readonly sampleSeed: string} {
+    return preflight.strategy === "capped-coverage" && preflight.sample !== undefined
+        ? {generationSemantics: "cappedSample", sampleCount: preflight.sample.sampleSize, sampleSeed: preflight.sample.seed}
         : {generationSemantics: "exact"};
 }

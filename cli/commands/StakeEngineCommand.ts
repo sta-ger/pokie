@@ -944,7 +944,7 @@ export class StakeEngineCommand implements CliCommandHandling {
             if (e.generator !== undefined && !isOutcomeLibraryGeneratorDiagnostics(e.generator)) {
                 throw new Error(
                     `"${configPath}": modes[${position}]'s "generator" must be a complete Outcome Library generation descriptor ` +
-                    "(algorithm, exact/bounded-coverage strategy, decimal counts, game identity, POKIE version, and generatedAt; bounded coverage also requires seed). " +
+                    "(algorithm, exact/capped-coverage strategy, decimal counts, game identity, POKIE version, and generatedAt; bounded coverage also requires seed). " +
                     `${CONFIG_HINT}`,
                 );
             }

@@ -237,7 +237,7 @@ export class FeatureChainSession extends AbstractVideoSlotSessionDecorator imple
     }
     public getSessionStateSchema(): SessionStateSchema {
         const base = resolveSessionStateSchema(this.baseSession);
-        return {kind: "bounded-mechanics", rules: cloneSessionData(this.rules), bets: this.getAvailableBets(), base: this.rules.weightedBonus && base.kind === "seeded-video-slot" ? {...base, reels: this.getReelsNumber(), rows: this.getReelsSymbolsNumber(), symbols: this.getAvailableSymbols()} : base};
+        return {kind: "feature-chains", rules: cloneSessionData(this.rules), bets: this.getAvailableBets(), base: this.rules.weightedBonus && base.kind === "seeded-video-slot" ? {...base, reels: this.getReelsNumber(), rows: this.getReelsSymbolsNumber(), symbols: this.getAvailableSymbols()} : base};
     }
     public isSessionStateRestorable(): boolean {
         return this.constructor === FeatureChainSession && isSessionStateRestorable(this.baseSession);

@@ -64,7 +64,7 @@ export function projectPublicFeatureEvent(event: RoundRecordFeatureEvent): Round
     const data: Record<string, JsonValue> = {};
     const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0;
     if (finite(source.count)) data.count = source.count;
-    if (event.type === "boundedMechanics") {
+    if (event.type === "featureChains") {
         const bonus = source.weightedBonus;
         if (isJsonObject(bonus) && isJsonObject(bonus.selection)) {
             const selection: Record<string, JsonValue> = {};

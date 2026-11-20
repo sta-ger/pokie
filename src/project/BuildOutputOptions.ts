@@ -33,7 +33,7 @@ export type BuildOutputOptions = {
     // this on the registry-owned lifecycle options lets CLI and other callers select a direct sampled
     // generation without growing a parallel, CLI-only conversion path.
     readonly outcomeLibraryGeneration?:
-        // An explicit exact request suppresses the managed workflow's safe default bounded-coverage
+        // An explicit exact request suppresses the managed workflow's safe default capped-coverage
         // selection for a large raw reel-stop space.
         | {readonly exact: true; readonly sampled?: never; readonly maxExactOutcomeSpaceSize?: bigint; readonly compatibilityPolicyVersion?: string}
         | {readonly exact?: never; readonly sampled: {readonly sampleSize: bigint; readonly seed: string}; readonly maxExactOutcomeSpaceSize?: bigint; readonly compatibilityPolicyVersion?: string};

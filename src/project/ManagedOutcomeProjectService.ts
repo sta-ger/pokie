@@ -234,7 +234,7 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
                 configurationProvenance: {
                     configurationHash: compatibility.configHash,
                     pokieVersion: compatibility.pokieVersion,
-                    generationSemantics: (compatibility.generation ?? "exact") === "exact" ? "exact" : "boundedSample",
+                    generationSemantics: (compatibility.generation ?? "exact") === "exact" ? "exact" : "cappedSample",
                     gameId: compatibility.gameId,
                     gameVersion: compatibility.gameVersion,
                     manifestIdentity: `${compatibility.gameId}@${compatibility.gameVersion}`,
@@ -298,8 +298,8 @@ function generationProvenance(generation: string | undefined): Pick<NonNullable<
     if (generation === undefined || generation === "exact") return {generationSemantics: "exact"};
     const [, sampleCount, sampleSeed] = (/^sample:([^:]+):(.*)$/).exec(generation) ?? [];
     return sampleCount === undefined || sampleSeed === undefined
-        ? {generationSemantics: "boundedSample"}
-        : {generationSemantics: "boundedSample", sampleCount, sampleSeed};
+        ? {generationSemantics: "cappedSample"}
+        : {generationSemantics: "cappedSample", sampleCount, sampleSeed};
 }
 
 /**
@@ -327,7 +327,7 @@ function generatorMatchesCompatibility(
         generator.game.version !== compatibility.gameVersion ||
         generator.configHash !== compatibility.configHash ||
         generator.pokieVersion !== compatibility.pokieVersion) return false;
-    if (generator.strategy !== (generation === "exact" ? "exact" : "bounded-coverage")) return false;
+    if (generator.strategy !== (generation === "exact" ? "exact" : "capped-coverage")) return false;
     if (generator.maxExactOutcomeSpaceSize === undefined ||
         (compatibility.maxExactOutcomeSpaceSize !== undefined && String(generator.maxExactOutcomeSpaceSize) !== compatibility.maxExactOutcomeSpaceSize)) return false;
     if (generator.compatibilityPolicyVersion !== compatibility.compatibilityPolicyVersion) return false;

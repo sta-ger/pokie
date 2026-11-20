@@ -311,7 +311,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                 if (checkpoint.state.source !== state.feature.analytics.source || checkpoint.state.position + 1 !== state.feature.analytics.position) throw new Error("Analytics source/position contradicts its accepted checkpoint.");
                 const mathematicalEntry = round ? round.subrounds[0].index === 0 : state.feature.plainMath!.artifact.stake > 0;
                 const accounting = state.feature.accounting;
-                const bounded = observeVideoSlotFeatures(observation).boundedMechanics;
+                const bounded = observeVideoSlotFeatures(observation).featureChains;
                 const math = round?.subrounds[0];
                 const stake = math?.stake ?? state.feature.plainMath!.artifact.stake;
                 const payout = math?.payout ?? state.feature.plainMath!.payout;
@@ -348,7 +348,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                     if (typeof method === "function" && Reflect.apply(method, check.session, []) !== Reflect.get(last.network!, field)) throw new Error("Free-game state contradicts its last accepted observation.");
                 }
                 const nativeState = check.session.toSessionState() as {remaining?: number; executed?: number; value?: number; bonus?: {selection: unknown}};
-                const observed = last.network?.boundedMechanics;
+                const observed = last.network?.featureChains;
                 if (observed?.respins && (observed.respins.remaining !== nativeState.remaining || observed.respins.executed !== nativeState.executed) ||
                     observed?.collection && observed.collection.value !== nativeState.value ||
                     observed?.weightedBonus && (observed.weightedBonus.remaining !== nativeState.remaining || observed.weightedBonus.executed !== nativeState.executed || stableSlotMathJson(observed.weightedBonus.selection) !== stableSlotMathJson(nativeState.bonus?.selection))) throw new Error("Bounded state contradicts its last accepted observation.");
@@ -382,7 +382,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
             if (!result.deliveryOnly) {
                 analyticsCheckpoint = {state: observer.toState(), before: copy(before), balances: copy(balances)};
                 if (!before.pending) accounting = {entryPosition: analyticsCheckpoint.state.position + 1, credits: creditsBefore, stake: result.stake,
-                    baseWin: ((native as {getFreeGamesNum?: () => number}).getFreeGamesNum?.() ?? 0) > 0 ? 0 : result.win - (observeVideoSlotFeatures(native!).boundedMechanics?.weightedBonus?.payout ?? 0)};
+                    baseWin: ((native as {getFreeGamesNum?: () => number}).getFreeGamesNum?.() ?? 0) > 0 ? 0 : result.win - (observeVideoSlotFeatures(native!).featureChains?.weightedBonus?.payout ?? 0)};
                 if (blueprint.mechanics?.modifiers) {
                     const result = native!.getWinEvaluationResult();
                     componentAmounts = {ways: result.getWaysWins().map(c => c.getWinningWay().getWinAmount()), clusters: result.getClusterWins().map(c => c.getWinningCluster().getWinAmount())};

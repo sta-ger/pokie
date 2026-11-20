@@ -97,7 +97,7 @@ durable result stores retain their original historical results.
 
 ## State, replay and failure boundaries
 
-The `bounded-mechanics` executable schema owns `value`, `remaining`, `executed`,
+The `feature-chains` executable schema owns `value`, `remaining`, `executed`,
 `entryBet` and the nested seeded-video-slot snapshot, including resolved reel
 selections/RNG. Entire nested state is validated before restoring any component.
 Collection value survives completed paid rounds. Calculation/overflow, capture,
@@ -109,7 +109,7 @@ Cascade deliveries are saved mathematical artifacts, not additional calculations
 or settlements. Feature samples include meaningful zeros for collection
 value/cap/threshold/contribution/trigger/reset/payout, respin progress and cascade
 counts. Artifacts and their public view preserve these in
-`boundedMechanics` events. Play, history and artifact-only Replay interpret the
+`featureChains` events. Play, history and artifact-only Replay interpret the
 same event. Restoring an executable snapshot does not manufacture a historical
 win; durable state/artifacts and original retry results own that historical
 output. Reading, serializing, extracting and replaying do not advance a live RNG,

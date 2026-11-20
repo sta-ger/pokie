@@ -115,8 +115,8 @@ Stepwise/composite delivery, durable fresh-handler recovery and direct play use
 the same progression. Duplicate commands and delivery-only frames do not draw
 or count again. Failed uncommitted steps roll back effects, money, counters and
 RNG; committed prefixes remain available for continuation and settle once.
-Public network data exposes `boundedMechanics.weightedBonus`; artifacts
-retain the corresponding `boundedMechanics` feature event. Public Play/Replay
+Public network data exposes `featureChains.weightedBonus`; artifacts
+retain the corresponding `featureChains` feature event. Public Play/Replay
 views show selected table/outcome/context and duration. Exact audit replay binds
 that identity and configuration instead of silently resampling tampered state.
 

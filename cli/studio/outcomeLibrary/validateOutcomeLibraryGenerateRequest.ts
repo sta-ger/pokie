@@ -37,7 +37,7 @@ export type ValidatedOutcomeLibraryGenerateTransportRequest = {
     readonly generation?: OutcomeLibraryGenerationMode;
     readonly sample?: OutcomeLibraryGenerationSample;
     readonly sampled?: {readonly sampleSize: bigint; readonly seed: string};
-    readonly bounded?: {readonly sampleSize: bigint; readonly seed: string};
+    readonly capped?: {readonly sampleSize: bigint; readonly seed: string};
     readonly outDir?: string;
 };
 
@@ -69,13 +69,13 @@ export function adaptOutcomeLibraryGenerationTransport(input: Pick<OutcomeLibrar
     const requestedGeneration = validateGeneration(input.generation);
     let compatibilityGeneration: OutcomeLibraryGenerationMode | undefined;
     if (sampled !== undefined) compatibilityGeneration = "sampled";
-    else if (bounded !== undefined) compatibilityGeneration = "bounded";
+    else if (bounded !== undefined) compatibilityGeneration = "capped";
     if (requestedGeneration !== undefined && compatibilityGeneration !== undefined && requestedGeneration !== compatibilityGeneration) {
         throw new Error('"generation" cannot conflict with legacy "bounded" or "sampled" input.');
     }
     const generation = requestedGeneration ?? compatibilityGeneration ?? "default";
     const canonicalSample = sample ?? sampled ?? bounded;
-    if ((generation === "sampled" || generation === "bounded") && canonicalSample === undefined) {
+    if ((generation === "sampled" || generation === "capped") && canonicalSample === undefined) {
         throw new Error(`"generation" ${generation} requires a "sample" with "sampleSize" and "seed".`);
     }
     if ((generation === "default" || generation === "exact") && canonicalSample !== undefined) {
@@ -97,8 +97,9 @@ export function validateOutcomeLibraryGenerationSample(input: OutcomeLibraryGene
 
 function validateGeneration(value: unknown): OutcomeLibraryGenerationMode | undefined {
     if (value === undefined) return undefined;
-    if (value === "default" || value === "exact" || value === "sampled" || value === "bounded") return value;
-    throw new Error('"generation" must be "default", "exact", "sampled", or "bounded" when present.');
+    if (value === "default" || value === "exact" || value === "sampled" || value === "capped") return value;
+    if (value === "bounded") return "capped";
+    throw new Error('"generation" must be "default", "exact", "sampled", or "capped" when present.');
 }
 
 /** Parse every field that has identical meaning before and after preflight. */

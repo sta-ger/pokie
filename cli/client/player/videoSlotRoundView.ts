@@ -272,7 +272,7 @@ export function deriveFeatureCounters(response: VideoSlotRoundResponse): Feature
         counters.push({label: "FG bank", value: response.freeGamesBank});
     }
     if (typeof response.chargedBetModeId === "string") counters.push({label: "Charged mode", value: response.chargedBetModeId});
-    const bounded = asRecord(response.boundedMechanics);
+    const bounded = asRecord(response.featureChains);
     const bonus = asRecord(bounded.weightedBonus),
         selection = asRecord(bonus.selection);
     for (const key of ["tableId", "outcomeId", "context"]) if (typeof selection[key] === "string") counters.push({label: `Bonus ${key}`, value: selection[key] as string});
@@ -360,7 +360,7 @@ export function deriveBetModeId(betModeId: unknown): string | undefined {
 export function deriveFeatureCountersFromEvents(events: readonly {type: string; data?: Record<string, unknown>}[]): FeatureCounter[] {
     const response: VideoSlotRoundResponse = {};
     for (const event of events) {
-        if (event.type === "holdAndWin" || event.type === "jackpot" || event.type === "boundedMechanics") response[event.type] = event.data;
+        if (event.type === "holdAndWin" || event.type === "jackpot" || event.type === "featureChains") response[event.type] = event.data;
         if (event.type === "chargedBetMode") response.chargedBetModeId = event.data?.id;
     }
     return deriveFeatureCounters(response);

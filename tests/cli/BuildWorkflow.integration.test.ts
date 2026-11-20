@@ -254,7 +254,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         ).toBe(0);
         const manifest = JSON.parse(fs.readFileSync(path.join(outcomeDir, "index.json"), "utf-8")) as {modes: Array<{generator: {strategy: string; totalOutcomeSpaceSize: number; sampledRawCount: number; seed?: string}}>};
         expect(manifest.modes[0].generator).toEqual(expect.objectContaining({
-            strategy: "bounded-coverage",
+            strategy: "capped-coverage",
             totalOutcomeSpaceSize: 27_000_000,
             sampledRawCount: 5_000,
             seed: expect.stringMatching(/^pokie-managed-coverage:sha256:/),

@@ -552,7 +552,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                     "weighted-outcome-library-generation-space-exceeded",
                     `"${game.getInfo().id}"'s exact outcome space (${resolvedRequest.preflight.estimate.totalOutcomeSpaceSize} reel-stop combinations) exceeds ` +
                     `maxOutcomeSpaceSize (${resolvedRequest.preflight.maxExactOutcomeSpaceSize}). Pass a larger maxOutcomeSpaceSize, or opt into an explicitly-labelled ` +
-                    "bounded-coverage strategy with --sample <n> --seed <string>.",
+                    "capped-coverage strategy with --sample <n> --seed <string>.",
                 );
             }
             // A raw library is an array-shaped JSON document.  Printing it
@@ -659,7 +659,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             configurationProvenance: {
                 configurationHash: sourceBindingHash(),
                 pokieVersion: this.pokieVersion,
-                generationSemantics: resolvedRequest.preflight.strategy === "exact" ? "exact" as const : "boundedSample" as const,
+                generationSemantics: resolvedRequest.preflight.strategy === "exact" ? "exact" as const : "cappedSample" as const,
                 ...(resolvedRequest.preflight.strategy === "exact" ? {} : {
                     sampleCount: String(resolvedRequest.preflight.sample!.sampleSize),
                     sampleSeed: resolvedRequest.preflight.sample!.seed,
@@ -885,7 +885,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         let generation: OutcomeLibraryGenerationRequest["generation"] = "default";
         if (options.exact) generation = "exact";
         else if (sampling.sampled !== undefined) generation = "sampled";
-        else if (sampling.bounded !== undefined) generation = "bounded";
+        else if (sampling.bounded !== undefined) generation = "capped";
         const modeIdentity = resolveOutcomeLibraryRuntimeModeIdentity(game, options.mode);
         return {
             // Use the same resolved identity as the runtime and artifact.  In

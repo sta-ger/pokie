@@ -519,7 +519,7 @@ described in full below. Blueprint → PAR Workbook freezes generated, weighted,
 literal snapshot in the workbook; the source Blueprint remains unchanged. Blueprint and package sources can also create or reuse their managed compatible Outcome
 Library before producing an Outcome Library or Stake Engine output. Small finite reel-stop spaces are enumerated
 exactly. To keep a newcomer-created large Blueprint usable on Node's normal memory limit, a larger managed
-Blueprint/package export automatically writes a deterministic, labelled bounded-coverage library (5,000 draws;
+Blueprint/package export automatically writes a deterministic, labelled capped-coverage library (5,000 draws;
 the package records its strategy and seed). Use `pokie build <project> --target outcomeLibrary --exact` only when
 you specifically need every outcome and have sized memory and storage for the full outcome library; `--sample <n>
 --seed <seed>` selects a different deterministic coverage size explicitly. Same-type Outcome, Stake, and PAR cells
@@ -1276,7 +1276,7 @@ a different `--out` path, then run the command again without `--dry-run` to publ
 
 When `<source>` is a Blueprint or runnable game package, `outcomeLibrary` and `stakeAdapter` share the managed Outcome
 Library status described in [`pokie build`](#pokie-build-project). Large reel-stop spaces automatically use its
-deterministic bounded-coverage library, so a random Blueprint can then use either format conversion on the
+deterministic capped-coverage library, so a random Blueprint can then use either format conversion on the
 standard Node heap; inspect `index.json` to see the recorded strategy and seed.
 
 Standalone descriptors use the same command and prepared planner operation. Outcome descriptors

@@ -59,7 +59,7 @@ function sessionAnalyticsEnvelope(session: GameSessionHandling): AnalyticsEnvelo
     if (typeof (session as Partial<CascadeResultProviding>).getCascadeResult === "function") supported.add("cascade");
     let schema = resolveSessionStateSchema(session);
     for (let depth = 0; depth < 32; depth++) {
-        if (schema.kind === "bounded-mechanics") {
+        if (schema.kind === "feature-chains") {
             if (schema.rules.respins) supported.add("respins");
             if (schema.rules.weightedBonus) supported.add("weightedBonus");
             if (schema.rules.collection) supported.add("collection");
@@ -155,7 +155,7 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
         if (before.free && (after.freeNum !== before.freeNum + 1 || after.freeSum !== before.freeSum + grant)) throw invalid();
         if (before.hold && (before.locks > after.locks || before.holdRemaining < 1 || before.holdRemaining > this.holdGrant! ||
             after.hold && after.holdRemaining !== (after.locks > before.locks ? this.holdGrant : before.holdRemaining - 1))) throw invalid();
-        const bounded = observeVideoSlotFeatures(this.session).boundedMechanics;
+        const bounded = observeVideoSlotFeatures(this.session).featureChains;
         for (const [feature, observed] of [["weightedBonus", bounded?.weightedBonus], ["respins", bounded?.respins]] as const) {
             if (!observed) continue;
             const continuing = observed.executed > 0;
@@ -171,7 +171,7 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
         const session = this.session;
         const free = session as Partial<FreeGamesStateDetermining>;
         const hold = session as Partial<HoldAndWinStateDetermining>;
-        const bounded = observeVideoSlotFeatures(session).boundedMechanics;
+        const bounded = observeVideoSlotFeatures(session).featureChains;
         const pending = (session as Partial<LogicalRoundProgressProviding>).hasPendingLogicalRound?.() ?? false;
         return {
             pending,
@@ -190,13 +190,13 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
         const session = this.session,
             after = this.beforePlay();
         const observations = observeVideoSlotFeatures(session),
-            bounded = observations.boundedMechanics;
+            bounded = observations.featureChains;
         const cascade = (session as Partial<CascadeResultProviding>).getCascadeResult?.();
         const exhausted = cascade?.getMetadata().maxCascadeStepsExceeded === true;
         const components = (session as Partial<VideoSlotSessionHandling>).getWinEvaluationResult?.().getWinComponents();
         let schema = resolveSessionStateSchema(session);
-        while ("base" in schema && schema.kind !== "bounded-mechanics") schema = schema.base;
-        const rules = schema.kind === "bounded-mechanics" ? schema.rules : undefined;
+        while ("base" in schema && schema.kind !== "feature-chains") schema = schema.base;
+        const rules = schema.kind === "feature-chains" ? schema.rules : undefined;
         const bonusId = rules?.weightedBonus?.feature.id;
         const collectionId = rules?.collection?.symbolId;
         const carriedSubround = before.pending && !this.state.logicalKnown;

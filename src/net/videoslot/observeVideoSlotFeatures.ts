@@ -10,7 +10,7 @@ export function observeVideoSlotFeatures<T extends string | number | symbol = st
     const modifiers = (session as {getModifierObservation?: () => import("../../session/videoslot/modifiers/ScreenModifiers.js").ScreenModifierObservation<T> | undefined}).getModifierObservation?.();
     const bounded = (session as Partial<import("../../session/videoslot/authored/FeatureChains.js").FeatureChainsProviding>).getFeatureChainObservation?.();
     return {
-        ...(bounded ? {boundedMechanics: bounded} : {}),
+        ...(bounded ? {featureChains: bounded} : {}),
         ...(modifiers ? {modifiers} : {}),
         ...(hold.isHoldAndWinActive ? {holdAndWin: {active: hold.isHoldAndWinActive(), locks: hold.getLockedHoldAndWinSymbols!(), respinsRemaining: hold.getHoldAndWinRespinsRemaining!(), payout: hold.getHoldAndWinPayout!()}} : {}),
         ...(jackpot.getJackpotPools ? {jackpot: {pools: jackpot.getJackpotPools().map(pool => ({id: pool.getId(), value: pool.getValue()})), statistics: jackpot.getJackpotPoolStatistics!(), ...(outcome?.kind === "awarded" ? {award: {poolId: outcome.poolId, amount: outcome.amount}} : {})}} : {}),

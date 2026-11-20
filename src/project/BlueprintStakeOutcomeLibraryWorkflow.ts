@@ -525,10 +525,10 @@ function outcomeGenerationPreflight(preflight: OutcomeLibraryGenerationPreflight
         // A generated outcome record contains a round record, so this intentionally conservative estimate is
         // a planning signal only; the precise output size is unknown until grids have been deduplicated.
         estimatedBytes: estimatedItemCount * BigInt(1024),
-        ...(estimatedItemCount > BigInt(10_000) || preflight.strategy === "bounded-coverage"
+        ...(estimatedItemCount > BigInt(10_000) || preflight.strategy === "capped-coverage"
             ? {complexityWarning: preflight.strategy === "exact"
                 ? `Exact generation will enumerate ${estimatedItemCount} reel-stop combinations.`
-                : `Large source (${preflight.estimate.totalOutcomeSpaceSize} reel-stop combinations): using ${estimatedItemCount} deterministic bounded-coverage draws. Use an explicit exact build only when the full artifact library fits your memory and storage budget.`}
+                : `Large source (${preflight.estimate.totalOutcomeSpaceSize} reel-stop combinations): using ${estimatedItemCount} deterministic capped-coverage draws. Use an explicit exact build only when the full artifact library fits your memory and storage budget.`}
             : {}),
     };
 }

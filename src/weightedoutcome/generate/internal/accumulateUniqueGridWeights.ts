@@ -20,7 +20,7 @@ function yieldToEventLoop(): Promise<void> {
 
 export type UniqueGridWeightEntry<T extends string | number = string> = {readonly grid: T[][]; weight: bigint};
 
-// Phase 1 of exact/bounded-coverage generation: streams every raw reel-stop tuple "tuples" produces (never
+// Phase 1 of exact/capped-coverage generation: streams every raw reel-stop tuple "tuples" produces (never
 // materializing them as an array -- see sweepStopTuples/sampleStopTuples), resolves each into its visible
 // grid via the precomputed reel windows, and accumulates an exact integer weight per DISTINCT grid --
 // mirroring SymbolsCombinationsAnalyzer.getUniqueCombinationsWithWeights's own "dedupe identical grids so the
@@ -93,7 +93,7 @@ export async function accumulateUniqueGridWeights<T extends string | number = st
                             `(${Math.round(options.heapUsedLimitBytes / (1024 * 1024))} MB) before finishing. The distinct-grid count this ` +
                             "game's own reel/row layout reaches evidently does not stay small relative to the raw outcome-space size, " +
                             "so an exact sweep cannot safely complete in this process's available memory. Re-run with an explicit " +
-                            `bounded-coverage sample instead: --max-outcome-space-size below ${progressTotal} (this run's own raw space -- ` +
+                            `capped-coverage sample instead: --max-outcome-space-size below ${progressTotal} (this run's own raw space -- ` +
                             "--bounded is otherwise ignored whenever the space already fits under the default/given cap) together with " +
                             "--bounded --sample-size <n> --seed <seed>. Or generate in a process with more available memory.",
                     );

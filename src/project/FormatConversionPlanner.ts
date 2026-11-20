@@ -53,7 +53,7 @@ export type OutputConfigurationOrigin = {
      */
     readonly inputBindingHash?: string;
     readonly pokieVersion?: string;
-    readonly generationSemantics?: "exact" | "boundedSample";
+    readonly generationSemantics?: "exact" | "cappedSample";
     readonly gameId?: string;
     readonly gameVersion?: string;
     readonly manifestIdentity?: string;
@@ -406,7 +406,7 @@ export function describeFormatConversionPlanDiagnostic(plan: FormatConversionPla
 
 export type FormatConversionPlanningOptions = {
     readonly destinationPath?: string;
-    readonly generationSemantics?: "exact" | "boundedSample";
+    readonly generationSemantics?: "exact" | "cappedSample";
     readonly sampleCount?: bigint | string;
     readonly sampleSeed?: string;
     readonly maxExactOutcomeSpaceSize?: bigint | string;
@@ -1072,7 +1072,7 @@ export class FormatConversionPlanner {
     private targetIdentity(
         kind: OutputFormat,
         destinationPath?: string,
-        generationSemantics?: "exact" | "boundedSample",
+        generationSemantics?: "exact" | "cappedSample",
         sampleCount?: bigint | string,
         sampleSeed?: string,
         maxExactOutcomeSpaceSize?: bigint | string,
@@ -1097,7 +1097,7 @@ export class FormatConversionPlanner {
         };
     }
 
-    private preflight(target: OutputFormat, source: ProjectType, _generationSemantics?: "exact" | "boundedSample"): FormatConversionCheck {
+    private preflight(target: OutputFormat, source: ProjectType, _generationSemantics?: "exact" | "cappedSample"): FormatConversionCheck {
         const generation = target === "outcomeLibrary" || (target === "stakeAdapter" && (source === "blueprint" || source === "tsPackage"));
         let losses: readonly string[] = [];
         if (target === "parWorkbook") {

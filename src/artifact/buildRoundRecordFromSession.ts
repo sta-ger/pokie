@@ -70,7 +70,7 @@ export function deriveStandardFeatureEvents(session: unknown): RoundRecordFeatur
     const observations = observeVideoSlotFeatures(session);
     const events: RoundRecordFeatureEventInput[] = [];
     if (supportsWonFreeGamesNumberDetermining(session) && session.getWonFreeGamesNumber() > 0) events.push({type: "freeGamesTriggered", data: {count: session.getWonFreeGamesNumber()}});
-    if (observations.boundedMechanics) events.push({type: "boundedMechanics", data: observations.boundedMechanics});
+    if (observations.featureChains) events.push({type: "featureChains", data: observations.featureChains});
     if (observations.modifiers) events.push({type: "screenModifiers", data: observations.modifiers});
     if (observations.holdAndWin) events.push({type: "holdAndWin", data: observations.holdAndWin});
     if (observations.jackpot) events.push({type: "jackpot", data: observations.jackpot});

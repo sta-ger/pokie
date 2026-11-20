@@ -75,8 +75,8 @@ export class SessionRuntime implements SessionRuntimeHandling {
         // incidental insertion order of captured versus restored selection objects.
         if (selections?.length && !sequenceSelectionsEqual(selections, retained)) throw new Error("Retained weighted selections differ from the logical round.");
         const schema = resolveSessionStateSchema(session);
-        const bonusState = schema.kind === "bounded-mechanics" && schema.rules.weightedBonus ? (session as {toSessionState?: () => {bonus?: {selection: unknown}; remaining: number; executed: number}}).toSessionState?.() : undefined;
-        const event = artifacts?.[artifacts.length - 1]?.featureEvents?.find(event => event.type === "boundedMechanics");
+        const bonusState = schema.kind === "feature-chains" && schema.rules.weightedBonus ? (session as {toSessionState?: () => {bonus?: {selection: unknown}; remaining: number; executed: number}}).toSessionState?.() : undefined;
+        const event = artifacts?.[artifacts.length - 1]?.featureEvents?.find(event => event.type === "featureChains");
         validateWeightedBonusObservation(bonusState ?? {}, event?.data?.weightedBonus);
         const pending = (session as Partial<LogicalRoundProgressProviding>).hasPendingLogicalRound?.() ?? false;
         // Exhaustion is an unfinished stop, not a claim that every feature counter completed.

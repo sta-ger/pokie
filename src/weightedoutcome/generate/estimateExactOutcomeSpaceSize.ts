@@ -8,7 +8,7 @@ import {WeightedOutcomeLibraryGenerationError} from "./WeightedOutcomeLibraryGen
 export function assertIndependentGridEnumerationSupported(game: PokieGame): void {
     let schema = game.getSessionStateSchema?.();
     while (schema && "base" in schema) {
-        if (schema.kind === "bounded-mechanics" && schema.rules.weightedBonus) throw new WeightedOutcomeLibraryGenerationError("weighted-outcome-library-generation-unsupported", "Independent-grid outcome libraries and Stake conversion cannot preserve weighted bonus selection, payout or duration; build a TypeScript package instead.");
+        if (schema.kind === "feature-chains" && schema.rules.weightedBonus) throw new WeightedOutcomeLibraryGenerationError("weighted-outcome-library-generation-unsupported", "Independent-grid outcome libraries and Stake conversion cannot preserve weighted bonus selection, payout or duration; build a TypeScript package instead.");
         schema = schema.base;
     }
 }

@@ -16,8 +16,8 @@ import type {OutcomeLibraryGenerationStrategy} from "./OutcomeLibraryGeneratorDi
 export const DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE = BigInt(20_000_000);
 
 /** The named compatibility policy used when a caller elects conditional bounded coverage. */
-export const DEFAULT_BOUNDED_OUTCOME_LIBRARY_SAMPLE_SIZE = BigInt(10_000);
-export const DEFAULT_BOUNDED_OUTCOME_LIBRARY_SEED = "pokie-bounded-coverage-v1";
+export const DEFAULT_CAPPED_OUTCOME_LIBRARY_SAMPLE_SIZE = BigInt(10_000);
+export const DEFAULT_CAPPED_OUTCOME_LIBRARY_SEED = "pokie-capped-coverage-v1";
 export const OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_VERSION = "v1";
 
 /**
@@ -35,7 +35,7 @@ export const MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY = {
 } as const;
 
 export type OutcomeLibraryGenerationSample = {readonly sampleSize: bigint; readonly seed: string};
-export type OutcomeLibraryGenerationMode = "default" | "exact" | "sampled" | "bounded";
+export type OutcomeLibraryGenerationMode = "default" | "exact" | "sampled" | "capped";
 
 /**
  * Resolves whether a library mode name is an executable runtime selection or
@@ -479,14 +479,14 @@ export function resolveOutcomeLibraryGenerationDestination(
 }
 
 function validateGeneration(requestedGeneration: OutcomeLibraryGenerationMode | undefined, sample: OutcomeLibraryGenerationSample | undefined): void {
-    if (requestedGeneration !== undefined && requestedGeneration !== "default" && requestedGeneration !== "exact" && requestedGeneration !== "sampled" && requestedGeneration !== "bounded") {
+    if (requestedGeneration !== undefined && requestedGeneration !== "default" && requestedGeneration !== "exact" && requestedGeneration !== "sampled" && requestedGeneration !== "capped") {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-invalid-request",
             "generation must be default, exact, sampled, or bounded when present.",
         );
     }
     const generation = requestedGeneration ?? "default";
-    if ((generation === "sampled" || generation === "bounded") && sample === undefined) {
+    if ((generation === "sampled" || generation === "capped") && sample === undefined) {
         throw new WeightedOutcomeLibraryGenerationError("weighted-outcome-library-generation-invalid-sample-size", `${generation} generation requires a positive sampleSize and deterministic seed.`);
     }
     if ((generation === "default" || generation === "exact") && sample !== undefined) {
@@ -580,13 +580,13 @@ export function preflightOutcomeLibraryGenerationFromEstimate(estimate: OutcomeS
     const maxExactOutcomeSpaceSize = request.maxExactOutcomeSpaceSize ?? DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE;
     const generation = request.generation ?? "default";
     const strategy: OutcomeLibraryGenerationStrategy = generation === "sampled" || estimate.totalOutcomeSpaceSize > maxExactOutcomeSpaceSize
-        ? "bounded-coverage"
+        ? "capped-coverage"
         : "exact";
-    const requiresSampledOptIn = strategy === "bounded-coverage" && request.sample === undefined;
+    const requiresSampledOptIn = strategy === "capped-coverage" && request.sample === undefined;
     const expectedRawWork = strategy === "exact" ? estimate.totalOutcomeSpaceSize : request.sample?.sampleSize ?? BigInt(0);
     const warnings = [
         ...(requiresSampledOptIn ? [`Exact outcome space (${estimate.totalOutcomeSpaceSize}) exceeds the configured cap (${maxExactOutcomeSpaceSize}); select explicit sampled coverage or raise the cap.`] : []),
-        ...(strategy === "bounded-coverage" && request.sample !== undefined ? ["Bounded coverage is deterministic but is not an exact enumeration."] : []),
+        ...(strategy === "capped-coverage" && request.sample !== undefined ? ["Bounded coverage is deterministic but is not an exact enumeration."] : []),
     ];
     return {estimate, maxExactOutcomeSpaceSize, strategy, ...(request.sample === undefined ? {} : {sample: request.sample}), requiresSampledOptIn, expectedRawWork, warnings};
 }
@@ -595,24 +595,24 @@ export function preflightOutcomeLibraryGenerationFromEstimate(estimate: OutcomeS
 export function adaptLegacyOutcomeLibraryGenerationRequest(
     request: Omit<OutcomeLibraryGenerationRequest, "generation" | "maxExactOutcomeSpaceSize" | "sample"> & {
         readonly exact?: boolean;
-        readonly bounded?: OutcomeLibraryGenerationSample;
+        readonly capped?: OutcomeLibraryGenerationSample;
         readonly sampled?: OutcomeLibraryGenerationSample;
         readonly maxOutcomeSpaceSize?: bigint;
     },
 ): OutcomeLibraryGenerationRequest {
-    if (request.exact && (request.sampled !== undefined || request.bounded !== undefined)) {
+    if (request.exact && (request.sampled !== undefined || request.capped !== undefined)) {
         throw new WeightedOutcomeLibraryGenerationError("weighted-outcome-library-generation-strategy-conflict", "exact generation cannot be combined with sampled generation.");
     }
-    if (request.sampled !== undefined && request.bounded !== undefined) {
-        throw new WeightedOutcomeLibraryGenerationError("weighted-outcome-library-generation-strategy-conflict", "sampled and bounded generation cannot be combined.");
+    if (request.sampled !== undefined && request.capped !== undefined) {
+        throw new WeightedOutcomeLibraryGenerationError("weighted-outcome-library-generation-strategy-conflict", "sampled and capped generation cannot be combined.");
     }
-    const {exact: _exact, bounded, sampled, maxOutcomeSpaceSize, ...common} = request;
+    const {exact: _exact, capped, sampled, maxOutcomeSpaceSize, ...common} = request;
     let generation: OutcomeLibraryGenerationMode = "default";
     let sample: OutcomeLibraryGenerationSample | undefined;
     if (_exact) generation = "exact";
-    if (bounded !== undefined) {
-        generation = "bounded";
-        sample = bounded;
+    if (capped !== undefined) {
+        generation = "capped";
+        sample = capped;
     }
     if (sampled !== undefined) {
         generation = "sampled";

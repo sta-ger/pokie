@@ -22,7 +22,7 @@ export function isOutcomeLibraryGeneratorDiagnostics(value: unknown): value is O
         (typeof decimal === "string" && (/^\d+$/).test(decimal));
     const isNonEmptyString = (text: unknown): text is string => typeof text === "string" && text.trim().length > 0;
     if (!isNonEmptyString(candidate.algorithm) ||
-        (candidate.strategy !== "exact" && candidate.strategy !== "bounded-coverage") ||
+        (candidate.strategy !== "exact" && candidate.strategy !== "capped-coverage") ||
         !isDecimal(candidate.totalOutcomeSpaceSize) ||
         !isDecimal(candidate.sampledRawCount) ||
         !isNonEmptyString(candidate.pokieVersion) ||
@@ -38,7 +38,7 @@ export function isOutcomeLibraryGeneratorDiagnostics(value: unknown): value is O
     // Bounded coverage is reproducible only with its sampling seed. Exact
     // enumeration has no sampling seed and retaining one would misstate its
     // generation semantics.
-    if (candidate.strategy === "bounded-coverage") return isNonEmptyString(candidate.seed);
+    if (candidate.strategy === "capped-coverage") return isNonEmptyString(candidate.seed);
     return candidate.seed === undefined;
 }
 

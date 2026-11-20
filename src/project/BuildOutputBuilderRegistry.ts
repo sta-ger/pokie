@@ -320,7 +320,7 @@ export class BuildOutputBuilderRegistry {
                     ...(options.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: BigInt(options.maxExactOutcomeSpaceSize)}),
                     ...(options.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: options.compatibilityPolicyVersion}),
                 };
-            } else if (plannedGeneration === undefined && options.generationSemantics === "boundedSample") {
+            } else if (plannedGeneration === undefined && options.generationSemantics === "cappedSample") {
                 plannedGeneration = {
                     sampled: {sampleSize: BigInt(options.sampleCount ?? "0"), seed: options.sampleSeed ?? ""},
                     ...(options.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: BigInt(options.maxExactOutcomeSpaceSize)}),
@@ -336,7 +336,7 @@ export class BuildOutputBuilderRegistry {
                     gameId: prepared.compatibility.gameId,
                     gameVersion: prepared.compatibility.gameVersion,
                     manifestIdentity: `${prepared.compatibility.gameId}@${prepared.compatibility.gameVersion}`,
-                    generationSemantics: generation === undefined ? "exact" : "boundedSample",
+                    generationSemantics: generation === undefined ? "exact" : "cappedSample",
                     ...(generation === undefined ? {} : {sampleCount: generation.sampleSize.toString(), sampleSeed: generation.seed}),
                     ...(prepared.generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: prepared.generation.maxExactOutcomeSpaceSize.toString()}),
                     ...(prepared.generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: prepared.generation.compatibilityPolicyVersion}),
@@ -360,7 +360,7 @@ export class BuildOutputBuilderRegistry {
                     ...options,
                     managedOutcome,
                     pokieVersion: prepared.compatibility.pokieVersion,
-                    generationSemantics: generation === undefined ? "exact" : "boundedSample",
+                    generationSemantics: generation === undefined ? "exact" : "cappedSample",
                     ...(generation === undefined ? {} : {sampleCount: generation.sampleSize, sampleSeed: generation.seed}),
                     ...(prepared.generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: prepared.generation.maxExactOutcomeSpaceSize}),
                     ...(prepared.generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: prepared.generation.compatibilityPolicyVersion}),
@@ -836,7 +836,7 @@ export class BuildOutputBuilderRegistry {
                         gameId: prepared.compatibility.gameId,
                         gameVersion: prepared.compatibility.gameVersion,
                         manifestIdentity: `${prepared.compatibility.gameId}@${prepared.compatibility.gameVersion}`,
-                        generationSemantics: sampled === undefined ? "exact" : "boundedSample",
+                        generationSemantics: sampled === undefined ? "exact" : "cappedSample",
                         ...(sampled === undefined ? {} : {sampleCount: sampled.sampleSize.toString(), sampleSeed: sampled.seed}),
                         ...(prepared.generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: prepared.generation.maxExactOutcomeSpaceSize.toString()}),
                         ...(prepared.generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: prepared.generation.compatibilityPolicyVersion}),
@@ -894,7 +894,7 @@ export class BuildOutputBuilderRegistry {
         if (provenance?.configurationHash === undefined || provenance.gameId === undefined || provenance.gameVersion === undefined || provenance.pokieVersion === undefined) {
             throw new Error("The selected managed Outcome Library plan has no complete provenance; prepare a new plan before executing it.");
         }
-        const generation = provenance.generationSemantics === "boundedSample"
+        const generation = provenance.generationSemantics === "cappedSample"
             ? `sample:${provenance.sampleCount ?? ""}:${provenance.sampleSeed ?? ""}`
             : "exact";
         const inspection = await this.inspectManagedOutcome(source.rootPath, {
@@ -923,7 +923,7 @@ export class BuildOutputBuilderRegistry {
             gameId: provenance.gameId,
             gameVersion: provenance.gameVersion,
             pokieVersion: provenance.pokieVersion,
-            generation: provenance.generationSemantics === "boundedSample"
+            generation: provenance.generationSemantics === "cappedSample"
                 ? `sample:${provenance.sampleCount ?? ""}:${provenance.sampleSeed ?? ""}`
                 : "exact",
             ...(provenance.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: provenance.maxExactOutcomeSpaceSize}),
@@ -1017,7 +1017,7 @@ export class BuildOutputBuilderRegistry {
             gameId: provenance.gameId,
             gameVersion: provenance.gameVersion,
             pokieVersion: provenance.pokieVersion,
-            generation: provenance.generationSemantics === "boundedSample" ? `sample:${provenance.sampleCount ?? ""}:${provenance.sampleSeed ?? ""}` : "exact",
+            generation: provenance.generationSemantics === "cappedSample" ? `sample:${provenance.sampleCount ?? ""}:${provenance.sampleSeed ?? ""}` : "exact",
             ...(provenance.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: provenance.maxExactOutcomeSpaceSize}),
             ...(provenance.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: provenance.compatibilityPolicyVersion}),
         };
