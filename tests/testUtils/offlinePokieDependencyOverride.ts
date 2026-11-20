@@ -9,7 +9,7 @@ export const REPO_ROOT = path.join(__dirname, "..", "..");
 
 // Shared by every test that runs a real, uninjected PackageCommandRunning ("npm install" for real) against a
 // package this repo's own tooling just scaffolded/generated -- e.g. GamePackagePreparer.integration.test.ts
-// (a hand-editable scaffold) and BlueprintProjectMaterializer.integration.test.ts (a blueprint-generated
+// (a hand-editable scaffold) and BlueprintProjectPreparer.integration.test.ts (a blueprint-generated
 // package). Real `npm install` calls are slow and, without this override, would also reach the public
 // registry for "pokie" itself, "typescript", and every one of this checkout's own transitive dependencies
 // (including nested dependencies of packages such as "@xlvane/exceljs") -- exactly the
@@ -17,7 +17,7 @@ export const REPO_ROOT = path.join(__dirname, "..", "..");
 // already-installed copies via `file:` (direct deps) and `overrides` (the full transitive closure, which a
 // scaffolded/generated package never declares directly) means "npm install" here never needs the registry at
 // all. "pokie" itself is never rewritten here -- that's production's own job (withLocalPokieInstall, the same
-// mechanism BlueprintProjectMaterializer's real materialize() calls go through), so exercising it here proves
+// mechanism BlueprintProjectPreparer's real materialize() calls go through), so exercising it here proves
 // the real, shipped offline-materialization behavior rather than a test-only stand-in for it.
 function resolvePackageJson(name: string, resolver: NodeRequire): string {
     try {
@@ -90,7 +90,7 @@ export const runBundledNpmCommand: PackageCommandRunning = async (command, args,
 
 export function localPokieDependencyRunner(realRunCommand: PackageCommandRunning = runBundledNpmCommand): PackageCommandRunning {
     // withLocalPokieInstall is production's own mechanism for pointing a staged/generated package's "pokie"
-    // dependency at this exact running installation (see BlueprintProjectMaterializer's real materialize()
+    // dependency at this exact running installation (see BlueprintProjectPreparer's real materialize()
     // calls) -- composed here, rather than reimplemented, so this offline test override only ever adds what
     // it uniquely needs (typescript and the rest of this checkout's own transitive closure), never diverging
     // from what production actually does for "pokie" itself.

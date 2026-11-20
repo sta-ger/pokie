@@ -107,10 +107,10 @@ implements ValidationRule<PreGeneratedOutcomeSelection<T>> {
             });
         }
 
-        if (typeof outcome.artifact !== "object" || outcome.artifact === null) {
-            issues.push({code: "pre-generated-outcome-selection-artifact-invalid", severity: "error", message: "outcome.artifact must be an object."});
+        if (typeof outcome.record !== "object" || outcome.record === null) {
+            issues.push({code: "pre-generated-outcome-selection-record-invalid", severity: "error", message: "outcome.record must be an object."});
         } else {
-            this.roundRecordValidator.validate(outcome.artifact as PreGeneratedOutcomeSelection<T>["outcome"]["artifact"]).forEach((issue) => issues.push(issue));
+            this.roundRecordValidator.validate(outcome.record as PreGeneratedOutcomeSelection<T>["outcome"]["record"]).forEach((issue) => issues.push(issue));
         }
 
         return issues;

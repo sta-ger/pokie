@@ -88,7 +88,7 @@ export class OutcomeSourceDevServer implements PokieDevServerHandling {
             this.sessionRepository,
             options.preGeneratedIdempotencyRepository ?? new InMemoryIdempotencyRepository<PreGeneratedSpinCommandResult>(),
         );
-        this.gameSummary = this.reader.readManifest(project.rootPath).then((manifest) => ({
+        this.gameSummary = this.reader.readIndex(project.rootPath).then((manifest) => ({
             id: manifest.game.id,
             name: manifest.game.name,
             version: manifest.game.version,
@@ -210,11 +210,11 @@ export class OutcomeSourceDevServer implements PokieDevServerHandling {
                 round: 1,
                 outcomeId: selection.outcome.id,
                 weight: selection.outcome.weight,
-                totalWin: selection.outcome.artifact.totalWin,
-                payoutMultiplier: selection.outcome.artifact.payoutMultiplier,
-                stake: selection.outcome.artifact.stake,
-                screen: selection.outcome.artifact.screen.map((row) => [...row]),
-                artifact: selection.outcome.artifact,
+                totalWin: selection.outcome.record.totalWin,
+                payoutMultiplier: selection.outcome.record.payoutMultiplier,
+                stake: selection.outcome.record.stake,
+                screen: selection.outcome.record.screen.map((row) => [...row]),
+                artifact: selection.outcome.record,
                 timestamp: Date.now(),
                 durationMs: 0,
             },

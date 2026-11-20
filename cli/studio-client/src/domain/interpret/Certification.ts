@@ -53,12 +53,12 @@ export function describeCertificationOutcome(view: {errors: readonly ValidationI
 
 // A one-line, plain-language summary of a built certification/evidence bundle's own recorded identity
 // -- purely a human-readable restatement of fields the manifest already carries.
-export function describeCertificationProvenanceSummary(manifest: CertificationPackIndex): string {
-    const modeCount = manifest.modes.length;
+export function describeCertificationProvenanceSummary(index: CertificationPackIndex): string {
+    const modeCount = index.modes.length;
     return (
-        `Certification evidence for ${manifest.game.name} v${manifest.game.version}, ` +
+        `Certification evidence for ${index.game.name} v${index.game.version}, ` +
         `built from ${modeCount} mode${modeCount === 1 ? "" : "s"} of the source outcome-library bundle ` +
-        `(pokie v${manifest.pokieVersion}). Evidence hash ${manifest.evidenceContentHash}. ` +
-        `Model coverage: ${manifest.pack?.support.coverage ?? "unavailable"}. Certification-ready preparation only; integrity verification is not regulatory approval, independent RNG certification or compliance sign-off.`
+        `(pokie v${index.pokieVersion}). Evidence hash ${index.evidenceContentHash}. ` +
+        `Model coverage: ${index.pack?.support.coverage ?? "unavailable"}. Certification-ready preparation only; integrity verification is not regulatory approval, independent RNG certification or compliance sign-off.`
     );
 }

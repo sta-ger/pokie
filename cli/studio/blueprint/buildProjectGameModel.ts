@@ -86,7 +86,7 @@ export async function buildProjectGameModel(
             } as GameBlueprint);
         }
         return buildGameModelProjection(undefined, {
-            manifest: {id: manifestRead.manifest.component.id, version: manifestRead.manifest.component.version},
+            info: {id: manifestRead.manifest.component.id, version: manifestRead.manifest.component.version},
             reason: describeWasmGameModelBoundary(),
         });
     }
@@ -101,7 +101,7 @@ export async function buildProjectGameModel(
     if (!resolved && !readers.extractPackage) {
         const inspected = readers.inspectPackage(projectRoot);
         if (!inspected.valid || !inspected.packageJson) return buildGameModelProjection(undefined, {reason: inspected.error ?? "This project's package could not be inspected."});
-        return buildGameModelProjection(undefined, {manifest: {version: inspected.packageJson.version, description: inspected.packageJson.description}, reason: `This unresolved compiled TypeScript package${inspected.packageJson.name ? ` ("${inspected.packageJson.name}")` : ""} has metadata only; resolve a runnable package to request public model extraction.`});
+        return buildGameModelProjection(undefined, {info: {version: inspected.packageJson.version, description: inspected.packageJson.description}, reason: `This unresolved compiled TypeScript package${inspected.packageJson.name ? ` ("${inspected.packageJson.name}")` : ""} has metadata only; resolve a runnable package to request public model extraction.`});
     }
     const extracted = await (readers.extractPackage ?? ((root: string) => new PackageBlueprintExtraction().extract(root)))(projectRoot);
     return buildPackageGameModelProjection(extracted);

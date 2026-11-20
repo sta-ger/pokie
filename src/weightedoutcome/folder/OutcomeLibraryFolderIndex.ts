@@ -4,7 +4,7 @@ import type {WeightedOutcomeLibraryAnalysis} from "../WeightedOutcomeLibraryAnal
 
 // Tracks this type's own shape (not the pokie package version), same convention as
 // STAKE_ENGINE_INFO_SCHEMA_VERSION/WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION.
-export const OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION = 1;
+export const OUTCOME_LIBRARY_FOLDER_INDEX_SCHEMA_VERSION = 1;
 
 export type OutcomeLibraryFolderIndexModeEntry = {
     readonly modeName: string;
@@ -33,18 +33,18 @@ export type OutcomeLibraryFolderIndex = {
     readonly schemaVersion: number;
     readonly generatedBy: string;
     // Which pokie release built *this bundle file* — i.e. ran "pokie outcomelibrary build". Deliberately never
-    // compared against artifactPokieVersion below: a bundle can legitimately be (re)packaged by a newer/different
+    // compared against recordPokieVersion below: a bundle can legitimately be (re)packaged by a newer/different
     // pokie release than the one that originally computed its outcomes.
     readonly pokieVersion: string;
     readonly generatedAt: string;
     readonly game: PokieGameInfo;
     readonly configHash?: string;
     // Which pokie release *computed* the outcomes themselves — read from the first outcome's own
-    // artifact.origin.pokieVersion (guaranteed identical across every outcome in every mode by the writer's
+    // record.origin.pokieVersion (guaranteed identical across every outcome in every mode by the writer's
     // own cross-outcome/cross-mode homogeneity checks) and cross-checked, in deep validation, against every
-    // outcome's own provenance.pokieVersion. A distinct quantity from pokieVersion above — see that field's own
+    // outcome's own origin.pokieVersion. A distinct quantity from pokieVersion above — see that field's own
     // doc comment for why they're never required to match.
-    readonly artifactPokieVersion: string;
+    readonly recordPokieVersion: string;
     readonly modes: readonly OutcomeLibraryFolderIndexModeEntry[];
     readonly files: readonly string[];
 };

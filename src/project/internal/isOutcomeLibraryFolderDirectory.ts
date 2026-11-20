@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import {OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION} from "../../weightedoutcome/folder/OutcomeLibraryFolderIndex.js";
+import {OUTCOME_LIBRARY_FOLDER_INDEX_SCHEMA_VERSION} from "../../weightedoutcome/folder/OutcomeLibraryFolderIndex.js";
 import type {ProjectTargetInfoRecognition} from "./ProjectTargetInfoRecognition.js";
 
 // A recognition check for ProjectTargetResolver's outcomeLibrary adapter — deliberately not a structural
@@ -42,7 +42,7 @@ export function recognizeOutcomeLibraryFolderDirectory(libraryDir: string): Proj
 
     const candidate = parsed as {schemaVersion?: unknown; modes?: unknown; game?: unknown};
     const matchesRequiredShape =
-        candidate.schemaVersion === OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION &&
+        candidate.schemaVersion === OUTCOME_LIBRARY_FOLDER_INDEX_SCHEMA_VERSION &&
         Array.isArray(candidate.modes) &&
         typeof candidate.game === "object" &&
         candidate.game !== null;
@@ -51,7 +51,7 @@ export function recognizeOutcomeLibraryFolderDirectory(libraryDir: string): Proj
             kind: "malformed",
             reason:
                 `"${manifestPath}" declares a "schemaVersion" but doesn't match the outcome-library bundle manifest ` +
-                `shape (expected schemaVersion ${OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION}, an array "modes", and an object "game").`,
+                `shape (expected schemaVersion ${OUTCOME_LIBRARY_FOLDER_INDEX_SCHEMA_VERSION}, an array "modes", and an object "game").`,
         };
     }
 

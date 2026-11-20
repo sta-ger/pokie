@@ -27,7 +27,7 @@ beforeAll(() => {
 });
 afterAll(() => restoreTemporaryDirectory());
 
-const manifest: PokieGameInfo = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+const gameInfo: PokieGameInfo = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
 function runtimeSnapshotsForPackage(packageName: string): string[] {
     return fs
@@ -81,7 +81,7 @@ function hashCode(value: string): number {
 function createFakeGame(): PokieGame & {createdWith: (PokieGameContext | undefined)[]} {
     const createdWith: (PokieGameContext | undefined)[] = [];
     return {
-        getInfo: () => manifest,
+        getInfo: () => gameInfo,
         createSession(context) {
             createdWith.push(context);
             return createFakeSession(context?.seed as string | undefined);
@@ -105,7 +105,7 @@ describe("ParallelSimulationRunner (workers=1, in-process)", () => {
         expect(result.workers).toBe(workers);
         expect(result.statistics.reelSequences).toEqual(expected.reelSequences);
         expect(result.statistics.reelSequences![0].variants.map(variant => [variant.count, variant.frequency, variant.uncovered])).toEqual([[0, 0, true], [0, 0, true], [0, 0, false]]);
-        const report = new SimulationReportBuilder().build({manifest: result.manifest, requestedRounds: 0, statistics: result.statistics, durationMs: 0});
+        const report = new SimulationReportBuilder().build({gameInfo: result.gameInfo, requestedRounds: 0, statistics: result.statistics, durationMs: 0});
         expect(JSON.parse(JSON.stringify(report)).reelSequences).toEqual(expected.reelSequences);
     });
     test("releases every real package-runtime snapshot after repeated completed runs", async () => {
@@ -144,7 +144,7 @@ describe("ParallelSimulationRunner (workers=1, in-process)", () => {
 
         expect(result.workers).toBe(1);
         expect(result.statistics.rounds).toBe(100);
-        expect(result.manifest).toEqual(manifest);
+        expect(result.gameInfo).toEqual(gameInfo);
         expect(game.createdWith).toEqual([undefined]);
     });
 
@@ -297,7 +297,7 @@ describe("ParallelSimulationRunner (workers>1, via injected coordinator)", () =>
                     Promise.resolve(
                         requests.map((request) => ({
                             workerIndex: request.workerIndex,
-                            manifest,
+                            gameInfo,
                             accumulator: makeAccumulatorSnapshot(request.rounds),
                             roundsCompleted: request.rounds,
                             stopReason: "maxRounds" as const,
@@ -323,7 +323,7 @@ describe("ParallelSimulationRunner (workers>1, via injected coordinator)", () =>
                     return Promise.resolve(
                         requests.map((request) => ({
                             workerIndex: request.workerIndex,
-                            manifest,
+                            gameInfo,
                             accumulator: makeAccumulatorSnapshot(request.rounds),
                             roundsCompleted: request.rounds,
                             stopReason: "maxRounds" as const,
@@ -339,7 +339,7 @@ describe("ParallelSimulationRunner (workers>1, via injected coordinator)", () =>
         expect(new Set(capturedRequests.map((r) => r.seed)).size).toBe(4); // every worker gets a distinct seed
         expect(result.workers).toBe(4);
         expect(result.statistics.rounds).toBe(10);
-        expect(result.manifest).toEqual(manifest);
+        expect(result.gameInfo).toEqual(gameInfo);
     });
 
     test("never spawns a worker for a zero-round share (rounds < workers)", async () => {
@@ -352,7 +352,7 @@ describe("ParallelSimulationRunner (workers>1, via injected coordinator)", () =>
                     return Promise.resolve(
                         requests.map((request) => ({
                             workerIndex: request.workerIndex,
-                            manifest,
+                            gameInfo,
                             accumulator: makeAccumulatorSnapshot(request.rounds),
                             roundsCompleted: request.rounds,
                             stopReason: "maxRounds" as const,
@@ -389,7 +389,7 @@ describe("ParallelSimulationRunner (workers>1, via injected coordinator)", () =>
                     return Promise.resolve(
                         requests.map((request) => ({
                             workerIndex: request.workerIndex,
-                            manifest,
+                            gameInfo,
                             accumulator: makeAccumulatorSnapshot(request.rounds),
                             roundsCompleted: request.rounds,
                             stopReason: "maxRounds" as const,
@@ -416,7 +416,7 @@ describe("ParallelSimulationRunner (workers>1, via injected coordinator)", () =>
                     return Promise.resolve(
                         requests.map((request) => ({
                             workerIndex: request.workerIndex,
-                            manifest,
+                            gameInfo,
                             accumulator: makeAccumulatorSnapshot(request.rounds),
                             roundsCompleted: request.rounds,
                             stopReason: "maxRounds" as const,
@@ -435,7 +435,7 @@ describe("ParallelSimulationRunner betModeId (workers=1, in-process)", () => {
     function createBetModeAwareFakeGame(): PokieGame & {selectedModesSeen: string[]} {
         const selectedModesSeen: string[] = [];
         return {
-            getInfo: () => manifest,
+            getInfo: () => gameInfo,
             selectedModesSeen,
             createSession() {
                 let credits = 1_000_000;
@@ -507,7 +507,7 @@ describe("ParallelSimulationRunner betModeId (workers=1, in-process)", () => {
     // report for a plain base-game run silently mislabeled with the requested mode.
     test("betModeId against a game/session that doesn't support bet modes at all fails clearly, not silently as base", async () => {
         const game: PokieGame = {
-            getInfo: () => manifest,
+            getInfo: () => gameInfo,
             createSession: () => createFakeSession(),
         };
         const runner = new ParallelSimulationRunner("/fake/root", 20, {
@@ -527,7 +527,7 @@ describe("ParallelSimulationRunner convergence (workers=1, in-process)", () => {
     // checkIntervalRounds/stableChecks), rather than depending on a real distribution's variance.
     function createConstantPayoutFakeGame(): PokieGame {
         return {
-            getInfo: () => manifest,
+            getInfo: () => gameInfo,
             createSession: () => {
                 let credits = 1_000_000;
                 return {
@@ -666,7 +666,7 @@ describe("ParallelSimulationRunner convergence (workers>1, via injected coordina
                     return Promise.resolve(
                         requests.map((request) => ({
                             workerIndex: request.workerIndex,
-                            manifest,
+                            gameInfo,
                             accumulator: makeAccumulatorSnapshot(request.rounds),
                             roundsCompleted: request.rounds,
                             stopReason: "maxRounds" as const,
@@ -693,7 +693,7 @@ describe("ParallelSimulationRunner convergence (workers>1, via injected coordina
                         Promise.resolve(
                             requests.map((request, index) => ({
                                 workerIndex: request.workerIndex,
-                                manifest,
+                                gameInfo,
                                 accumulator: makeAccumulatorSnapshot(request.rounds),
                                 roundsCompleted: request.rounds,
                                 stopReason: stopReasons[index],
@@ -723,7 +723,7 @@ describe("ParallelSimulationRunner convergence (workers>1, via injected coordina
                     Promise.resolve([
                         {
                             workerIndex: 0,
-                            manifest,
+                            gameInfo,
                             accumulator: makeAccumulatorSnapshot(requests[0].rounds),
                             roundsCompleted: requests[0].rounds,
                             stopReason: "converged" as const,
@@ -739,7 +739,7 @@ describe("ParallelSimulationRunner convergence (workers>1, via injected coordina
                         },
                         {
                             workerIndex: 1,
-                            manifest,
+                            gameInfo,
                             accumulator: makeAccumulatorSnapshot(requests[1].rounds),
                             roundsCompleted: requests[1].rounds,
                             stopReason: "maxRounds" as const,
@@ -785,7 +785,7 @@ describe("ParallelSimulationRunner convergence (workers>1, via injected coordina
                     Promise.resolve([
                         {
                             workerIndex: 0,
-                            manifest,
+                            gameInfo,
                             accumulator: makeAccumulatorSnapshot(requests[0].rounds),
                             roundsCompleted: requests[0].rounds,
                             stopReason: "converged" as const,
@@ -801,7 +801,7 @@ describe("ParallelSimulationRunner convergence (workers>1, via injected coordina
                         },
                         {
                             workerIndex: 1,
-                            manifest,
+                            gameInfo,
                             accumulator: makeAccumulatorSnapshot(requests[1].rounds),
                             roundsCompleted: requests[1].rounds,
                             stopReason: "converged" as const,

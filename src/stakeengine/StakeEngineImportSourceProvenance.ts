@@ -10,6 +10,6 @@ export type StakeEngineImportSourceModeProvenance = {
 
 export type StakeEngineImportSourceProvenance = {
     readonly indexHash: string;
-    readonly manifestHash: string;
+    readonly infoHash: string;
     readonly modes: readonly StakeEngineImportSourceModeProvenance[];
 };

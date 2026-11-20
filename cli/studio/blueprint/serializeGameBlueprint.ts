@@ -2,7 +2,7 @@
 // Save always writes known fields in this order, regardless of what order the editor/JSON view held
 // them in, so a re-save of unchanged content is byte-identical every time.
 const KNOWN_TOP_LEVEL_KEYS = [
-    "manifest",
+    "info",
     "reels",
     "rows",
     "screenGeometry",

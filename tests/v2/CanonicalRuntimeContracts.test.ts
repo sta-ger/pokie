@@ -972,7 +972,7 @@ describe("canonical runtime contracts", () => {
             const {library} = await generateExactWeightedOutcomeLibrary({game, libraryId: "canonical", pokieVersion: "1.3.0"});
             expect(execution).toHaveBeenCalledTimes(8);
             expect(library.outcomes).toHaveLength(8);
-            for (const {artifact} of library.outcomes) expect(artifact.totalWin).toBe(screenMultiplier(artifact.screen) * 0.05);
+            for (const {record} of library.outcomes) expect(record.totalWin).toBe(screenMultiplier(record.screen) * 0.05);
         } finally {
             execution.mockRestore();
         }

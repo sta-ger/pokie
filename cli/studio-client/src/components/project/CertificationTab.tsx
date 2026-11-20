@@ -195,7 +195,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
         const requestId = buildRequestIdRef.current;
         setDownloadError("");
         try {
-            const blob = await downloadCertificationPack(fetchImpl, outDir.trim(), buildView.manifest.evidenceContentHash, file);
+            const blob = await downloadCertificationPack(fetchImpl, outDir.trim(), buildView.index.evidenceContentHash, file);
             if (!mountedRef.current || requestId !== buildRequestIdRef.current) return;
             const url = URL.createObjectURL(blob),
                 anchor = document.createElement("a");
@@ -561,7 +561,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                         warnings={buildView.status === "ok" || buildView.status === "error" ? buildView.warnings : []}
                     />
                 )}
-                {buildView.status === "ok" && <Text size="sm" mb="sm">Model representation: {buildView.manifest.pack?.support.coverage ?? "unavailable"}. {buildView.manifest.pack?.support.limitations.join(" ")}</Text>}
+                {buildView.status === "ok" && <Text size="sm" mb="sm">Model representation: {buildView.index.pack?.support.coverage ?? "unavailable"}. {buildView.index.pack?.support.limitations.join(" ")}</Text>}
                 {inspectReachable ? (
                     <QuickActions>
                         <Button onClick={() => setActiveStep(3)}>Continue to Inspect</Button>
@@ -771,14 +771,14 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                     <div>
                         <PageSection legend="Summary">
                             <Text size="sm" mb="sm">
-                                {describeCertificationProvenanceSummary(buildResult.manifest)}
+                                {describeCertificationProvenanceSummary(buildResult.index)}
                             </Text>
                         </PageSection>
 
                         <PageSection legend="Certification pack support and model rules">
-                            <Text size="sm">Coverage: {buildResult.manifest.pack?.support.coverage ?? "unavailable"}</Text>
-                            <Text size="sm">{buildResult.manifest.pack?.support.limitations.join(" ")}</Text>
-                            <CodeBlock>{JSON.stringify(buildResult.manifest.pack, null, 2)}</CodeBlock>
+                            <Text size="sm">Coverage: {buildResult.index.pack?.support.coverage ?? "unavailable"}</Text>
+                            <Text size="sm">{buildResult.index.pack?.support.limitations.join(" ")}</Text>
+                            <CodeBlock>{JSON.stringify(buildResult.index.pack, null, 2)}</CodeBlock>
                         </PageSection>
                         <PageSection legend="Independent verification">
                             <Text size="sm" c="dimmed" mb="sm">
@@ -813,7 +813,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                                         </Table.Tr>
                                     </Table.Thead>
                                     <Table.Tbody>
-                                        {buildResult.manifest.modes.map((mode) => (
+                                        {buildResult.index.modes.map((mode) => (
                                             <Table.Tr key={mode.modeName}>
                                                 <Table.Td>{mode.modeName}</Table.Td>
                                                 <Table.Td style={{overflowWrap: "anywhere"}}>{mode.libraryHash}</Table.Td>
@@ -830,22 +830,22 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                             </Table.ScrollContainer>
                         </PageSection>
 
-                        {buildResult.manifest.deepValidation.issues.length > 0 && (
+                        {buildResult.index.deepValidation.issues.length > 0 && (
                             <PageSection legend="Source outcome library deep-validation (embedded verbatim)">
-                                <IssueList title="Issues" issues={[...buildResult.manifest.deepValidation.issues]} />
+                                <IssueList title="Issues" issues={[...buildResult.index.deepValidation.issues]} />
                             </PageSection>
                         )}
 
                         <PageSection legend="Files">
                             {buildResult.files.map((file) => (
                                 <Text key={file} size="sm" style={{overflowWrap: "anywhere"}}>
-                                    {file}{buildResult.artifactHashes?.[file] ? ` — ${buildResult.artifactHashes[file]}` : ""}
+                                    {file}{buildResult.fileHashes?.[file] ? ` — ${buildResult.fileHashes[file]}` : ""}
                                 </Text>
                             ))}
                         </PageSection>
 
                         <AdvancedDisclosure detail="raw manifest">
-                            <CodeBlock>{JSON.stringify(buildResult.manifest, null, 2)}</CodeBlock>
+                            <CodeBlock>{JSON.stringify(buildResult.index, null, 2)}</CodeBlock>
                         </AdvancedDisclosure>
 
                         <QuickActions>

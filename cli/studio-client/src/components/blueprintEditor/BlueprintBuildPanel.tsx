@@ -28,10 +28,10 @@ import {PathInput} from "../common/PathInput";
 import {QuickActions} from "../common/QuickActions";
 
 // Mirrors GamePackageGenerator.generate's own default -- an omitted outDir lands at
-// "<studio root>/<manifest.id>", never Studio's browse root itself -- so a blank Output directory's
+// "<studio root>/<info.id>", never Studio's browse root itself -- so a blank Output directory's
 // "Auto resolved destination" hint (see PathInput's own autoDestinationPath) shows Build's real target
 // instead. Returns undefined for a missing/blank id (still resolves to the root, unchanged behavior) --
-// GameBlueprintValidator itself is what rejects an empty "manifest.id", not this hint.
+// GameBlueprintValidator itself is what rejects an empty "info.id", not this hint.
 function buildOutputAutoDestination(blueprint: Record<string, unknown>): string | undefined {
     const manifest = blueprint.info;
     if (typeof manifest !== "object" || manifest === null || Array.isArray(manifest)) {
@@ -105,7 +105,7 @@ function BuiltBlueprintSummary({
     return (
         <Stack gap="sm">
             <Text style={{overflowWrap: "anywhere"}}>
-                Last built &quot;{snapshot.manifest.name}&quot; (id: &quot;{snapshot.manifest.id}&quot;, v{snapshot.manifest.version}) at{" "}
+                Last built &quot;{snapshot.info.name}&quot; (id: &quot;{snapshot.info.id}&quot;, v{snapshot.info.version}) at{" "}
                 {formatTimestamp(snapshot.buildInfo.generatedAt)} in &quot;{snapshot.projectRoot}&quot;.
             </Text>
             <Text size="xs" c="dimmed" style={{overflowWrap: "anywhere"}}>
@@ -344,7 +344,7 @@ export function BlueprintBuildPanel({
                         // this one, so the snapshot always describes what was actually sent.
                         onBuilt?.({
                             blueprint,
-                            manifest: view.manifest,
+                            info: view.info,
                             projectRoot: view.projectRoot,
                             buildInfo: view.buildInfo,
                             warnings: view.warnings,

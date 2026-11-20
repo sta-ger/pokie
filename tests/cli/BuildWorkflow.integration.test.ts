@@ -1,4 +1,4 @@
-import {expectInconclusiveArtifactValidation} from "../testUtils/expectInconclusiveArtifactValidation.js";
+import {expectInconclusiveBuildValidation} from "../testUtils/expectInconclusiveBuildValidation.js";
 import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../v2/fixtures/PackageExtractionFixture.js";
 import {loadPokieGame, PokieClientServer, PokieClientServerHandling, PokieDevServer, PokieDevServerHandling, ReplayDescriptor, SimulationReport} from "@fromstan/pokie";
 import fs from "fs";
@@ -73,7 +73,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         expect(fs.readdirSync(path.join(outDir, "src"))).toEqual(["index.ts"]);
         await expect(loadPokieGame(outDir)).resolves.toMatchObject({getInfo: expect.any(Function)});
 
-        await expectInconclusiveArtifactValidation([outDir]);
+        await expectInconclusiveBuildValidation([outDir]);
 
         // A built package carries no build-info of its own to inspect -- pokie inspect identifies it
         // as a runnable POKIE game package and points to its next actions.
@@ -209,7 +209,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         );
         expect(fs.readFileSync(path.join(occupiedOutcomeDir, "sentinel.txt"), "utf-8")).toBe("preserve me");
 
-        await expectInconclusiveArtifactValidation([outcomeDir]);
+        await expectInconclusiveBuildValidation([outcomeDir]);
         await new ReportCommand().run([outcomeDir, "--format", "json", "--out", reportFile]);
         expect(JSON.parse(fs.readFileSync(reportFile, "utf-8"))).toMatchObject({rootPath: outcomeDir, modes: [{modeName: "base"}]});
 
@@ -260,7 +260,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
             seed: expect.stringMatching(/^pokie-managed-coverage:sha256:/),
         }));
 
-        await expectInconclusiveArtifactValidation([outcomeDir, "--deep"]);
+        await expectInconclusiveBuildValidation([outcomeDir, "--deep"]);
         await new SimCommand().run([outcomeDir, "--mode", "base", "--rounds", "12", "--seed", "lifecycle", "--out", sampleFile]);
         expect(JSON.parse(fs.readFileSync(sampleFile, "utf-8"))).toMatchObject({modeName: "base", statistics: {rounds: 12}});
         await new ReportCommand().run([outcomeDir, "--format", "json", "--out", reportFile]);
@@ -296,7 +296,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         fs.rmSync(runtimeLink, {recursive: true, force: true});
         fs.symlinkSync(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"), runtimeLink, "junction");
 
-        await expectInconclusiveArtifactValidation([packageRoot]);
+        await expectInconclusiveBuildValidation([packageRoot]);
         const simFile = path.join(workDir, "code-first-sim.json");
         await new SimCommand().run([packageRoot, "--rounds", "20", "--seed", "code-first", "--out", simFile]);
         expect(JSON.parse(fs.readFileSync(simFile, "utf-8"))).toMatchObject({game: {id: "code-first-registry-slot"}, rounds: 20});

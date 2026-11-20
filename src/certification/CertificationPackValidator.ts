@@ -15,20 +15,20 @@ import {computeCertificationPackContentHash} from "./computeCertificationPackCon
 import {computeCertificationSampleRecordHash} from "./computeCertificationSampleRecordHash.js";
 import {CERTIFICATION_PACK_INDEX_SCHEMA_VERSION, type CertificationPackModeEntry} from "./CertificationPackIndex.js";
 import type {CertificationPackValidating} from "./CertificationPackValidating.js";
-import {isModeEntryShape, isManifestShape, isNonEmptyString, isSampleRecordShape, MODE_NAME_PATTERN} from "./internal/certificationPackBundleShapeGuards.js";
+import {isModeEntryShape, isCertificationPackIndexShape, isNonEmptyString, isSampleRecordShape, MODE_NAME_PATTERN} from "./internal/certificationPackBundleShapeGuards.js";
 import {sha256OfBytes} from "./internal/sha256OfBytes.js";
 
 // Validates a candidate certification/evidence bundle directory *by itself* — never throws (top-level
 // catch-all "certification-pack-bundle-malformed"), mirroring OutcomeLibraryFolderValidator's own
 // never-throw contract, except explicit cancellation. Reads index.json plus every mode's own samples_<modeName>.jsonl, recomputing:
 // - the whole manifest's own evidenceContentHash (covers schemaVersion/pokieVersion/game/configHash/
-//   artifactPokieVersion/sourceLibraryManifestHash/every mode's own metrics+samplesHash/deep-validation issues in
+//   recordPokieVersion/sourceLibraryIndexHash/every mode's own metrics+samplesHash/deep-validation issues in
 //   one unified check — see computeCertificationPackContentHash);
 // - each mode's own samplesHash, over the exact bytes of its samples file (never a second, differently-derived
 //   hash);
 // - each sample's own recordHash, recomputed from its own {outcomeId, weight, artifact} — see
 //   computeCertificationSampleRecordHash — the same hash an Outcome Library Bundle's own index entry carries;
-// - each sample's own artifactHash, via computeRoundRecordHash — the same content hash every other
+// - each sample's own roundRecordHash, via computeRoundRecordHash — the same content hash every other
 //   RoundRecord consumer in this codebase computes and compares;
 // - each sample's own artifact against RoundRecordValidator — never a second definition of "a valid
 //   RoundRecord".
@@ -85,7 +85,7 @@ export class CertificationPackValidator implements CertificationPackValidating {
             ];
         }
 
-        if (!isManifestShape(parsed)) {
+        if (!isCertificationPackIndexShape(parsed)) {
             return [
                 {
                     code: "certification-pack-bundle-manifest-malformed",
@@ -133,7 +133,7 @@ export class CertificationPackValidator implements CertificationPackValidating {
                 issues.push({
                     code: "certification-pack-bundle-content-hash-mismatch",
                     severity: "error",
-                    message: `"${manifestPath}" does not hash to its own recorded evidenceContentHash — some field of the manifest (game/configHash/artifactPokieVersion/sourceLibraryManifestHash/a mode's own metrics or samplesHash/deep-validation issues) was changed since this evidence was built.`,
+                    message: `"${manifestPath}" does not hash to its own recorded evidenceContentHash — some field of the index (game/configHash/recordPokieVersion/sourceLibraryIndexHash/a mode's own metrics or samplesHash/deep-validation issues) was changed since this evidence was built.`,
                 });
             }
         } catch (error) {
@@ -307,12 +307,12 @@ export class CertificationPackValidator implements CertificationPackValidating {
             }
 
             try {
-                const recomputedRecordHash = computeCertificationSampleRecordHash({id: parsedLine.outcomeId, weight: parsedLine.weight, artifact: parsedLine.artifact});
+                const recomputedRecordHash = computeCertificationSampleRecordHash({id: parsedLine.outcomeId, weight: parsedLine.weight, record: parsedLine.record});
                 if (recomputedRecordHash !== parsedLine.recordHash) {
                     issues.push({
                         code: "certification-pack-bundle-sample-record-hash-mismatch",
                         severity: "error",
-                        message: `mode "${modeEntry.modeName}": line ${position}'s own {outcomeId, weight, artifact} doesn't hash to its own recorded recordHash.`,
+                        message: `mode "${modeEntry.modeName}": line ${position}'s own {outcomeId, weight, record} doesn't hash to its own recorded recordHash.`,
                         details: {modeName: modeEntry.modeName, position},
                     });
                 }
@@ -320,39 +320,39 @@ export class CertificationPackValidator implements CertificationPackValidating {
                 issues.push({
                     code: "certification-pack-bundle-sample-record-not-json-safe",
                     severity: "error",
-                    message: `mode "${modeEntry.modeName}": line ${position}'s own {outcomeId, weight, artifact} can't be re-canonicalized: ${error instanceof Error ? error.message : String(error)}.`,
+                    message: `mode "${modeEntry.modeName}": line ${position}'s own {outcomeId, weight, record} can't be re-canonicalized: ${error instanceof Error ? error.message : String(error)}.`,
                     details: {modeName: modeEntry.modeName, position},
                 });
             }
 
-            let recomputedArtifactHash: string;
+            let recomputedRoundRecordHash: string;
             try {
-                recomputedArtifactHash = computeRoundRecordHash(parsedLine.artifact as RoundRecord);
+                recomputedRoundRecordHash = computeRoundRecordHash(parsedLine.record as RoundRecord);
             } catch (error) {
                 issues.push({
-                    code: "certification-pack-bundle-sample-artifact-not-json-safe",
+                    code: "certification-pack-bundle-sample-record-not-json-safe",
                     severity: "error",
-                    message: `mode "${modeEntry.modeName}": line ${position}'s own artifact can't be re-canonicalized: ${error instanceof Error ? error.message : String(error)}.`,
+                    message: `mode "${modeEntry.modeName}": line ${position}'s own record can't be re-canonicalized: ${error instanceof Error ? error.message : String(error)}.`,
                     details: {modeName: modeEntry.modeName, position},
                 });
                 continue;
             }
-            if (recomputedArtifactHash !== parsedLine.artifactHash) {
+            if (recomputedRoundRecordHash !== parsedLine.roundRecordHash) {
                 issues.push({
-                    code: "certification-pack-bundle-sample-artifact-hash-mismatch",
+                    code: "certification-pack-bundle-sample-round-record-hash-mismatch",
                     severity: "error",
-                    message: `mode "${modeEntry.modeName}": line ${position}'s own artifact doesn't hash to its own recorded artifactHash.`,
+                    message: `mode "${modeEntry.modeName}": line ${position}'s own record doesn't hash to its own recorded roundRecordHash.`,
                     details: {modeName: modeEntry.modeName, position},
                 });
             }
 
-            const artifactIssues = new RoundRecordValidator().validate(parsedLine.artifact as RoundRecord);
-            if (artifactIssues.some((issue) => issue.severity === "error")) {
+            const recordIssues = new RoundRecordValidator().validate(parsedLine.record as RoundRecord);
+            if (recordIssues.some((issue) => issue.severity === "error")) {
                 issues.push({
-                    code: "certification-pack-bundle-sample-artifact-invalid",
+                    code: "certification-pack-bundle-sample-record-invalid",
                     severity: "error",
-                    message: `mode "${modeEntry.modeName}": line ${position}'s own artifact fails RoundRecordValidator.`,
-                    details: {modeName: modeEntry.modeName, position, issues: artifactIssues},
+                    message: `mode "${modeEntry.modeName}": line ${position}'s own record fails RoundRecordValidator.`,
+                    details: {modeName: modeEntry.modeName, position, issues: recordIssues},
                 });
             }
         }

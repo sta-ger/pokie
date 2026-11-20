@@ -142,7 +142,7 @@ describe("ReportCommand", () => {
                 output = path.join(root, "assessment.pdf");
             await buildSourceOutcomeLibraryFolder(source);
             const built = await new CertificationPackBuilder("1.3.0").buildFromBundle(source, [{modeName: "base", seed: "s", sampleCount: 2}], out);
-            expect(built.manifest).toBeDefined();
+            expect(built.index).toBeDefined();
             const command = new ReportCommand();
             await command.run([path.join(out, "index.json"), "--format", "pdf", "--out", output]);
             const bytes = fs.readFileSync(output);

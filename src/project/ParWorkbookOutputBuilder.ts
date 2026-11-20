@@ -12,8 +12,8 @@ import {
     reportBuildProgress,
     type BuildOutputOptions,
 } from "./BuildOutputOptions.js";
-import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
-import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
+import {assertBuildDestinationAvailable} from "./internal/assertBuildDestinationAvailable.js";
+import {assertBuildDestinationIsSafe} from "./internal/assertBuildDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
 import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
 
@@ -65,8 +65,8 @@ export class ParWorkbookOutputBuilder implements BuildOutputBuilder {
 
     public async build(source: PokieProject, destinationPath: string, options?: BuildOutputOptions): Promise<BuildOutputResult> {
         assertBuildNotCancelled(options);
-        assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
-        assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
+        assertBuildDestinationAvailable(destinationPath, this.destinationKind);
+        assertBuildDestinationIsSafe(source.rootPath, destinationPath);
         let publication: ParSheetFilePublication | undefined;
 
         try {

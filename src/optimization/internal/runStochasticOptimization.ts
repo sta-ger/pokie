@@ -117,7 +117,7 @@ export async function runStochasticOptimization(
         Object.assign(evidence, {phase: "preparing"});
         progress();
         fs.mkdirSync(directory);
-        const file = await adapter.materialize(model, directory, options.signal);
+        const file = await adapter.prepare(model, directory, options.signal);
         current();
         const resolved = await new ProjectTargetResolver().resolve(file, {readConfigurationProvenance: false});
         if (!resolved || resolved.type !== project.type) throw new Error("Candidate did not resolve as the original ProjectType.");

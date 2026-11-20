@@ -15,7 +15,7 @@ import {describeRuntimeScreen} from "../../domain/interpret/Runtime";
 
 // Studio's own -- and only -- game mode: Play never starts a server, never shows a host/port/server URL,
 // and is never represented as a product POKIE game server/RGS workflow. "New session"/"Reset" both
-// materialize/load the project as needed and create a real session directly in Studio's own backend
+// runtime/load the project as needed and create a real session directly in Studio's own backend
 // (StudioPlayService, see its own doc comment) -- TS loads the normal runtime and the game's own live RNG
 // plays for real, with no separate session-storage/API setup for this tab to expose. Every spin's result
 // renders through the exact same RoundSummary/RoundRecordInspector/GameScreenView chain the Replay

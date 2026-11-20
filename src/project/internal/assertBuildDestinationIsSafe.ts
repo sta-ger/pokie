@@ -22,7 +22,7 @@ function isSameOrDescendant(candidate: string, root: string): boolean {
 // A build must never place its output over its own source, nor below a source directory.  Resolve both
 // paths through their existing ancestors first: a lexical `source/out` check alone misses an `out` path
 // reached through a symlink, which could otherwise let a builder publish into the source it is reading.
-export function assertArtifactDestinationIsSafe(sourcePath: string, destinationPath: string): void {
+export function assertBuildDestinationIsSafe(sourcePath: string, destinationPath: string): void {
     const source = resolveThroughExistingAncestor(sourcePath);
     const destination = resolveThroughExistingAncestor(destinationPath);
     const sourceIsDirectory = fs.existsSync(sourcePath) && fs.statSync(sourcePath).isDirectory();

@@ -18,23 +18,23 @@ function hash(value: unknown): void {
 export function validateCertificationPack(value: unknown, manifest: CertificationPackIndex): asserts value is CertificationPack {
     closed(value, ["schemaVersion", "identity", "rules", "statistics", "validation", "reproduction", "support"]);
     if (value.schemaVersion !== 1) throw new Error("Unsupported pack version; expected 1. Legacy sample-only bundles are not launch packs.");
-    closed(value.identity, ["runtimeVersion", "modelHash", "modelArtifactHash", "sourceLibraryManifestHash", "sourceLibraryManifest", "sourceRevision", "candidateRevision"]);
+    closed(value.identity, ["runtimeVersion", "modelHash", "modelArtifactHash", "sourceLibraryIndexHash", "sourceLibraryIndex", "sourceRevision", "candidateRevision"]);
     closed(value.rules, ["status", "definition"]);
     closed(value.statistics, ["exact", "semantics", "estimates", "unavailable"]);
     closed(value.validation, ["source", "model", "assumptions"]);
     closed(value.reproduction, ["selection", "runtime", "recordings", "commands", "variableMetadata"]);
     closed(value.support, ["notice", "coverage", "limitations", "sdk", "fairness", "yaml"]);
     const d = value as unknown as CertificationPack;
-    if (![manifest.pokieVersion, manifest.artifactPokieVersion].every(version => typeof version === "string" && version === version.trim() && (/^(?:1\.3|2\.0)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/).test(version))) throw new Error("Unsupported pack producer/artifact runtime; pack v1 supports POKIE 2.0.x (and retained 1.3.x evidence) only. Rebuild with a compatible runtime; do not relabel artifact provenance.");
-    const source = d.identity.sourceLibraryManifest;
+    if (![manifest.pokieVersion, manifest.recordPokieVersion].every(version => typeof version === "string" && version === version.trim() && (/^(?:1\.3|2\.0)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/).test(version))) throw new Error("Unsupported pack producer/artifact runtime; pack v1 supports POKIE 2.0.x (and retained 1.3.x evidence) only. Rebuild with a compatible runtime; do not relabel artifact provenance.");
+    const source = d.identity.sourceLibraryIndex;
     if (source.schemaVersion !== 1) throw new Error("Unsupported retained source-bundle manifest version; expected 1.");
-    if (source.configHash !== manifest.configHash || source.artifactPokieVersion !== manifest.artifactPokieVersion || packHash(source.game) !== packHash(manifest.game)) throw new Error("Contradictory retained source provenance.");
+    if (source.configHash !== manifest.configHash || source.recordPokieVersion !== manifest.recordPokieVersion || packHash(source.game) !== packHash(manifest.game)) throw new Error("Contradictory retained source provenance.");
     for (const mode of manifest.modes) {
         const original = source.modes.find(entry => entry.modeName === mode.modeName);
         if (!original || ["betMode", "stake", "libraryId", "libraryHash", "outcomeCount", "totalWeight", "analysis"].some(field => packHash(Reflect.get(mode, field)) !== packHash(Reflect.get(original, field)))) throw new Error("Mode statistics/identity contradict the retained source manifest.");
     }
-    if (packHash(d.identity.sourceLibraryManifest) !== d.identity.sourceLibraryManifestHash) throw new Error("Source manifest identity does not bind its retained bytes/values.");
-    if (d.identity.runtimeVersion !== "pokie.session-runtime.v1" || d.identity.sourceLibraryManifestHash !== manifest.sourceLibraryManifestHash) throw new Error("Incompatible runtime or inconsistent source identity.");
+    if (packHash(d.identity.sourceLibraryIndex) !== d.identity.sourceLibraryIndexHash) throw new Error("Source index identity does not bind its retained bytes/values.");
+    if (d.identity.runtimeVersion !== "pokie.session-runtime.v1" || d.identity.sourceLibraryIndexHash !== manifest.sourceLibraryIndexHash) throw new Error("Incompatible runtime or inconsistent source identity.");
     for (const revision of [d.identity.sourceRevision, d.identity.candidateRevision]) if (revision !== null && (typeof revision !== "string" || !revision.trim())) throw new Error("Invalid revision label.");
     if (d.identity.modelHash !== null) {
         hash(d.identity.modelHash);

@@ -5,7 +5,7 @@ import path from "path";
 import type {Readable} from "stream";
 import {PackageJsonLike, withLocalPokieDependency} from "@fromstan/pokie";
 import {LocalPokieDependencyClosureEntry, resolveLocalPokieDependencyClosure} from "./localPokieDependencyClosure.js";
-import {RuntimePreparationCancelledError} from "../materialize/RuntimePreparationCancelledError.js";
+import {RuntimePreparationCancelledError} from "../runtime/RuntimePreparationCancelledError.js";
 
 export type PackageCommandResult = {stdout: string; stderr: string};
 // The runner consumes piped output; ignored stdin is null on native spawned children.
@@ -291,13 +291,13 @@ function restorePersistedPackageLock(cwd: string, originalPackageJson: PackageJs
 // `pokiePackageRoot` (via withLocalPokieDependency), and every name in "pokie"'s own real runtime
 // dependency closure to this exact running installation's already-resolved copies
 // (withLocalPokieDependencyClosure) -- the one shared mechanism every real "npm install" this repo's
-// tooling runs against a staged/generated package goes through (BlueprintProjectMaterializer's staging
+// tooling runs against a staged/generated package goes through (BlueprintProjectPreparer's staging
 // installs in production; GamePackagePreparer's own real create -> install -> build lifecycle in its own
 // integration tests, via tests/testUtils/offlinePokieDependencyOverride.ts's localPokieDependencyRunner)
 // so it never has to ask a registry for this exact running POKIE installation, published or not, nor for
 // any of its own dependencies. Deliberately
 // never touches devDependencies-vs-dependencies install semantics itself (e.g. no "--omit=dev") -- a
-// caller that needs that (BlueprintProjectMaterializer's own dependency phase never needs devDependencies
+// caller that needs that (BlueprintProjectPreparer's own dependency phase never needs devDependencies
 // at all, since its staged dist/index.js is already generated -- see its own doc comment) decides that
 // for itself. Only "install" invocations are touched -- any other npm subcommand (e.g. "run build")
 // passes straight through untouched, since the package.json rewrite only ever matters immediately before
@@ -395,7 +395,7 @@ export function withLinkedLocalPokieRuntime(pokiePackageRoot: string, base: Pack
 // execFile/execFileAsync's own rejection carries a failed command's real stderr as a plain "stderr"
 // property alongside its (much noisier, command-line-and-exit-code-prefixed) "message" -- shared by
 // every "dependencies" phase failure that wants that raw npm output as a secondary "details" field
-// (BlueprintMaterializationError, GamePackagePreparationError) without leaking it into the primary,
+// (BlueprintPreparationError, GamePackagePreparationError) without leaking it into the primary,
 // human-facing message. Returns undefined for a runCommand implementation that doesn't shape its
 // rejections that way, or whose "stderr" is blank.
 export function extractNpmStderr(error: unknown): string | undefined {

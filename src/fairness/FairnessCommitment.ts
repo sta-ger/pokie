@@ -1,5 +1,5 @@
 // Tracks this type's own shape (not the pokie package version), same convention as
-// OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION.
+// OUTCOME_LIBRARY_FOLDER_INDEX_SCHEMA_VERSION.
 export const FAIRNESS_COMMITMENT_SCHEMA_VERSION = 1;
 
 // The "round commitment" — published to the player once clientSeed/nonce are known and BEFORE the outcome is

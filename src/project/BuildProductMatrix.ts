@@ -38,7 +38,7 @@ export const BUILD_PRODUCT_MATRIX_TARGETS: readonly OutputFormat[] = [
 
 // Every build target is advertised because each has a complete source-to-artifact matrix, including canonical
 // WASM from Blueprint and PAR sources.
-export const ADVERTISED_ARTIFACT_BUILD_TARGETS: readonly OutputFormat[] = BUILD_PRODUCT_MATRIX_TARGETS;
+export const ADVERTISED_BUILD_TARGETS: readonly OutputFormat[] = BUILD_PRODUCT_MATRIX_TARGETS;
 
 const PUBLIC_PROJECT_TYPE_NAMES: Readonly<Record<ProjectType, string>> = {
     blueprint: "Game Blueprint",
@@ -88,7 +88,7 @@ export function getBuildProductMatrixCell(source: ProjectType, target: OutputFor
 }
 
 export function isAdvertisedBuildTarget(target: OutputFormat): boolean {
-    return ADVERTISED_ARTIFACT_BUILD_TARGETS.includes(target);
+    return ADVERTISED_BUILD_TARGETS.includes(target);
 }
 
 // Shared public diagnostic for CLI, direct-library consumers and Studio. Keeping names, missing data and

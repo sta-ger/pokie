@@ -24,7 +24,7 @@ const SAMPLE_OUTCOME_LIBRARY_MANIFEST = {
     pokieVersion: "1.3.0",
     generatedAt: new Date(0).toISOString(),
     game: {id: "sample", name: "Sample", version: "1.0.0"},
-    artifactPokieVersion: "1.3.0",
+    recordPokieVersion: "1.3.0",
     modes: [],
     files: ["index.json"],
 };

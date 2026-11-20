@@ -9,8 +9,8 @@ import type {BuildOutputBuilder} from "./BuildOutputBuilder.js";
 import {OutputPublicationOwnership, rollbackArtifactPublication} from "./OutputPublicationOwnership.js";
 import type {BuildOutputResult} from "./BuildOutputResult.js";
 import {assertBuildNotCancelled, reportBuildProgress, type BuildOutputOptions} from "./BuildOutputOptions.js";
-import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
-import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
+import {assertBuildDestinationAvailable} from "./internal/assertBuildDestinationAvailable.js";
+import {assertBuildDestinationIsSafe} from "./internal/assertBuildDestinationIsSafe.js";
 import {PackageBlueprintExtraction, type PackageBlueprintExtractionResult} from "../generated/PackageBlueprintExtraction.js";
 import {computeProjectInputBindingHash} from "./FormatConversionPlanner.js";
 import type {PokieProject} from "./PokieProject.js";
@@ -41,8 +41,8 @@ export class BlueprintOutputBuilder implements BuildOutputBuilder {
     public async build(source: PokieProject, destinationPath: string, options?: BuildOutputOptions): Promise<BuildOutputResult> {
         if (source.type !== "parWorkbook" && source.type !== "tsPackage") throw new Error("A Blueprint destination requires a PAR workbook or a package with a complete public effective-model descriptor.");
         assertBuildNotCancelled(options);
-        assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
-        assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
+        assertBuildDestinationAvailable(destinationPath, this.destinationKind);
+        assertBuildDestinationIsSafe(source.rootPath, destinationPath);
         const inputBinding = computeProjectInputBindingHash(source);
         if (options?.preparedPackageModel && options.preparedPackageModel.inputBindingHash !== inputBinding) throw new Error("Package source changed after preview; prepare a new extraction.");
         const evidencePath = `${destinationPath}.conversion-evidence.json`;
@@ -50,8 +50,8 @@ export class BlueprintOutputBuilder implements BuildOutputBuilder {
         // disposable log.  Do the same occupied-output check for it before
         // allocating either publication so an existing sidecar can never be
         // overwritten (or removed by the rollback below).
-        assertArtifactDestinationIsSafe(source.rootPath, evidencePath);
-        assertArtifactDestinationAvailable(evidencePath, this.destinationKind);
+        assertBuildDestinationIsSafe(source.rootPath, evidencePath);
+        assertBuildDestinationAvailable(evidencePath, this.destinationKind);
         const publication = new OutputPublicationOwnership();
         const staging = new OutputPublicationOwnership();
         let blueprintTemp: string | undefined;
@@ -113,8 +113,8 @@ export class BlueprintOutputBuilder implements BuildOutputBuilder {
             }, null, 4)}\n`);
             assertBuildNotCancelled(options);
             if (inputBinding !== computeProjectInputBindingHash(source)) throw new Error("Package/PAR source changed during extraction; prepare a new conversion.");
-            assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
-            assertArtifactDestinationAvailable(evidencePath, this.destinationKind);
+            assertBuildDestinationAvailable(destinationPath, this.destinationKind);
+            assertBuildDestinationAvailable(evidencePath, this.destinationKind);
             await publication.publish(blueprintTemp, destinationPath, options);
             assertBuildNotCancelled(options);
             await publication.publish(evidenceTemp, evidencePath, options);

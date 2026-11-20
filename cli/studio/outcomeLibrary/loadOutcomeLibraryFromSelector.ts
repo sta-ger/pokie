@@ -1,4 +1,4 @@
-import type {OutcomeLibraryFolderReading, StakeEngineImporting, ValidationIssue, WeightedOutcomeLibrary} from "@fromstan/pokie";
+import type {OutcomeLibraryFolderReading, StakeEngineImporting, StakeEngineImportResult, ValidationIssue, WeightedOutcomeLibrary} from "@fromstan/pokie";
 import {loadWeightedOutcomeLibraryFromProjectFile} from "../deployment/loadWeightedOutcomeLibraryFromProjectFile.js";
 import {resolveProjectDirectory} from "./resolveProjectDirectory.js";
 import type {OutcomeLibrarySelector} from "./OutcomeLibrarySelector.js";
@@ -41,13 +41,13 @@ export async function loadOutcomeLibraryFromSelector(
             return {status: "load-error", error: resolved.message};
         }
         try {
-            const manifest = await bundleReader.readManifest(resolved.resolvedPath);
+            const manifest = await bundleReader.readIndex(resolved.resolvedPath);
             const library = await bundleReader.readLibrary(resolved.resolvedPath, selector.modeName);
             return {
                 status: "ok",
                 library,
                 source: "folder",
-                envelope: {game: manifest.game, configHash: manifest.configHash, pokieVersion: manifest.artifactPokieVersion},
+                envelope: {game: manifest.game, configHash: manifest.configHash, pokieVersion: manifest.recordPokieVersion},
                 importIssues: [],
             };
         } catch (error) {
@@ -63,7 +63,7 @@ export async function loadOutcomeLibraryFromSelector(
         return {status: "load-error", error: resolved.message};
     }
 
-    let imported;
+    let imported: StakeEngineImportResult<string>;
     try {
         imported = await stakeEngineImporter.importFromDirectory(resolved.resolvedPath);
     } catch (error) {
@@ -83,8 +83,8 @@ export async function loadOutcomeLibraryFromSelector(
         library: mode.library,
         source: "stakeengine",
         envelope:
-            imported.manifest !== undefined
-                ? {game: imported.manifest.game, configHash: imported.manifest.configHash, pokieVersion: imported.manifest.pokieVersion}
+            imported.info !== undefined
+                ? {game: imported.info.game, configHash: imported.info.configHash, pokieVersion: imported.info.pokieVersion}
                 : undefined,
         importIssues: imported.issues,
     };

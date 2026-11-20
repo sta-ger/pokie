@@ -26,14 +26,14 @@ export function findIndexEntryById(entries: readonly OutcomeLibraryFolderIndexEn
     return undefined;
 }
 
-function isWeightedOutcomeShape(value: unknown): value is {id: string; weight: number; artifact: unknown} {
+function isWeightedOutcomeShape(value: unknown): value is {id: string; weight: number; record: unknown} {
     return (
         typeof value === "object" &&
         value !== null &&
         typeof (value as {id?: unknown}).id === "string" &&
         typeof (value as {weight?: unknown}).weight === "number" &&
-        typeof (value as {artifact?: unknown}).artifact === "object" &&
-        (value as {artifact?: unknown}).artifact !== null
+        typeof (value as {record?: unknown}).record === "object" &&
+        (value as {record?: unknown}).record !== null
     );
 }
 
@@ -47,7 +47,7 @@ function isWeightedOutcomeShape(value: unknown): value is {id: string; weight: n
 // filesystem returning stale data) would otherwise silently hand back the *wrong* outcome with no indication
 // anything was amiss, which is a real correctness risk for anything feeding a live draw rather than a mere
 // diagnostic. The recordHash check specifically catches content tampered in place without touching id/weight at
-// all (e.g. a rewritten artifact) — something the id/weight checks alone can't. Throws
+// all (e.g. a rewritten record) — something the id/weight checks alone can't. Throws
 // OutcomeLibraryFolderInvariantError rather than returning a mismatched result — the same "assume already
 // validated, fail fast on a genuine surprise" contract every other OutcomeLibraryFolderReader method has; a
 // caller that specifically needs this surfaced as a source-level conflict (see PreGeneratedOutcomeSourcing)
@@ -81,7 +81,7 @@ export function readAndVerifyOutcomeAtByteRangeFromFileDescriptor<T extends stri
 
     if (!isWeightedOutcomeShape(value)) {
         throw new OutcomeLibraryFolderInvariantError(
-            `mode "${modeName}": the record at outcome "${entry.id}"'s own recorded byte range is not {id, weight, artifact}.`,
+            `mode "${modeName}": the record at outcome "${entry.id}"'s own recorded byte range is not {id, weight, record}.`,
         );
     }
     if (value.id !== entry.id) {

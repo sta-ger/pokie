@@ -1,10 +1,10 @@
 import {isWasmComponentFile, loadPokieGame, OutcomeSourceProjectAnalyzer, OutcomeSourceProjectReport, PokieProject, ProjectTargetResolver, readWasmComponentInfo, releasePokieGame, type ProjectType} from "@fromstan/pokie";
 import path from "path";
-import {BlueprintMaterializationError} from "../materialize/BlueprintMaterializationError.js";
-import {RuntimePreparationError} from "../materialize/RuntimePreparationError.js";
-import {RuntimePreparationCancelledError} from "../materialize/RuntimePreparationCancelledError.js";
-import {RuntimePreparationCleanupError} from "../materialize/RuntimePreparationCleanupError.js";
-import {passthroughRuntimePackageResolver, RuntimePackageResolution, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
+import {BlueprintPreparationError} from "../runtime/BlueprintPreparationError.js";
+import {RuntimePreparationError} from "../runtime/RuntimePreparationError.js";
+import {RuntimePreparationCancelledError} from "../runtime/RuntimePreparationCancelledError.js";
+import {RuntimePreparationCleanupError} from "../runtime/RuntimePreparationCleanupError.js";
+import {passthroughRuntimePackageResolver, RuntimePackageResolution, RuntimePackageResolving} from "../runtime/prepareRuntimePackage.js";
 import type {ProjectDashboardContext} from "./ProjectDashboardContext.js";
 import type {StudioProjectOrigin} from "./StudioProjectRegistryEntry.js";
 import {StudioProjectOpeningCancelledError} from "./StudioProjectOpeningCancelledError.js";
@@ -70,11 +70,11 @@ const defaultResolveArtifactProject: ArtifactProjectResolving = async (projectRo
 // handleOpenProject (so "does this path actually load" is decided in exactly one place).
 //
 // `resolveRuntimePackageRoot` crosses the same materializing boundary sim/dev/serve/replay/Play cross
-// (see materializeRuntimePackage.ts) before loadGame ever runs — a resolved "blueprint" `projectRoot`
+// (see prepareRuntimePackage.ts) before loadGame ever runs — a resolved "blueprint" `projectRoot`
 // (e.g. a bare `pokie <blueprint.json>` launch) is materialized into a real runtime first, and an
 // unsupported package-runtime project type (outcomeLibrary/stakeAdapter/parWorkbook) surfaces its
 // UnsupportedProjectOperationError's own message as this result's "error", never a raw loadPokieGame
-// failure a user would have to guess the cause of. A BlueprintMaterializationError's own "details" (a
+// failure a user would have to guess the cause of. A BlueprintPreparationError's own "details" (a
 // failed materialization "npm install"'s real stderr) rides along separately as this result's own
 // "errorDetail" -- see ProjectDashboardContext's own doc comment. Defaults to a no-op passthrough so
 // every existing caller/test keeps behaving exactly as before this boundary existed.
@@ -230,7 +230,7 @@ export async function loadProjectDashboardContext(
             status: "error",
             projectRoot: resolvedRoot,
             error: error instanceof Error ? error.message : String(error),
-            errorDetail: error instanceof BlueprintMaterializationError || error instanceof RuntimePreparationError ? error.details : undefined,
+            errorDetail: error instanceof BlueprintPreparationError || error instanceof RuntimePreparationError ? error.details : undefined,
         };
     }
 }

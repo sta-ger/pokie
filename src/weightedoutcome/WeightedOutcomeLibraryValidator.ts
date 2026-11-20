@@ -35,10 +35,10 @@ type OutcomeHomogeneityKey = {
 
 // Structural invariants a WeightedOutcomeLibrary must satisfy regardless of how it was built or where it came
 // from — reuses the existing generic ValidationRule<T> contract (same as RoundRecordValidator itself) to
-// validate each outcome's own RoundRecord, so "artifact consistency" is exactly RoundRecordValidator's own
+// validate each outcome's own RoundRecord, so "record consistency" is exactly RoundRecordValidator's own
 // definition of validity, not a second one. RoundRecordValidator always runs, whether or not a constructor
-// `extraArtifactValidator` is given — that parameter can only ever add further issues on top, the same way
-// buildWeightedOutcomeLibrary's own `artifactValidator` option can't replace its RoundRecordValidator run
+// `extraRecordValidator` is given — that parameter can only ever add further issues on top, the same way
+// buildWeightedOutcomeLibrary's own `recordValidator` option can't replace its RoundRecordValidator run
 // either, so a permissive custom validator (e.g. one that always returns no issues) can never let a malformed
 // RoundRecord through here. Never throws: every check is defensive about the actual runtime shape of its
 // input, and the top-level validate() wraps everything in a catch-all so a genuinely malformed library still
@@ -46,10 +46,10 @@ type OutcomeHomogeneityKey = {
 export class WeightedOutcomeLibraryValidator<T extends string | number = string>
 implements ValidationRule<WeightedOutcomeLibrary<T>> {
     private readonly roundRecordValidator = new RoundRecordValidator<T>();
-    private readonly extraArtifactValidator: ValidationRule<RoundRecord<T>> | undefined;
+    private readonly extraRecordValidator: ValidationRule<RoundRecord<T>> | undefined;
 
-    constructor(extraArtifactValidator?: ValidationRule<RoundRecord<T>>) {
-        this.extraArtifactValidator = extraArtifactValidator;
+    constructor(extraRecordValidator?: ValidationRule<RoundRecord<T>>) {
+        this.extraRecordValidator = extraRecordValidator;
     }
 
     public validate(library: WeightedOutcomeLibrary<T>): ValidationIssue[] {
@@ -181,7 +181,7 @@ implements ValidationRule<WeightedOutcomeLibrary<T>> {
                 totalWeight += o.weight;
             }
 
-            reference = this.validateOutcomeArtifact(o.artifact, position, reference, issues);
+            reference = this.validateOutcomeRecord(o.record, position, reference, issues);
         });
 
         if (!Number.isFinite(totalWeight) || totalWeight <= 0) {
@@ -194,30 +194,30 @@ implements ValidationRule<WeightedOutcomeLibrary<T>> {
     }
 
     // Returns the homogeneity reference to use for subsequent outcomes: the one passed in, unless this is the
-    // first structurally-valid artifact seen (in which case this outcome's own key becomes the reference).
-    private validateOutcomeArtifact(
-        artifact: unknown,
+    // first structurally-valid record seen (in which case this outcome's own key becomes the reference).
+    private validateOutcomeRecord(
+        record: unknown,
         position: number,
         reference: OutcomeHomogeneityKey | undefined,
         issues: ValidationIssue[],
     ): OutcomeHomogeneityKey | undefined {
-        if (typeof artifact !== "object" || artifact === null) {
+        if (typeof record !== "object" || record === null) {
             issues.push({
-                code: "weighted-outcome-artifact-invalid",
+                code: "weighted-outcome-record-invalid",
                 severity: "error",
-                message: `outcome at position ${position} must have an artifact object.`,
+                message: `outcome at position ${position} must have an record object.`,
                 details: {position},
             });
             return reference;
         }
-        const a = artifact as Loose<RoundRecord<T>>;
+        const a = record as Loose<RoundRecord<T>>;
 
         const payoutMultiplier = a.payoutMultiplier;
         if (!isFiniteNumber(payoutMultiplier) || payoutMultiplier < 0) {
             issues.push({
                 code: "weighted-outcome-payout-multiplier-invalid",
                 severity: "error",
-                message: `outcome at position ${position} has an invalid artifact.payoutMultiplier, got ${String(payoutMultiplier)}.`,
+                message: `outcome at position ${position} has an invalid record.payoutMultiplier, got ${String(payoutMultiplier)}.`,
                 details: {position, payoutMultiplier},
             });
         }
@@ -227,12 +227,12 @@ implements ValidationRule<WeightedOutcomeLibrary<T>> {
             issues.push({
                 code: "weighted-outcome-stake-invalid",
                 severity: "error",
-                message: `outcome at position ${position} has an invalid artifact.stake, got ${String(stake)}; must be a finite number > 0.`,
+                message: `outcome at position ${position} has an invalid record.stake, got ${String(stake)}; must be a finite number > 0.`,
                 details: {position, stake},
             });
         }
 
-        [...this.roundRecordValidator.validate(artifact as RoundRecord<T>), ...(this.extraArtifactValidator?.validate(artifact as RoundRecord<T>) ?? [])].forEach(
+        [...this.roundRecordValidator.validate(record as RoundRecord<T>), ...(this.extraRecordValidator?.validate(record as RoundRecord<T>) ?? [])].forEach(
             (issue) => {
                 issues.push({
                     ...issue,

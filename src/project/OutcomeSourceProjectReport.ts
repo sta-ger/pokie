@@ -4,7 +4,7 @@ import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import type {WeightedOutcomeLibraryAnalysis} from "../weightedoutcome/WeightedOutcomeLibraryAnalysis.js";
 
 // One mode's own exact analysis, whichever canonical reader family produced it -- a native bundle's own
-// WeightedOutcomeLibraryAnalysis (rtp/hitFrequency/variance/standardDeviation/... over artifact.payoutMultiplier)
+// WeightedOutcomeLibraryAnalysis (rtp/hitFrequency/variance/standardDeviation/... over record.payoutMultiplier)
 // or a Stake Engine directory's own StakeEngineStandaloneModeAnalysis (the same field names, computed directly
 // over StakeEngineOutcomeRecord instead) -- see OutcomeSourceProjectAnalyzer's own doc comment for why both
 // analyzers already share this shape closely enough for a caller to treat them uniformly.

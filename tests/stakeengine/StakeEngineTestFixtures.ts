@@ -62,7 +62,7 @@ export function buildSingleOutcomeStakeEngineLibrary(options: {libraryId: string
             {
                 id: "0",
                 weight: 1,
-                artifact: stakeEngineArtifact({roundId: `${options.libraryId}-0`, totalWin: options.totalWin, stake: options.stake, betMode: options.betMode}),
+                record: stakeEngineArtifact({roundId: `${options.libraryId}-0`, totalWin: options.totalWin, stake: options.stake, betMode: options.betMode}),
             },
         ],
     });
@@ -78,17 +78,17 @@ export function buildStakeEngineTestLibrary(options: {libraryId: string; betMode
             {
                 id: "0",
                 weight: 970,
-                artifact: stakeEngineArtifact({roundId: `${options.libraryId}-0`, totalWin: 0, stake: options.stake, betMode: options.betMode}),
+                record: stakeEngineArtifact({roundId: `${options.libraryId}-0`, totalWin: 0, stake: options.stake, betMode: options.betMode}),
             },
             {
                 id: "1",
                 weight: 25,
-                artifact: stakeEngineArtifact({roundId: `${options.libraryId}-1`, totalWin: options.stake * 2, stake: options.stake, betMode: options.betMode}),
+                record: stakeEngineArtifact({roundId: `${options.libraryId}-1`, totalWin: options.stake * 2, stake: options.stake, betMode: options.betMode}),
             },
             {
                 id: "2",
                 weight: 5,
-                artifact: stakeEngineMultiStepArtifact({
+                record: stakeEngineMultiStepArtifact({
                     roundId: `${options.libraryId}-2`,
                     stake: options.stake,
                     betMode: options.betMode,

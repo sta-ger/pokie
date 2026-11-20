@@ -2,7 +2,7 @@ import fs from "fs";
 import readline from "readline";
 import {WeightedOutcomeInput} from "@fromstan/pokie";
 
-// Streams "filePath" (one canonical-JSON `{"id": string, "weight": number, "artifact": object}` outcome per
+// Streams "filePath" (one canonical-JSON `{"id": string, "weight": number, "record": object}` outcome per
 // line, NOT wrapped in a WeightedOutcomeLibrary object) via Node's readline over a read stream — so
 // "pokie outcomelibrary build" can feed a mode straight into OutcomeLibraryFolderWriter without ever holding
 // more than one outcome in memory at once, the CLI counterpart to the writer's own end-to-end streaming (see
@@ -30,10 +30,10 @@ export async function *streamJsonlOutcomes(filePath: string): AsyncGenerator<Wei
                 parsed === null ||
                 typeof (parsed as {id?: unknown}).id !== "string" ||
                 typeof (parsed as {weight?: unknown}).weight !== "number" ||
-                typeof (parsed as {artifact?: unknown}).artifact !== "object" ||
-                (parsed as {artifact?: unknown}).artifact === null
+                typeof (parsed as {record?: unknown}).record !== "object" ||
+                (parsed as {record?: unknown}).record === null
             ) {
-                throw new Error(`"${filePath}": line ${position} is not {"id": string, "weight": number, "artifact": object}.`);
+                throw new Error(`"${filePath}": line ${position} is not {"id": string, "weight": number, "record": object}.`);
             }
             yield parsed as WeightedOutcomeInput;
             position++;

@@ -11,7 +11,7 @@ import type {SimulationStopReason} from "../SimulationStopReason.js";
 // result.
 export type SimulationWorkerResult = {
     workerIndex: number;
-    manifest: PokieGameInfo;
+    gameInfo: PokieGameInfo;
     /** Authoritative identity of the resolved runtime model, when supplied by the game. */
     configHash?: string;
     accumulator: SimulationAccumulatorSnapshot;

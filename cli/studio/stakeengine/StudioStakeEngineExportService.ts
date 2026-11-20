@@ -19,22 +19,22 @@ import {loadOutcomeLibraryFromSelector} from "../outcomeLibrary/loadOutcomeLibra
 import type {OutcomeLibrarySelector} from "../outcomeLibrary/OutcomeLibrarySelector.js";
 import {resolveProjectDirectory} from "../outcomeLibrary/resolveProjectDirectory.js";
 import {canonicalizeOutcomeIdsForStakeEngine} from "./canonicalizeOutcomeIdsForStakeEngine.js";
-import {StudioFormatConversionPlanning, StudioFormatConversionPlanningService} from "../artifacts/StudioFormatConversionPlanningService.js";
-import {createExternalOutcomeLibraryPlan} from "../artifacts/createExternalFormatConversionPlan.js";
-import {describePreparedArtifactPlanDrift} from "../artifacts/describePreparedArtifactPlanDrift.js";
+import {StudioFormatConversionPlanning, StudioFormatConversionPlanningService} from "../build/StudioFormatConversionPlanningService.js";
+import {createExternalOutcomeLibraryPlan} from "../build/createExternalFormatConversionPlan.js";
+import {describePreparedBuildPlanDrift} from "../build/describePreparedBuildPlanDrift.js";
 import type {StudioStakeEngineExportModeInput} from "./StudioStakeEngineExportModeInput.js";
 import type {StudioStakeEngineExportValidateView} from "./StudioStakeEngineExportValidateView.js";
 import type {StudioStakeEngineExportView} from "./StudioStakeEngineExportView.js";
-import type {StudioArtifactBuildView} from "../artifacts/StudioArtifactBuildView.js";
+import type {StudioBuildView} from "../build/StudioBuildView.js";
 
-/** The canonical Studio project-goal boundary, implemented by StudioArtifactBuildService. */
+/** The canonical Studio project-goal boundary, implemented by StudioBuildService. */
 export interface StudioStakeProjectGoalExporting {
     /** @deprecated Kept optional for embedders compiled against the old adapter. */
-    build?: (projectRoot: string, target: "stakeAdapter", outDir?: string, options?: import("@fromstan/pokie").BuildOutputOptions) => Promise<StudioArtifactBuildView>;
-    executeStakeProjection?: (operation: import("@fromstan/pokie").PreparedStakeProjectionOperation, options?: import("@fromstan/pokie").BuildOutputOptions) => Promise<StudioArtifactBuildView>;
+    build?: (projectRoot: string, target: "stakeAdapter", outDir?: string, options?: import("@fromstan/pokie").BuildOutputOptions) => Promise<StudioBuildView>;
+    executeStakeProjection?: (operation: import("@fromstan/pokie").PreparedStakeProjectionOperation, options?: import("@fromstan/pokie").BuildOutputOptions) => Promise<StudioBuildView>;
     validateStakeProjection(projectRoot: string, outDir?: string): Promise<{readonly plan: import("@fromstan/pokie").FormatConversionPlan; readonly operation: import("@fromstan/pokie").PreparedStakeProjectionOperation} | undefined>;
     validateStakeProjectionSource(sourcePath: string, destinationPath: string): Promise<{readonly plan: import("@fromstan/pokie").FormatConversionPlan} | undefined>;
-    buildStakeProjectionSource(sourcePath: string, destinationPath: string, options?: import("@fromstan/pokie").BuildOutputOptions): Promise<StudioArtifactBuildView>;
+    buildStakeProjectionSource(sourcePath: string, destinationPath: string, options?: import("@fromstan/pokie").BuildOutputOptions): Promise<StudioBuildView>;
 }
 
 type LoadModesResult =
@@ -147,7 +147,7 @@ export class StudioStakeEngineExportService {
             return {status: "unavailable", error: describeFormatConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Stake Engine export is unavailable.", plan};
         }
         const selectedSource = this.selectedBundleSource(projectRoot, selectedModes);
-        const planDrift = selectedSource === undefined ? undefined : describePreparedArtifactPlanDrift(plan, selectedSource, "stakeAdapter");
+        const planDrift = selectedSource === undefined ? undefined : describePreparedBuildPlanDrift(plan, selectedSource, "stakeAdapter");
         if (planDrift !== undefined) {
             return {status: "load-error", error: planDrift, plan};
         }
@@ -221,7 +221,7 @@ export class StudioStakeEngineExportService {
             };
         }
         const selectedSource = this.selectedBundleSource(projectRoot, selectedModes);
-        const planDrift = selectedSource === undefined ? undefined : describePreparedArtifactPlanDrift(plan, selectedSource, "stakeAdapter", resolvedOutDir.resolvedPath);
+        const planDrift = selectedSource === undefined ? undefined : describePreparedBuildPlanDrift(plan, selectedSource, "stakeAdapter", resolvedOutDir.resolvedPath);
         if (planDrift !== undefined) {
             return {status: "load-error", error: planDrift, plan};
         }
@@ -271,10 +271,10 @@ export class StudioStakeEngineExportService {
             }
             const result = execution.publication!;
             const errors = result.issues.filter((issue) => issue.severity === "error");
-            if (result.manifest === undefined || errors.length > 0) {
+            if (result.info === undefined || errors.length > 0) {
                 return {status: "invalid", errors, warnings: result.issues.filter((issue) => issue.severity !== "error"), plan};
             }
-            return {status: "ok", outDir: result.outDir, files: result.files, manifest: result.manifest, warnings: result.issues, plan};
+            return {status: "ok", outDir: result.outDir, files: result.files, info: result.info, warnings: result.issues, plan};
         } catch (error) {
             const failure = terminalFailure ?? error;
             return {status: "load-error", error: `Could not export to "${outDir}": ${failure instanceof Error ? failure.message : String(failure)}`, plan};
@@ -359,7 +359,7 @@ export class StudioStakeEngineExportService {
         };
     }
 
-    private async inspectProjectGoalResult(result: StudioArtifactBuildView): Promise<StudioStakeEngineExportView> {
+    private async inspectProjectGoalResult(result: StudioBuildView): Promise<StudioStakeEngineExportView> {
         if (result.status === "conflict") return {status: "conflict", outDir: result.plan.target.canonicalLocation ?? "", overwritable: false, error: result.message, plan: result.plan};
         if (result.status === "unsupported") return {status: "unavailable", error: result.message, plan: result.plan};
         if (result.status === "cancelled") return {status: "cancelled", message: result.message, plan: result.plan};
@@ -367,8 +367,8 @@ export class StudioStakeEngineExportService {
         try {
             const imported = await this.stakeEngineImporter.importFromDirectory(result.outputPath);
             const errors = imported.issues.filter((issue) => issue.severity === "error");
-            if (imported.manifest === undefined || errors.length > 0) return {status: "invalid", errors, warnings: imported.issues.filter((issue) => issue.severity !== "error"), plan: result.plan};
-            return {status: "ok", outDir: result.outputPath, files: this.outputFiles(result.outputPath), manifest: imported.manifest, warnings: imported.issues, plan: result.plan};
+            if (imported.info === undefined || errors.length > 0) return {status: "invalid", errors, warnings: imported.issues.filter((issue) => issue.severity !== "error"), plan: result.plan};
+            return {status: "ok", outDir: result.outputPath, files: this.outputFiles(result.outputPath), info: imported.info, warnings: imported.issues, plan: result.plan};
         } catch (error) {
             return {status: "load-error", error: `Could not inspect the exported Stake artifact: ${error instanceof Error ? error.message : String(error)}`, plan: result.plan};
         }
@@ -533,7 +533,7 @@ export class StudioStakeEngineExportService {
             return resolved.message;
         }
         try {
-            const manifest = await this.bundleReader.readManifest(resolved.resolvedPath);
+            const manifest = await this.bundleReader.readIndex(resolved.resolvedPath);
             if (manifest.configHash === currentConfigHash) {
                 return undefined;
             }

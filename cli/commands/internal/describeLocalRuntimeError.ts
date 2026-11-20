@@ -2,7 +2,7 @@
 // commands deliberately expose the same local HTTP workflow, so their recovery guidance must not
 // drift as their individual server wiring evolves.
 import {ProjectTargetMalformedError, ProjectTargetUnsupportedError} from "@fromstan/pokie";
-import {RuntimePreparationError} from "../../materialize/RuntimePreparationError.js";
+import {RuntimePreparationError} from "../../runtime/RuntimePreparationError.js";
 
 export function describeLocalServerStartError(
     error: unknown,
@@ -43,7 +43,7 @@ export function describeRuntimePackageLoadError(packageRoot: string, error: unkn
     // actively misleading for a valid Blueprint or PAR workbook.
     if (error instanceof Error && (
         error.name === "UnsupportedProjectOperationError" ||
-        error.name === "BlueprintMaterializationError" ||
+        error.name === "BlueprintPreparationError" ||
         error.name === "RuntimePreparationError" ||
         error.message.startsWith("Cannot prepare a runnable runtime") ||
         error.message.includes("Project preparation was cancelled")

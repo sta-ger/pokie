@@ -3,7 +3,7 @@ const {
     STUDIO_FIXTURE_GAME_ID,
     createStudioFixtureGameSession,
     VideoSlotWithFreeGamesSessionSerializer,
-} = require("@fromstan/pokie");
+} = require("@fromstan/pokie/browser");
 
 // The Studio half of the Studio/browser runner. The examples fixture imports the same public factory,
 // so a featured round is one game contract and one seed rather than two coincidentally similar games.

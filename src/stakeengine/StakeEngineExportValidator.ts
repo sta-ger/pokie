@@ -54,7 +54,7 @@ type ModeProvenanceKey = {
 
 function provenanceKeyOf<T extends string | number>(mode: StakeEngineExportModeInput<T>): ModeProvenanceKey | undefined {
     const firstOutcome = mode.library.outcomes[0];
-    const provenance = firstOutcome?.artifact?.origin;
+    const provenance = firstOutcome?.record?.origin;
     if (provenance === undefined) {
         return undefined;
     }
@@ -206,15 +206,15 @@ export class StakeEngineExportValidator<T extends string | number = string> impl
                 });
             }
 
-            if (convertRatioToStakeUnits(outcome.artifact.payoutMultiplier, mode.cost) === undefined) {
+            if (convertRatioToStakeUnits(outcome.record.payoutMultiplier, mode.cost) === undefined) {
                 issues.push({
                     code: "stakeengine-outcome-payout-multiplier-not-representable",
                     severity: "error",
                     message:
-                        `mode "${mode.modeName}": outcome "${outcome.id}"'s artifact.payoutMultiplier (${outcome.artifact.payoutMultiplier}) is not representable as a ` +
+                        `mode "${mode.modeName}": outcome "${outcome.id}"'s record.payoutMultiplier (${outcome.record.payoutMultiplier}) is not representable as a ` +
                         `non-negative safe integer once converted to Stake units (payoutMultiplier * cost (${mode.cost}) * 100), and Stake Engine requires an exact ` +
                         "integer — POKIE never rounds this conversion.",
-                    details: {modeName: mode.modeName, id: outcome.id, payoutMultiplier: outcome.artifact.payoutMultiplier, cost: mode.cost},
+                    details: {modeName: mode.modeName, id: outcome.id, payoutMultiplier: outcome.record.payoutMultiplier, cost: mode.cost},
                 });
             }
         });

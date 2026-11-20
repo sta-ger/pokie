@@ -18,7 +18,7 @@ function libraryOf(weights: {id: string; weight: number; totalWin: number}[]): W
         outcomes: weights.map(({id, weight, totalWin}) => ({
             id,
             weight,
-            artifact: artifactWith({roundId: id, totalWin}),
+            record: artifactWith({roundId: id, totalWin}),
         })),
     });
 }
@@ -127,7 +127,7 @@ describe("WeightedOutcomeSelector", () => {
         const selector = new WeightedOutcomeSelector();
 
         const outcome = selector.select(library, fixedIntSource(0));
-        expect(outcome.artifact).toBe(library.outcomes[0].artifact);
+        expect(outcome.record).toBe(library.outcomes[0].record);
     });
 
     it("throws WeightedOutcomeSelectionError for a library with no outcomes", () => {
@@ -142,7 +142,7 @@ describe("WeightedOutcomeSelector", () => {
         const fractionalWeightLibrary = {
             schemaVersion: 1,
             libraryId: "fractional",
-            outcomes: [{id: "a", weight: 0.5, artifact: artifactWith({roundId: "a", totalWin: 0})}],
+            outcomes: [{id: "a", weight: 0.5, record: artifactWith({roundId: "a", totalWin: 0})}],
         } as WeightedOutcomeLibrary<string>;
 
         expect(() => selector.select(fractionalWeightLibrary, fixedIntSource(0))).toThrow(WeightedOutcomeSelectionError);

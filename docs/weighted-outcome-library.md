@@ -20,7 +20,7 @@ or multi-step) via `RoundRecord` rather than just raw symbol combinations.
 type WeightedOutcome<T = string> = {
  readonly id: string;
  readonly weight: number;
- readonly artifact: RoundRecord<T>;
+ readonly record: RoundRecord<T>;
 };
 
 type WeightedOutcomeLibrary<T = string> = {
@@ -38,7 +38,7 @@ jackpot, say) is "in" the library's analysis when it can never be. `id` is alway
 `RoundRecord.roundId` is: never auto-generated, so a library rebuilt from the same source math data reproduces
 the exact same ids, and therefore the exact same library hash.
 
-Both types are deeply readonly and deeply frozen once built — a `WeightedOutcome`'s own `artifact` isn't
+Both types are deeply readonly and deeply frozen once built — a `WeightedOutcome`'s own `record` isn't
 separately deep-copied, since a `RoundRecord` is already immutable by construction (built via `buildRoundRecord`).
 
 ### Library homogeneity: one library is one paid bet
@@ -60,28 +60,28 @@ rejects it outright.
 ```ts
 function buildWeightedOutcomeLibrary<T = string>(options: {
  libraryId: string;
- outcomes: readonly {id: string; weight: number; artifact: RoundRecord<T>}[];
+ outcomes: readonly {id: string; weight: number; record: RoundRecord<T>}[];
  schemaVersion?: number;
- artifactValidator?: ValidationRule<RoundRecord<T>>; // an *additional* check, never a replacement — see below
+ recordValidator?: ValidationRule<RoundRecord<T>>; // an *additional* check, never a replacement — see below
 }): WeightedOutcomeLibrary<T>;
 ```
 
 Fails fast with **`WeightedOutcomeLibraryBuildError`** (`getCode()`/`message`) on: an invalid `libraryId`/
 `schemaVersion` (only the current `WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION` is accepted), an empty `outcomes`
 list, an invalid or duplicate outcome `id`, an invalid `weight` (must be finite and `> 0`, never `0`) or
-`artifact.payoutMultiplier` (must be finite and `>= 0`), an invalid `artifact.stake` (must be finite and `> 0`),
-an artifact that fails validation (see "artifact validation" below), inconsistent provenance/`betMode`/`stake`
+`record.payoutMultiplier` (must be finite and `>= 0`), an invalid `record.stake` (must be finite and `> 0`),
+a record that fails validation (see "record validation" below), inconsistent provenance/`betMode`/`stake`
 across outcomes (see "library homogeneity" above), a total weight that isn't a finite number greater than zero
 (covers both "sums to zero" and "the sum of otherwise-finite weights overflows to `Infinity`"), or content that
 isn't JSON-safe.
 
 ### Artifact validation always runs
 
-A real `RoundRecordValidator` always validates every outcome's artifact, whether or not `artifactValidator` is
+A real `RoundRecordValidator` always validates every outcome's record, whether or not `recordValidator` is
 given — that option can only ever add *further* checks on top of it, never replace it. A permissive custom
 validator (e.g. one that always reports no issues) can therefore never let a malformed `RoundRecord` — a
-mismatched screen, an inconsistent `totalWin`,... — through: it's rejected as `weighted-outcome-artifact-invalid`
-either way. Use `artifactValidator` to layer on extra, library- or game-specific invariants beyond what
+mismatched screen, an inconsistent `totalWin`,... — through: it's rejected as `weighted-outcome-record-invalid`
+either way. Use `recordValidator` to layer on extra, library- or game-specific invariants beyond what
 `RoundRecordValidator` already covers, not to loosen its own checks.
 
 Outcomes are canonically sorted by `id` (plain code-point order, not locale-aware) before the library is frozen,
@@ -97,9 +97,9 @@ import {buildWeightedOutcomeLibrary} from "@fromstan/pokie";
 const library = buildWeightedOutcomeLibrary({
  libraryId: "sample-slot-base-game-v1",
  outcomes: [
- {id: "no-win", weight: 70, artifact: losingArtifact},
- {id: "small-win", weight: 25, artifact: smallWinArtifact},
- {id: "jackpot", weight: 5, artifact: jackpotArtifact},
+ {id: "no-win", weight: 70, record: losingRecord},
+ {id: "small-win", weight: 25, record: smallWinRecord},
+ {id: "jackpot", weight: 5, record: jackpotRecord},
  ],
 });
 ```
@@ -140,7 +140,7 @@ class WeightedOutcomeLibraryAnalyzer<T = string> {
 }
 ```
 
-`rtp`/`variance`/`standardDeviation` are all defined over each outcome's own `artifact.payoutMultiplier` (a
+`rtp`/`variance`/`standardDeviation` are all defined over each outcome's own `record.payoutMultiplier` (a
 stake-normalized return ratio) — the same convention `SimulationStatistics.rtp` uses (the mean of per-round
 payout/bet ratios, not `totalPayout/totalBet`). `hitFrequency`/`zeroWinFrequency` are the weighted share of
 outcomes with `totalWin > 0` / `totalWin === 0` (they always sum to 1). `maxWin`/`maxWinProbability` are the one
@@ -171,7 +171,7 @@ guarantees) and does not re-validate; validate a library from an untrusted sourc
 ```ts
 class WeightedOutcomeLibraryValidator<T = string> implements ValidationRule<WeightedOutcomeLibrary<T>> {
  // extraArtifactValidator is additive — RoundRecordValidator always runs regardless, same as
- // buildWeightedOutcomeLibrary's own artifactValidator option.
+ // buildWeightedOutcomeLibrary's own recordValidator option.
  constructor(extraArtifactValidator?: ValidationRule<RoundRecord<T>>);
  validate(library: WeightedOutcomeLibrary<T>): ValidationIssue[];
 }
@@ -183,12 +183,12 @@ library. Checks `libraryId`/`schemaVersion` (including that it's the currently s
 (`weighted-outcome-library-outcomes-not-sorted` otherwise) and finite `weight`s that are each strictly greater
 than zero, summing to a finite number greater than zero (flagging the same
 `weighted-outcome-library-total-weight-invalid` issue whether the weights sum to zero *or* overflow to
-`Infinity`), that each outcome's `artifact.payoutMultiplier`/`artifact.stake` are finite (`stake` additionally
+`Infinity`), that each outcome's `record.payoutMultiplier`/`record.stake` are finite (`stake` additionally
 must be `> 0`), that every outcome shares the same provenance/`betMode`/`stake` as the rest of the library (see
-"library homogeneity" above), and always delegates full validation of each outcome's own `artifact` to a real
-`RoundRecordValidator` — so "artifact consistency" is exactly `RoundRecordValidator`'s own definition of
+"library homogeneity" above), and always delegates full validation of each outcome's own `record` to a real
+`RoundRecordValidator` — so "record consistency" is exactly `RoundRecordValidator`'s own definition of
 validity, not a second one — plus an overall JSON-safety check. The constructor's `extraArtifactValidator` is
-additive the same way `buildWeightedOutcomeLibrary`'s `artifactValidator` option is (see "artifact validation
+additive the same way `buildWeightedOutcomeLibrary`'s `recordValidator` option is (see "record validation
 always runs" above): it can only ever report *further* issues, never suppress `RoundRecordValidator`'s own.
 
 ```ts
@@ -220,7 +220,7 @@ outcome space is a finite, enumerable set of reel-stop combinations (a video slo
 implement this: the returned session must be the same concrete `VideoSlotSessionHandling` `createSession()` itself
 builds, just constructed with the caller-supplied `combinationsGenerator` swapped in for the game's own
 randomness-backed one — the DI extension point `VideoSlotSession`'s own constructor already exposes. A paid spin that triggers
-free games remains exactly enumerable: its artifact carries the real `freeGamesTriggered` event from that entry
+free games remains exactly enumerable: its record carries the real `freeGamesTriggered` event from that entry
 spin. A game with no finite paid-spin enumeration (cascades, hold-and-win, a resizable grid,...) simply has no
 exact strategy: generation fails closed with a
 `WeightedOutcomeLibraryGenerationError` (`weighted-outcome-library-generation-unsupported`) rather than guessing
@@ -330,16 +330,16 @@ Outcome library folder; it can then be used with `pokie validate`, `pokie sim`, 
  doesn't — one with no finite paid-spin reel enumeration, such as cascades or hold-and-win — has no exact
  strategy, and `generate` fails closed with exit code `1` and the `WeightedOutcomeLibraryGenerationError`'s
  `weighted-outcome-library-generation-unsupported` code rather than guessing at one.
-- `--mode <betModeId>` — the `betMode` threaded onto every generated outcome's artifact; also folds into the
- default `--library-id` (`<manifest.id>-<mode>` when `--library-id` isn't given). For an explicit runtime
+- `--mode <betModeId>` — the `betMode` threaded onto every generated outcome's record; also folds into the
+ default `--library-id` (`<info.id>-<mode>` when `--library-id` isn't given). For an explicit runtime
  bet-mode interface, omitting `--mode` resolves its declared `Is Default` mode first: that resolved mode is
- selected on the enumeration session and is used consistently for the artifact, library id, and library mode
+ selected on the enumeration session and is used consistently for the record, library id, and library mode
  name. It is not an implicit `base` label. Legacy metadata-only `BetModes` remain labels only; omitting the
  flag preserves their historical unlabeled/base-compatible library identity.
 - `--stake <number>` — the stake threaded onto every generated round record; must be a positive number (see "library
  homogeneity" above — a library can only ever describe one stake).
 - `--config-hash <hash>` — the `origin.configHash` threaded onto every generated round record.
-- `--library-id <id>` — overrides the default `<manifest.id>[-<mode>]` library id.
+- `--library-id <id>` — overrides the default `<info.id>[-<mode>]` library id.
 - `--max-outcome-space-size <n>` — overrides the default 20,000,000-raw-combination bound above which `generate`
  refuses to sweep exhaustively (accepts an arbitrarily large decimal string, parsed straight to `bigint`, since a
  raw combination count routinely exceeds `Number.MAX_SAFE_INTEGER`).
@@ -390,7 +390,7 @@ exact-only libraries retain their existing combinatorial weights.
 Both streamed disk staging and in-memory accumulation add weighted mass when
 several events render the same grid. Sampled generation draws from the weighted
 joint event distribution instead of treating alternatives as uniformly likely.
-Grid artifacts come from the existing forced-session calculation path and contain
+Grid records come from the existing forced-session calculation path and contain
 no invented unique variant-selection identity. The source/checkpoint identity
 binds variant IDs, weights, full arrays and ordering. Cancellation retains only
 explicitly owned valid checkpoints, cleans ordinary temporary partitions and

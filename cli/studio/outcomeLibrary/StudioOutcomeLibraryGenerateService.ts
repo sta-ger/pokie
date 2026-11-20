@@ -40,9 +40,9 @@ import fs from "fs";
 import path from "path";
 import {randomUUID} from "crypto";
 import {resolveProjectDirectory} from "./resolveProjectDirectory.js";
-import {StudioFormatConversionPlanning, StudioFormatConversionPlanningService} from "../artifacts/StudioFormatConversionPlanningService.js";
-import {describePreparedArtifactPlanDrift} from "../artifacts/describePreparedArtifactPlanDrift.js";
-import {createUnresolvedRuntimePlan} from "../artifacts/createExternalFormatConversionPlan.js";
+import {StudioFormatConversionPlanning, StudioFormatConversionPlanningService} from "../build/StudioFormatConversionPlanningService.js";
+import {describePreparedBuildPlanDrift} from "../build/describePreparedBuildPlanDrift.js";
+import {createUnresolvedRuntimePlan} from "../build/createExternalFormatConversionPlan.js";
 import type {StudioOutcomeLibraryGenerateEstimateView} from "./StudioOutcomeLibraryGenerateEstimateView.js";
 import type {StudioOutcomeLibraryGenerateResultView} from "./StudioOutcomeLibraryGenerateResultView.js";
 import type {StudioOutcomeLibraryRegistryView} from "./StudioOutcomeLibraryRegistryView.js";
@@ -75,7 +75,7 @@ function resolveSample(request: {sample?: {sampleSize: bigint; seed: string}; sa
     return request.sample ?? request.sampled ?? request.capped;
 }
 
-type OtherModesResult = {readonly status: "ok"; readonly modes: readonly OutcomeLibraryFolderModeInput<string>[]; readonly manifestModeOrder: readonly string[]} | {readonly status: "error"; readonly message: string};
+type OtherModesResult = {readonly status: "ok"; readonly modes: readonly OutcomeLibraryFolderModeInput<string>[]; readonly indexModeOrder: readonly string[]} | {readonly status: "error"; readonly message: string};
 export type StudioOutcomeLibraryGenerationLifecycleStage = "generation" | "finalization" | "writing" | "analyzing" | "building-index" | "serialization" | "validation" | "publication";
 
 /** Immutable source/destination snapshot behind a Studio preflight token. */
@@ -579,7 +579,7 @@ export class StudioOutcomeLibraryGenerateService {
             // otherwise every lifecycle phase can falsely report source drift
             // before cancellation or a refreshed retry reaches generation.
             const planSourcePath = tokenBoundBlueprintPlan?.source.canonicalLocation ?? projectRoot;
-            const planDrift = describePreparedArtifactPlanDrift(
+            const planDrift = describePreparedBuildPlanDrift(
                 plan,
                 planSourcePath,
                 "outcomeLibrary",
@@ -597,7 +597,7 @@ export class StudioOutcomeLibraryGenerateService {
             | {
                 readonly status: "ready";
                 readonly modes: readonly OutcomeLibraryFolderModeInput<string>[];
-                readonly manifestModeOrder: readonly string[];
+                readonly indexModeOrder: readonly string[];
                 readonly libraryId: string;
                 readonly generator?: GenerateExactWeightedOutcomeLibraryResult["diagnostics"];
                 readonly getGenerator?: () => GenerateExactWeightedOutcomeLibraryResult["diagnostics"] | undefined;
@@ -678,7 +678,7 @@ export class StudioOutcomeLibraryGenerateService {
                         const sourceDir = reuse.output.canonicalLocation;
                         if (sourceDir === undefined) return {status: "terminal", view: {status: "load-error", error: "The prepared reusable Outcome Library has no fixed location. Refresh the preview and retry.", plan}};
                         try {
-                            const sourceManifest = await this.bundleReader.readManifest(sourceDir);
+                            const sourceManifest = await this.bundleReader.readIndex(sourceDir);
                             const sourceMode = sourceManifest.modes.find((entry) => entry.modeName === modeName);
                             if (sourceMode?.generator === undefined) return {status: "terminal", view: {status: "load-error", error: `The prepared reusable Outcome Library does not contain generated provenance for mode "${modeName}". Regenerate that mode before reusing it.`, plan}};
                             const modes: OutcomeLibraryFolderModeInput<string>[] = [];
@@ -692,7 +692,7 @@ export class StudioOutcomeLibraryGenerateService {
                                     ...(entry.generator === undefined ? {} : {generator: entry.generator}),
                                 });
                             }
-                            return {status: "ready", modes, manifestModeOrder: sourceManifest.modes.map((entry) => entry.modeName), libraryId: sourceMode.libraryId, generator: sourceMode.generator};
+                            return {status: "ready", modes, indexModeOrder: sourceManifest.modes.map((entry) => entry.modeName), libraryId: sourceMode.libraryId, generator: sourceMode.generator};
                         } catch (error) {
                             return {status: "terminal", view: {status: "load-error", error: `Could not reopen the prepared reusable Outcome Library at "${sourceDir}": ${error instanceof Error ? error.message : String(error)}`, plan}};
                         }
@@ -713,7 +713,7 @@ export class StudioOutcomeLibraryGenerateService {
                                 // placing a retained stream first would visibly start writing
                                 // before that source can announce its real finalization.
                                 modes: [{modeName, libraryId, schemaVersion: generated.library.schemaVersion, outcomes: generated.library.outcomes, generator: generated.diagnostics}, ...otherModes.modes],
-                                manifestModeOrder: otherModes.manifestModeOrder,
+                                indexModeOrder: otherModes.indexModeOrder,
                                 libraryId,
                                 generator: generated.diagnostics,
                             };
@@ -727,7 +727,7 @@ export class StudioOutcomeLibraryGenerateService {
                                 outcomes: generated.outcomes,
                                 getGenerator: generated.getDiagnostics,
                             }, ...otherModes.modes],
-                            manifestModeOrder: otherModes.manifestModeOrder,
+                            indexModeOrder: otherModes.indexModeOrder,
                             libraryId,
                             getGenerator: generated.getDiagnostics,
                         };
@@ -761,7 +761,7 @@ export class StudioOutcomeLibraryGenerateService {
                         signal: request.signal,
                         onLifecycleStage: emitLifecycleStage,
                         onProgress: onBundleProgress,
-                        manifestModeOrder: read.manifestModeOrder,
+                        indexModeOrder: read.indexModeOrder,
                         // The planner invokes this policy before publication;
                         // retain that exact async policy for the writer's final
                         // atomic replacement after streaming staging.
@@ -770,17 +770,17 @@ export class StudioOutcomeLibraryGenerateService {
                     });
                 },
                 register: (writeResult) => {
-                    if (writeResult.manifest !== undefined && !writeResult.issues.some((issue) => issue.severity === "error")) this.recordDiscoveredBundleDir(projectRoot, outDirRelative);
+                    if (writeResult.index !== undefined && !writeResult.issues.some((issue) => issue.severity === "error")) this.recordDiscoveredBundleDir(projectRoot, outDirRelative);
                 },
             });
             if (!execution.published) return execution.read.status === "terminal" ? execution.read.view : {status: "load-error", error: "The prepared Outcome Library generation was not publishable.", plan};
             const writeResult = execution.publication!;
             const errors = writeResult.issues.filter((issue) => issue.severity === "error");
-            if (errors.length > 0 || writeResult.manifest === undefined) {
+            if (errors.length > 0 || writeResult.index === undefined) {
                 return {status: "invalid", errors, warnings: writeResult.issues.filter((issue) => issue.severity !== "error"), plan};
             }
 
-            const modeEntry = writeResult.manifest.modes.find((entry) => entry.modeName === modeName);
+            const modeEntry = writeResult.index.modes.find((entry) => entry.modeName === modeName);
             if (modeEntry === undefined) {
             // Guaranteed present by the writer whenever it returns a manifest at all (one entry per input
             // mode that didn't itself error) -- reachable only if the writer's own contract changes.
@@ -889,7 +889,7 @@ export class StudioOutcomeLibraryGenerateService {
 
                 let manifest: OutcomeLibraryFolderIndex;
                 try {
-                    manifest = await this.bundleReader.readManifest(resolved.resolvedPath);
+                    manifest = await this.bundleReader.readIndex(resolved.resolvedPath);
                 } catch (error) {
                     return {
                         status: "load-error",
@@ -908,7 +908,7 @@ export class StudioOutcomeLibraryGenerateService {
                 if (manifest.game.id !== currentGame.id) {
                     return "wrong";
                 }
-                if (manifest.game.version !== currentGame.version || manifest.artifactPokieVersion !== this.pokieVersion) {
+                if (manifest.game.version !== currentGame.version || manifest.recordPokieVersion !== this.pokieVersion) {
                     return "stale";
                 }
                 // Game id/version are user-authored metadata and commonly stay unchanged while a
@@ -945,7 +945,7 @@ export class StudioOutcomeLibraryGenerateService {
             game: primary.manifest.game,
             currentGame,
             ...(primary.manifest.configHash !== undefined ? {configHash: primary.manifest.configHash} : {}),
-            artifactPokieVersion: primary.manifest.artifactPokieVersion,
+            recordPokieVersion: primary.manifest.recordPokieVersion,
             currentPokieVersion: this.pokieVersion,
             generatedAt: primary.manifest.generatedAt,
             modes: Array.from(latestByMode.values()).map(({libraryDir, manifest, entry}) => ({
@@ -1103,7 +1103,7 @@ export class StudioOutcomeLibraryGenerateService {
     // a valid bundle is left alone rather than silently clobbered.
     private async readOtherModes(resolvedOutDir: string, excludeModeName: string, deep = true): Promise<OtherModesResult> {
         if (!this.directoryExists(resolvedOutDir)) {
-            return {status: "ok", modes: [], manifestModeOrder: [excludeModeName]};
+            return {status: "ok", modes: [], indexModeOrder: [excludeModeName]};
         }
 
         // First establish that this is a bundle at all.  A directory can appear
@@ -1113,7 +1113,7 @@ export class StudioOutcomeLibraryGenerateService {
         // Once a manifest is present, however, every validator failure is a
         // fail-closed retained-bundle failure.
         // Do this synchronous, physical check before handing the directory to
-        // either reader.  `readManifest()` is a port (and therefore may be
+        // either reader.  `readIndex()` is a port (and therefore may be
         // supplied by an embedding), whereas destination ownership must not
         // vary with a reader implementation.  In particular a directory
         // claimed after a bound preflight is caller-owned data, not a corrupt
@@ -1129,7 +1129,7 @@ export class StudioOutcomeLibraryGenerateService {
 
         let manifest;
         try {
-            manifest = await this.bundleReader.readManifest(resolvedOutDir);
+            manifest = await this.bundleReader.readIndex(resolvedOutDir);
         } catch (error) {
             return {
                 status: "error",
@@ -1172,7 +1172,7 @@ export class StudioOutcomeLibraryGenerateService {
             modes,
             // Replacing a mode retains its exact manifest position; adding a
             // new mode appends it just as the prior service composition did.
-            manifestModeOrder: manifest.modes.some((entry) => entry.modeName === excludeModeName)
+            indexModeOrder: manifest.modes.some((entry) => entry.modeName === excludeModeName)
                 ? manifest.modes.map((entry) => entry.modeName)
                 : [...manifest.modes.map((entry) => entry.modeName), excludeModeName],
         };

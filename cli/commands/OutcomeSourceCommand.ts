@@ -20,7 +20,7 @@ import {
 import fs from "fs";
 import {deriveDeterministicSeed} from "../../src/pregenerated/internal/deriveDeterministicSeed.js";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
+import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOperationError.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {renderOutcomeSourceProjectDiff} from "./internal/renderOutcomeSourceProjectDiff.js";
 import {renderOutcomeSourceReport} from "./internal/renderOutcomeSourceReport.js";
@@ -237,9 +237,9 @@ export class OutcomeSourceCommand implements CliCommandHandling {
 
         if (seed !== undefined) {
             const {selection} = result;
-            const artifact = selection.outcome.artifact;
+            const record = selection.outcome.record;
             const replay = {
-                game: artifact.origin.game,
+                game: record.origin.game,
                 libraryId: selection.libraryId,
                 libraryHash: selection.libraryHash,
                 modeName: mode,
@@ -248,20 +248,20 @@ export class OutcomeSourceCommand implements CliCommandHandling {
                 round: SAMPLE_REPLAY_ROUND,
                 outcomeId: selection.outcome.id,
                 weight: selection.outcome.weight,
-                totalWin: artifact.totalWin,
-                payoutMultiplier: artifact.payoutMultiplier,
-                stake: artifact.stake,
-                screen: artifact.screen.map((row) => [...row]),
-                artifact,
+                totalWin: record.totalWin,
+                payoutMultiplier: record.payoutMultiplier,
+                stake: record.stake,
+                screen: record.screen.map((row) => [...row]),
+                artifact: record,
                 timestamp: startedAt,
                 durationMs: Date.now() - startedAt,
             };
             const descriptor = new ReplayRecorder().recordPreGenerated({
                 sessionId: `outcome-source:${selection.libraryId}:${seed}:${SAMPLE_REPLAY_ROUND}`,
-                game: artifact.origin.game,
+                game: record.origin.game,
                 replay,
-                totalBet: artifact.stake,
-                screen: artifact.screen.map((row) => [...row]),
+                totalBet: record.stake,
+                screen: record.screen.map((row) => [...row]),
             });
             console.log(JSON.stringify(descriptor, null, 4));
             return 0;
@@ -307,7 +307,7 @@ export class OutcomeSourceCommand implements CliCommandHandling {
     private printSelection(targetPath: string, selection: PreGeneratedOutcomeSelection): void {
         console.log(`Drew outcome "${selection.outcome.id}" from "${targetPath}" (library "${selection.libraryId}", hash "${selection.libraryHash}").`);
         console.log(`  weight            ${selection.outcome.weight} / ${selection.totalWeight}`);
-        console.log(`  payout multiplier ${selection.outcome.artifact.payoutMultiplier}`);
-        console.log(`  total win         ${selection.outcome.artifact.totalWin}`);
+        console.log(`  payout multiplier ${selection.outcome.record.payoutMultiplier}`);
+        console.log(`  total win         ${selection.outcome.record.totalWin}`);
     }
 }

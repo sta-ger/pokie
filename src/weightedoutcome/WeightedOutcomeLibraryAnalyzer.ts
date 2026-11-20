@@ -16,29 +16,29 @@ import type {WeightedOutcomeLibraryAnalysis, WeightedOutcomePayoutBucket} from "
 // `weight * value` can transiently overflow to Infinity even when the true, correctly-computed mean would not
 // (e.g. a handful of outcomes with weights near Number.MAX_VALUE): normalizing first keeps every intermediate
 // term bounded by the input values themselves, so the final rtp/variance/probabilities can only be NaN/Infinity
-// if the true mathematical result actually is — never as an artifact of summation order.
+// if the true mathematical result actually is — never as an record of summation order.
 export class WeightedOutcomeLibraryAnalyzer<T extends string | number = string> {
     public analyze(library: WeightedOutcomeLibrary<T>): WeightedOutcomeLibraryAnalysis {
         const outcomes = library.outcomes;
         const totalWeight = outcomes.reduce((sum, outcome) => sum + outcome.weight, 0);
 
-        const rtp = this.weightedAverage(outcomes, totalWeight, (outcome) => outcome.artifact.payoutMultiplier);
+        const rtp = this.weightedAverage(outcomes, totalWeight, (outcome) => outcome.record.payoutMultiplier);
 
         const hitFrequency = this.weightedAverage(outcomes, totalWeight, (outcome) =>
-            outcome.artifact.totalWin > 0 ? 1 : 0,
+            outcome.record.totalWin > 0 ? 1 : 0,
         );
         const zeroWinFrequency = 1 - hitFrequency;
 
         const variance = this.weightedAverage(
             outcomes,
             totalWeight,
-            (outcome) => (outcome.artifact.payoutMultiplier - rtp) ** 2,
+            (outcome) => (outcome.record.payoutMultiplier - rtp) ** 2,
         );
         const standardDeviation = Math.sqrt(variance);
 
-        const maxWin = outcomes.reduce((max, outcome) => Math.max(max, outcome.artifact.totalWin), 0);
+        const maxWin = outcomes.reduce((max, outcome) => Math.max(max, outcome.record.totalWin), 0);
         const maxWinProbability = this.weightedAverage(outcomes, totalWeight, (outcome) =>
-            outcome.artifact.totalWin === maxWin ? 1 : 0,
+            outcome.record.totalWin === maxWin ? 1 : 0,
         );
 
         const payoutDistribution = this.buildPayoutDistribution(outcomes, totalWeight);
@@ -76,7 +76,7 @@ export class WeightedOutcomeLibraryAnalyzer<T extends string | number = string> 
     ): WeightedOutcomePayoutBucket[] {
         const probabilityByMultiplier = new Map<number, number>();
         for (const outcome of outcomes) {
-            const multiplier = outcome.artifact.payoutMultiplier;
+            const multiplier = outcome.record.payoutMultiplier;
             const probability = outcome.weight / totalWeight;
             probabilityByMultiplier.set(multiplier, (probabilityByMultiplier.get(multiplier) ?? 0) + probability);
         }

@@ -23,7 +23,7 @@ type ModeProvenanceKey = {
 };
 
 function provenanceKeyOf<T extends string | number>(mode: ExternalExportModeInput<T>): ModeProvenanceKey | undefined {
-    const provenance = mode.library.outcomes[0]?.artifact?.origin;
+    const provenance = mode.library.outcomes[0]?.record?.origin;
     if (provenance === undefined) {
         return undefined;
     }
@@ -35,12 +35,12 @@ function provenanceKeyOf<T extends string | number>(mode: ExternalExportModeInpu
     };
 }
 
-function everyArtifactOf<T extends string | number>(modes: readonly ExternalExportModeInput<T>[]): readonly RoundRecord<T>[] {
-    return modes.flatMap((mode) => mode.library.outcomes.map((outcome: WeightedOutcome<T>) => outcome.artifact));
+function everyRecordOf<T extends string | number>(modes: readonly ExternalExportModeInput<T>[]): readonly RoundRecord<T>[] {
+    return modes.flatMap((mode) => mode.library.outcomes.map((outcome: WeightedOutcome<T>) => outcome.record));
 }
 
-function hasNonNumericSymbol<T extends string | number>(artifact: RoundRecord<T>): boolean {
-    const screens = [artifact.screen, ...artifact.steps.map((step) => step.screen)];
+function hasNonNumericSymbol<T extends string | number>(record: RoundRecord<T>): boolean {
+    const screens = [record.screen, ...record.steps.map((step) => step.screen)];
     return screens.some((screen) => screen.some((row) => row.some((symbol) => typeof symbol !== "number")));
 }
 
@@ -102,7 +102,7 @@ export class ExternalExportCompatibilityValidator<T extends string | number = st
             this.validateHomogeneousProvenance(target.id, modes, issues);
         }
 
-        const artifacts = everyArtifactOf(modes);
+        const artifacts = everyRecordOf(modes);
         this.validateMinPokieVersion(target, artifacts, issues);
         this.validateSymbolAlphabet(target, artifacts, issues);
         this.validateFeatureCapabilities(target, artifacts, issues);

@@ -8,7 +8,7 @@ import crypto from "crypto";
 // different configuration of the same game can enumerate a completely different reel-stop space), and the
 // concrete reel windows generation itself will sweep over (catches two games/configs whose reel SIZES match but
 // whose actual symbol layout doesn't -- same outcome-space cardinality, incompatible grids). betMode/stake are
-// deliberately excluded: they only affect artifact building for each already-accumulated grid, never which raw
+// deliberately excluded: they only affect record building for each already-accumulated grid, never which raw
 // tuples exist or how they dedupe/weight.
 export function computeExactEnumerationSourceId(gameId: string, configHash: string | undefined, reelWindows: readonly string[][][], geometry?: ScreenGeometry, sequenceIdentity?: unknown): string {
     const material = JSON.stringify({gameId, configHash: configHash ?? null, reelWindows, ...(sequenceIdentity ? {sequenceIdentity} : {}), ...(geometry ? {geometry} : {})});

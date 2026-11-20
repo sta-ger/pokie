@@ -3,7 +3,7 @@ import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 export type OutcomeLibraryFolderValidateOptions = {
     // Streams every outcomes line per mode and fully rebuilds each mode's library to recompute its hash and
     // analysis — expensive (defeats the whole point of a streaming bundle if run on every load), so it's
-    // opt-in. Off by default: only the manifest and each mode's own small index are read.
+    // opt-in. Off by default: only the folder index and each mode's own small index are read.
     readonly deep?: boolean;
     /** Stops a long deep validation at the same safe boundaries as publication. */
     readonly signal?: AbortSignal;

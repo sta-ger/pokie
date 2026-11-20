@@ -25,7 +25,7 @@ import {
     ValidationIssue,
 } from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
+import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOperationError.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {BlueprintFileWriteResult, writeBlueprintFileAtomically} from "./internal/writeBlueprintFileAtomically.js";
 

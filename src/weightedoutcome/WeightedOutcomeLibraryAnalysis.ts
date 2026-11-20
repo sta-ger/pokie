@@ -1,5 +1,5 @@
 // One point of the exact payout distribution: the weighted probability (share of total weight, summing to 1
-// across every bucket) of an outcome whose artifact.payoutMultiplier equals exactly this value — an exact
+// across every bucket) of an outcome whose record.payoutMultiplier equals exactly this value — an exact
 // probability mass function, not a Monte Carlo histogram, so distinct multiplier values are never binned
 // together the way SimulationAccumulator's payoutHistogram buckets raw payouts into ranges.
 export type WeightedOutcomePayoutBucket = {
@@ -9,7 +9,7 @@ export type WeightedOutcomePayoutBucket = {
 
 // The exact statistics WeightedOutcomeLibraryAnalyzer computes over a WeightedOutcomeLibrary — no sampling, no
 // confidence interval, because the library already enumerates every possible outcome with its exact weight.
-// "rtp"/"variance"/"standardDeviation" are all defined over each outcome's own artifact.payoutMultiplier (a
+// "rtp"/"variance"/"standardDeviation" are all defined over each outcome's own record.payoutMultiplier (a
 // stake-normalized return ratio), the same way SimulationStatistics.rtp is the mean of per-round payout/bet
 // ratios rather than totalPayout/totalBet — this stays correct even when outcomes mix different stakes (e.g.
 // base-game spins alongside zero-stake free-games outcomes). "maxWin"/"maxWinProbability" are the one exception:

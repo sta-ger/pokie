@@ -61,7 +61,7 @@ async function main(): Promise<void> {
         terminal = {
             type: "result",
             workerIndex: request.workerIndex,
-            manifest: game.getInfo(),
+            gameInfo: game.getInfo(),
             configHash: game.getConfigHash?.(),
             accumulator: accumulator.toSnapshot(),
             breakdown,

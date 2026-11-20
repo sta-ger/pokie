@@ -1,5 +1,5 @@
 import {FormatConversionPlanner} from "../../src/project/FormatConversionPlanner.js";
-import {StudioFormatConversionPlanningService} from "../../cli/studio/artifacts/StudioFormatConversionPlanningService.js";
+import {StudioFormatConversionPlanningService} from "../../cli/studio/build/StudioFormatConversionPlanningService.js";
 import {evaluatorValidationCases} from "../fixtures/wasm/createCanonicalWasmFixture.js";
 import {resolveSharedSlotMathModel} from "../../src/generated/resolveSharedSlotMathModel.js";
 import {assertPlayableSharedSlotMathModel} from "../../src/wasm/math/SharedSlotMath.js";

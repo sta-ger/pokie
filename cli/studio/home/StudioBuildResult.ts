@@ -13,7 +13,7 @@ export type StudioBuildResult =
     | {
           status: "ok";
           projectRoot: string;
-          manifest: GameBlueprintInfo;
+          info: GameBlueprintInfo;
           createdFiles: string[];
           buildInfo: GameBuildInfo;
           warnings: ValidationIssue[];

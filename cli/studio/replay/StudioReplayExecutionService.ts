@@ -148,7 +148,7 @@ export class StudioReplayExecutionService {
     // Retain the already-settled draw, never draw again to obtain an export. The usual replay
     // repository and durable lifecycle supply Recent, inspection and download after restart.
     // An unseeded draw remains inspectable/exportable without claiming exact reproduction.
-    public recordOutcomeSourceSample(projectRoot: string, artifact: RoundRecord, modeName: string, replay?: PreGeneratedRoundReplayDescriptor): StudioReplayJobView {
+    public recordOutcomeSourceSample(projectRoot: string, roundRecord: RoundRecord, modeName: string, replay?: PreGeneratedRoundReplayDescriptor): StudioReplayJobView {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const sessionId = this.createId();
         const startedAt = this.now();
@@ -163,12 +163,12 @@ export class StudioReplayExecutionService {
         const record: StudioReplayJobRecord = {
             id: common?.job.id ?? this.createId(), projectRoot, status: "completed", round: 1, source: "outcome-source-sample",
             seed: replay?.seed, modeName, startedAt, completedRounds: 1, durationMs: 0,
-            game: artifact.origin.game, abortController: new AbortController(),
+            game: roundRecord.origin.game, abortController: new AbortController(),
             descriptor: {
-                sessionId, game: artifact.origin.game, seed: replay?.seed ?? null, round: 1,
-                totalBet: artifact.stake, totalWin: artifact.totalWin, screen: artifact.screen.map((row) => [...row]),
+                sessionId, game: roundRecord.origin.game, seed: replay?.seed ?? null, round: 1,
+                totalBet: roundRecord.stake, totalWin: roundRecord.totalWin, screen: roundRecord.screen.map((row) => [...row]),
                 timestamp: replay?.timestamp ?? startedAt, durationMs: 0,
-                artifact: new PokieJsonRoundRecordProjector().project(artifact),
+                artifact: new PokieJsonRoundRecordProjector().project(roundRecord),
                 ...(replay === undefined ? {} : {outcomeSource: replay}),
             },
         };
@@ -676,7 +676,7 @@ export class StudioReplayExecutionService {
         let modeName: string;
         let manifestGame: PokieGameInfo;
         try {
-            const manifest = await this.outcomeLibraryReader.readManifest(project.rootPath);
+            const manifest = await this.outcomeLibraryReader.readIndex(project.rootPath);
             if (manifest.modes.length === 0) {
                 this.fail(record, new Error(`"${project.rootPath}" has no outcome-library modes to replay.`));
                 return;
@@ -700,7 +700,7 @@ export class StudioReplayExecutionService {
         const sessionId = this.createId();
         const outcomeSource = new OutcomeLibraryFolderOutcomeSource(project.rootPath, modeName);
         let roundsRemaining = record.round;
-        let lastArtifact: RoundRecord | undefined;
+        let lastRecord: RoundRecord | undefined;
         let lastSelection: {libraryId: string; libraryHash: string; outcomeId: string; weight: number} | undefined;
         try {
             while (roundsRemaining > 0) {
@@ -716,7 +716,7 @@ export class StudioReplayExecutionService {
                         deriveDeterministicSeed(record.seed, replayRound),
                     );
                     const selection = await outcomeSource.drawOutcome(randomSource);
-                    lastArtifact = selection.outcome.artifact;
+                    lastRecord = selection.outcome.record;
                     lastSelection = {
                         libraryId: selection.libraryId,
                         libraryHash: selection.libraryHash,
@@ -738,7 +738,7 @@ export class StudioReplayExecutionService {
             return;
         }
 
-        if (lastArtifact === undefined || lastSelection === undefined) {
+        if (lastRecord === undefined || lastSelection === undefined) {
             this.fail(record, new Error("Replay produced no outcome."));
             return;
         }
@@ -748,12 +748,12 @@ export class StudioReplayExecutionService {
             game: gameIdentity,
             seed: record.seed ?? null,
             round: record.round,
-            totalBet: lastArtifact.stake,
-            totalWin: lastArtifact.totalWin,
-            screen: lastArtifact.screen.map((row) => [...row]),
+            totalBet: lastRecord.stake,
+            totalWin: lastRecord.totalWin,
+            screen: lastRecord.screen.map((row) => [...row]),
             timestamp: record.startedAt,
             durationMs: record.durationMs,
-            artifact: new PokieJsonRoundRecordProjector().project(lastArtifact),
+            artifact: new PokieJsonRoundRecordProjector().project(lastRecord),
             ...(record.seed === undefined
                 ? {}
                 : {
@@ -764,11 +764,11 @@ export class StudioReplayExecutionService {
                         selectionAlgorithm: "derived-round-seed-v1" as const,
                         seed: record.seed,
                         round: record.round,
-                        totalWin: lastArtifact.totalWin,
-                        payoutMultiplier: lastArtifact.payoutMultiplier,
-                        stake: lastArtifact.stake,
-                        screen: lastArtifact.screen.map((row) => [...row]),
-                        artifact: lastArtifact,
+                        totalWin: lastRecord.totalWin,
+                        payoutMultiplier: lastRecord.payoutMultiplier,
+                        stake: lastRecord.stake,
+                        screen: lastRecord.screen.map((row) => [...row]),
+                        artifact: lastRecord,
                         timestamp: record.startedAt,
                         durationMs: record.durationMs,
                     },

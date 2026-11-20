@@ -20,11 +20,11 @@ export type OutcomeLibraryFolderModeInput<T extends string | number = string> = 
     readonly outcomes: Iterable<WeightedOutcomeInput<T>> | AsyncIterable<WeightedOutcomeInput<T>>;
     // Only ever present when "outcomes" is itself streamExactWeightedOutcomes's own AsyncGenerator (or its
     // return value, gathered by the caller) — see generateExactWeightedOutcomeLibrary. Copied verbatim into
-    // this mode's own manifest entry (see OutcomeLibraryFolderIndexModeEntry.generator); never inferred or
+    // this mode's own index entry (see OutcomeLibraryFolderIndexModeEntry.generator); never inferred or
     // recomputed by the writer, and never required for a mode built from any other outcome source.
     readonly generator?: OutcomeLibraryGeneratorDiagnostics;
     // A generated stream only learns its terminal diagnostics after the writer
     // has consumed it. This accessor preserves those diagnostics in the
-    // manifest without requiring a second, in-memory outcome library.
+    // index without requiring a second, in-memory outcome library.
     readonly getGenerator?: () => OutcomeLibraryGeneratorDiagnostics | undefined;
 };

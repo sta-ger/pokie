@@ -1,7 +1,7 @@
 import {describeUnavailableWasmComponent, isWasmComponentFile, loadPokieGame, ProjectTargetResolver} from "@fromstan/pokie";
 import fs from "fs";
 import path from "path";
-import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
+import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../runtime/prepareRuntimePackage.js";
 import {loadProjectDashboardContext, type ProjectDashboardLoadOptions, type ProjectLocationDescribing} from "../loadProjectDashboardContext.js";
 import type {ProjectDashboardContext} from "../ProjectDashboardContext.js";
 import {StudioProjectOpeningCancelledError} from "../StudioProjectOpeningCancelledError.js";

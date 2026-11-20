@@ -15,8 +15,8 @@ import {
     ProjectTargetResolver,
 } from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {passthroughRuntimePackageResolver, RuntimePackageResolution, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
-import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
+import {passthroughRuntimePackageResolver, RuntimePackageResolution, RuntimePackageResolving} from "../runtime/prepareRuntimePackage.js";
+import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOperationError.js";
 import {openBrowser} from "../openBrowser.js";
 import {waitForHealth} from "../waitForHealth.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
@@ -69,7 +69,7 @@ export class DevCommand implements CliCommandHandling {
     private readonly process: NodeJS.Process;
     private readonly pokieVersion: string;
     // Crosses from "the packageRoot the caller gave us" to "a real, loadable runtime" before this.loadGame
-    // ever touches it -- see materializeRuntimePackage.ts's own doc comment. Defaults to a no-op
+    // ever touches it -- see prepareRuntimePackage.ts's own doc comment. Defaults to a no-op
     // passthrough so every existing caller/test keeps behaving exactly as before this boundary existed;
     // cli/pokie.ts wires the real, materializing one in.
     private readonly resolveRuntimePackageRoot: RuntimePackageResolving;

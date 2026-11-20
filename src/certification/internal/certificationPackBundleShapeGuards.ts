@@ -201,9 +201,9 @@ const MANIFEST_KEYS = new Set([
     "generatedAt",
     "game",
     "configHash",
-    "artifactPokieVersion",
+    "recordPokieVersion",
     "sourceLibraryDir",
-    "sourceLibraryManifestHash",
+    "sourceLibraryIndexHash",
     "modes",
     "deepValidation",
     "files",
@@ -213,7 +213,7 @@ const MANIFEST_KEYS = new Set([
 // Top-level shape check only — does NOT deeply validate every "modes" entry (use isModeEntryShape per entry) or
 // every "files" entry; callers that need per-element correctness check those separately, so a single malformed
 // mode/sample/file never has to invalidate an otherwise well-formed manifest's other entries.
-export function isManifestShape(value: unknown): value is CertificationPackIndex {
+export function isCertificationPackIndexShape(value: unknown): value is CertificationPackIndex {
     if (typeof value !== "object" || value === null || !hasOnlyAllowedKeys(value, MANIFEST_KEYS)) {
         return false;
     }
@@ -227,9 +227,9 @@ export function isManifestShape(value: unknown): value is CertificationPackIndex
         isNonEmptyString(manifest.generatedAt) &&
         isPokieGameInfoShape(manifest.game) &&
         (manifest.configHash === undefined || isNonEmptyString(manifest.configHash)) &&
-        isNonEmptyString(manifest.artifactPokieVersion) &&
+        isNonEmptyString(manifest.recordPokieVersion) &&
         isNonEmptyString(manifest.sourceLibraryDir) &&
-        isValidSha256Hash(manifest.sourceLibraryManifestHash) &&
+        isValidSha256Hash(manifest.sourceLibraryIndexHash) &&
         isValidSha256Hash(manifest.evidenceContentHash) &&
         Array.isArray(manifest.modes) &&
         isDeepValidationShape(manifest.deepValidation) &&
@@ -237,7 +237,7 @@ export function isManifestShape(value: unknown): value is CertificationPackIndex
     );
 }
 
-const SAMPLE_RECORD_KEYS = new Set(["modeName", "sampleIndex", "seed", "outcomeId", "weight", "recordHash", "artifactHash", "artifact"]);
+const SAMPLE_RECORD_KEYS = new Set(["modeName", "sampleIndex", "seed", "outcomeId", "weight", "recordHash", "roundRecordHash", "record"]);
 
 export function isSampleRecordShape(value: unknown): value is CertificationPackSampleRecord {
     if (typeof value !== "object" || value === null || !hasOnlyAllowedKeys(value, SAMPLE_RECORD_KEYS)) {
@@ -251,8 +251,8 @@ export function isSampleRecordShape(value: unknown): value is CertificationPackS
         isNonEmptyString(record.outcomeId) &&
         isPositiveSafeInteger(record.weight) &&
         isValidSha256Hash(record.recordHash) &&
-        isValidSha256Hash(record.artifactHash) &&
-        typeof record.artifact === "object" &&
-        record.artifact !== null
+        isValidSha256Hash(record.roundRecordHash) &&
+        typeof record.record === "object" &&
+        record.record !== null
     );
 }

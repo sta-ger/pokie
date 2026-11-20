@@ -81,7 +81,6 @@ dev` are local/reference tools, not production infrastructure.
 31. **[WASM compatibility](wasm-compatibility-boundary.md)** — the versioned WASM component interface and
  supported execution limits.
 32. **[Extension points](extension-points.md)** — replaceable collaborators and session decorators.
-33. **[Studio jobs](studio-long-running-jobs.md)** — job status, progress and cancellation.
 
 ## Core concepts at a glance
 

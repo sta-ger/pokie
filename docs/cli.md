@@ -255,7 +255,7 @@ Options:
  author every field themselves or run this from a script. `<name>` still overrides the package id/name;
  `--out <file>` still picks the destination.
 - `--out <file>` — the wizard's own destination question defaults to this instead of
- `./<manifest.id>.blueprint.json` (still editable, like every other question); with `--blank`/`--random`, writes
+ `./<info.id>.blueprint.json` (still editable, like every other question); with `--blank`/`--random`, writes
  here directly, without asking. It fails if the destination file already exists — pick a different `--out` path,
  or remove/edit the existing file first.
 
@@ -312,7 +312,7 @@ programmatically:
 - [`SlotGameNameGenerator`](#slotgamenamegenerator--randomgameblueprintgenerator) — picks a themed name (e.g.
  `title: "Blazing Riches"`) from small curated word lists, projected as a `title`/`slug`/`packageName` triple;
 - [`RandomGameBlueprintGenerator`](#slotgamenamegenerator--randomgameblueprintgenerator) — fills in reels (3-6),
- rows (3-4), 5-8 symbols, a paytable, and reel weights, using `SlotGameNameGenerator` for the manifest, and one
+ rows (3-4), 5-8 symbols, a paytable, and reel weights, using `SlotGameNameGenerator` for the info, and one
  of two `RandomGameBlueprintStrategy` implementations (see `--preset` below) for the mechanic-bearing fields.
 
 Both take an optional integer `seed`: the same seed (and the same `--preset`) always produces the exact same
@@ -362,7 +362,7 @@ const variant = new RandomGameBlueprintGenerator(new SlotGameNameGenerator(), ne
 `exclusions` (titles to never produce), and a custom `vocabulary` (`{adjectives, nouns}`) that fully replaces the
 built-in theme/style word pools. `generateUnique(count, request?)` returns `count` results sharing one batch seed,
 with pairwise-distinct titles; either method throws `SlotGameNameExhaustedError` if the vocabulary/exclusions are
-too tight to satisfy within its attempt limit. `title` is the display name, `slug` is a directory/manifest-id-safe
+too tight to satisfy within its attempt limit. `title` is the display name, `slug` is a directory/info-id-safe
 form with a numeric suffix (e.g. `"blazing-riches-4821"`), and `packageName` is an npm-package-name-safe form with
 no suffix (e.g. `"blazing-riches"`) — the same title always yields the same `packageName`, unlike `slug`. The
 suffixed `slug` is available through the design workflow when a guaranteed-distinct id is wanted, but nothing that *creates*
@@ -370,7 +370,7 @@ a game uses it: both [`pokie create`](#pokie-create-name)'s own wizard and `Rand
 games from `packageName`, so generated ids stay words-only.
 
 `RandomGameBlueprintGenerator.generate(request?)` accepts an optional `{seed?, overrides?}` — `overrides` is an
-`{id?, name?}` override (what `pokie create [name] --random` uses to pin the manifest to the given `<name>` instead
+`{id?, name?}` override (what `pokie create [name] --random` uses to pin the info to the given `<name>` instead
 of a generated one) — pass a `name` to use it verbatim with an id slugified from it, or both `id`/`name` to pin both
 explicitly. Its constructor optionally takes a name generator, a `RandomGameBlueprintStrategy` (defaults to
 `DefaultRandomGameBlueprintStrategy`; pass `RandomGameBlueprintVariantStrategy` for the same richer mechanics
@@ -578,7 +578,7 @@ and generation ([`GamePackageGenerator`](#pokie-build-project)), and the resulti
 no errors, creates `<dir>` — which must not already exist, or must be empty (see [Conflict
 handling](#conflict-handling-an-existing---out-destination) below) — and writes:
 
-- `package.json` — name/version/description from `manifest` (a default description if `manifest.description` is
+- `package.json` — name/version/description from `info` (a default description if `info.description` is
  omitted), a `pokie` dependency, `start`/`server`/`client`/`build` scripts, and `pokie.entry`/`main`/`exports`
  all pointing at `./dist/index.js` — the exact same entry path `pokie init` packages compile their own
  TypeScript source into, written by the exact same shared `buildPackageJsonPatch` those commands use;
@@ -843,7 +843,7 @@ still hash differently.
 
 ### Validation
 
-Every field above is checked before anything is generated: `manifest.id`/`name`/`version` must be non-empty
+Every field above is checked before anything is generated: `info.id`/`name`/`version` must be non-empty
 strings; `reels`/`rows` must be positive integers; `symbols` must be a non-empty array of unique non-empty
 strings; `wilds`/`scatters` must be arrays of unique symbol ids with no overlap between the two; `wilds`/`scatters`/
 `paytable` keys/`reelStrips` symbols/`reelStripGeneration` symbols/`symbolWeights` keys must all reference symbols
@@ -1014,7 +1014,7 @@ remains unchanged. If a generated reel cannot satisfy its own constraints, expor
 `parsheet-reel-generation-failed` diagnostic, naming the failing `reelStripGeneration[index]` and directing you to
 adjust that entry. A generated reel without its own integer `seed` is rejected before any file is written with
 `parsheet-reel-generation-seed-required`, naming `reelStripGeneration[index].seed` and directing you to add the
-seed; PAR snapshots never fall back to nondeterministic generation. The workbook maps manifest, reels/rows, symbols (with wilds/scatters), literal snapshot
+seed; PAR snapshots never fall back to nondeterministic generation. The workbook maps info, reels/rows, symbols (with wilds/scatters), literal snapshot
 `reelStrips`, `paytable`, `paylines`, `availableBets`, `winModel`, `mechanics.freeGames`, and `betModes`.
 
 ```
@@ -1027,7 +1027,7 @@ workbook suffix is case-insensitive (`.xlsx` and `.XLSX` both select the PAR imp
 generic import command only routes a directory to Stake Engine reconstruction when it is a
 POKIE-produced export with `pokie-info.json`. For a compatible foreign Stake directory,
 use `pokie report` or `pokie diff`, which intentionally do not require that
-manifest and do not claim to reconstruct missing POKIE origin.
+info file and do not claim to reconstruct missing POKIE origin.
 
 A minimal starter Blueprint:
 
@@ -1068,7 +1068,7 @@ A `.par.xlsx` workbook has up to ten sheets:
 
 | Sheet | Columns | Required | Maps to |
 |---|---|---|---|
-| `Manifest` | `Key`, `Value` (rows: `Id`, `Name`, `Version`, `Description`, `Author`, `Reels`, `Rows`) | yes | `manifest`, `reels`, `rows` |
+| `Manifest` | `Key`, `Value` (rows: `Id`, `Name`, `Version`, `Description`, `Author`, `Reels`, `Rows`) | yes | `info`, `reels`, `rows` |
 | `Symbols` | `Symbol`, `Wild`, `Scatter` — one row per symbol, in reel order | yes | `symbols`, `wilds`, `scatters` |
 | `Paytable` | `Symbol`, `Matches`, `Multiplier` — one row per payout tier | yes | `paytable` |
 | `ReelStrips` | `Reel 1`..`Reel N` (exact names — see below) — one row per strip position; a shorter (ragged) reel just leaves trailing blank cells | no | `reelStrips` (literal only) |
@@ -1367,7 +1367,7 @@ Writes exactly the shape `pokie build <config.json> --target stakeAdapter` reads
 }
 ```
 
-Also writes `source-provenance.json` (SHA-256 hashes of the raw `index.json`/manifest/CSV/books bytes this import
+Also writes `source-provenance.json` (SHA-256 hashes of the raw `index.json`/`pokie-info.json`/CSV/books bytes this import
 read — see [Source origin](stake-engine-import.md#source-provenance)) whenever the import produced one.
 
 Options:
@@ -1431,7 +1431,7 @@ convention rather than the usual plain 0/1:
 
 ## `pokie build <config.json> --target outcomeLibrary [--out <dir>] [--dry-run]`
 
-Builds a [Outcome Library Folder](outcome-library-folder.md) — a directory with a small manifest, a
+Builds a [Outcome Library Folder](outcome-library-folder.md) — a directory with a small index, a
 small per-mode index, and one streaming JSONL outcomes file per mode — streaming each mode's outcomes straight to
 disk one at a time, never creating a full `WeightedOutcomeLibrary` in memory to do it. This is the one
 folder format both the pre-generated runtime and `pokie build <config.json> --target stakeAdapter` (via a mode's
@@ -1454,7 +1454,7 @@ loaded into memory) or a streaming JSONL file of outcomes for a mode too large t
 ```
 
 - `libraryPath` — a plain `WeightedOutcomeLibrary` JSON file, resolved relative to `<config.json>`.
-- `outcomesPath` — a JSONL file of outcomes, one `{"id", "weight", "artifact"}` record per line, **not**
+- `outcomesPath` — a JSONL file of outcomes, one `{"id", "weight", "record"}` record per line, **not**
  wrapped in a library object, resolved relative to `<config.json>` and streamed line by line. Requires a string
  `libraryId` alongside it (there's no wrapping library object to read one from); `schemaVersion` is optional.
 
@@ -1507,7 +1507,7 @@ already expose a reader's own exact analysis.
 ## `pokie certification build <folder> <config.json>`
 
 Builds a [certification pack](certification-pack.md) from an already-built
-[outcome library folder](outcome-library-folder.md): a manifest with game and library hashes, per-mode exact
+[outcome library folder](outcome-library-folder.md): an index with game and library hashes, per-mode exact
 metrics and the source folder's deep-validation diagnostics, plus one JSONL file per mode of sampled,
 independently verifiable `RoundRecord` entries. POKIE does not recalculate anything: every hash and metric is
 read from the source folder's `index.json`, and every sample is drawn with the same weighted-draw algorithm
@@ -1543,7 +1543,7 @@ any error, the exit code is non-zero and nothing is written.
 ## `pokie certification verify <certDir> --source <folder>`
 
 Verifies a certification pack: first its own internal consistency (does every mode's samples file still hash to
-what its manifest recorded, does every embedded `RoundRecord` still hash to its own `artifactHash`), then
+what its index recorded, does every embedded `RoundRecord` still hash to its own `roundRecordHash`), then
 cross-checks it against the live source outcome library folder it was built from, detecting drift in four
 places: the pack's own package fields, the source folder's on-disk files, its recorded metrics, and each
 individually sampled outcome. See [certification pack](certification-pack.md) for the full code table.
@@ -1555,7 +1555,7 @@ pokie certification verify certification --source ../library
 Options:
 
 - `--source <folder>` — **required.** Where the live source outcome library folder actually is. The pack's own
-  recorded `manifest.sourceLibraryDir` is informational only and is never used as a fallback — omitting
+  recorded `index.sourceLibraryDir` is informational only and is never used as a fallback — omitting
   `--source` fails with a usage error, and running `verify` without it programmatically reports a diagnostic
   instead of reading anything outside `<certDir>`.
 - `--trusted-sources <json>` — optional explicit model, report, replay and revision sources for a relocated
@@ -1733,7 +1733,7 @@ coming from the target directory itself:
 `--package-name <name>` overrides `package.json`'s own `name` field directly; short of that, an existing
 `package.json`'s own `name` is preserved untouched, and only with neither does the target directory's own
 basename become the default. `--game-id <id>`/`--game-name <name>`/`--version <version>` override the game
-manifest's `id`/`name`/`version` only — `--game-id` never seeds or otherwise changes `package.json`'s `name`,
+info's `id`/`name`/`version` only — `--game-id` never seeds or otherwise changes `package.json`'s `name`,
 which is controlled solely by `--package-name`/the existing name/the directory-derived default above.
 
 **Safety guard:** a directory that already has files in it, and doesn't yet look like a package `pokie init`
@@ -3387,7 +3387,7 @@ alongside the rest of the project's state, with no wizard-like next-step recomme
  (errors, warnings, suggestions), refreshed
  automatically and re-runnable on demand. An **Inspect** quick action re-runs the inspection (handy after
  rebuilding without restarting Studio).
-- **Game Model** is a read-only, resolved-project-type-aware view of the game (manifest, reels/rows,
+- **Game Model** is a read-only, resolved-project-type-aware view of the game (info, reels/rows,
  symbols, paylines, paytable, reel strips/symbol weights, available bets) via `GET /api/project/gameModel` — for
  a project with an editable source blueprint, each section also offers **Edit** straight from this view (scoped
  to one section at a time), reusing the exact same Blueprint Editor components Design Game's guided flow uses.
@@ -3414,7 +3414,7 @@ The Dashboard itself has four states, all handled explicitly by the frontend:
 
 - **empty** — Studio is in Home mode; there's no project to show a dashboard for.
 - **loading** — only right after Studio starts directly into Project mode (`pokie.`/`pokie [projectRoot]`); the entry
- module hasn't finished loading yet. Design Game's Build and Projects' Open both already have the manifest in
+ module hasn't finished loading yet. Design Game's Build and Projects' Open both already have the game info in
  hand by the time they switch Studio into Project mode, so they go straight to **loaded**.
 - **loaded** — the game's info (id/name/version) loaded successfully.
 - **error** — loading the entry module failed (missing build output, a package that doesn't satisfy the
@@ -3691,13 +3691,13 @@ client, even for a load/validation failure.
 - `POST /api/home/blueprints/build-preview` `{"blueprint": <any JSON value>, "outDir"?: string, "sourcePath"?:
  string}` — validates the blueprint and previews what a build would generate, without writing anything: `200
  {"status": "invalid", "errors": [...], "warnings": [...]}` or `200 {"status": "ok", "warnings": [...],
- "manifest", "reels", "rows", "symbolsCount", "blueprintHash", "expectedFiles"}`, same reasoning as
+ "info", "reels", "rows", "symbolsCount", "blueprintHash", "expectedFiles"}`, same reasoning as
  `GET /api/project/validate`.
 - `POST /api/home/blueprints/build` — same request shape as the preview; on top of `invalid`, generates the package
  via the exact same `tsPackage` `BuildOutputBuilderRegistry` conversion `pokie build <project> --target tsPackage`
  runs, including its missing-or-empty-directory check
  (an `outDir` resolving inside Studio's own internal directory is also refused, the same way as `save` above):
- `200 {"status": "error", "error": "..."}` or `201 {"status": "ok", "projectRoot", "manifest", "createdFiles",
+ `200 {"status": "error", "error": "..."}` or `201 {"status": "ok", "projectRoot", "info", "createdFiles",
  "buildInfo", "warnings"}` on success — the built project is also recorded as a recent project, so its
  **Open in Studio** button (`POST /api/home/projects/open` below) works exactly like every other Home flow's.
 - `POST /api/home/projects/open` `{"projectRoot": string}` — resolves `projectRoot` through the shared project
@@ -4026,17 +4026,17 @@ aliases and occupied companions are rejected. Preparation-to-publication source/
 publication races, extraction failure and cancellation preserve competing files and remove only
 operation-owned artifacts. SIGINT waits for descriptor settlement and snapshot release.
 
-Studio clients preview with `POST /api/project/artifacts/preview` (`target: "blueprint"`, optional
+Studio clients preview with `POST /api/project/build/preview` (`target: "blueprint"`, optional
 `outDir`). For a package, pass its returned `preparedOperationId` and the same destination to
-`POST /api/project/artifacts/build`. Missing, cross-project, reused or destination-mismatched handles
+`POST /api/project/build/build`. Missing, cross-project, reused or destination-mismatched handles
 return 409. Source or descriptor drift fails the job without publication; refresh the preview before
-saving again. Poll `GET /api/project/artifacts/build/:id` through `cancelling` until cleanup reaches a
+saving again. Poll `GET /api/project/build/build/:id` through `cancelling` until cleanup reaches a
 terminal state. Failure and cancellation retain their plan/diagnostics in durable job results.
 
 The rendered Studio cards request `deferExecution: true`: the start response reserves a queued job
 without running a writer. After receiving its ID, the client sends either
-`POST /api/project/artifacts/build/:id/cancel` for saved startup cancellation, or
-`POST /api/project/artifacts/build/:id/activate` to allow execution. Activation is idempotent and
+`POST /api/project/build/build/:id/cancel` for saved startup cancellation, or
+`POST /api/project/build/build/:id/activate` to allow execution. Activation is idempotent and
 project-scoped. Cancelling an unactivated job, closing its project or shutting down Studio settles
 it without publication. Destination controls stay locked until terminal cleanup. Direct build API
 callers that omit `deferExecution` retain the immediate execution interface.

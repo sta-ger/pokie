@@ -155,10 +155,10 @@ export class StudioCertificationService {
             onProgress?.("Validating publication", "build stages", 3, 3, "Checking the published certification pack index.");
             const errors = result.issues.filter((issue) => issue.severity === "error");
             const warnings = result.issues.filter((issue) => issue.severity !== "error");
-            if (result.manifest === undefined || errors.length > 0) {
+            if (result.index === undefined || errors.length > 0) {
                 return {status: "error", errors, warnings};
             }
-            return {status: "ok", manifest: result.manifest, files: result.files, warnings, artifactHashes: result.artifactHashes, preparationNotice: CERTIFICATION_PREPARATION_NOTICE};
+            return {status: "ok", index: result.index, files: result.files, warnings, fileHashes: result.fileHashes, preparationNotice: CERTIFICATION_PREPARATION_NOTICE};
         } catch (error) {
             if (error instanceof CertificationPackBuildCancelledError) {
                 return {

@@ -23,9 +23,9 @@ import type {StudioDeploymentTargetSummary} from "./StudioDeploymentTargetSummar
 import {toStudioDeploymentRunView} from "./toStudioDeploymentRunView.js";
 import type {ValidatedDeploymentRunRequest} from "./validateDeploymentRunRequest.js";
 import type {StudioDeploymentModeInput} from "./StudioDeploymentModeInput.js";
-import {StudioFormatConversionPlanning, StudioFormatConversionPlanningService} from "../artifacts/StudioFormatConversionPlanningService.js";
-import {describePreparedArtifactPlanDrift} from "../artifacts/describePreparedArtifactPlanDrift.js";
-import {createExternalOutcomeLibraryPlan} from "../artifacts/createExternalFormatConversionPlan.js";
+import {StudioFormatConversionPlanning, StudioFormatConversionPlanningService} from "../build/StudioFormatConversionPlanningService.js";
+import {describePreparedBuildPlanDrift} from "../build/describePreparedBuildPlanDrift.js";
+import {createExternalOutcomeLibraryPlan} from "../build/createExternalFormatConversionPlan.js";
 
 const DEPLOYMENT_OUTPUT_DIRNAME = "deployment";
 const NO_SERVER_SELECTED_MODES: StudioDeploymentModeResolving = () => Promise.resolve([]);
@@ -302,7 +302,7 @@ export class StudioDeploymentService {
             return {status: "load-error", error: describeUnverifiedDeploymentSelector(selectedModes[0].modeName), plan};
         }
         const selectedSource = this.selectedBundleSource(projectRoot, selectedModes);
-        const planDrift = selectedSource === undefined ? undefined : describePreparedArtifactPlanDrift(plan, selectedSource, "outcomeLibrary");
+        const planDrift = selectedSource === undefined ? undefined : describePreparedBuildPlanDrift(plan, selectedSource, "outcomeLibrary");
         if (planDrift !== undefined) {
             return {status: "load-error", error: planDrift, plan};
         }

@@ -6,15 +6,15 @@ import {
     describeUnsupportedProjectOperation,
     PokieOperation,
     PokieProject,
-    ProjectMaterializing,
+    ProjectPreparing,
     ProjectResolving,
     ProjectTargetResolver,
     ProjectTargetMalformedError,
 } from "@fromstan/pokie";
 import {withLinkedLocalPokieRuntime} from "../prepare/PackageCommandRunner.js";
-import {BlueprintProjectMaterializer} from "./BlueprintProjectMaterializer.js";
-import {BlueprintMaterializationError} from "./BlueprintMaterializationError.js";
-import {RunnableArtifactMaterializer} from "./RunnableArtifactMaterializer.js";
+import {BlueprintProjectPreparer} from "./BlueprintProjectPreparer.js";
+import {BlueprintPreparationError} from "./BlueprintPreparationError.js";
+import {RunnableBuildPreparer} from "./RunnableBuildPreparer.js";
 import {RuntimePreparationError} from "./RuntimePreparationError.js";
 import {RuntimePreparationCancelledError} from "./RuntimePreparationCancelledError.js";
 import {RuntimePreparationCleanupError} from "./RuntimePreparationCleanupError.js";
@@ -24,7 +24,7 @@ import {UnsupportedProjectOperationError} from "./UnsupportedProjectOperationErr
 // crossed the boundary below -- "runtimePath" is what it should hand to loadPokieGame (or a worker
 // thread's own packageRoot) from that point on instead of its own caller-given path, and "release" must
 // be called once the operation is done with it (safe to call unconditionally -- see
-// ProjectMaterializationResult's own doc comment on why a borrowed/passthrough result's release() is
+// ProjectPreparationResult's own doc comment on why a borrowed/passthrough result's release() is
 // always a no-op).
 export type RuntimePackageResolution = {
     readonly runtimePath: string;
@@ -133,47 +133,47 @@ export const passthroughRuntimePackageResolver: RuntimePackageResolving = (packa
     return Promise.resolve({runtimePath: packageRoot, release: noRelease});
 };
 
-export type MaterializingRuntimePackageResolverDependencies = {
+export type PreparingRuntimePackageResolverDependencies = {
     resolveProject?: ProjectResolving;
-    materializer?: ProjectMaterializing;
+    preparer?: ProjectPreparing;
 };
 
 // The one place every CLI runtime operation that loads a POKIE game package should cross from "a
 // caller-given path" to "a real, loadable runtime" -- resolves the given path via ProjectResolving and,
-// for a project that grants BLUEPRINT_BUILD_CAPABILITY, materializes it into a real, built-and-installed runtime
-// via BlueprintProjectMaterializer (see that class's own doc comment for what "materialized" means)
+// for a project that grants BLUEPRINT_BUILD_CAPABILITY, prepares it into a real, built-and-installed runtime
+// via BlueprintProjectPreparer (see that class's own doc comment for what "materialized" means)
 // before the operation ever touches loadPokieGame. A resolved "tsPackage" already has everything
 // `operation` needs, so it passes straight through (its own rootPath, not the caller's raw string --
 // harmless, since ProjectTargetResolver only ever resolved it in the first place because it already
 // existed on disk). A path ProjectResolving doesn't recognize as any known project type at all -- or that
-// fails to resolve outright -- is handed back exactly as given, never routed through the materializer or
+// fails to resolve outright -- is handed back exactly as given, never routed through the preparer or
 // checked against `operation`, so behavior against an arbitrary, unrecognized path stays byte-for-byte
 // compatible with every operation's pre-materialization behavior. Anything else resolved -- an
 // outcomeLibrary/stakeAdapter/parWorkbook/wasm project `operation` has no capability to run against --
 // throws an UnsupportedProjectOperationError (see describeUnsupportedProjectOperation) instead of ever
 // reaching loadPokieGame with a path it could only fail against in a confusing, capability-blind way. A
-// materialization failure (a BlueprintMaterializationError, carrying which phase failed) propagates
+// materialization failure (a BlueprintPreparationError, carrying which phase failed) propagates
 // straight out of the returned function -- never caught or rewrapped here -- so a caller can only ever
 // reach loadPokieGame with a genuinely materialized runtime, never after a failed one.
 //
 // `pokiePackageRoot` -- the running POKIE installation's own root directory (see cli/pokie.ts's
-// readOwnPackageRoot()) -- is what lets the default materializer's own "npm install" resolve its
+// readOwnPackageRoot()) -- is what lets the default preparer's own "npm install" resolve its
 // generated "@fromstan/pokie" dependency against this exact installation (via withLocalPokieInstall) instead of a
-// registry, so a Blueprint materializes offline even when the running version has never been published.
-// Optional only so a caller that already supplies its own `materializer` (every test below) never has to
+// registry, so a Blueprint prepares offline even when the running version has never been published.
+// Optional only so a caller that already supplies its own `preparer` (every test below) never has to
 // pass a real filesystem path it doesn't need; every real production call site (cli/pokie.ts,
 // StudioCommand) always passes one.
-export function createMaterializingRuntimePackageResolver(
+export function createPreparingRuntimePackageResolver(
     pokieVersion: string,
     operation: PokieOperation,
     pokiePackageRoot?: string,
-    dependencies: MaterializingRuntimePackageResolverDependencies = {},
+    dependencies: PreparingRuntimePackageResolverDependencies = {},
 ): RuntimePackageResolving {
     const resolveProject = dependencies.resolveProject ?? new ProjectTargetResolver();
-    // Even an injected materializer is a Blueprint-stage materializer.  Keep
+    // Even an injected preparer is a Blueprint-stage preparer.  Keep
     // PAR import/staging planner-owned so tests and host integrations cannot
     // accidentally receive an unsupported workbook directly.
-    const blueprintMaterializer = dependencies.materializer ?? new BlueprintProjectMaterializer(
+    const blueprintPreparer = dependencies.preparer ?? new BlueprintProjectPreparer(
         pokieVersion,
         undefined,
         undefined,
@@ -183,7 +183,7 @@ export function createMaterializingRuntimePackageResolver(
         undefined,
         pokiePackageRoot !== undefined ? createLocalRuntimeIdentity(pokiePackageRoot) : pokieVersion,
     );
-    const materializer = new RunnableArtifactMaterializer(blueprintMaterializer);
+    const preparer = new RunnableBuildPreparer(blueprintPreparer);
 
     return async (packageRoot: string, options: RuntimePackageResolutionOptions = {}): Promise<RuntimePackageResolution> => {
         assertRuntimePreparationNotCancelled(options.signal);
@@ -205,7 +205,7 @@ export function createMaterializingRuntimePackageResolver(
         }
 
         // Runtime preparation is planner-owned.  It may borrow a package,
-        // materialize a Blueprint cache, or import PAR into a private stage;
+        // prepare a Blueprint cache, or import PAR into a private stage;
         // none of those asks the user to publish a durable package first.
         const runtimePlan = new FormatConversionPlanner().planRuntime(project);
         if (project.type === "tsPackage") {
@@ -214,7 +214,7 @@ export function createMaterializingRuntimePackageResolver(
         }
         if (runtimePlan.status === "planned") {
             try {
-                const materialized = await materializer.materialize(project, options);
+                const materialized = await preparer.prepare(project, options);
                 if (options.signal?.aborted) {
                     try {
                         await materialized.release();
@@ -232,7 +232,7 @@ export function createMaterializingRuntimePackageResolver(
                 // Preserve the dedicated lifecycle error (including phase and
                 // npm detail) for direct consumers while enriching its public
                 // message with the planner-owned runtime path.
-                if (error instanceof BlueprintMaterializationError) {
+                if (error instanceof BlueprintPreparationError) {
                     error.message = new RuntimePreparationError(project, runtimePlan, error).message;
                     throw error;
                 }

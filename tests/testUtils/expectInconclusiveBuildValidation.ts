@@ -5,7 +5,7 @@ import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 
 // Structural validation remains successful. A declaration-only artifact cannot
 // prove the originating executable's transition model; the public CLI returns 2.
-export async function expectInconclusiveArtifactValidation(args: string[]): Promise<void> {
+export async function expectInconclusiveBuildValidation(args: string[]): Promise<void> {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-validation-contract-"));
     const output = path.join(directory, "validation.json");
     try {

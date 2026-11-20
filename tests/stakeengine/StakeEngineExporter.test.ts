@@ -115,14 +115,14 @@ describe("StakeEngineExporter", () => {
             mode.library.outcomes.forEach((outcome, position) => {
                 const expectedId = Number(outcome.id);
                 // The explicit Stake unit conversion: payoutMultiplier * cost * 100, never rounded.
-                const expectedPayoutMultiplier = outcome.artifact.payoutMultiplier * mode.cost * 100;
+                const expectedPayoutMultiplier = outcome.record.payoutMultiplier * mode.cost * 100;
 
                 expect(csvRows[position]).toBe(`${expectedId},${outcome.weight},${expectedPayoutMultiplier}`);
 
                 const bookLine = bookLines[position];
                 expect(bookLine.id).toBe(expectedId);
                 expect(bookLine.payoutMultiplier).toBe(expectedPayoutMultiplier);
-                expect(bookLine.events).toEqual(eventsProjector.project(outcome.artifact, {cost: mode.cost}));
+                expect(bookLine.events).toEqual(eventsProjector.project(outcome.record, {cost: mode.cost}));
 
                 // CSV third column must exactly match the book line's payoutMultiplier for the same outcome.
                 expect(csvRows[position].split(",")[2]).toBe(String(bookLine.payoutMultiplier));
@@ -183,7 +183,7 @@ describe("StakeEngineExporter", () => {
         const result = await exporter.exportToDirectory([{modeName: "base", cost: 1, library}], outDir);
 
         expect(result.files).toEqual([]);
-        expect(result.manifest).toBeUndefined();
+        expect(result.info).toBeUndefined();
         expect(result.issues.some((issue) => issue.code === "stakeengine-outcome-payout-multiplier-not-representable" && issue.severity === "error")).toBe(
             true,
         );
@@ -197,7 +197,7 @@ describe("StakeEngineExporter", () => {
         const result = await exporter.exportToDirectory(invalidModes, outDir);
 
         expect(result.files).toEqual([]);
-        expect(result.manifest).toBeUndefined();
+        expect(result.info).toBeUndefined();
         expect(result.issues.some((issue) => issue.severity === "error")).toBe(true);
         expect(fs.existsSync(outDir)).toBe(false);
     });
@@ -272,7 +272,7 @@ describe("StakeEngineExporter", () => {
         const result = await exporter.exportToDirectory(modes, outDir);
 
         expect(result.files).toEqual([]);
-        expect(result.manifest).toBeUndefined();
+        expect(result.info).toBeUndefined();
         expect(result.issues.some((issue) => issue.code === "stakeengine-outcome-events-invalid" && issue.severity === "error")).toBe(true);
         expect(fs.existsSync(outDir)).toBe(false);
     });
@@ -284,7 +284,7 @@ describe("StakeEngineExporter", () => {
                 {
                     id: "0",
                     weight: 1,
-                    artifact: buildRoundRecord({
+                    record: buildRoundRecord({
                         roundId: "reserved-type-round",
                         origin: stakeEngineTestProvenance,
                         betMode: "base",
@@ -318,7 +318,7 @@ describe("StakeEngineExporter", () => {
         const result = await exporter.exportToDirectory(modes, outDir);
 
         expect(result.files).toEqual([]);
-        expect(result.manifest).toBeUndefined();
+        expect(result.info).toBeUndefined();
         expect(result.issues.some((issue) => issue.code === "stakeengine-outcome-events-not-json-safe" && issue.severity === "error")).toBe(true);
         expect(fs.existsSync(outDir)).toBe(false);
     });
@@ -418,7 +418,7 @@ describe("StakeEngineExporter", () => {
 
         const result = await failingExporter.exportToDirectory(modes, outDir);
 
-        expect(result.manifest).toBeDefined();
+        expect(result.info).toBeDefined();
         expect(result.files.length).toBeGreaterThan(0);
         expect(result.issues.some((issue) => issue.severity === "error")).toBe(false);
         expect(result.issues.some((issue) => issue.code === "stakeengine-stale-export-cleanup-failed" && issue.severity === "warning")).toBe(true);

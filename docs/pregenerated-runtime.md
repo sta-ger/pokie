@@ -115,7 +115,7 @@ source — can throw the same error for its own reasons and get identical treatm
 
 `PreGeneratedOutcomeSelectionValidator` checks a drawn selection's own structural well-formedness: non-empty
 `libraryId`/`outcome.id`, a valid-format `libraryHash`, positive-safe-integer `weight`/`totalWeight`, `weight <=
-totalWeight`, and an `outcome.artifact` that passes `RoundRecordValidator`. It runs in two places, deliberately:
+totalWeight`, and an `outcome.record` that passes `RoundRecordValidator`. It runs in two places, deliberately:
 immediately after every draw in `PreGeneratedSpinCommandHandler` (see below), and again inside
 `buildPreGeneratedRoundResult` as a defensive backstop for any other caller of that function. A hand-crafted or
 forged `PreGeneratedOutcomeSourcing` implementation is just as capable of returning a structurally invalid
@@ -221,7 +221,7 @@ is configured — a separate namespace (`/pregenerated-sessions`) that never ove
 routes, which are completely unaffected either way. The constructor itself fails fast — before `start()` is ever
 called — with `PreGeneratedLibraryProvenanceMismatchError` if the configured library's own provenance (every
 outcome shares the same `origin.game`, guaranteed by `buildWeightedOutcomeLibrary`'s homogeneity check) doesn't
-match the loaded `PokieGame`'s manifest: a library built for the wrong game, or the wrong version of this one, is a
+match the loaded `PokieGame`'s info: a library built for the wrong game, or the wrong version of this one, is a
 configuration mistake caught at startup, never something a caller discovers mid-round.
 
 - `POST /pregenerated-sessions` — body `{seed?: string; initialBalance?: number}` — creates a session with a tiny

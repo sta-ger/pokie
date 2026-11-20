@@ -5,10 +5,10 @@
 `stakeengine/standalone/` reads and analyzes **any** Stake Engine outcome directory — `index.json`, per-mode
 lookup CSV, per-mode zstd-compressed JSONL books — with **no `pokie-info.json` involved at any point**. This
 is deliberately different from [Stake Engine Import](stake-engine-import.md), which only ever round-trips a
-directory produced by POKIE's Stake Engine export workflow (it requires that run's own manifest to recover
+directory produced by POKIE's Stake Engine export workflow (it requires that run's own pokie-info.json to recover
 `betMode`/`stake`/provenance/`libraryId`, and fails outright without one). Standalone is for the other case: an
-existing directory with no POKIE manifest and no history of a POKIE export at all — a third party's own Stake
-Engine math-sdk output, or POKIE's own export with the manifest stripped.
+existing directory with no POKIE info file and no history of a POKIE export at all — a third party's own Stake
+Engine math-sdk output, or POKIE's own export with the info file stripped.
 
 ## Why not just reuse the importer?
 
@@ -16,7 +16,7 @@ Engine math-sdk output, or POKIE's own export with the manifest stripped.
 per-step win breakdown, `betMode`, `stake`, provenance. Building any of that requires POKIE-specific knowledge a
 genuinely foreign export never carries: a fixed `reveal`/`win`/`finalWin` event vocabulary (see
 [Stake Engine Export](stake-engine-export.md#events-a-generic-mechanic-agnostic-mapping)), a per-round win
-breakdown, and a manifest to recover `betMode`/`stake` (Stake's own `index.json`/CSV/books never store either).
+breakdown, and an info file to recover `betMode`/`stake` (Stake's own `index.json`/CSV/books never store either).
 Standalone never attempts any of that. It normalizes into a much smaller DTO and computes statistics
 directly over it — no `RoundRecord`/`WeightedOutcomeLibrary` is ever built.
 
@@ -33,7 +33,7 @@ type StakeEngineOutcomeRecord = {
 
 type StakeEngineStandaloneMode = {
  readonly modeName: string;
- readonly cost: number; // read straight off index.json -- the one place a manifest-less directory ever records it
+ readonly cost: number; // read straight off index.json -- the one place a directory without an info file ever records it
  readonly outcomes: readonly StakeEngineOutcomeRecord[];
 };
 ```
@@ -65,7 +65,7 @@ matched by id. One deliberate difference from `StakeEngineImportValidator`: a mo
 filename is **never** required to match a `books_<name>.jsonl.zst`/`lookup_<name>.csv` naming convention — that's
 POKIE's export workflow convention, not part of Stake's actual schema, and a genuinely foreign
 directory has no reason to follow it. Whatever `index.json` itself names (subject to path-safety) is trusted.
-Issue codes are prefixed `stakeengine-standalone-*`, distinct from both `stakeengine-import-*` (manifest-bearing)
+Issue codes are prefixed `stakeengine-standalone-*`, distinct from both `stakeengine-import-*` (with an info file)
 and `stakeengine-*`/`stakeengine-export-*` (export-side).
 
 ## `isStakeEngineOutcomeDirectory`

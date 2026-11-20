@@ -4,13 +4,13 @@ import type {StakeEngineImportSourceProvenance} from "./StakeEngineImportSourceP
 import type {StakeEngineInfo} from "./StakeEngineInfo.js";
 
 // A successful import supplies native numeric modes or an exactSource payload when weights exceed
-// native library limits. On errors both are absent/empty and manifest/provenance are undefined.
+// native library limits. On errors both are absent/empty and info/provenance are undefined.
 // Retaining the original Stake payload provides exact interchange without changing native sampling.
 export type StakeEngineImportResult<T extends string | number = string> = {
     /** Exact validated payload for weights outside native library limits. No numeric rescaling. */
     readonly exactSource?: import("./StakeEngineExactSource.js").StakeEngineExactSource;
     readonly stakeDir: string;
-    readonly manifest: StakeEngineInfo | undefined;
+    readonly info: StakeEngineInfo | undefined;
     readonly modes: readonly StakeEngineExportModeInput<T>[];
     readonly sourceProvenance: StakeEngineImportSourceProvenance | undefined;
     readonly issues: readonly ValidationIssue[];

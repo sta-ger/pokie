@@ -56,7 +56,7 @@ export class GamePackageCreator implements GamePackageCreating {
 
         return {
             projectRoot,
-            manifest,
+            info: manifest,
             createdFiles: [
                 "package.json",
                 "tsconfig.json",

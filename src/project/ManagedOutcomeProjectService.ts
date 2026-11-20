@@ -215,12 +215,12 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
 
     private async openIfCompatible(rootPath: string, compatibility: OutcomeProjectCompatibility): Promise<PokieProject | undefined> {
         try {
-            const manifest = await this.reader.readManifest(rootPath);
+            const manifest = await this.reader.readIndex(rootPath);
             if (
                 manifest.game.id !== compatibility.gameId ||
                 manifest.game.version !== compatibility.gameVersion ||
                 manifest.configHash !== compatibility.configHash ||
-                manifest.artifactPokieVersion !== compatibility.pokieVersion ||
+                manifest.recordPokieVersion !== compatibility.pokieVersion ||
                 manifest.modes.length === 0 ||
                 !manifest.modes.every((mode) => generatorMatchesCompatibility(mode.generator, compatibility))
             ) return undefined;
@@ -237,7 +237,7 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
                     generationSemantics: (compatibility.generation ?? "exact") === "exact" ? "exact" : "cappedSample",
                     gameId: compatibility.gameId,
                     gameVersion: compatibility.gameVersion,
-                    manifestIdentity: `${compatibility.gameId}@${compatibility.gameVersion}`,
+                    gameIdentity: `${compatibility.gameId}@${compatibility.gameVersion}`,
                     ...(generationProvenance(compatibility.generation)),
                     ...(compatibility.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: compatibility.maxExactOutcomeSpaceSize}),
                     ...(compatibility.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: compatibility.compatibilityPolicyVersion}),

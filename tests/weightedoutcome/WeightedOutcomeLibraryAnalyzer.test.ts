@@ -8,9 +8,9 @@ describe("WeightedOutcomeLibraryAnalyzer", () => {
             buildWeightedOutcomeLibrary({
                 libraryId: "lib-zero-weight-jackpot",
                 outcomes: [
-                    {id: "no-win", weight: 95, artifact: artifactWithTotalWin("r1", 0)},
-                    {id: "small-win", weight: 5, artifact: artifactWithTotalWin("r2", 2)},
-                    {id: "jackpot", weight: 0, artifact: artifactWithTotalWin("r3", 10000)},
+                    {id: "no-win", weight: 95, record: artifactWithTotalWin("r1", 0)},
+                    {id: "small-win", weight: 5, record: artifactWithTotalWin("r2", 2)},
+                    {id: "jackpot", weight: 0, record: artifactWithTotalWin("r3", 10000)},
                 ],
             }),
         ).toThrow(WeightedOutcomeLibraryBuildError);
@@ -35,9 +35,9 @@ describe("WeightedOutcomeLibraryAnalyzer", () => {
         const library = buildWeightedOutcomeLibrary({
             libraryId: "lib-1",
             outcomes: [
-                {id: "no-win", weight: 70, artifact: artifactWithTotalWin("r1", 0)},
-                {id: "small-win", weight: 25, artifact: artifactWithTotalWin("r2", 2)},
-                {id: "jackpot", weight: 5, artifact: artifactWithTotalWin("r3", 100)},
+                {id: "no-win", weight: 70, record: artifactWithTotalWin("r1", 0)},
+                {id: "small-win", weight: 25, record: artifactWithTotalWin("r2", 2)},
+                {id: "jackpot", weight: 5, record: artifactWithTotalWin("r3", 100)},
             ],
         });
 
@@ -65,9 +65,9 @@ describe("WeightedOutcomeLibraryAnalyzer", () => {
         const library = buildWeightedOutcomeLibrary({
             libraryId: "lib-2",
             outcomes: [
-                {id: "a", weight: 40, artifact: artifactWithTotalWin("r1", 3)},
-                {id: "b", weight: 10, artifact: artifactWithTotalWin("r2", 3)},
-                {id: "c", weight: 50, artifact: artifactWithTotalWin("r3", 0)},
+                {id: "a", weight: 40, record: artifactWithTotalWin("r1", 3)},
+                {id: "b", weight: 10, record: artifactWithTotalWin("r2", 3)},
+                {id: "c", weight: 50, record: artifactWithTotalWin("r3", 0)},
             ],
         });
 
@@ -85,7 +85,7 @@ describe("WeightedOutcomeLibraryAnalyzer", () => {
     it("reports zero variance/standardDeviation and full hit frequency for a library with a single constant outcome", () => {
         const library = buildWeightedOutcomeLibrary({
             libraryId: "lib-3",
-            outcomes: [{id: "only", weight: 1, artifact: artifactWithTotalWin("r1", 4)}],
+            outcomes: [{id: "only", weight: 1, record: artifactWithTotalWin("r1", 4)}],
         });
 
         const analysis = new WeightedOutcomeLibraryAnalyzer().analyze(library);
@@ -103,8 +103,8 @@ describe("WeightedOutcomeLibraryAnalyzer", () => {
         const library = buildWeightedOutcomeLibrary({
             libraryId: "lib-4",
             outcomes: [
-                {id: "a", weight: 1, artifact: artifactWithTotalWin("r1", 0)},
-                {id: "b", weight: 2, artifact: artifactWithTotalWin("r2", 0)},
+                {id: "a", weight: 1, record: artifactWithTotalWin("r1", 0)},
+                {id: "b", weight: 2, record: artifactWithTotalWin("r2", 0)},
             ],
         });
 
@@ -125,8 +125,8 @@ describe("WeightedOutcomeLibraryAnalyzer", () => {
         const library = buildWeightedOutcomeLibrary({
             libraryId: "lib-overflow",
             outcomes: [
-                {id: "a", weight: 1e308, artifact: artifactWithTotalWin("r1", 5)},
-                {id: "b", weight: 5e307, artifact: artifactWithTotalWin("r2", 2)},
+                {id: "a", weight: 1e308, record: artifactWithTotalWin("r1", 5)},
+                {id: "b", weight: 5e307, record: artifactWithTotalWin("r2", 2)},
             ],
         });
 
@@ -145,8 +145,8 @@ describe("WeightedOutcomeLibraryAnalyzer", () => {
         const library = buildWeightedOutcomeLibrary({
             libraryId: "lib-precision",
             outcomes: [
-                {id: "a", weight: 1, artifact: artifactWithTotalWin("r1", 2)},
-                {id: "b", weight: 1, artifact: artifactWithTotalWin("r2", 2 + 1e-10)},
+                {id: "a", weight: 1, record: artifactWithTotalWin("r1", 2)},
+                {id: "b", weight: 1, record: artifactWithTotalWin("r2", 2 + 1e-10)},
             ],
         });
 
@@ -162,7 +162,7 @@ describe("WeightedOutcomeLibraryAnalyzer", () => {
     it("returns a deeply frozen analysis result", () => {
         const library = buildWeightedOutcomeLibrary({
             libraryId: "lib-5",
-            outcomes: [{id: "only", weight: 1, artifact: artifactWithTotalWin("r1", 1)}],
+            outcomes: [{id: "only", weight: 1, record: artifactWithTotalWin("r1", 1)}],
         });
         const analysis = new WeightedOutcomeLibraryAnalyzer().analyze(library);
 
@@ -174,8 +174,8 @@ describe("WeightedOutcomeLibraryAnalyzer", () => {
 
 it("keeps rare positive native numeric weights below 1e-18 without importing Stake's UInt64 contract", () => {
     const library = buildWeightedOutcomeLibrary({libraryId: "rare", outcomes: [
-        {id: "loss", weight: 1e20, artifact: artifactWithTotalWin("loss", 0)},
-        {id: "win", weight: 1, artifact: artifactWithTotalWin("win", 2)},
+        {id: "loss", weight: 1e20, record: artifactWithTotalWin("loss", 0)},
+        {id: "win", weight: 1, record: artifactWithTotalWin("win", 2)},
     ]});
     const result = new WeightedOutcomeLibraryAnalyzer().analyze(library);
     expectRelative(result.hitFrequency, 1e-20);

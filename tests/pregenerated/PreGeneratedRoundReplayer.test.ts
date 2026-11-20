@@ -5,9 +5,9 @@ function buildLibrary(): WeightedOutcomeLibrary<string> {
     return buildWeightedOutcomeLibrary({
         libraryId: "replay-test",
         outcomes: [
-            {id: "a", weight: 33, artifact: artifactWith({roundId: "a", totalWin: 0})},
-            {id: "b", weight: 33, artifact: artifactWith({roundId: "b", totalWin: 10})},
-            {id: "c", weight: 34, artifact: artifactWith({roundId: "c", totalWin: 200})},
+            {id: "a", weight: 33, record: artifactWith({roundId: "a", totalWin: 0})},
+            {id: "b", weight: 33, record: artifactWith({roundId: "b", totalWin: 10})},
+            {id: "c", weight: 34, record: artifactWith({roundId: "c", totalWin: 200})},
         ],
     });
 }

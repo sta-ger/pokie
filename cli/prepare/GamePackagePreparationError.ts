@@ -7,7 +7,7 @@ export type GamePackagePreparationPhase = "create" | "dependencies" | "build" | 
 //
 // `details` -- only ever populated for a "dependencies" phase failure -- carries the raw, technical
 // output a failed "npm install" produced (its own stderr), same convention and same purpose as
-// BlueprintMaterializationError's own "details" (cli/materialize/BlueprintMaterializationError.ts):
+// BlueprintPreparationError's own "details" (cli/runtime/BlueprintPreparationError.ts):
 // kept out of `message` so a human reading the top-level error gets a plain-English summary first,
 // with dispatch.ts printing this as a secondary "npm output:" block for whichever error type it is.
 export class GamePackagePreparationError extends Error {

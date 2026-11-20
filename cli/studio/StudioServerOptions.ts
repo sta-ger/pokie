@@ -1,7 +1,7 @@
 import {GamePackageInspecting, loadPokieGame, OutcomeSourceProjectAnalyzing, PokieGamePackageValidating} from "@fromstan/pokie";
 import type {IncomingMessage} from "http";
-import type {RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
-import {StudioArtifactBuildService} from "./artifacts/StudioArtifactBuildService.js";
+import type {RuntimePackageResolving} from "../runtime/prepareRuntimePackage.js";
+import {StudioBuildService} from "./build/StudioBuildService.js";
 import {StudioBlueprintService} from "./blueprint/StudioBlueprintService.js";
 import {StudioCertificationService} from "./certification/StudioCertificationService.js";
 import {StudioDeploymentService} from "./deployment/StudioDeploymentService.js";
@@ -80,7 +80,7 @@ export type StudioServerOptions = {
     // runtime) ever touch loadGame -- see StudioServer's own field doc comment. Defaults to a real
     // materializing resolver (operation STUDIO_OPERATION), same "always default to the real thing, only
     // tests override" shape as playService below; overridable in tests so no real
-    // BlueprintProjectMaterializer/npm install ever runs.
+    // BlueprintProjectPreparer/npm install ever runs.
     resolveRuntimePackageRoot?: RuntimePackageResolving;
     // Provenance (GET /api/project/inspect) and contract/validation (GET /api/project/validate) for
     // the Project Dashboard — the exact same services `pokie inspect`/`pokie validate` use, so
@@ -146,11 +146,11 @@ export type StudioServerOptions = {
     // the exported manifest's own `pokieVersion` field), same reasoning as certificationService.
     stakeEngineExportService?: StudioStakeEngineExportService;
     // Drives the Project Dashboard's Build/Export tab's own "Build artifact" group (GET
-    // /api/project/artifacts/targets, POST /api/project/artifacts/build) -- built directly on top of
+    // /api/project/build/targets, POST /api/project/build/build) -- built directly on top of
     // BuildOutputBuilderRegistry, the exact same registry "pokie build <project> --target <target>" itself
     // runs. Needs `pokieVersion` (embedded in a built tsPackage's own manifest), same reasoning as
     // blueprintService.
-    artifactBuildService?: StudioArtifactBuildService;
+    artifactBuildService?: StudioBuildService;
     // Owns the persistent Studio project registry (every managed and registered external project Studio
     // knows about, not just Home's own short recent-projects list) -- see
     // StudioProjectRegistrationService/FileStudioProjectRegistry. Defaults to

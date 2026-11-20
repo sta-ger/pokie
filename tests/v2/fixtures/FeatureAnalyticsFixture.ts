@@ -82,5 +82,5 @@ export function featureAnalyticsReport(kind: "empty" | "incomplete" | "populated
         accumulator.addLogicalRound({rounds: 1, steps: 1, totalStake: 8, totalWin: 10});
     }
     accumulator.addLogicalSamplingRanges([{trajectory: "fixture", observed: rows.length ? [[0, rows.length]] : [], completed: kind === "populated" ? [[0, rows.length]] : []}]);
-    return new SimulationReportBuilder().build({manifest: {id: "analytics-fixture", name: "Analytics fixture", version: "1"}, requestedRounds: rows.length, statistics: accumulator.getStatistics(), configHash: envelope.modelId ?? undefined, durationMs: 1});
+    return new SimulationReportBuilder().build({gameInfo: {id: "analytics-fixture", name: "Analytics fixture", version: "1"}, requestedRounds: rows.length, statistics: accumulator.getStatistics(), configHash: envelope.modelId ?? undefined, durationMs: 1});
 }

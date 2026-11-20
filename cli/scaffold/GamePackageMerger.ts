@@ -93,7 +93,7 @@ export class GamePackageMerger implements GamePackageMerging {
             skippedFiles,
         );
 
-        return {projectRoot, manifest, createdFiles, updatedFiles, skippedFiles};
+        return {projectRoot, info: manifest, createdFiles, updatedFiles, skippedFiles};
     }
 
     // Check every directory we must create into before package.json is patched. In particular, a

@@ -14,7 +14,7 @@ export type BuildPreviewView =
     | ({
           status: "ok";
           warnings: ValidationIssue[];
-          manifest: PokieGameInfo;
+          info: PokieGameInfo;
           reels: number;
           rows: number;
           symbolsCount: number;
@@ -45,7 +45,7 @@ export type BuildProjectView =
     | {
           status: "ok";
           projectRoot: string;
-          manifest: PokieGameInfo;
+          info: PokieGameInfo;
           createdFiles: string[];
           buildInfo: GameBuildInfo;
           warnings: ValidationIssue[];
@@ -70,7 +70,7 @@ export function describeBuildResult(result: StudioBuildResult): BuildProjectView
 // prior success vanish.
 export type BuiltBlueprintSnapshot = {
     blueprint: unknown;
-    manifest: PokieGameInfo;
+    info: PokieGameInfo;
     projectRoot: string;
     buildInfo: GameBuildInfo;
     warnings: ValidationIssue[];

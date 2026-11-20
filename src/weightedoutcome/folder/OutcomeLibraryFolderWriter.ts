@@ -6,7 +6,7 @@ import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 import {WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION} from "../WeightedOutcomeLibrary.js";
 import {computeOnlineWeightedOutcomeLibraryAnalysis} from "./internal/computeOnlineWeightedOutcomeLibraryAnalysis.js";
 import {streamModeOutcomesToTempFile} from "./internal/streamModeOutcomesToTempFile.js";
-import {OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION, type OutcomeLibraryFolderIndex, type OutcomeLibraryFolderIndexModeEntry} from "./OutcomeLibraryFolderIndex.js";
+import {OUTCOME_LIBRARY_FOLDER_INDEX_SCHEMA_VERSION, type OutcomeLibraryFolderIndex, type OutcomeLibraryFolderIndexModeEntry} from "./OutcomeLibraryFolderIndex.js";
 import {OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION, type OutcomeLibraryFolderModeIndex} from "./OutcomeLibraryFolderModeIndex.js";
 import type {OutcomeLibraryFolderModeInput} from "./OutcomeLibraryFolderModeInput.js";
 import type {OutcomeLibraryFolderWriteResult} from "./OutcomeLibraryFolderWriteResult.js";
@@ -31,12 +31,12 @@ type ModeProvenanceKey = {
     readonly pokieVersion: string;
 };
 
-function provenanceKeyOf(firstOutcome: {readonly artifact: {readonly origin: {readonly game: {readonly id: string; readonly version: string}; readonly configHash?: string; readonly pokieVersion: string}}}): ModeProvenanceKey {
+function provenanceKeyOf(firstOutcome: {readonly record: {readonly origin: {readonly game: {readonly id: string; readonly version: string}; readonly configHash?: string; readonly pokieVersion: string}}}): ModeProvenanceKey {
     return {
-        gameId: firstOutcome.artifact.origin.game.id,
-        gameVersion: firstOutcome.artifact.origin.game.version,
-        configHash: firstOutcome.artifact.origin.configHash,
-        pokieVersion: firstOutcome.artifact.origin.pokieVersion,
+        gameId: firstOutcome.record.origin.game.id,
+        gameVersion: firstOutcome.record.origin.game.version,
+        configHash: firstOutcome.record.origin.configHash,
+        pokieVersion: firstOutcome.record.origin.pokieVersion,
     };
 }
 
@@ -98,7 +98,7 @@ export class OutcomeLibraryFolderWriter<T extends string | number = string> impl
         const upfrontIssues = this.validator.validate(modes);
         const supplementalFiles = validateSupplementalFiles(options?.supplementalFiles, modes, upfrontIssues);
         if (upfrontIssues.some((issue) => issue.severity === "error")) {
-            return {outDir, files: [], manifest: undefined, issues: upfrontIssues};
+            return {outDir, files: [], index: undefined, issues: upfrontIssues};
         }
         assertSafeToReplaceOutcomeLibraryFolderDirectory(outDir, options?.allowExistingEmptyDestination);
         const destinationOwnership = options?.expectedDestinationOwnership ?? capturePublishDirectoryOwnership(outDir);
@@ -115,7 +115,7 @@ export class OutcomeLibraryFolderWriter<T extends string | number = string> impl
             let firstMode: {readonly provenanceKey: ModeProvenanceKey; readonly firstOutcome: unknown} | undefined;
             let gameManifest: OutcomeLibraryFolderIndex["game"] | undefined;
             let configHash: string | undefined;
-            let artifactPokieVersion: string | undefined;
+            let recordPokieVersion: string | undefined;
             let completed = BigInt(0);
             type StagedMode = {
                 readonly mode: OutcomeLibraryFolderModeInput<T>;
@@ -166,9 +166,9 @@ export class OutcomeLibraryFolderWriter<T extends string | number = string> impl
                 const current = provenanceKeyOf(result.built.firstOutcome as never);
                 if (firstMode === undefined) {
                     firstMode = {provenanceKey: current, firstOutcome: result.built.firstOutcome};
-                    gameManifest = (result.built.firstOutcome as {artifact: {origin: {game: OutcomeLibraryFolderIndex["game"]}}}).artifact.origin.game;
-                    configHash = (result.built.firstOutcome as {artifact: {origin: {configHash?: string}}}).artifact.origin.configHash;
-                    artifactPokieVersion = current.pokieVersion;
+                    gameManifest = (result.built.firstOutcome as {record: {origin: {game: OutcomeLibraryFolderIndex["game"]}}}).record.origin.game;
+                    configHash = (result.built.firstOutcome as {record: {origin: {configHash?: string}}}).record.origin.configHash;
+                    recordPokieVersion = current.pokieVersion;
                 } else if (
                     current.gameId !== firstMode.provenanceKey.gameId ||
                     current.gameVersion !== firstMode.provenanceKey.gameVersion ||
@@ -187,7 +187,7 @@ export class OutcomeLibraryFolderWriter<T extends string | number = string> impl
                 stagedModes.push({mode, schemaVersion, outcomesFile, outcomesPath, built: result.built});
             }
 
-            // All outcome sources are persisted before any derived artifact is
+            // All outcome sources are persisted before any derived record is
             // computed. This turns a multi-mode publication into one public
             // forward-only lifecycle instead of repeating analysis/index work
             // for every retained sibling mode.
@@ -220,12 +220,12 @@ export class OutcomeLibraryFolderWriter<T extends string | number = string> impl
                 assertNotCancelled(options);
                 const {mode, schemaVersion, outcomesFile, built, analysis} = staged;
                 const indexFile = `index_${mode.modeName}.json`;
-                const firstOutcome = built.firstOutcome as {artifact: {betMode: string; stake: number}};
+                const firstOutcome = built.firstOutcome as {record: {betMode: string; stake: number}};
                 const generator = mode.generator ?? mode.getGenerator?.();
                 const manifestEntry: OutcomeLibraryFolderIndexModeEntry = {
                     modeName: mode.modeName,
-                    betMode: firstOutcome.artifact.betMode,
-                    stake: firstOutcome.artifact.stake,
+                    betMode: firstOutcome.record.betMode,
+                    stake: firstOutcome.record.stake,
                     libraryId: mode.libraryId,
                     libraryHash: built.libraryHash,
                     outcomeCount: built.outcomeCount,
@@ -268,25 +268,25 @@ export class OutcomeLibraryFolderWriter<T extends string | number = string> impl
 
             assertNotCancelled(options);
             options?.onLifecycleStage?.("validation");
-            if (issues.some((issue) => issue.severity === "error") || gameManifest === undefined || artifactPokieVersion === undefined) {
-                return {outDir, files: [], manifest: undefined, issues};
+            if (issues.some((issue) => issue.severity === "error") || gameManifest === undefined || recordPokieVersion === undefined) {
+                return {outDir, files: [], index: undefined, issues};
             }
 
-            const orderedManifestEntries = orderManifestEntries(manifestEntries, options?.manifestModeOrder);
+            const orderedManifestEntries = orderManifestEntries(manifestEntries, options?.indexModeOrder);
             const relativeFiles = [...orderedManifestEntries.flatMap((entry) => [entry.indexFile, entry.outcomesFile]), "index.json"];
-            const manifest: OutcomeLibraryFolderIndex = {
-                schemaVersion: OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION,
+            const index: OutcomeLibraryFolderIndex = {
+                schemaVersion: OUTCOME_LIBRARY_FOLDER_INDEX_SCHEMA_VERSION,
                 generatedBy: options?.generatedBy ?? "pokie outcomelibrary build",
                 pokieVersion: this.pokieVersion,
                 generatedAt: this.now().toISOString(),
                 game: gameManifest,
                 ...(configHash !== undefined ? {configHash} : {}),
-                artifactPokieVersion,
+                recordPokieVersion,
                 modes: orderedManifestEntries,
                 files: relativeFiles,
             };
             assertNotCancelled(options);
-            this.writeFile(path.join(stagingDir, "index.json"), `${JSON.stringify(manifest, null, 4)}\n`);
+            this.writeFile(path.join(stagingDir, "index.json"), `${JSON.stringify(index, null, 4)}\n`);
             for (const file of supplementalFiles) {
                 this.writeFile(path.join(stagingDir, file.fileName), file.contents);
             }
@@ -338,7 +338,7 @@ export class OutcomeLibraryFolderWriter<T extends string | number = string> impl
                     ? [...issues, {code: "outcome-library-folder-write-stale-cleanup-failed", severity: "warning" as const, message: cleanupWarning, details: {outDir}}]
                     : issues;
 
-            return withPublishedDirectoryOwnership({outDir, files: filesToPublish, manifest, issues: finalIssues}, publication);
+            return withPublishedDirectoryOwnership({outDir, files: filesToPublish, index, issues: finalIssues}, publication);
         } finally {
             try {
                 this.removeDirectory(stagingDir);

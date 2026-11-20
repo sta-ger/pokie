@@ -13,14 +13,14 @@ import type {OutcomeLibraryFolderIndex} from "./OutcomeLibraryFolderIndex.js";
 import type {OutcomeLibraryFolderModeIndex} from "./OutcomeLibraryFolderModeIndex.js";
 import type {OutcomeLibraryFolderReading} from "./OutcomeLibraryFolderReading.js";
 
-function isWeightedOutcomeShape(value: unknown): value is {id: string; weight: number; artifact: unknown} {
+function isWeightedOutcomeShape(value: unknown): value is {id: string; weight: number; record: unknown} {
     return (
         typeof value === "object" &&
         value !== null &&
         typeof (value as {id?: unknown}).id === "string" &&
         typeof (value as {weight?: unknown}).weight === "number" &&
-        typeof (value as {artifact?: unknown}).artifact === "object" &&
-        (value as {artifact?: unknown}).artifact !== null
+        typeof (value as {record?: unknown}).record === "object" &&
+        (value as {record?: unknown}).record !== null
     );
 }
 
@@ -30,7 +30,7 @@ function isWeightedOutcomeShape(value: unknown): value is {id: string; weight: n
 // JSON) rather than returning ValidationIssue[] — the same "assume already validated, fail fast on a genuine
 // surprise" contract WeightedOutcomeSelector has toward WeightedOutcomeLibrary.
 export class OutcomeLibraryFolderReader<T extends string | number = string> implements OutcomeLibraryFolderReading<T> {
-    public async readManifest(libraryDir: string): Promise<OutcomeLibraryFolderIndex> {
+    public async readIndex(libraryDir: string): Promise<OutcomeLibraryFolderIndex> {
         const raw = await fs.promises.readFile(path.join(libraryDir, "index.json"), "utf-8");
         return JSON.parse(raw) as OutcomeLibraryFolderIndex;
     }
@@ -55,7 +55,7 @@ export class OutcomeLibraryFolderReader<T extends string | number = string> impl
             }
             if (!isWeightedOutcomeShape(line.value)) {
                 throw new OutcomeLibraryFolderInvariantError(
-                    `mode "${modeName}": outcomes line ${line.position} is not {id, weight, artifact}. Validate the bundle first (OutcomeLibraryFolderValidator) before reading it this way.`,
+                    `mode "${modeName}": outcomes line ${line.position} is not {id, weight, record}. Validate the bundle first (OutcomeLibraryFolderValidator) before reading it this way.`,
                 );
             }
             const outcome = line.value as unknown as WeightedOutcome<T>;

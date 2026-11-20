@@ -8,7 +8,7 @@ export type StudioStakeEngineExportView =
           readonly status: "ok";
           readonly outDir: string;
           readonly files: readonly string[];
-          readonly manifest: StakeEngineInfo;
+          readonly info: StakeEngineInfo;
           readonly warnings: readonly ValidationIssue[];
           readonly plan: FormatConversionPlan;
       }

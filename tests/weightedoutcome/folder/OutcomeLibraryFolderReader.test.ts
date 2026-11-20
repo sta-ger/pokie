@@ -27,10 +27,10 @@ describe("OutcomeLibraryFolderReader", () => {
         fs.rmSync(outDir, {recursive: true, force: true});
     });
 
-    it("readManifest/readModeIndex reproduce what the writer wrote", async () => {
+    it("readIndex/readModeIndex reproduce what the writer wrote", async () => {
         const reader = new OutcomeLibraryFolderReader();
 
-        const manifest = await reader.readManifest(outDir);
+        const manifest = await reader.readIndex(outDir);
         const index = await reader.readModeIndex(outDir, "base");
 
         expect(manifest.modes[0].modeName).toBe("base");
@@ -71,7 +71,7 @@ describe("OutcomeLibraryFolderReader", () => {
             const found = await reader.readOutcomeById(outDir, "base", outcome.id);
             expect(found?.id).toBe(outcome.id);
             expect(found?.weight).toBe(outcome.weight);
-            expect(found?.artifact.roundId).toBe(outcome.artifact.roundId);
+            expect(found?.record.roundId).toBe(outcome.record.roundId);
         }
 
         expect(await reader.readOutcomeById(outDir, "base", "not-a-real-id")).toBeUndefined();

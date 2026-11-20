@@ -5,7 +5,7 @@ import {sha256OfBytes} from "./internal/sha256OfBytes.js";
 export type CertificationPackContentHashInput = Omit<CertificationPackIndex, "generatedAt" | "sourceLibraryDir" | "evidenceContentHash">;
 
 // Deterministic identity for a certification/evidence bundle's own CONTENT — every genuinely meaningful field
-// (schemaVersion, pokieVersion, game/configHash/artifactPokieVersion, the source bundle's own manifest hash,
+// (schemaVersion, pokieVersion, game/configHash/recordPokieVersion, the source bundle's own manifest hash,
 // every mode's own hash/metrics/sample-file hash, and the source bundle's own deep-validation *issues*) folded
 // into one sha256, deliberately excluding the fields that vary purely with *when*/*where* this bundle was built
 // rather than *what* it says: "generatedAt", "sourceLibraryDir", and "deepValidation.ranAt" (a timestamp, same
@@ -29,8 +29,8 @@ export function computeCertificationPackContentHash(manifest: CertificationPackC
         pokieVersion: manifest.pokieVersion,
         game: manifest.game,
         ...(manifest.configHash !== undefined ? {configHash: manifest.configHash} : {}),
-        artifactPokieVersion: manifest.artifactPokieVersion,
-        sourceLibraryManifestHash: manifest.sourceLibraryManifestHash,
+        recordPokieVersion: manifest.recordPokieVersion,
+        sourceLibraryIndexHash: manifest.sourceLibraryIndexHash,
         modes: manifest.modes,
         deepValidationIssues: manifest.deepValidation.issues,
         files: manifest.files,

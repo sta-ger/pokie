@@ -64,7 +64,7 @@ export function validatePackReport(value: unknown, modelHash: string | null, sou
         if (!mode || report.reproducibility.configHash !== undefined || mode.libraryHash !== report.reproducibility.libraryHash || mode.libraryHash !== native.libraryHash || mode.libraryId !== native.libraryId || report.betMode !== native.modeName) throw new Error("Outcome-source report does not bind the selected mode/library; a library hash is not a model hash.");
     } else if (!modelHash || report.reproducibility.configHash !== modelHash) throw new Error("Simulation report does not bind the selected actual model; game name/version alone is insufficient.");
     if (report.reproducibility.seed !== report.seed || packHash(report.reproducibility.game) !== packHash(report.game)) throw new Error("Contradictory simulation seed/game reproducibility metadata.");
-    if (report.reproducibility.pokieVersion !== source.artifactPokieVersion) throw new Error("Simulation report runtime version is incompatible with the source artifacts.");
+    if (report.reproducibility.pokieVersion !== source.recordPokieVersion) throw new Error("Simulation report runtime version is incompatible with the source artifacts.");
     for (const field of ["totalBet", "totalWin", "rtp", "hitFrequency", "maxWin", "durationMs", "spinsPerSecond"] as const) if (!Number.isFinite(report[field]) || report[field] < 0) throw new Error(`Invalid simulation report ${field}.`);
     if (!Number.isSafeInteger(report.rounds) || !Number.isSafeInteger(report.requestedRounds) || report.rounds < 0 || report.requestedRounds < report.rounds || report.reproducibility.actualRounds !== report.rounds || report.reproducibility.requestedRounds !== report.requestedRounds) throw new Error("Inconsistent simulation report populations.");
     if (report.targetRtp === undefined && report.rtpDeviation !== undefined || report.targetRtp !== undefined && (!Number.isFinite(report.targetRtp) || !Number.isFinite(report.rtpDeviation) || Math.abs(report.rtpDeviation! - (report.rtp - report.targetRtp)) > 1e-10)) throw new Error("Simulation target/deviation metadata is inconsistent; deviations use ratio units.");
@@ -78,7 +78,7 @@ function readJson(file: string): {hash: string; raw: string; value: unknown} {
     return {hash: sha256OfBytes(bytes), raw: bytes.toString("utf8"), value: parseCertificationJson(bytes.toString("utf8"))};
 }
 
-export async function acquireCertificationPack(source: OutcomeLibraryFolderIndex, sourceLibraryManifestHash: string, providedInputs: CertificationPackInputs | undefined, signal?: AbortSignal, sourceLibraryDir?: string): Promise<CertificationPack> {
+export async function acquireCertificationPack(source: OutcomeLibraryFolderIndex, sourceLibraryIndexHash: string, providedInputs: CertificationPackInputs | undefined, signal?: AbortSignal, sourceLibraryDir?: string): Promise<CertificationPack> {
     const inputs = providedInputs ?? {};
     const check = (): void => {
         if (signal?.aborted) throw new CertificationPackBuildCancelledError();
@@ -131,7 +131,7 @@ export async function acquireCertificationPack(source: OutcomeLibraryFolderIndex
                     seed: report.seed, workers: report.workers, signal, chunkSize: 1000, betModeId: report.betMode, convergence: report.convergence, requireCleanup: true,
                 }).run();
                 check();
-                reproduced = new SimulationReportBuilder().build({...result, requestedRounds: report.requestedRounds, seed: report.seed, durationMs: report.durationMs, pokieVersion: source.artifactPokieVersion, targetRtp: report.targetRtp});
+                reproduced = new SimulationReportBuilder().build({...result, requestedRounds: report.requestedRounds, seed: report.seed, durationMs: report.durationMs, pokieVersion: source.recordPokieVersion, targetRtp: report.targetRtp});
                 if (result.configHash !== modelHash) throw new Error("Reproduced simulation model differs from the report.");
                 seedStrategy = result.workerSeedStrategy;
             }
@@ -163,7 +163,7 @@ export async function acquireCertificationPack(source: OutcomeLibraryFolderIndex
         if (definition) coverage = definition.support === "complete" ? "complete" : "partial";
         return {
             schemaVersion: 1,
-            identity: {runtimeVersion: "pokie.session-runtime.v1", modelHash, modelArtifactHash, sourceLibraryManifestHash, sourceLibraryManifest: source, sourceRevision: inputs.sourceRevision ?? null, candidateRevision: inputs.candidateRevision ?? null},
+            identity: {runtimeVersion: "pokie.session-runtime.v1", modelHash, modelArtifactHash, sourceLibraryIndexHash, sourceLibraryIndex: source, sourceRevision: inputs.sourceRevision ?? null, candidateRevision: inputs.candidateRevision ?? null},
             rules: {status: definition ? "available" : "unavailable", definition},
             statistics: {exact: "source-mode-distributions", semantics: CERTIFICATION_METRIC_SEMANTICS, estimates, unavailable: estimates.length ? estimates.flatMap((attachment, index) => ["rtpConfidenceInterval95", "convergence", "analytics", "stopReason"].filter(key => Reflect.get(attachment.value, key) === undefined).map(key => `Report ${index}: ${key} unavailable`)) : ["Sampled simulation, CI, convergence and feature statistics unavailable; exact outcome distributions have no sampling CI."]},
             validation: {source: "deep-at-build; shallow-and-sampled-at-verification", model: definition ? "advanced-declared-model" : "unavailable", assumptions: ["Declared model validation does not prove custom executable fidelity.", "Source outcome validation is exhaustive at build; verification rechecks structure and selected outcomes, not every outcome."]},

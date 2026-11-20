@@ -23,7 +23,7 @@ import {
     ValidationIssue,
 } from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
+import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOperationError.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE =
@@ -218,7 +218,7 @@ export class CertificationCommand implements CliCommandHandling {
         }
 
         console.log(CERTIFICATION_PREPARATION_NOTICE);
-        if (result.manifest) console.log(`Model coverage: ${result.manifest.pack.support.coverage}. ${result.manifest.pack.support.limitations.join(" ")}`);
+        if (result.index) console.log(`Model coverage: ${result.index.pack.support.coverage}. ${result.index.pack.support.limitations.join(" ")}`);
         console.log(`Built a certification pack from "${libraryDir}" to "${outDir}":`);
         for (const file of result.files) {
             console.log(`  wrote  ${file}`);

@@ -49,7 +49,7 @@ export class StudioFairnessService {
         let libraryId: string;
         let libraryHash: string;
         try {
-            const manifest = await this.reader.readManifest(libraryDir);
+            const manifest = await this.reader.readIndex(libraryDir);
             const mode = manifest.modes.find((candidate) => candidate.modeName === request.modeName);
             if (mode === undefined) {
                 return {status: "load-error", error: `Mode "${request.modeName}" was not found in bundle "${request.libraryDir}".`};

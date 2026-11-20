@@ -68,7 +68,7 @@ publication therefore cannot reuse exports from an earlier installation revision
 consumers keep their own modules; releasing a runtime removes only its private files and CommonJS
 module cache.
 For an older game that omits its POKIE dependency, the host fallback binds the enclosing POKIE
-installation, including its runtime dependencies. The installation manifest owns exports, assets
+installation, including its runtime dependencies. The installation package metadata owns exports, assets
 and runtime dependencies; runtime copies, detached candidate links and executable revisions use that
 same root.
 Dependencies remain ordinary external package dependencies;
@@ -84,7 +84,7 @@ runtime state and the existing host RNG interface.
 
 Stake tuning preserves native integer precision. Its distribution is no longer
 the one described by an old POKIE export's reconstructed-library hash. That old
-manifest is saved verbatim as `optimization-input-pokie-info.json`, and a
+info file is saved verbatim as `optimization-input-pokie-info.json`, and a
 `pokie-native-weights.json` inventory binds all current native files. Project
 resolution recognizes this integrity-bound native candidate. Standalone native
 readback/analysis remains trusted; a claim of lossless reconstruction into

@@ -82,8 +82,8 @@ export function externalAdapterTestLibrary(options: {libraryId: string; betMode?
     return buildWeightedOutcomeLibrary({
         libraryId: options.libraryId,
         outcomes: [
-            {id: "loss", weight: 9, artifact: externalAdapterArtifact({roundId: `${options.libraryId}-0`, totalWin: 0, stake, betMode: options.betMode})},
-            {id: "win", weight: 1, artifact: externalAdapterArtifact({roundId: `${options.libraryId}-1`, totalWin: stake * 2, stake, betMode: options.betMode})},
+            {id: "loss", weight: 9, record: externalAdapterArtifact({roundId: `${options.libraryId}-0`, totalWin: 0, stake, betMode: options.betMode})},
+            {id: "win", weight: 1, record: externalAdapterArtifact({roundId: `${options.libraryId}-1`, totalWin: stake * 2, stake, betMode: options.betMode})},
         ],
     });
 }

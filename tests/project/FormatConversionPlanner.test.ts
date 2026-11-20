@@ -174,7 +174,7 @@ describe("FormatConversionPlanner", () => {
                 configurationHash: "source-hash",
                 gameId: "slot",
                 gameVersion: "1.0.0",
-                manifestIdentity: "slot@1.0.0",
+                gameIdentity: "slot@1.0.0",
                 pokieVersion: "1.3.0",
                 generationSemantics: "exact" as const,
             },
@@ -229,7 +229,7 @@ describe("FormatConversionPlanner", () => {
                 configurationHash: "source-hash",
                 gameId: "slot",
                 gameVersion: "1.0.0",
-                manifestIdentity: "slot@1.0.0",
+                gameIdentity: "slot@1.0.0",
                 pokieVersion: "1.3.0",
                 generationSemantics: "cappedSample" as const,
                 sampleCount: "100",
@@ -511,7 +511,7 @@ describe("FormatConversionPlanner", () => {
     it("rejects descriptor provenance drift before its durable conversion publication", async () => {
         const source = {
             ...project("outcomeLibrary"),
-            configurationProvenance: {configurationHash: "sha256:prepared", manifestIdentity: "descriptor-v1"},
+            configurationProvenance: {configurationHash: "sha256:prepared", gameIdentity: "descriptor-v1"},
         };
         const plan = planner.plan(source, "stakeAdapter", {destinationPath: "/exports/stake"});
         const publish = jest.fn();
@@ -519,7 +519,7 @@ describe("FormatConversionPlanner", () => {
         await expect(planner.executeConversionPlan(plan, {
             currentSource: () => ({
                 ...plan.source,
-                configurationProvenance: {configurationHash: "sha256:changed", manifestIdentity: "descriptor-v1"},
+                configurationProvenance: {configurationHash: "sha256:changed", gameIdentity: "descriptor-v1"},
             }),
             read: () => ({valid: true}),
             canPublish: () => true,
@@ -532,14 +532,14 @@ describe("FormatConversionPlanner", () => {
     it("rejects a manifest identity change even when the configuration hash is unchanged", async () => {
         const source = {
             ...project("outcomeLibrary"),
-            configurationProvenance: {configurationHash: "sha256:same", manifestIdentity: "descriptor-v1"},
+            configurationProvenance: {configurationHash: "sha256:same", gameIdentity: "descriptor-v1"},
         };
         const plan = planner.plan(source, "stakeAdapter", {destinationPath: "/exports/stake"});
 
         await expect(planner.executeConversionPlan(plan, {
             currentSource: () => ({
                 ...plan.source,
-                configurationProvenance: {configurationHash: "sha256:same", manifestIdentity: "descriptor-v2"},
+                configurationProvenance: {configurationHash: "sha256:same", gameIdentity: "descriptor-v2"},
             }),
             read: () => ({valid: true}),
             canPublish: () => true,

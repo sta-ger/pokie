@@ -51,7 +51,7 @@ describe("OutcomeLibraryFolderWriter", () => {
         return Array.from({length: count}, (_, position) => ({
             id: String(position).padStart(4, "0"),
             weight: 1,
-            artifact: {...seed[position % seed.length].artifact, roundId: `many-${position}`},
+            record: {...seed[position % seed.length].record, roundId: `many-${position}`},
         }));
     }
 
@@ -92,7 +92,7 @@ describe("OutcomeLibraryFolderWriter", () => {
         // The fixture's own outcomes were computed by pokieVersion "1.3.0" too, but this is a genuinely
         // different field from manifest.pokieVersion above (which pokie *tool* version built this bundle file)
         // — they only happen to share a value here because the fixture's provenance uses the same string.
-        expect(manifest.artifactPokieVersion).toBe("1.3.0");
+        expect(manifest.recordPokieVersion).toBe("1.3.0");
         expect(manifest.modes.map((mode) => mode.modeName)).toEqual(["base", "bonus"]);
         expect(manifest.modes[0].outcomeCount).toBe(5);
         expect(manifest.modes[0].totalWeight).toBe(1000);
@@ -368,7 +368,7 @@ describe("OutcomeLibraryFolderWriter", () => {
 
         const duplicateResult = await writer.writeToDirectory(duplicate, outDir);
         expect(duplicateResult.issues.some((issue) => issue.code === "outcome-library-folder-duplicate-mode-name")).toBe(true);
-        expect(duplicateResult.manifest).toBeUndefined();
+        expect(duplicateResult.index).toBeUndefined();
         expect(fs.existsSync(outDir)).toBe(false);
 
         const caseResult = await writer.writeToDirectory(caseCollision, outDir);

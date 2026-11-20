@@ -3,15 +3,15 @@ import {SimulationReportBuilder} from "../../src/reporting/SimulationReportBuild
 import {SimulationAccumulator} from "../../src/simulation/SimulationAccumulator.js";
 
 describe("SimulationReportBuilder", () => {
-    const manifest: PokieGameInfo = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+    const gameInfo: PokieGameInfo = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
-    test("maps manifest id/name/version into the report's game field, dropping other manifest fields", () => {
-        const fullManifest: PokieGameInfo = {...manifest, description: "A fruity slot", author: "sta-ger"};
+    test("maps gameInfo id/name/version into the report's game field, dropping other gameInfo fields", () => {
+        const fullInfo: PokieGameInfo = {...gameInfo, description: "A fruity slot", author: "sta-ger"};
         const accumulator = new SimulationAccumulator();
         accumulator.addRound(1, 0);
         const builder = new SimulationReportBuilder();
 
-        const report = builder.build({manifest: fullManifest, requestedRounds: 1, statistics: accumulator.getStatistics(), durationMs: 10});
+        const report = builder.build({gameInfo: fullInfo, requestedRounds: 1, statistics: accumulator.getStatistics(), durationMs: 10});
 
         expect(report.game).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
     });
@@ -21,7 +21,7 @@ describe("SimulationReportBuilder", () => {
         accumulator.addRound(1, 0);
 
         const report = new SimulationReportBuilder().build({
-            manifest,
+            gameInfo,
             requestedRounds: 1,
             seed: "fixed-seed",
             statistics: accumulator.getStatistics(),
@@ -45,7 +45,7 @@ describe("SimulationReportBuilder", () => {
         const statistics = accumulator.getStatistics();
         const builder = new SimulationReportBuilder();
 
-        const report = builder.build({manifest, requestedRounds: 3, statistics, durationMs: 10});
+        const report = builder.build({gameInfo, requestedRounds: 3, statistics, durationMs: 10});
 
         expect(report.rounds).toBe(3);
         expect(report.totalBet).toBe(statistics.totalBet);
@@ -62,7 +62,7 @@ describe("SimulationReportBuilder", () => {
         accumulator.addRound(1, 7);
         const builder = new SimulationReportBuilder();
 
-        const report = builder.build({manifest, requestedRounds: 4, statistics: accumulator.getStatistics(), durationMs: 10});
+        const report = builder.build({gameInfo, requestedRounds: 4, statistics: accumulator.getStatistics(), durationMs: 10});
 
         expect(report.hitFrequency).toBe(0.5);
     });
@@ -70,7 +70,7 @@ describe("SimulationReportBuilder", () => {
     test("hitFrequency is 0 when no rounds were played", () => {
         const builder = new SimulationReportBuilder();
 
-        const report = builder.build({manifest, requestedRounds: 100, statistics: new SimulationAccumulator().getStatistics(), durationMs: 10});
+        const report = builder.build({gameInfo, requestedRounds: 100, statistics: new SimulationAccumulator().getStatistics(), durationMs: 10});
 
         expect(report.hitFrequency).toBe(0);
     });
@@ -80,7 +80,7 @@ describe("SimulationReportBuilder", () => {
         accumulator.addRound(1, 0);
         const builder = new SimulationReportBuilder();
 
-        const report = builder.build({manifest, requestedRounds: 100, statistics: accumulator.getStatistics(), durationMs: 10});
+        const report = builder.build({gameInfo, requestedRounds: 100, statistics: accumulator.getStatistics(), durationMs: 10});
 
         expect(report.requestedRounds).toBe(100);
         expect(report.rounds).toBe(1);
@@ -90,8 +90,8 @@ describe("SimulationReportBuilder", () => {
         const statistics = new SimulationAccumulator().getStatistics();
         const builder = new SimulationReportBuilder();
 
-        const withoutSeed = builder.build({manifest, requestedRounds: 0, statistics, durationMs: 10});
-        const withSeed = builder.build({manifest, requestedRounds: 0, statistics, durationMs: 10, seed: "demo"});
+        const withoutSeed = builder.build({gameInfo, requestedRounds: 0, statistics, durationMs: 10});
+        const withSeed = builder.build({gameInfo, requestedRounds: 0, statistics, durationMs: 10, seed: "demo"});
 
         expect(withoutSeed.seed).toBeNull();
         expect(withSeed.seed).toBe("demo");
@@ -104,7 +104,7 @@ describe("SimulationReportBuilder", () => {
         }
         const builder = new SimulationReportBuilder();
 
-        const report = builder.build({manifest, requestedRounds: 100, statistics: accumulator.getStatistics(), durationMs: 1000});
+        const report = builder.build({gameInfo, requestedRounds: 100, statistics: accumulator.getStatistics(), durationMs: 1000});
 
         expect(report.spinsPerSecond).toBe(100);
     });
@@ -114,7 +114,7 @@ describe("SimulationReportBuilder", () => {
         accumulator.addRound(1, 0);
         const builder = new SimulationReportBuilder();
 
-        const report = builder.build({manifest, requestedRounds: 1, statistics: accumulator.getStatistics(), durationMs: 0});
+        const report = builder.build({gameInfo, requestedRounds: 1, statistics: accumulator.getStatistics(), durationMs: 0});
 
         expect(Number.isFinite(report.spinsPerSecond)).toBe(true);
     });
@@ -122,7 +122,7 @@ describe("SimulationReportBuilder", () => {
     test("passes durationMs through unchanged", () => {
         const builder = new SimulationReportBuilder();
 
-        const report = builder.build({manifest, requestedRounds: 0, statistics: new SimulationAccumulator().getStatistics(), durationMs: 842});
+        const report = builder.build({gameInfo, requestedRounds: 0, statistics: new SimulationAccumulator().getStatistics(), durationMs: 842});
 
         expect(report.durationMs).toBe(842);
     });
@@ -136,7 +136,7 @@ describe("SimulationReportBuilder", () => {
         const builder = new SimulationReportBuilder();
 
         return builder.build({
-            manifest,
+            gameInfo,
             requestedRounds: 10000,
             seed: overrides.seed ?? "demo",
             statistics: accumulator.getStatistics(),
@@ -151,7 +151,7 @@ describe("SimulationReportBuilder", () => {
             accumulator.addRound(1, 0);
             const builder = new SimulationReportBuilder();
 
-            const report = builder.build({manifest, requestedRounds: 100, statistics: accumulator.getStatistics(), durationMs: 10});
+            const report = builder.build({gameInfo, requestedRounds: 100, statistics: accumulator.getStatistics(), durationMs: 10});
 
             expect(report.workers).toBe(1);
         });
@@ -162,7 +162,7 @@ describe("SimulationReportBuilder", () => {
             const builder = new SimulationReportBuilder();
 
             const report = builder.build({
-                manifest,
+                gameInfo,
                 requestedRounds: 100,
                 statistics: accumulator.getStatistics(),
                 durationMs: 10,
@@ -177,7 +177,7 @@ describe("SimulationReportBuilder", () => {
             accumulator.addRound(1, 0);
             const builder = new SimulationReportBuilder();
 
-            const report = builder.build({manifest, requestedRounds: 100, statistics: accumulator.getStatistics(), durationMs: 10});
+            const report = builder.build({gameInfo, requestedRounds: 100, statistics: accumulator.getStatistics(), durationMs: 10});
 
             expect(report.reproducibility!.command).not.toContain("--workers");
         });
@@ -188,7 +188,7 @@ describe("SimulationReportBuilder", () => {
             const builder = new SimulationReportBuilder();
 
             const report = builder.build({
-                manifest,
+                gameInfo,
                 requestedRounds: 100,
                 statistics: accumulator.getStatistics(),
                 durationMs: 10,
@@ -204,7 +204,7 @@ describe("SimulationReportBuilder", () => {
             const builder = new SimulationReportBuilder();
 
             const report = builder.build({
-                manifest,
+                gameInfo,
                 requestedRounds: 100,
                 statistics: accumulator.getStatistics(),
                 durationMs: 10,
@@ -243,7 +243,7 @@ describe("SimulationReportBuilder", () => {
             accumulator.addRound(1, 0);
             const builder = new SimulationReportBuilder();
 
-            const report = builder.build({manifest, requestedRounds: 100, statistics: accumulator.getStatistics(), durationMs: 10});
+            const report = builder.build({gameInfo, requestedRounds: 100, statistics: accumulator.getStatistics(), durationMs: 10});
 
             expect(report.reproducibility!.command).toBe("pokie sim <packageRoot> --rounds 100");
         });
@@ -253,7 +253,7 @@ describe("SimulationReportBuilder", () => {
             accumulator.addRound(1, 0);
             const builder = new SimulationReportBuilder();
 
-            const report = builder.build({manifest, requestedRounds: 100, seed: "   ", statistics: accumulator.getStatistics(), durationMs: 10});
+            const report = builder.build({gameInfo, requestedRounds: 100, seed: "   ", statistics: accumulator.getStatistics(), durationMs: 10});
 
             expect(report.reproducibility!.command).toBe("pokie sim <packageRoot> --rounds 100");
         });
@@ -264,7 +264,7 @@ describe("SimulationReportBuilder", () => {
             const builder = new SimulationReportBuilder();
 
             const report = builder.build({
-                manifest,
+                gameInfo,
                 requestedRounds: 100,
                 seed: "demo",
                 statistics: accumulator.getStatistics(),
@@ -281,7 +281,7 @@ describe("SimulationReportBuilder", () => {
                 const accumulator = new SimulationAccumulator();
                 accumulator.addRound(1, 0);
                 return new SimulationReportBuilder().build({
-                    manifest,
+                    gameInfo,
                     requestedRounds: 100,
                     statistics: accumulator.getStatistics(),
                     durationMs: 10,
@@ -306,7 +306,7 @@ describe("SimulationReportBuilder", () => {
             accumulator.addRound(1, 0);
             const builder = new SimulationReportBuilder();
 
-            const report = builder.build({manifest, requestedRounds: 100, statistics: accumulator.getStatistics(), durationMs: 10});
+            const report = builder.build({gameInfo, requestedRounds: 100, statistics: accumulator.getStatistics(), durationMs: 10});
 
             expect(report.warnings!.some((warning) => warning.includes("No seed was provided"))).toBe(true);
         });
@@ -316,7 +316,7 @@ describe("SimulationReportBuilder", () => {
             accumulator.addRound(1, 0);
             const builder = new SimulationReportBuilder();
 
-            const report = builder.build({manifest, requestedRounds: 100, seed: "   ", statistics: accumulator.getStatistics(), durationMs: 10});
+            const report = builder.build({gameInfo, requestedRounds: 100, seed: "   ", statistics: accumulator.getStatistics(), durationMs: 10});
 
             expect(report.warnings!.some((warning) => warning.includes("No seed was provided"))).toBe(true);
         });
@@ -326,7 +326,7 @@ describe("SimulationReportBuilder", () => {
             accumulator.addRound(1, 0);
             const builder = new SimulationReportBuilder();
 
-            const report = builder.build({manifest, requestedRounds: 100, seed: "demo", statistics: accumulator.getStatistics(), durationMs: 10});
+            const report = builder.build({gameInfo, requestedRounds: 100, seed: "demo", statistics: accumulator.getStatistics(), durationMs: 10});
 
             expect(report.warnings!.some((warning) => warning.includes("Usable samples (1) is low"))).toBe(true);
         });
@@ -342,7 +342,7 @@ describe("SimulationReportBuilder", () => {
             accumulator.addRound(1, 0);
             const builder = new SimulationReportBuilder();
 
-            const report = builder.build({manifest, requestedRounds: 1, seed: "demo", statistics: accumulator.getStatistics(), durationMs: 10});
+            const report = builder.build({gameInfo, requestedRounds: 1, seed: "demo", statistics: accumulator.getStatistics(), durationMs: 10});
 
             expect(report.warnings!).toContain("Hit frequency is 0 — no round produced a win.");
         });
@@ -352,7 +352,7 @@ describe("SimulationReportBuilder", () => {
             accumulator.addRound(1, 0);
             const builder = new SimulationReportBuilder();
 
-            const report = builder.build({manifest, requestedRounds: 1, seed: "demo", statistics: accumulator.getStatistics(), durationMs: 10});
+            const report = builder.build({gameInfo, requestedRounds: 1, seed: "demo", statistics: accumulator.getStatistics(), durationMs: 10});
 
             expect(report.warnings!).toContain("Max win is 0 — no round produced a payout.");
         });
@@ -361,7 +361,7 @@ describe("SimulationReportBuilder", () => {
             const builder = new SimulationReportBuilder();
 
             const report = builder.build({
-                manifest,
+                gameInfo,
                 requestedRounds: 1,
                 seed: "demo",
                 statistics: new SimulationAccumulator().getStatistics(),
@@ -376,7 +376,7 @@ describe("SimulationReportBuilder", () => {
             accumulator.addRound(1, 5);
             const builder = new SimulationReportBuilder();
 
-            const report = builder.build({manifest, requestedRounds: 100, seed: "demo", statistics: accumulator.getStatistics(), durationMs: 10});
+            const report = builder.build({gameInfo, requestedRounds: 100, seed: "demo", statistics: accumulator.getStatistics(), durationMs: 10});
 
             expect(report.warnings!.some((warning) => warning.includes("Actual rounds (1) is less than requested rounds (100)"))).toBe(true);
         });
@@ -387,7 +387,7 @@ describe("SimulationReportBuilder", () => {
             const builder = new SimulationReportBuilder();
 
             const report = builder.build({
-                manifest,
+                gameInfo,
                 requestedRounds: 100,
                 seed: "demo",
                 statistics: accumulator.getStatistics(),
@@ -405,7 +405,7 @@ describe("SimulationReportBuilder", () => {
             accumulator.addRound(1, 0);
             const builder = new SimulationReportBuilder();
 
-            const report = builder.build({manifest, requestedRounds: 100, statistics: accumulator.getStatistics(), durationMs: 10});
+            const report = builder.build({gameInfo, requestedRounds: 100, statistics: accumulator.getStatistics(), durationMs: 10});
 
             expect(report.recommendations!.some((recommendation) => recommendation.includes("--seed <seed>"))).toBe(true);
             expect(report.recommendations!.some((recommendation) => recommendation.includes("--seed demo"))).toBe(true);
@@ -417,7 +417,7 @@ describe("SimulationReportBuilder", () => {
             accumulator.addRound(1, 0);
             const builder = new SimulationReportBuilder();
 
-            const report = builder.build({manifest, requestedRounds: 100, seed: "  ", statistics: accumulator.getStatistics(), durationMs: 10});
+            const report = builder.build({gameInfo, requestedRounds: 100, seed: "  ", statistics: accumulator.getStatistics(), durationMs: 10});
 
             expect(report.recommendations!.some((recommendation) => recommendation.includes("--seed <seed>"))).toBe(true);
         });
@@ -433,7 +433,7 @@ describe("SimulationReportBuilder", () => {
             accumulator.addRound(1, 0);
             const builder = new SimulationReportBuilder();
 
-            const report = builder.build({manifest, requestedRounds: 100, seed: "demo", statistics: accumulator.getStatistics(), durationMs: 10});
+            const report = builder.build({gameInfo, requestedRounds: 100, seed: "demo", statistics: accumulator.getStatistics(), durationMs: 10});
 
             expect(report.recommendations!.some((recommendation) => recommendation.includes("Increase --rounds"))).toBe(true);
         });
@@ -483,7 +483,7 @@ describe("SimulationReportBuilder", () => {
             const builder = new SimulationReportBuilder();
 
             const report = builder.build({
-                manifest,
+                gameInfo,
                 requestedRounds: 1,
                 seed: "demo",
                 statistics: statisticsWithRounds(10),
@@ -508,7 +508,7 @@ describe("SimulationReportBuilder", () => {
             const builder = new SimulationReportBuilder();
 
             const report = builder.build({
-                manifest,
+                gameInfo,
                 requestedRounds: 1,
                 seed: "demo",
                 statistics: statisticsWithRounds(10),
@@ -535,7 +535,7 @@ describe("SimulationReportBuilder", () => {
             }
 
             const report = builder.build({
-                manifest,
+                gameInfo,
                 requestedRounds: 10,
                 seed: "demo",
                 statistics: accumulator.getStatistics(),
@@ -553,7 +553,7 @@ describe("SimulationReportBuilder", () => {
             const builder = new SimulationReportBuilder();
 
             const report = builder.build({
-                manifest,
+                gameInfo,
                 requestedRounds: 1,
                 seed: "demo",
                 statistics: statisticsWithRounds(1),
@@ -569,7 +569,7 @@ describe("SimulationReportBuilder", () => {
                 const builder = new SimulationReportBuilder();
 
                 const report = builder.build({
-                    manifest,
+                    gameInfo,
                     requestedRounds: SimulationReportBuilder.LOW_ROUNDS_WARNING_THRESHOLD,
                     seed: "demo",
                     statistics: statisticsWithRounds(SimulationReportBuilder.LOW_ROUNDS_WARNING_THRESHOLD),
@@ -584,7 +584,7 @@ describe("SimulationReportBuilder", () => {
                 const builder = new SimulationReportBuilder();
 
                 const report = builder.build({
-                    manifest,
+                    gameInfo,
                     requestedRounds: 100,
                     seed: "demo",
                     statistics: statisticsWithRounds(100),
@@ -601,7 +601,7 @@ describe("SimulationReportBuilder", () => {
                 const builder = new SimulationReportBuilder();
 
                 const report = builder.build({
-                    manifest,
+                    gameInfo,
                     requestedRounds: 1000,
                     seed: "demo",
                     statistics: statisticsWithRounds(1000),
@@ -626,7 +626,7 @@ describe("SimulationReportBuilder", () => {
                 const builder = new SimulationReportBuilder();
 
                 const report = builder.build({
-                    manifest,
+                    gameInfo,
                     requestedRounds: 100,
                     seed: "demo",
                     statistics: statisticsWithRounds(100),
@@ -651,7 +651,7 @@ describe("SimulationReportBuilder", () => {
                 const builder = new SimulationReportBuilder();
 
                 const report = builder.build({
-                    manifest,
+                    gameInfo,
                     requestedRounds: 1000,
                     seed: "demo",
                     statistics: statisticsWithRounds(1000),
@@ -670,7 +670,7 @@ describe("SimulationReportBuilder", () => {
                 const builder = new SimulationReportBuilder();
 
                 const report = builder.build({
-                    manifest,
+                    gameInfo,
                     requestedRounds: 1000,
                     seed: "demo",
                     statistics: statisticsWithRounds(1000),
@@ -703,7 +703,7 @@ describe("SimulationReportBuilder", () => {
             const builder = new SimulationReportBuilder();
 
             const report = builder.build({
-                manifest,
+                gameInfo,
                 requestedRounds: 1,
                 statistics: new SimulationAccumulator().getStatistics(),
                 durationMs: 10,
@@ -721,7 +721,7 @@ describe("SimulationReportBuilder", () => {
             const builder = new SimulationReportBuilder();
 
             const report = builder.build({
-                manifest,
+                gameInfo,
                 requestedRounds: 10,
                 statistics: accumulator.getStatistics(),
                 durationMs: 10,
@@ -755,7 +755,7 @@ describe("SimulationReportBuilder", () => {
             const builder = new SimulationReportBuilder();
 
             const report = builder.build({
-                manifest,
+                gameInfo,
                 requestedRounds: 1,
                 statistics: new SimulationAccumulator().getStatistics(),
                 durationMs: 10,
@@ -777,7 +777,7 @@ describe("SimulationReportBuilder", () => {
 });
 
 describe("SimulationReportBuilder new metrics (volatility/distribution/averageBet/averagePayout/targetRtp)", () => {
-    const manifest: PokieGameInfo = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+    const gameInfo: PokieGameInfo = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     test("passes volatility and payoutHistogram straight through from statistics -- no new math, just surfaced", () => {
         const accumulator = new SimulationAccumulator();
@@ -787,7 +787,7 @@ describe("SimulationReportBuilder new metrics (volatility/distribution/averageBe
         const statistics = accumulator.getStatistics();
         const builder = new SimulationReportBuilder();
 
-        const report = builder.build({manifest, requestedRounds: 3, statistics, durationMs: 10});
+        const report = builder.build({gameInfo, requestedRounds: 3, statistics, durationMs: 10});
 
         expect(report.volatility).toBe(statistics.volatility);
         expect(report.payoutHistogram).toEqual(statistics.payoutHistogram);
@@ -800,7 +800,7 @@ describe("SimulationReportBuilder new metrics (volatility/distribution/averageBe
         accumulator.addRound(4, 10);
         const statistics = accumulator.getStatistics();
 
-        const report = new SimulationReportBuilder().build({manifest, requestedRounds: 3, statistics, durationMs: 10});
+        const report = new SimulationReportBuilder().build({gameInfo, requestedRounds: 3, statistics, durationMs: 10});
 
         expect(report.averagePayoutConfidenceInterval95).toEqual(statistics.averagePayoutConfidenceInterval95);
         expect(report.rtpConfidenceInterval95).toEqual(statistics.rtpConfidenceInterval95);
@@ -812,7 +812,7 @@ describe("SimulationReportBuilder new metrics (volatility/distribution/averageBe
         accumulator.addRound(2, 10);
         const builder = new SimulationReportBuilder();
 
-        const report = builder.build({manifest, requestedRounds: 2, statistics: accumulator.getStatistics(), durationMs: 10});
+        const report = builder.build({gameInfo, requestedRounds: 2, statistics: accumulator.getStatistics(), durationMs: 10});
 
         expect(report.averageBet).toBe(2);
         expect(report.averagePayout).toBe(5);
@@ -821,7 +821,7 @@ describe("SimulationReportBuilder new metrics (volatility/distribution/averageBe
     test("averageBet/averagePayout are 0 rather than NaN when no rounds were played", () => {
         const builder = new SimulationReportBuilder();
 
-        const report = builder.build({manifest, requestedRounds: 10, statistics: new SimulationAccumulator().getStatistics(), durationMs: 10});
+        const report = builder.build({gameInfo, requestedRounds: 10, statistics: new SimulationAccumulator().getStatistics(), durationMs: 10});
 
         expect(report.averageBet).toBe(0);
         expect(report.averagePayout).toBe(0);
@@ -836,7 +836,7 @@ describe("SimulationReportBuilder new metrics (volatility/distribution/averageBe
         accumulator.addRound(1, 150); // bucket "100+" -- the max win, and the only round in that bucket
         const builder = new SimulationReportBuilder();
 
-        const report = builder.build({manifest, requestedRounds: 10, statistics: accumulator.getStatistics(), durationMs: 10});
+        const report = builder.build({gameInfo, requestedRounds: 10, statistics: accumulator.getStatistics(), durationMs: 10});
 
         expect(report.maxWinFrequency).toBeCloseTo(1 / 10, 10);
     });
@@ -844,7 +844,7 @@ describe("SimulationReportBuilder new metrics (volatility/distribution/averageBe
     test("maxWinFrequency is 0 when no rounds were played", () => {
         const builder = new SimulationReportBuilder();
 
-        const report = builder.build({manifest, requestedRounds: 10, statistics: new SimulationAccumulator().getStatistics(), durationMs: 10});
+        const report = builder.build({gameInfo, requestedRounds: 10, statistics: new SimulationAccumulator().getStatistics(), durationMs: 10});
 
         expect(report.maxWinFrequency).toBe(0);
     });
@@ -852,7 +852,7 @@ describe("SimulationReportBuilder new metrics (volatility/distribution/averageBe
     test("targetRtp/rtpDeviation are both absent when the caller doesn't supply a targetRtp", () => {
         const builder = new SimulationReportBuilder();
 
-        const report = builder.build({manifest, requestedRounds: 1, statistics: new SimulationAccumulator().getStatistics(), durationMs: 10});
+        const report = builder.build({gameInfo, requestedRounds: 1, statistics: new SimulationAccumulator().getStatistics(), durationMs: 10});
 
         expect(report.targetRtp).toBeUndefined();
         expect(report.rtpDeviation).toBeUndefined();
@@ -864,7 +864,7 @@ describe("SimulationReportBuilder new metrics (volatility/distribution/averageBe
         const builder = new SimulationReportBuilder();
 
         const report = builder.build({
-            manifest,
+            gameInfo,
             requestedRounds: 1,
             statistics: accumulator.getStatistics(),
             durationMs: 10,
@@ -877,7 +877,7 @@ describe("SimulationReportBuilder new metrics (volatility/distribution/averageBe
 });
 
 describe("SimulationReportBuilder betMode", () => {
-    const manifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+    const gameInfo = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     test("without betMode, core metrics come straight from statistics -- fully backward compatible", () => {
         const accumulator = new SimulationAccumulator();
@@ -886,7 +886,7 @@ describe("SimulationReportBuilder betMode", () => {
         const builder = new SimulationReportBuilder();
 
         const report = builder.build({
-            manifest,
+            gameInfo,
             requestedRounds: 2,
             statistics: accumulator.getStatistics(),
             durationMs: 10,
@@ -906,7 +906,7 @@ describe("SimulationReportBuilder betMode", () => {
         const builder = new SimulationReportBuilder();
 
         const report = builder.build({
-            manifest,
+            gameInfo,
             requestedRounds: 100,
             statistics: accumulator.getStatistics(),
             durationMs: 10,
@@ -930,7 +930,7 @@ describe("SimulationReportBuilder betMode", () => {
         const builder = new SimulationReportBuilder();
 
         const report = builder.build({
-            manifest,
+            gameInfo,
             requestedRounds: 100,
             statistics,
             durationMs: 10,
@@ -954,7 +954,7 @@ describe("SimulationReportBuilder betMode", () => {
         const builder = new SimulationReportBuilder();
 
         const report = builder.build({
-            manifest,
+            gameInfo,
             requestedRounds: 1,
             statistics: accumulator.getStatistics(),
             durationMs: 10,
@@ -972,7 +972,7 @@ describe("SimulationReportBuilder betMode", () => {
         const builder = new SimulationReportBuilder();
 
         const report = builder.build({
-            manifest,
+            gameInfo,
             requestedRounds: 100,
             statistics,
             durationMs: 10,
@@ -985,13 +985,13 @@ describe("SimulationReportBuilder betMode", () => {
 });
 
 describe("SimulationReportBuilder convergence/stopReason", () => {
-    const manifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+    const gameInfo = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     test("without stopReason/convergence in the input, the report doesn't have them either -- fully backward compatible", () => {
         const statistics = new SimulationAccumulator().getStatistics();
         const builder = new SimulationReportBuilder();
 
-        const report = builder.build({manifest, requestedRounds: 100, statistics, durationMs: 10});
+        const report = builder.build({gameInfo, requestedRounds: 100, statistics, durationMs: 10});
 
         expect(report.stopReason).toBeUndefined();
         expect(report.convergence).toBeUndefined();
@@ -1001,7 +1001,7 @@ describe("SimulationReportBuilder convergence/stopReason", () => {
         const statistics = new SimulationAccumulator().getStatistics();
         const builder = new SimulationReportBuilder();
 
-        const report = builder.build({manifest, requestedRounds: 100, statistics, durationMs: 10, stopReason: "maxRounds"});
+        const report = builder.build({gameInfo, requestedRounds: 100, statistics, durationMs: 10, stopReason: "maxRounds"});
 
         expect(report.stopReason).toBe("maxRounds");
     });
@@ -1019,7 +1019,7 @@ describe("SimulationReportBuilder convergence/stopReason", () => {
             achievedRtpHalfWidth: 0.004,
         };
 
-        const report = builder.build({manifest, requestedRounds: 5000, statistics, durationMs: 10, stopReason: "converged", convergence});
+        const report = builder.build({gameInfo, requestedRounds: 5000, statistics, durationMs: 10, stopReason: "converged", convergence});
 
         expect(report.convergence).toEqual(convergence);
     });
@@ -1029,7 +1029,7 @@ describe("SimulationReportBuilder convergence/stopReason", () => {
         const builder = new SimulationReportBuilder();
 
         const report = builder.build({
-            manifest,
+            gameInfo,
             requestedRounds: 100,
             statistics,
             durationMs: 10,
@@ -1057,7 +1057,7 @@ it("preserves analytics separately from completed logical sample metrics", () =>
     accumulator.enableLogicalRoundSampling();
     accumulator.addRound(7.5, 0);
     const statistics = accumulator.getStatistics();
-    const report = new SimulationReportBuilder().build({manifest: {id: "a", name: "A", version: "1"}, requestedRounds: 1, statistics, durationMs: 1});
+    const report = new SimulationReportBuilder().build({gameInfo: {id: "a", name: "A", version: "1"}, requestedRounds: 1, statistics, durationMs: 1});
     expect(report.rounds).toBe(0);
     expect(report.analytics).toEqual(statistics.analytics);
     expect(report.analytics).toMatchObject({subrounds: 1, totalStake: 7.5, envelope: {lifecycle: false, components: false}});
@@ -1067,7 +1067,7 @@ it("uses completed usable samples for low-evidence diagnostics even with a large
     const accumulator = new SimulationAccumulator();
     accumulator.addRound(0.05, 0);
     accumulator.enableLogicalRoundSampling();
-    const report = new SimulationReportBuilder().build({manifest: {id: "early", name: "Early", version: "1"}, requestedRounds: 100000, statistics: accumulator.getStatistics(), durationMs: 1, stopReason: "sessionStopped"});
+    const report = new SimulationReportBuilder().build({gameInfo: {id: "early", name: "Early", version: "1"}, requestedRounds: 100000, statistics: accumulator.getStatistics(), durationMs: 1, stopReason: "sessionStopped"});
     expect(report.diagnostics).toMatchObject({samples: 0, sampleUnit: "completed-logical-round", precision: "insufficientSamples"});
     expect(report.warnings?.join("\n")).toContain("Usable samples (0) is low");
     expect(report.sampling?.acceptedSubrounds).toBe(1);

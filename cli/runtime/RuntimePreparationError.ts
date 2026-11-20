@@ -18,7 +18,7 @@ export class RuntimePreparationError extends Error {
         }
         const project = projectOrMessage;
         if (plan === undefined) throw new Error("RuntimePreparationError requires a runtime plan.");
-        const failedStep = project.type === "parWorkbook" && !isBlueprintMaterializationError(cause)
+        const failedStep = project.type === "parWorkbook" && !isBlueprintPreparationError(cause)
             ? plan.steps[0]
             : plan.steps[plan.steps.length - 1];
         const stages = plan.steps.length === 0
@@ -47,8 +47,8 @@ export class RuntimePreparationError extends Error {
     }
 }
 
-function isBlueprintMaterializationError(error: unknown): error is {name: string} {
-    return error instanceof Error && error.name === "BlueprintMaterializationError";
+function isBlueprintPreparationError(error: unknown): error is {name: string} {
+    return error instanceof Error && error.name === "BlueprintPreparationError";
 }
 
 function detailsOf(error: unknown): string | undefined {

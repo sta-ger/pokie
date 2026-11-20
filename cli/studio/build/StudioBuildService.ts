@@ -28,24 +28,24 @@ import {
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
-import type {StudioArtifactBuildView} from "./StudioArtifactBuildView.js";
-import type {StudioArtifactBuildJobView, StudioArtifactBuildProgressView} from "./StudioArtifactBuildJobView.js";
-import type {StudioArtifactPreflighting, StudioPreparedArtifactPreview} from "./StudioArtifactPreflighting.js";
-import type {StudioArtifactPreviewView} from "./StudioArtifactPreviewView.js";
-import type {StudioArtifactTargetView} from "./StudioArtifactTargetView.js";
+import type {StudioBuildView} from "./StudioBuildView.js";
+import type {StudioBuildJobView, StudioBuildProgressView} from "./StudioBuildJobView.js";
+import type {StudioBuildChecking, StudioPreparedArtifactPreview} from "./StudioBuildChecking.js";
+import type {StudioOutputPreviewView} from "./StudioOutputPreviewView.js";
+import type {StudioOutputFormatView} from "./StudioOutputFormatView.js";
 import {createUnresolvedRuntimePlan} from "./createExternalFormatConversionPlan.js";
 import {resolveStudioProjectSource} from "./StudioFormatConversionPlanningService.js";
 import {StudioJobService} from "../jobs/StudioJobService.js";
 import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";
 import type {StudioJobView} from "../jobs/StudioJobView.js";
 
-export type StudioArtifactBuildStartResult =
-    | {status: "created"; job: StudioArtifactBuildJobView}
+export type StudioBuildStartResult =
+    | {status: "created"; job: StudioBuildJobView}
     | {status: "conflict"; activeJobId: string}
     | {status: "unsupported"; message: string};
 
 export type StudioPreparedStakeProjectionStartResult =
-    | {status: "created"; job: StudioArtifactBuildJobView}
+    | {status: "created"; job: StudioBuildJobView}
     | {status: "conflict"; activeJobId: string}
     | {status: "unsupported"; message: string}
     | {status: "stale"};
@@ -104,13 +104,13 @@ function resolveDefaultDestination(rootPath: string, target: OutputFormat): stri
 // service chooses a verified managed library or generation before publication.  The direct Stake service
 // still supports its explicit per-mode Outcome Library input flow, but it must not become a hidden
 // prerequisite for this project-goal action.
-export class StudioArtifactBuildService {
+export class StudioBuildService {
     private readonly executionFailures: unknown[] = [];
     private readonly pendingExecutions = new Set<Promise<void>>();
     private readonly registry: BuildOutputBuilderRegistry;
     private readonly stakeProjection: StakeProjectionExportService;
     private readonly resolveProject: ProjectResolving;
-    private readonly jobs = new Map<string, StudioArtifactBuildJobRecord>();
+    private readonly jobs = new Map<string, StudioBuildJobRecord>();
     // A Stake preview is an executable capability decision. Retain the exact
     // operation server-side so Build never repeats its library lookup.
     private readonly preparedStakeOperations = new Map<string, PreparedStakeOperationRecord>();
@@ -130,7 +130,7 @@ export class StudioArtifactBuildService {
         // Keep the inverse beside the writer so a later registration failure
         // cannot leave an earlier parallel registration behind.
         private readonly unregisterManagedProject: (projectRoot: string) => Promise<void> = () => Promise.resolve(),
-        private readonly preflight?: StudioArtifactPreflighting,
+        private readonly preflight?: StudioBuildChecking,
     ) {
         this.resolveProject = resolveProject ?? new ProjectTargetResolver();
         this.registry = registry ?? new BuildOutputBuilderRegistry(pokieVersion, undefined, managedOutcomeProjects ?? new ManagedOutcomeProjectService(this.resolveProject));
@@ -155,7 +155,7 @@ export class StudioArtifactBuildService {
     // preview() owns the chosen/default output's conflict diagnostic. In particular, a Stake export's default
     // sibling name is also its own root when a Stake export is reopened, which must not make its supported
     // republish edge disappear from the available-targets surface.
-    public async listTargets(projectRoot: string, signal?: AbortSignal): Promise<readonly StudioArtifactTargetView[]> {
+    public async listTargets(projectRoot: string, signal?: AbortSignal): Promise<readonly StudioOutputFormatView[]> {
         if (this.preflight !== undefined) return this.preflight.listTargets(projectRoot, signal);
         assertBuildNotCancelled({signal});
         const project = await resolveStudioProjectSource(this.resolveProject, projectRoot);
@@ -189,7 +189,7 @@ export class StudioArtifactBuildService {
     // BuildOutputBuilderRegistry.checkDestination's own doc comment for why this never needs to run the builder
     // to know whether its destination would be accepted), so Build/Export can show a real destination and
     // conflict/diagnostic before the user ever clicks Build. Never writes anything.
-    public async preview(projectRoot: string, target: OutputFormat, outDir?: string, signal?: AbortSignal): Promise<StudioArtifactPreviewView> {
+    public async preview(projectRoot: string, target: OutputFormat, outDir?: string, signal?: AbortSignal): Promise<StudioOutputPreviewView> {
         const identity = canonicalStudioProjectIdentity(projectRoot);
         const key = JSON.stringify([identity, target]);
         const version = (this.previewVersions.get(key) ?? 0) + 1;
@@ -295,7 +295,7 @@ export class StudioArtifactBuildService {
         sourcePath: string,
         destinationPath: string,
         options?: BuildOutputOptions,
-    ): Promise<StudioArtifactBuildView> {
+    ): Promise<StudioBuildView> {
         const source = await resolveStudioProjectSource(this.resolveProject, sourcePath);
         if (source === undefined) {
             return {
@@ -309,7 +309,7 @@ export class StudioArtifactBuildService {
     }
 
     /** Execute a previously validated Studio Stake operation without preparing another plan. */
-    public executeStakeProjection(operation: PreparedStakeProjectionOperation, options?: BuildOutputOptions): Promise<StudioArtifactBuildView> {
+    public executeStakeProjection(operation: PreparedStakeProjectionOperation, options?: BuildOutputOptions): Promise<StudioBuildView> {
         return this.buildResolved(operation.source, "stakeAdapter", operation.destinationPath, options, operation);
     }
 
@@ -319,14 +319,14 @@ export class StudioArtifactBuildService {
     // reject), then hands off to BuildOutputBuilderRegistry.build() with `outDir` defaulted the same way a bare
     // `pokie build <project> --target <target>` (no --out) is. A destination conflict surfaces as its own
     // "conflict" status (never a bare 500) since BuildConflictError is the one error every concrete
-    // BuildOutputBuilder throws for "destination already occupied" -- see assertArtifactDestinationAvailable's
+    // BuildOutputBuilder throws for "destination already occupied" -- see assertBuildDestinationAvailable's
     // own doc comment.
     public async build(
         projectRoot: string,
         target: OutputFormat,
         outDir?: string,
         options?: BuildOutputOptions,
-    ): Promise<StudioArtifactBuildView> {
+    ): Promise<StudioBuildView> {
         const resolved = await this.resolveForTarget(projectRoot, target, outDir);
         if (resolved === undefined) {
             const plan = createUnresolvedRuntimePlan(projectRoot, target, outDir);
@@ -342,7 +342,7 @@ export class StudioArtifactBuildService {
         options?: BuildOutputOptions,
         preparedStakeOperation?: PreparedStakeProjectionOperation,
         preparedPlan?: FormatConversionPlan,
-    ): Promise<StudioArtifactBuildView> {
+    ): Promise<StudioBuildView> {
         // Directory targets deliberately accept a caller-created empty
         // destination.  It is not owned by this operation, even though its
         // contents will be, so a later Studio registration failure must leave
@@ -456,7 +456,7 @@ export class StudioArtifactBuildService {
     // Starts independently from the request that created it, so a client can observe the preflight and
     // every running update rather than waiting for one terminal HTTP response.  Retention is bounded;
     // active jobs are never evicted.
-    public start(projectRoot: string, target: OutputFormat, outDir?: string, deferExecution = false): StudioArtifactBuildStartResult {
+    public start(projectRoot: string, target: OutputFormat, outDir?: string, deferExecution = false): StudioBuildStartResult {
         // A direct service caller has the same no-job boundary as the HTTP
         // route: a WASM path must never receive an id, destination, staging
         // plan, or queued builder merely to fail later.
@@ -515,14 +515,14 @@ export class StudioArtifactBuildService {
     }
 
     /** Studio acknowledges the allocated ID before permitting any writer to execute. */
-    public activateForProject(projectRoot: string, id: string): StudioArtifactBuildJobView | undefined {
+    public activateForProject(projectRoot: string, id: string): StudioBuildJobView | undefined {
         const record = this.jobs.get(id);
         if (record?.projectRoot !== canonicalStudioProjectIdentity(projectRoot)) return undefined;
         this.executeRecord(record);
         return this.toJobView(record);
     }
 
-    public getStatusForProject(projectRoot: string, id: string): StudioArtifactBuildJobView | undefined {
+    public getStatusForProject(projectRoot: string, id: string): StudioBuildJobView | undefined {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.jobs.get(id);
         if (record?.projectRoot === projectRoot) return this.toJobView(record);
@@ -530,7 +530,7 @@ export class StudioArtifactBuildService {
         return common?.operation === "artifact-build" ? this.projectDurableJob(common) : undefined;
     }
 
-    public cancelForProject(projectRoot: string, id: string): StudioArtifactBuildJobView | undefined {
+    public cancelForProject(projectRoot: string, id: string): StudioBuildJobView | undefined {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.jobs.get(id);
         if (record === undefined || record.projectRoot !== projectRoot) {
@@ -592,7 +592,7 @@ export class StudioArtifactBuildService {
         preparedStakeOperation?: PreparedStakeProjectionOperation,
         preparedExtraction?: PreparedExtractionRecord,
         deferExecution = false,
-    ): StudioArtifactBuildStartResult {
+    ): StudioBuildStartResult {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
         this.trimTerminalJobs();
         const common = this.jobService?.start({
@@ -610,7 +610,7 @@ export class StudioArtifactBuildService {
             const existing = this.jobs.get(common.job.id);
             return {status: "created", job: existing?.projectRoot === projectRoot ? this.toJobView(existing) : this.projectDurableJob(common.job)};
         }
-        const record: StudioArtifactBuildJobRecord = {
+        const record: StudioBuildJobRecord = {
             // Legacy direct callers still receive an opaque prefixed id. Once
             // attached, the durable common job id is the compatibility id.
             id: common?.status === "created" ? common.job.id : `artifact-${crypto.randomUUID()}`,
@@ -629,13 +629,13 @@ export class StudioArtifactBuildService {
         return {status: "created", job: this.toJobView(record)};
     }
 
-    private executeRecord(record: StudioArtifactBuildJobRecord): void {
+    private executeRecord(record: StudioBuildJobRecord): void {
         if (record.executionStarted || (record.status !== "queued" && record.status !== "running")) return;
         record.executionStarted = true;
         this.trackExecution(Promise.resolve().then(() => this.run(record, record.outDir)));
     }
 
-    private async run(record: StudioArtifactBuildJobRecord, outDir: string | undefined): Promise<void> {
+    private async run(record: StudioBuildJobRecord, outDir: string | undefined): Promise<void> {
         record.status = "running";
         this.jobService?.markRunning(record.id);
         this.jobService?.progress(record.id, {stage: "preparing", unit: "work", current: "indeterminate", total: "indeterminate"});
@@ -658,7 +658,7 @@ export class StudioArtifactBuildService {
                 });
             },
         };
-        let result: StudioArtifactBuildView;
+        let result: StudioBuildView;
         if (record.controller.signal.aborted) result = {
             status: "cancelled", message: "Build cancelled before execution.",
             plan: record.preparedExtraction?.plan ?? record.preparedStakeOperation?.plan ?? createUnresolvedRuntimePlan(record.projectRoot, record.target, outDir),
@@ -669,7 +669,7 @@ export class StudioArtifactBuildService {
         const status = terminalStatusFor(result);
         Object.assign(record, {result, status});
         if (status === "completed") {
-            const resultView = result as Extract<StudioArtifactBuildView, {status: "ok"}>;
+            const resultView = result as Extract<StudioBuildView, {status: "ok"}>;
             this.jobService?.complete(record.id, {
                 summary: "Artifact build completed.",
                 outputs: [{path: resultView.outputPath, label: "Built artifact"}],
@@ -686,8 +686,8 @@ export class StudioArtifactBuildService {
         }
     }
 
-    private toJobView(record: StudioArtifactBuildJobRecord): StudioArtifactBuildJobView {
-        const view: StudioArtifactBuildJobView = {
+    private toJobView(record: StudioBuildJobRecord): StudioBuildJobView {
+        const view: StudioBuildJobView = {
             id: record.id,
             target: record.target,
             status: record.status,
@@ -706,7 +706,7 @@ export class StudioArtifactBuildService {
         };
     }
 
-    private projectDurableJob(job: StudioJobView): StudioArtifactBuildJobView {
+    private projectDurableJob(job: StudioJobView): StudioBuildJobView {
         const result = artifactResultFromDurableJob(job);
         return {
             id: job.id,
@@ -777,7 +777,7 @@ export class StudioArtifactBuildService {
     private stakePrerequisiteProvenance(
         operation: PreparedStakeProjectionOperation,
         result: import("@fromstan/pokie").BuildOutputResult,
-    ): NonNullable<Extract<StudioArtifactBuildView, {readonly status: "ok"}>["stakePrerequisiteProvenance"]> {
+    ): NonNullable<Extract<StudioBuildView, {readonly status: "ok"}>["stakePrerequisiteProvenance"]> {
         const source = operation.plan.source.configurationProvenance;
         const ownership = requireManagedOutcomeProjectOwnership(result)[0];
         let disposition: "borrowed" | "owned" | "transient" | "none" = "none";
@@ -941,17 +941,17 @@ export class StudioArtifactBuildService {
     }
 }
 
-function artifactResultFromDurableJob(job: StudioJobView): StudioArtifactBuildView | undefined {
+function artifactResultFromDurableJob(job: StudioJobView): StudioBuildView | undefined {
     const result = job.result?.detail?.result;
-    return typeof result === "object" && result !== null && "status" in result ? result as StudioArtifactBuildView : undefined;
+    return typeof result === "object" && result !== null && "status" in result ? result as StudioBuildView : undefined;
 }
 
-function terminalStatusFor(result: StudioArtifactBuildView): "completed" | "failed" | "cancelled" {
+function terminalStatusFor(result: StudioBuildView): "completed" | "failed" | "cancelled" {
     if (result.status === "cancelled") return "cancelled";
     return result.status === "ok" ? "completed" : "failed";
 }
 
-type StudioArtifactBuildJobRecord = {
+type StudioBuildJobRecord = {
     readonly id: string;
     readonly projectRoot: string;
     readonly target: OutputFormat;
@@ -962,8 +962,8 @@ type StudioArtifactBuildJobRecord = {
     readonly controller: AbortController;
     readonly preparedStakeOperation?: PreparedStakeProjectionOperation;
     readonly preparedExtraction?: PreparedExtractionRecord;
-    progress?: StudioArtifactBuildProgressView;
-    result?: StudioArtifactBuildView;
+    progress?: StudioBuildProgressView;
+    result?: StudioBuildView;
 };
 
 type PreparedStakeOperationRecord = {
@@ -971,7 +971,7 @@ type PreparedStakeOperationRecord = {
     readonly operation: PreparedStakeProjectionOperation;
 };
 
-function toProgressView(progress: BuildProgress): StudioArtifactBuildProgressView {
+function toProgressView(progress: BuildProgress): StudioBuildProgressView {
     return {
         status: progress.status,
         ...(progress.phase === undefined ? {} : {phase: progress.phase}),

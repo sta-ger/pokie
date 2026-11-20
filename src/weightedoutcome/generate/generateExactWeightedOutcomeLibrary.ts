@@ -50,14 +50,14 @@ const HEAP_SAFETY_FRACTION = 0.85;
 // Exact enumeration can legitimately reach hundreds of thousands of distinct
 // grids. Keep that identity set on disk, partitioned by the same digest prefix
 // used by the canonical outcome id, so only one small sorted partition is live
-// while artifacts are constructed and published.
+// while records are constructed and published.
 const EXTERNAL_GRID_BUCKETS = 256;
 const EXTERNAL_YIELD_EVERY = BigInt(5000);
 // Keep staging writes bounded without paying a synchronous filesystem call for
 // every raw reel-stop tuple. At most one buffer per digest partition is live,
 // so even a sweep that touches all partitions retains only a few megabytes.
 const EXTERNAL_WRITE_BUFFER_BYTES = 16 * 1024;
-// Session/artifact construction is much more expensive than raw stop accumulation.
+// Session/record construction is much more expensive than raw stop accumulation.
 // Async-generator yields alone only drain microtasks, starving HTTP observation
 // and cancellation for an entire candidate. Bound that phase by elapsed host time.
 const ARTIFACT_OBSERVATION_INTERVAL_MS = 25;
@@ -140,7 +140,7 @@ export type GenerateExactWeightedOutcomeLibraryOptions = {
     readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
     readonly onPostEnumeration?: () => void;
     readonly onPostEnumerationProgress?: (emittedOutcomes: bigint) => void;
-    readonly artifactValidator?: ValidationRule<RoundRecord>;
+    readonly recordValidator?: ValidationRule<RoundRecord>;
     readonly now?: () => Date;
     // Runtime memory safety net for the accumulation phase (see accumulateUniqueGridWeights and
     // HEAP_SAFETY_FRACTION above) -- both default to real values (an 85%-of-heap-limit ceiling, real
@@ -159,7 +159,7 @@ export type GenerateExactWeightedOutcomeLibraryResult = {
 // The bundle writer needs the generator diagnostics only after it has consumed
 // the outcome stream.  Keep that small terminal value separate from the
 // outcomes themselves so a managed publication never has to retain a complete
-// WeightedOutcomeLibrary merely to put provenance in its manifest.
+// WeightedOutcomeLibrary merely to put provenance in its index.
 export type StreamingExactWeightedOutcomes = {
     readonly outcomes: AsyncGenerator<WeightedOutcomeInput>;
     readonly getDiagnostics: () => OutcomeLibraryGeneratorDiagnostics | undefined;
@@ -209,7 +209,7 @@ function legacyOptionsForRequest(
         ...(prepared.onProgress === undefined ? {} : {onProgress: prepared.onProgress}),
         ...(request.onPostEnumeration === undefined ? {} : {onPostEnumeration: request.onPostEnumeration}),
         ...(request.onPostEnumerationProgress === undefined ? { } : {onPostEnumerationProgress: request.onPostEnumerationProgress}),
-        ...(prepared.artifactValidator === undefined ? {} : {artifactValidator: prepared.artifactValidator}),
+        ...(prepared.recordValidator === undefined ? {} : {recordValidator: prepared.recordValidator}),
         ...(prepared.now === undefined ? {} : {now: prepared.now}),
         ...(prepared.heapUsedLimitBytes === undefined ? {} : {heapUsedLimitBytes: prepared.heapUsedLimitBytes}),
         ...(prepared.getHeapUsedBytes === undefined ? {} : {getHeapUsedBytes: prepared.getHeapUsedBytes}),
@@ -235,19 +235,19 @@ type PreparedGeneration = {
 
 function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedGeneration {
     const {game} = options;
-    const manifest = game.getInfo();
+    const info = game.getInfo();
     const request = prepareOutcomeLibraryGeneration(adaptLegacyOutcomeLibraryGenerationRequest(options));
     // prepareOutcomeLibraryGeneration has already failed closed for this case; retain the local narrowing
     // because the executable session is consumed below as part of this function's runtime boundary.
     if (typeof game.createExactEnumerationSession !== "function") {
-        throw new WeightedOutcomeLibraryGenerationError("weighted-outcome-library-generation-unsupported", `"${manifest.id}" does not implement createExactEnumerationSession(); its outcome space cannot be exactly enumerated.`);
+        throw new WeightedOutcomeLibraryGenerationError("weighted-outcome-library-generation-unsupported", `"${info.id}" does not implement createExactEnumerationSession(); its outcome space cannot be exactly enumerated.`);
     }
     const {estimate, strategy, requiresSampledOptIn} = request.preflight;
     const sampled = request.sample;
     if (requiresSampledOptIn) {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-space-exceeded",
-            `"${manifest.id}"'s exact outcome space (${estimate.totalOutcomeSpaceSize} reel-stop combinations) exceeds ` +
+            `"${info.id}"'s exact outcome space (${estimate.totalOutcomeSpaceSize} reel-stop combinations) exceeds ` +
                 `maxOutcomeSpaceSize (${request.maxExactOutcomeSpaceSize}). Pass a larger maxOutcomeSpaceSize, or opt into an explicitly-labelled ` +
                 'capped-coverage strategy with `pokie generate <packageRoot> --sample <n> --seed <string>` or `pokie build <project> --target outcomeLibrary --sample <n> --seed <string>` (or the `sampled` option).',
         );
@@ -256,7 +256,7 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
     if (options.resumeFrom !== undefined && strategy !== "exact") {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-checkpoint-unsupported",
-            `"${manifest.id}"'s outcome space now resolves to the "${strategy}" strategy, which has no resumable raw sweep ` +
+            `"${info.id}"'s outcome space now resolves to the "${strategy}" strategy, which has no resumable raw sweep ` +
                 "position to continue from; resumeFrom is only valid for a run that itself resolves to \"exact\".",
         );
     }
@@ -275,7 +275,7 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
     if (options.resumeFrom !== undefined && options.resumeFrom.progressTotal !== estimate.totalOutcomeSpaceSize) {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-checkpoint-mismatch",
-            `resumeFrom's own progressTotal (${options.resumeFrom.progressTotal}) does not match "${manifest.id}"'s current ` +
+            `resumeFrom's own progressTotal (${options.resumeFrom.progressTotal}) does not match "${info.id}"'s current ` +
                 `exact outcome space size (${estimate.totalOutcomeSpaceSize}); it must come from a WeightedOutcomeLibraryGenerationCancelledError ` +
                 "raised by this same game/config's own exact sweep.",
         );
@@ -293,7 +293,7 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
     const reelSizes = reelWindows.map(windows => windows.length);
     const weighted = sequences.some(sequence => isWeightedSymbolsSequence(sequence));
     const weightDenominator = weighted ? events.reduce((total, event) => total * event.weights.reduce((sum, weight) => sum + weight, BigInt(0)), BigInt(1)) : undefined;
-    const sourceEnumerationId = computeExactEnumerationSourceId(manifest.id, request.configHash, reelWindows, geometry, weighted ? events.map(event => event.identity) : undefined);
+    const sourceEnumerationId = computeExactEnumerationSourceId(info.id, request.configHash, reelWindows, geometry, weighted ? events.map(event => event.identity) : undefined);
     function *exactTuples(start: bigint): Generator<{tuple: number[]; rawIndex: bigint; weight?: bigint}> {
         for (const entry of sweepStopTuples(reelSizes, start)) yield {...entry, ...(weighted ? {weight: entry.tuple.reduce((mass, stop, reel) => mass * events[reel].weights[stop], BigInt(1))} : {})};
     }
@@ -323,7 +323,7 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
     if (options.resumeFrom !== undefined && options.resumeFrom.sourceEnumerationId !== sourceEnumerationId) {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-checkpoint-mismatch",
-            `resumeFrom's own sourceEnumerationId does not match "${manifest.id}"'s current game/config/reel-layout identity, even ` +
+            `resumeFrom's own sourceEnumerationId does not match "${info.id}"'s current game/config/reel-layout identity, even ` +
                 "though its progressTotal happens to match; it must come from a WeightedOutcomeLibraryGenerationCancelledError raised " +
                 "by this same game/config's own exact sweep, not merely one with the same outcome-space size.",
         );
@@ -420,11 +420,11 @@ async function *streamExactWeightedOutcomesInternal(
     useExternalStaging: boolean,
 ): AsyncGenerator<WeightedOutcomeInput, OutcomeLibraryGeneratorDiagnostics> {
     const {game} = options;
-    const manifest = game.getInfo();
+    const info = game.getInfo();
     const prepared = prepare(options);
 
     const origin: RoundRecordOrigin = {
-        game: manifest,
+        game: info,
         pokieVersion: options.pokieVersion,
         ...(prepared.configHash !== undefined ? {configHash: prepared.configHash} : {}),
     };
@@ -437,7 +437,7 @@ async function *streamExactWeightedOutcomesInternal(
             if (!supportsBetModeSelecting(session)) {
                 throw new WeightedOutcomeLibraryGenerationError(
                     "weighted-outcome-library-generation-bet-mode-unsupported",
-                    `"${manifest.id}" cannot exactly enumerate bet mode "${options.betMode}" because its exact-enumeration session does not support bet-mode selection.`,
+                    `"${info.id}" cannot exactly enumerate bet mode "${options.betMode}" because its exact-enumeration session does not support bet-mode selection.`,
                 );
             }
             session.setBetMode(options.betMode);
@@ -445,24 +445,24 @@ async function *streamExactWeightedOutcomesInternal(
         if (!session.canPlayNextGame()) {
             throw new WeightedOutcomeLibraryGenerationError(
                 "weighted-outcome-library-generation-session-not-playable",
-                `"${manifest.id}"'s createExactEnumerationSession() returned a session that cannot play a round ` +
+                `"${info.id}"'s createExactEnumerationSession() returned a session that cannot play a round ` +
                     `(bet ${session.getBet()} > credits ${session.getCreditsAmount()}); it must return a session with enough credits for one round.`,
             );
         }
         // The stake belongs to the paid entry spin. A free-games session reports the stake for its
         // *next* spin, which becomes zero immediately after this spin awards free games, so capture it
-        // before play() changes that state and pass it through to the artifact explicitly.
+        // before play() changes that state and pass it through to the record explicitly.
         const stake = options.stake ?? determineStakeAmount(session, session.getBet());
         executeSessionCommand(session);
 
-        const artifact = buildRoundRecordFromSession(session, {
+        const record = buildRoundRecordFromSession(session, {
             roundId: id,
             origin,
             ...(options.betMode !== undefined ? {betMode: options.betMode} : {}),
             stake,
         });
 
-        return {id, weight: prepared.weightDenominator ? bigintProbability(entry.weight, prepared.weightDenominator) : toSafeWeightNumber(entry.weight, id), artifact};
+        return {id, weight: prepared.weightDenominator ? bigintProbability(entry.weight, prepared.weightDenominator) : toSafeWeightNumber(entry.weight, id), record};
     };
 
     let nextObservation = performance.now() + ARTIFACT_OBSERVATION_INTERVAL_MS;
@@ -504,7 +504,7 @@ async function *streamExactWeightedOutcomesInternal(
             }
             processedRawCount = step.value;
         } finally {
-            // A publisher can stop consumption or artifact construction can
+            // A publisher can stop consumption or record construction can
             // reject. Close the nested producer so its staging owner drains too.
             await external.return(BigInt(0));
         }
@@ -527,7 +527,7 @@ async function *streamExactWeightedOutcomesInternal(
         const checkCancellation = (): void => {
             if (!options.signal?.aborted) return;
             // Raw enumeration is complete; the complete accumulated population
-            // is still authoritative. Resume replays artifact construction,
+            // is still authoritative. Resume replays record construction,
             // never a partial published library or an empty accumulation prefix.
             throw new WeightedOutcomeLibraryGenerationCancelledError(
                 accumulatedRawCount, prepared.progressTotal,
@@ -553,7 +553,7 @@ async function *streamExactWeightedOutcomesInternal(
         maxExactOutcomeSpaceSize: toBigIntSafeDecimal(prepared.maxExactOutcomeSpaceSize),
         ...(prepared.strategy === "capped-coverage" ? {seed: (options.sampled ?? options.capped as CappedCoverageGenerationOptions).seed} : {}),
         pokieVersion: options.pokieVersion,
-        game: manifest,
+        game: info,
         ...(prepared.configHash !== undefined ? {configHash: prepared.configHash} : {}),
         ...(options.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: options.compatibilityPolicyVersion}),
         generatedAt: (options.now ?? (() => new Date()))().toISOString(),
@@ -724,7 +724,7 @@ async function *externallyAccumulateExactGridWeights(
  * Adapts the exact producer for a streaming bundle publisher.  `outcomes` is
  * consumed once by the writer; once that consumption completes,
  * `getDiagnostics` exposes the producer's small terminal diagnostic record.
- * It deliberately never collects outcomes or their artifacts in an array.
+ * It deliberately never collects outcomes or their records in an array.
  */
 export function createStreamingExactWeightedOutcomes(
     options: GenerateExactWeightedOutcomeLibraryOptions,
@@ -739,7 +739,7 @@ export function createStreamingExactWeightedOutcomes(
 }
 
 // Convenience over streamExactWeightedOutcomes for the common case: collects the whole stream (still one
-// unique outcome's artifact alive at a time while streaming -- see that function's own doc comment for what
+// unique outcome's record alive at a time while streaming -- see that function's own doc comment for what
 // "bounded memory" actually means here) and hands it to buildWeightedOutcomeLibrary, so a caller who wants a
 // full, already-validated WeightedOutcomeLibrary in memory never has to wire the collection loop themselves.
 // A caller building a canonical outcome-library bundle instead should use streamExactWeightedOutcomes
@@ -759,7 +759,7 @@ export async function generateExactWeightedOutcomeLibrary(
     const library = buildWeightedOutcomeLibrary({
         libraryId: options.libraryId,
         outcomes,
-        ...(options.artifactValidator !== undefined ? {artifactValidator: options.artifactValidator} : {}),
+        ...(options.recordValidator !== undefined ? {recordValidator: options.recordValidator} : {}),
     });
 
     return {library, diagnostics: step.value};

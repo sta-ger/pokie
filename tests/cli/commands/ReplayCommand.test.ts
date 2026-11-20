@@ -21,7 +21,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {ReplayCommand} from "../../../cli/commands/ReplayCommand.js";
-import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
+import {createPreparingRuntimePackageResolver} from "../../../cli/runtime/prepareRuntimePackage.js";
 import {buildOutcomeLibraryFolderModeInput} from "../../weightedoutcome/folder/OutcomeLibraryFolderTestFixtures.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 import {mechanicsSession, replayModesBlueprint} from "../../v2/fixtures/ExistingMechanicsGame.js";
@@ -412,7 +412,7 @@ describe("ReplayCommand (integration, real loadPokieGame + fixture game package)
 });
 
 // Proves "pokie replay" crosses the shared runtime-package-materialization boundary (see
-// materializeRuntimePackage.ts) exactly once per invocation, and only ever loads against whatever
+// prepareRuntimePackage.ts) exactly once per invocation, and only ever loads against whatever
 // runtime path that boundary hands back -- never the caller's own raw packageRoot.
 describe("ReplayCommand runtime package materialization boundary", () => {
     const manifest: PokieGameInfo = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
@@ -546,7 +546,7 @@ describe("ReplayCommand runtime package materialization boundary", () => {
         await workbook.xlsx.writeFile(incomplete);
         const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
         const writeFile = jest.fn();
-        const command = new ReplayCommand(loadGame, writeFile, undefined, createMaterializingRuntimePackageResolver("2.0.0", REPLAY_OPERATION));
+        const command = new ReplayCommand(loadGame, writeFile, undefined, createPreparingRuntimePackageResolver("2.0.0", REPLAY_OPERATION));
 
         try {
             for (const workbookPath of [corrupt, incomplete]) {

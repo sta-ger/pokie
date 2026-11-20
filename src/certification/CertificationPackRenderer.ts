@@ -1,7 +1,7 @@
 import fs from "fs";
 import {certificationSourceHash, packHash} from "./internal/acquireCertificationPack.js";
 import {parseCertificationJson} from "./internal/parseCertificationJson.js";
-import {isManifestShape, isModeEntryShape} from "./internal/certificationPackBundleShapeGuards.js";
+import {isCertificationPackIndexShape, isModeEntryShape} from "./internal/certificationPackBundleShapeGuards.js";
 import {computeCertificationPackContentHash} from "./computeCertificationPackContentHash.js";
 import {CERTIFICATION_PACK_SECTIONS, CERTIFICATION_PREPARATION_NOTICE, type CertificationPackFormat, type CertificationPackTemplate} from "./CertificationPack.js";
 import type {CertificationPackIndex} from "./CertificationPackIndex.js";
@@ -39,14 +39,14 @@ function rows(value: unknown, prefix = ""): [string, string][] {
     }
     return [[prefix, display(value)]];
 }
-export function certificationPackTables(manifest: CertificationPackIndex, template: CertificationPackTemplate = manifest.presentation.template): CertificationPackTable[] {
-    if (!isManifestShape(manifest) || manifest.schemaVersion !== 2 || !manifest.modes.length || !manifest.modes.every(isModeEntryShape) || computeCertificationPackContentHash(manifest) !== manifest.evidenceContentHash) throw new Error("Invalid canonical pack manifest/content identity.");
-    validateCertificationPack(manifest.pack, manifest);
+export function certificationPackTables(index: CertificationPackIndex, template: CertificationPackTemplate = index.presentation.template): CertificationPackTable[] {
+    if (!isCertificationPackIndexShape(index) || index.schemaVersion !== 2 || !index.modes.length || !index.modes.every(isModeEntryShape) || computeCertificationPackContentHash(index) !== index.evidenceContentHash) throw new Error("Invalid canonical pack index/content identity.");
+    validateCertificationPack(index.pack, index);
     validateCertificationPackTemplate(template);
-    const pack = manifest.pack;
+    const pack = index.pack;
     return template.sections.flatMap(section => {
         const table: CertificationPackTable = {title: section, rows: rows(pack[section])};
-        if (section === "identity") return [table, {title: "Artifact identities", rows: rows({evidenceContentHash: manifest.evidenceContentHash, game: manifest.game, artifactPokieVersion: manifest.artifactPokieVersion, templateHash: manifest.presentation.templateHash, templateArtifactHash: manifest.presentation.templateArtifactHash, renderedTemplateHash: packHash(template)})}];
+        if (section === "identity") return [table, {title: "Output identities", rows: rows({evidenceContentHash: index.evidenceContentHash, game: index.game, recordPokieVersion: index.recordPokieVersion, templateHash: index.presentation.templateHash, templateArtifactHash: index.presentation.templateArtifactHash, renderedTemplateHash: packHash(template)})}];
         if (section === "rules" && pack.rules.definition) {
             const definition = pack.rules.definition;
             const effective = definition.effective && typeof definition.effective === "object" && !Array.isArray(definition.effective) ? definition.effective : {};
@@ -60,11 +60,11 @@ export function certificationPackTables(manifest: CertificationPackIndex, templa
         }
         if (section === "statistics") return [
             {title: "Metric semantics", rows: pack.statistics.semantics.map((value, index) => [String(index + 1), value] as const)},
-            ...manifest.modes.map(mode => ({title: `Exact mode ${mode.modeName}`, rows: rows({betMode: mode.betMode, stake: mode.stake, libraryHash: mode.libraryHash, outcomeCount: mode.outcomeCount, ...mode.analysis, confidenceInterval95: "unavailable (exact source distribution)", convergence: "unavailable (not sampled)", seed: mode.sampleSeed, sampleCount: mode.sampleCount})})),
+            ...index.modes.map(mode => ({title: `Exact mode ${mode.modeName}`, rows: rows({betMode: mode.betMode, stake: mode.stake, libraryHash: mode.libraryHash, outcomeCount: mode.outcomeCount, ...mode.analysis, confidenceInterval95: "unavailable (exact source distribution)", convergence: "unavailable (not sampled)", seed: mode.sampleSeed, sampleCount: mode.sampleCount})})),
             {title: section, rows: rows({...pack.statistics, estimates: pack.statistics.estimates.map(attachment => ({hash: attachment.hash, report: attachment.value}))})},
         ];
         if (section === "reproduction") return [{title: section, rows: rows({...pack.reproduction, recordings: pack.reproduction.recordings.map(recording => ({hash: recording.hash, recording: recording.value}))})}];
-        if (section === "validation") return [table, {title: "Deep source validation", rows: rows(manifest.deepValidation.issues)}];
+        if (section === "validation") return [table, {title: "Deep source validation", rows: rows(index.deepValidation.issues)}];
         return [table];
     });
 }
@@ -76,12 +76,12 @@ function markdown(value: string): string {
 }
 
 export class CertificationPackRenderer implements CertificationPackRendering {
-    public async render(manifest: CertificationPackIndex, format: CertificationPackFormat, inputTemplate?: CertificationPackTemplate, signal?: AbortSignal): Promise<string | Buffer> {
+    public async render(index: CertificationPackIndex, format: CertificationPackFormat, inputTemplate?: CertificationPackTemplate, signal?: AbortSignal): Promise<string | Buffer> {
         if (signal?.aborted) throw new CertificationPackBuildCancelledError();
-        const template = inputTemplate ?? manifest.presentation.template;
-        const tables = certificationPackTables(manifest, template);
+        const template = inputTemplate ?? index.presentation.template;
+        const tables = certificationPackTables(index, template);
         switch (format) {
-            case "json": return JSON.stringify(manifest, null, 4) + "\n";
+            case "json": return JSON.stringify(index, null, 4) + "\n";
             case "console": return `${template.title}\n${template.introduction}\n${CERTIFICATION_PREPARATION_NOTICE}\n\n${tables.map(table => `${table.title}\n${table.rows.map(([key, value]) => `${key}: ${value}`).join("\n")}`).join("\n\n")}\n`;
             case "markdown": return `# ${markdown(template.title)}\n\n${markdown(template.introduction)}\n\n${CERTIFICATION_PREPARATION_NOTICE}\n\n${tables.map(table => `## ${markdown(table.title)}\n\n| Field | Evidence |\n| --- | --- |\n${table.rows.map(([key, value]) => `| ${markdown(key)} | ${markdown(value)} |`).join("\n")}`).join("\n\n")}\n`;
             case "html": return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${html(template.title)}</title><style>body{font:14px sans-serif;margin:2em}table{border-collapse:collapse;width:100%;margin-bottom:2em}td,th{border:1px solid #999;padding:6px;text-align:left;overflow-wrap:anywhere}thead{display:table-header-group}tr{break-inside:avoid}td:first-child{width:32%}</style></head><body><h1>${html(template.title)}</h1><p>${html(template.introduction)}</p><p>${html(CERTIFICATION_PREPARATION_NOTICE)}</p>${tables.map(table => `<h2>${html(table.title)}</h2><table><thead><tr><th>Field</th><th>Evidence</th></tr></thead><tbody>${table.rows.map(([key, value]) => `<tr><td>${html(key)}</td><td>${html(value)}</td></tr>`).join("")}</tbody></table>`).join("")}</body></html>\n`;

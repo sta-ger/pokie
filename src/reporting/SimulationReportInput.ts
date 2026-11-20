@@ -6,13 +6,13 @@ import type {SimulationStatistics} from "../simulation/SimulationStatistics.js";
 import type {SimulationStopReason} from "../simulation/SimulationStopReason.js";
 
 export type SimulationReportInput = {
-    manifest: PokieGameInfo;
+    gameInfo: PokieGameInfo;
     requestedRounds: number;
     seed?: string;
     statistics: SimulationStatistics;
     durationMs: number;
     packageRoot?: string;
-    /** Resolved runtime-model identity, not merely the package path/manifest. */
+    /** Resolved runtime-model identity, not merely the package path or game info. */
     configHash?: string;
     /** Version of the POKIE runtime that executed this simulation, when known. */
     pokieVersion?: string;

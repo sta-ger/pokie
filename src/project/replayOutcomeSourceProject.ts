@@ -76,16 +76,16 @@ export async function replayOutcomeSourceProject(
     if (outcome === undefined) {
         throw new Error(`Replayed outcome "${replay.outcomeId}" was not present in outcome library "${replay.libraryId}".`);
     }
-    const manifest = await reader.readManifest(project.rootPath);
+    const manifest = await reader.readIndex(project.rootPath);
     if (recorded !== undefined) {
         compare("game", recorded.game, manifest.game);
         compare("outcome", recorded.outcomeId, replay.outcomeId);
         compare("weight", recorded.weight, replay.weight);
         compare("total win", recorded.totalWin, replay.totalWin);
-        compare("payout multiplier", recorded.payoutMultiplier, outcome.artifact.payoutMultiplier);
-        compare("stake", recorded.stake, outcome.artifact.stake);
-        compare("screen", recorded.screen, outcome.artifact.screen);
-        compare("artifact", recorded.artifact, outcome.artifact);
+        compare("payout multiplier", recorded.payoutMultiplier, outcome.record.payoutMultiplier);
+        compare("stake", recorded.stake, outcome.record.stake);
+        compare("screen", recorded.screen, outcome.record.screen);
+        compare("artifact", recorded.artifact, outcome.record);
     }
     if (mismatches.length > 0) {
         throw new Error(
@@ -101,8 +101,8 @@ export async function replayOutcomeSourceProject(
         sessionId: `outcome-source:${replay.libraryId}:${seed}:${round}`,
         game: manifest.game,
         replay: replayWithGame,
-        totalBet: outcome.artifact.stake,
-        screen: outcome.artifact.screen.map((row) => [...row]),
+        totalBet: outcome.record.stake,
+        screen: outcome.record.screen.map((row) => [...row]),
     });
     return {supported: true, replay: replayWithGame, descriptor};
 }

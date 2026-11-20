@@ -34,7 +34,7 @@ import type {PreGeneratedSpinCommandResult} from "./PreGeneratedSpinCommandResul
 // safe without a separate "in-flight" cache.
 //
 // Wallet settlement needs no live-session reconciliation the way SpinCommandHandler's does — the
-// outcome's own artifact.stake/artifact.totalWin are already exact, canonical numbers, so this simply
+// outcome's own record.stake/record.totalWin are already exact, canonical numbers, so this simply
 // debits the stake and (when totalWin > 0) credits the win, in that order.
 //
 // Every wallet transaction for an attempt gets its own id, `{roundId}:{attemptId}:debit`/`:credit` —
@@ -221,16 +221,16 @@ export class PreGeneratedSpinCommandHandler<T extends string | number = string> 
 
         try {
             const balanceBefore = await this.wallet.getBalance(sessionId);
-            let balanceAfter = await this.wallet.debit(sessionId, debitTransactionId, outcome.artifact.stake);
+            let balanceAfter = await this.wallet.debit(sessionId, debitTransactionId, outcome.record.stake);
             appliedTransactionIds.push(debitTransactionId);
 
             const transactions: PreGeneratedRoundTransaction[] = [
-                {id: debitTransactionId, type: "debit", amount: outcome.artifact.stake},
+                {id: debitTransactionId, type: "debit", amount: outcome.record.stake},
             ];
-            if (outcome.artifact.totalWin > 0) {
-                balanceAfter = await this.wallet.credit(sessionId, creditTransactionId, outcome.artifact.totalWin);
+            if (outcome.record.totalWin > 0) {
+                balanceAfter = await this.wallet.credit(sessionId, creditTransactionId, outcome.record.totalWin);
                 appliedTransactionIds.push(creditTransactionId);
-                transactions.push({id: creditTransactionId, type: "credit", amount: outcome.artifact.totalWin});
+                transactions.push({id: creditTransactionId, type: "credit", amount: outcome.record.totalWin});
             }
 
             const result = buildPreGeneratedRoundResult({

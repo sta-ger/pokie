@@ -64,7 +64,7 @@ ratio, since there's no general way to know what "relative to base" should mean 
 ## Stake unit conversion — explicit, never rounded
 
 Stake's own CSV/JSONL `payoutMultiplier` columns are `uint64`, and their actual meaning is scaled by a mode's own
-`cost`: converting one of POKIE's own ratios (an `artifact.payoutMultiplier`, or a raw win amount divided by the
+`cost`: converting one of POKIE's own ratios (an `record.payoutMultiplier`, or a raw win amount divided by the
 round's own `stake`) into Stake units is always
 
 ```
@@ -117,9 +117,9 @@ interface StakeEngineRoundEventsProjecting<T = string> {
 |---|---|
 | each `RoundStepRecord` (in order) | `{type: "reveal", board: step.screen}` |
 | that step's own `featureEvents` (in order) | passed through as-is — spread into the event alongside their own `type` |
-| that step, if `totalWin > 0` | `{type: "win", amount}` — `amount` is `step.totalWin` converted to Stake units (`(step.totalWin / artifact.stake) * cost * 100`) |
+| that step, if `totalWin > 0` | `{type: "win", amount}` — `amount` is `step.totalWin` converted to Stake units (`(step.totalWin / record.stake) * cost * 100`) |
 | any round-level-only `featureEvents` (passed directly to `buildRoundRecord`'s own `featureEvents` option, not attached to a step) | same passthrough |
-| the round, always, exactly once, last | `{type: "finalWin", amount, payoutMultiplier}` — both converted to Stake units the same way (`payoutMultiplier` via `artifact.payoutMultiplier * cost * 100`); since `artifact.totalWin / artifact.stake === artifact.payoutMultiplier`, `finalWin.amount` and `finalWin.payoutMultiplier` are always exactly equal |
+| the round, always, exactly once, last | `{type: "finalWin", amount, payoutMultiplier}` — both converted to Stake units the same way (`payoutMultiplier` via `record.payoutMultiplier * cost * 100`); since `record.totalWin / record.stake === record.payoutMultiplier`, `finalWin.amount` and `finalWin.payoutMultiplier` are always exactly equal |
 
 Every event is stamped with its own `index` (its position in the final sequence) last, so it always reflects the
 true position even if a passed-through feature event's own data happened to carry a colliding `index` field. Just
@@ -155,7 +155,7 @@ checks on top:
 | `stakeengine-cross-mode-provenance-mismatch` | error | a mode's game id/version, `configHash`, or `pokieVersion` doesn't match the export's other modes (`betMode`/`stake` are expected to differ per mode, so those are excluded from this check) |
 | `stakeengine-outcome-id-not-integer` | error | an outcome `id` isn't a canonical non-negative integer string |
 | `stakeengine-outcome-weight-not-integer` | error | an outcome's `weight` isn't a whole number |
-| `stakeengine-outcome-payout-multiplier-not-representable` | error | an outcome's `artifact.payoutMultiplier * cost * 100` isn't a non-negative safe integer |
+| `stakeengine-outcome-payout-multiplier-not-representable` | error | an outcome's `record.payoutMultiplier * cost * 100` isn't a non-negative safe integer |
 | `stakeengine-outcome-events-invalid` | error | the events projector (standard or custom) threw while projecting an outcome's artifact — e.g. an event amount that isn't representable in Stake units |
 | `stakeengine-outcome-events-not-json-safe` | error | the events projector's output for an outcome isn't canonical-JSON-safe — a `NaN`/`Infinity`, `bigint`, `symbol`, function, `undefined`, circular reference, or other non-JSON value (see `toCanonicalJson`) |
 

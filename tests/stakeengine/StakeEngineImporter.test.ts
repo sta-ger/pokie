@@ -76,23 +76,23 @@ describe("StakeEngineImporter", () => {
                 const originalOutcome = originalLibrary.outcomes[position];
                 expect(importedOutcome.id).toBe(originalOutcome.id);
                 expect(importedOutcome.weight).toBe(originalOutcome.weight);
-                expect(importedOutcome.artifact.payoutMultiplier).toBe(originalOutcome.artifact.payoutMultiplier);
-                expect(importedOutcome.artifact.totalWin).toBe(originalOutcome.artifact.totalWin);
-                expect(importedOutcome.artifact.betMode).toBe(originalOutcome.artifact.betMode);
-                expect(importedOutcome.artifact.stake).toBe(originalOutcome.artifact.stake);
-                expect(importedOutcome.artifact.origin.game).toEqual(originalOutcome.artifact.origin.game);
-                expect(importedOutcome.artifact.origin.configHash).toEqual(originalOutcome.artifact.origin.configHash);
+                expect(importedOutcome.record.payoutMultiplier).toBe(originalOutcome.record.payoutMultiplier);
+                expect(importedOutcome.record.totalWin).toBe(originalOutcome.record.totalWin);
+                expect(importedOutcome.record.betMode).toBe(originalOutcome.record.betMode);
+                expect(importedOutcome.record.stake).toBe(originalOutcome.record.stake);
+                expect(importedOutcome.record.origin.game).toEqual(originalOutcome.record.origin.game);
+                expect(importedOutcome.record.origin.configHash).toEqual(originalOutcome.record.origin.configHash);
                 // provenance.pokieVersion is substituted with the manifest's own pokieVersion (the tool that ran
                 // the export), not asserted equal to the original artifact's own recorded pokieVersion — see
                 // docs/stake-engine-import.md's "lossy vs lossless" section.
-                expect(importedOutcome.artifact.origin.pokieVersion).toBe(importResult.manifest?.pokieVersion);
+                expect(importedOutcome.record.origin.pokieVersion).toBe(importResult.info?.pokieVersion);
 
                 // roundId and wins are NOT expected to match — genuinely unrecoverable, disclosed substitutes.
-                expect(importedOutcome.id).not.toBe(originalOutcome.artifact.roundId);
-                expect(importedOutcome.artifact.roundId).not.toBe(originalOutcome.artifact.roundId);
+                expect(importedOutcome.id).not.toBe(originalOutcome.record.roundId);
+                expect(importedOutcome.record.roundId).not.toBe(originalOutcome.record.roundId);
 
                 // But the reconstructed artifact is still a fully valid RoundRecord.
-                expect(new RoundRecordValidator().validate(importedOutcome.artifact)).toEqual([]);
+                expect(new RoundRecordValidator().validate(importedOutcome.record)).toEqual([]);
             });
         }
 
@@ -119,7 +119,7 @@ describe("StakeEngineImporter", () => {
         const hashOf = (fileName: string) => `sha256:${crypto.createHash("sha256").update(fs.readFileSync(path.join(outDir, fileName))).digest("hex")}`;
         const expectedSourceProvenance = {
             indexHash: hashOf("index.json"),
-            manifestHash: hashOf("pokie-info.json"),
+            infoHash: hashOf("pokie-info.json"),
             modes: ["base", "bonus"].map(modeName => ({
                 modeName,
                 csvHash: hashOf(`lookup_${modeName}.csv`),
@@ -179,7 +179,7 @@ describe("StakeEngineImporter", () => {
         const hashOf = (filePath: string) => `sha256:${crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex")}`;
 
         expect(result.sourceProvenance?.indexHash).toBe(hashOf(path.join(outDir, "index.json")));
-        expect(result.sourceProvenance?.manifestHash).toBe(hashOf(path.join(outDir, "pokie-info.json")));
+        expect(result.sourceProvenance?.infoHash).toBe(hashOf(path.join(outDir, "pokie-info.json")));
         expect(result.sourceProvenance?.modes).toEqual([
             {
                 modeName: "base",
@@ -197,7 +197,7 @@ describe("StakeEngineImporter", () => {
         const importResult = await new StakeEngineImporter().importFromDirectory(outDir);
 
         expect(importResult.issues.some((issue) => issue.severity === "error")).toBe(false);
-        expect(importResult.modes[0].library.outcomes[0].artifact.payoutMultiplier).toBe(0.1);
+        expect(importResult.modes[0].library.outcomes[0].record.payoutMultiplier).toBe(0.1);
     });
 
     it("round-trips a POKIE 1.2x payoutMultiplier at cost 100 (1.2x -> 12000 Stake units and back)", async () => {
@@ -208,7 +208,7 @@ describe("StakeEngineImporter", () => {
         const importResult = await new StakeEngineImporter().importFromDirectory(outDir);
 
         expect(importResult.issues.some((issue) => issue.severity === "error")).toBe(false);
-        expect(importResult.modes[0].library.outcomes[0].artifact.payoutMultiplier).toBe(1.2);
+        expect(importResult.modes[0].library.outcomes[0].record.payoutMultiplier).toBe(1.2);
     });
 
     describe("tampered directories", () => {

@@ -16,8 +16,8 @@ export type CertificationPackSampleRecord<T extends string | number = string> = 
     // The source bundle's own OutcomeLibraryFolderIndexEntry.recordHash for this exact outcome, reused as-is —
     // never a second, differently-derived record hash.
     readonly recordHash: string;
-    // computeRoundRecordHash(artifact), reused as-is — the same content hash every other RoundRecord
+    // computeRoundRecordHash(record), reused as-is — the same content hash every other RoundRecord
     // consumer in this codebase computes and compares.
-    readonly artifactHash: string;
-    readonly artifact: RoundRecord<T>;
+    readonly roundRecordHash: string;
+    readonly record: RoundRecord<T>;
 };

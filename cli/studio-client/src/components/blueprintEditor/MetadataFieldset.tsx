@@ -9,7 +9,7 @@ function toRecordCopy(value: unknown): Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value) ? {...(value as Record<string, unknown>)} : {};
 }
 
-type ManifestField = "id" | "name" | "version" | "description" | "author";
+type InfoField = "id" | "name" | "version" | "description" | "author";
 
 function deriveIdFromName(name: string): string {
     const derived = name
@@ -35,35 +35,35 @@ export function MetadataFieldset({
     legend?: string;
     issues?: ValidationIssue[];
 }) {
-    const manifest = toRecordCopy(blueprint.info);
-    const readManifest = (field: ManifestField): string => (typeof manifest[field] === "string" ? (manifest[field] as string) : "");
+    const info = toRecordCopy(blueprint.info);
+    const readInfo = (field: InfoField): string => (typeof info[field] === "string" ? (info[field] as string) : "");
 
-    const setManifestField = (field: ManifestField, value: string): void => {
-        if (readManifest(field) === value) return;
+    const setInfoField = (field: InfoField, value: string): void => {
+        if (readInfo(field) === value) return;
         mutate((b) => {
-            const nextManifest = toRecordCopy(b.manifest);
+            const nextInfo = toRecordCopy(b.info);
             if (value.length === 0 && field !== "id" && field !== "name" && field !== "version") {
-                Reflect.deleteProperty(nextManifest, field);
+                Reflect.deleteProperty(nextInfo, field);
             } else {
-                nextManifest[field] = value;
+                nextInfo[field] = value;
             }
-            b.manifest = nextManifest;
+            b.info = nextInfo;
         });
     };
 
     // A project's initial id is a deterministic convenience derived from its Name.  Once somebody
     // types a different Game id it is theirs: later Name edits never overwrite that explicit choice.
     const setName = (value: string): void => {
-        if (readManifest("name") === value) return;
+        if (readInfo("name") === value) return;
         mutate((b) => {
-            const nextManifest = toRecordCopy(b.manifest);
-            const previousName = typeof nextManifest.name === "string" ? nextManifest.name : "";
-            const previousId = typeof nextManifest.id === "string" ? nextManifest.id : "";
-            nextManifest.name = value;
+            const nextInfo = toRecordCopy(b.info);
+            const previousName = typeof nextInfo.name === "string" ? nextInfo.name : "";
+            const previousId = typeof nextInfo.id === "string" ? nextInfo.id : "";
+            nextInfo.name = value;
             if (previousId.length === 0 || previousId === deriveIdFromName(previousName)) {
-                nextManifest.id = deriveIdFromName(value);
+                nextInfo.id = deriveIdFromName(value);
             }
-            b.manifest = nextManifest;
+            b.info = nextInfo;
         });
     };
 
@@ -76,46 +76,46 @@ export function MetadataFieldset({
                 <div>
                     <TextInput
                         label="Game id"
-                        value={readManifest("id")}
-                        onInput={(event) => setManifestField("id", event.currentTarget.value)}
-                        onChange={(event) => setManifestField("id", event.currentTarget.value)}
-                        error={fieldErrorMessage(issues, "manifest.id")}
+                        value={readInfo("id")}
+                        onInput={(event) => setInfoField("id", event.currentTarget.value)}
+                        onChange={(event) => setInfoField("id", event.currentTarget.value)}
+                        error={fieldErrorMessage(issues, "info.id")}
                     />
-                    <FieldWarningText message={fieldWarningMessage(issues, "manifest.id")} />
+                    <FieldWarningText message={fieldWarningMessage(issues, "info.id")} />
                 </div>
                 <div>
                     <TextInput
                         label="Game name"
-                        value={readManifest("name")}
+                        value={readInfo("name")}
                         // Native input must update the event-time draft before Save/Open completes,
                         // even while focus remains here. onChange also covers change-only controls.
                         onInput={(event) => setName(event.currentTarget.value)}
                         onChange={(event) => setName(event.currentTarget.value)}
-                        error={fieldErrorMessage(issues, "manifest.name")}
+                        error={fieldErrorMessage(issues, "info.name")}
                     />
-                    <FieldWarningText message={fieldWarningMessage(issues, "manifest.name")} />
+                    <FieldWarningText message={fieldWarningMessage(issues, "info.name")} />
                 </div>
                 <div>
                     <TextInput
                         label="Version"
-                        value={readManifest("version")}
-                        onInput={(event) => setManifestField("version", event.currentTarget.value)}
-                        onChange={(event) => setManifestField("version", event.currentTarget.value)}
-                        error={fieldErrorMessage(issues, "manifest.version")}
+                        value={readInfo("version")}
+                        onInput={(event) => setInfoField("version", event.currentTarget.value)}
+                        onChange={(event) => setInfoField("version", event.currentTarget.value)}
+                        error={fieldErrorMessage(issues, "info.version")}
                     />
-                    <FieldWarningText message={fieldWarningMessage(issues, "manifest.version")} />
+                    <FieldWarningText message={fieldWarningMessage(issues, "info.version")} />
                 </div>
                 <TextInput
                     label="Description (optional)"
-                    value={readManifest("description")}
-                    onInput={(event) => setManifestField("description", event.currentTarget.value)}
-                    onChange={(event) => setManifestField("description", event.currentTarget.value)}
+                    value={readInfo("description")}
+                    onInput={(event) => setInfoField("description", event.currentTarget.value)}
+                    onChange={(event) => setInfoField("description", event.currentTarget.value)}
                 />
                 <TextInput
                     label="Author (optional)"
-                    value={readManifest("author")}
-                    onInput={(event) => setManifestField("author", event.currentTarget.value)}
-                    onChange={(event) => setManifestField("author", event.currentTarget.value)}
+                    value={readInfo("author")}
+                    onInput={(event) => setInfoField("author", event.currentTarget.value)}
+                    onChange={(event) => setInfoField("author", event.currentTarget.value)}
                 />
             </SimpleGrid>
         </PageSection>

@@ -55,7 +55,7 @@ describe("GamePackageCreator", () => {
 
         const result = creator.create(parentDir, "sample-slot");
 
-        expect(result.manifest).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
+        expect(result.info).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
     });
 
     it("throws a descriptive error when the target directory already exists", () => {
@@ -83,7 +83,7 @@ describe("GamePackageCreator", () => {
 
             const result = creator.create(parentDir, "sample-slot", {id: "cf", name: "Sample Slot Deluxe", version: "2.0.0"});
 
-            expect(result.manifest).toEqual({id: "cf", name: "Sample Slot Deluxe", version: "2.0.0"});
+            expect(result.info).toEqual({id: "cf", name: "Sample Slot Deluxe", version: "2.0.0"});
         });
 
         it("derives the class name from the overridden id, not the directory name", () => {
@@ -112,7 +112,7 @@ describe("GamePackageCreator", () => {
 
             const result = creator.create(parentDir, "sample-slot", {id: "  ", name: "", version: undefined});
 
-            expect(result.manifest).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
+            expect(result.info).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
         });
 
         it("still works with no overrides object at all (existing 2-arg callers)", () => {
@@ -120,7 +120,7 @@ describe("GamePackageCreator", () => {
 
             const result = creator.create(parentDir, "sample-slot");
 
-            expect(result.manifest).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
+            expect(result.info).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
         });
     });
 });

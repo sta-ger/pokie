@@ -1,7 +1,7 @@
 import {projectRevision} from "../../../src/optimization/internal/optimizationData.js";
 import {releaseSimulationGame} from "../../../src/simulation/parallel/internal/releaseSimulationGame.js";
 import {collectPokieWasmSimulation} from "../../../src/wasm/PokieWasmCommands.js";
-import {artifactAnalyticsObservation} from "../../../src/simulation/artifactAnalyticsObservation.js";
+import {recordAnalyticsObservation} from "../../../src/simulation/recordAnalyticsObservation.js";
 import {
     SimulationAccumulator,
     describeOutcomeSourceSeedPolicy,
@@ -34,7 +34,7 @@ import {
 import crypto from "crypto";
 import {deriveDeterministicSeed} from "../../../src/pregenerated/internal/deriveDeterministicSeed.js";
 import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";
-import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
+import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../runtime/prepareRuntimePackage.js";
 import {InMemoryStudioSimulationRepository} from "./InMemoryStudioSimulationRepository.js";
 import type {StudioSimulationJobRecord} from "./StudioSimulationJobRecord.js";
 import type {StudioSimulationJobView, StudioSimulationStatisticsView} from "./StudioSimulationJobView.js";
@@ -440,7 +440,7 @@ export class StudioSimulationService {
                 Object.assign(record, {roundsCompleted: completedRounds + finalRoundsCompleted, durationMs: finalDurationMs});
 
                 const report: SimulationReport = this.reportBuilder.build({
-                    manifest: result.manifest,
+                    gameInfo: result.gameInfo,
                     requestedRounds: record.rounds,
                     seed: record.seed,
                     statistics: result.statistics,
@@ -519,7 +519,7 @@ export class StudioSimulationService {
                 },
             });
             const reports = results.map(result => this.reportBuilder.build({
-                manifest: {id: runtime!.manifest.component.id, name: runtime!.manifest.component.id, version: runtime!.manifest.component.version},
+                gameInfo: {id: runtime!.manifest.component.id, name: runtime!.manifest.component.id, version: runtime!.manifest.component.version},
                 requestedRounds: record.rounds, ...(record.seed === undefined ? {} : {seed: record.seed}), statistics: result.statistics,
                 durationMs: record.durationMs, packageRoot: record.projectRoot, configHash: runtime!.manifest.artifact?.configurationHash,
                 workers: 1, workerSeedStrategy: "portable seeded host stream (single in-process WASM runtime)", pokieVersion: this.pokieVersion, betMode: result.mode, targetRtp: result.targetRtp,
@@ -558,7 +558,7 @@ export class StudioSimulationService {
         let modeName: string;
         let manifestGame: PokieGameInfo;
         try {
-            const manifest = await this.outcomeLibraryReader.readManifest(project.rootPath);
+            const manifest = await this.outcomeLibraryReader.readIndex(project.rootPath);
             if (manifest.modes.length === 0) {
                 this.fail(record, new Error(`"${project.rootPath}" has no outcome-library modes to simulate.`));
                 return;
@@ -603,9 +603,9 @@ export class StudioSimulationService {
                             ? randomSource
                             : new SeededWeightedOutcomeRandomSource(deriveDeterministicSeed(record.seed, replayRound));
                     const selection = await outcomeSource.drawOutcome(roundRandomSource);
-                    accumulator.addRound(selection.outcome.artifact.stake, selection.outcome.artifact.totalWin, artifactAnalyticsObservation(selection.outcome.artifact, selection.libraryHash));
+                    accumulator.addRound(selection.outcome.record.stake, selection.outcome.record.totalWin, recordAnalyticsObservation(selection.outcome.record, selection.libraryHash));
                     if (record.seed !== undefined) {
-                        const artifact = selection.outcome.artifact;
+                        const roundRecord = selection.outcome.record;
                         lastReplay = {
                             game: manifestGame,
                             libraryId: selection.libraryId,
@@ -616,11 +616,11 @@ export class StudioSimulationService {
                             round: replayRound,
                             outcomeId: selection.outcome.id,
                             weight: selection.outcome.weight,
-                            totalWin: artifact.totalWin,
-                            payoutMultiplier: artifact.payoutMultiplier,
-                            stake: artifact.stake,
-                            screen: artifact.screen.map((row) => [...row]),
-                            artifact,
+                            totalWin: roundRecord.totalWin,
+                            payoutMultiplier: roundRecord.payoutMultiplier,
+                            stake: roundRecord.stake,
+                            screen: roundRecord.screen.map((row) => [...row]),
+                            artifact: roundRecord,
                             timestamp: record.startedAt,
                             durationMs: this.now() - record.startedAt,
                         };
@@ -649,7 +649,7 @@ export class StudioSimulationService {
         }
         const statistics = accumulator.getStatistics();
         const report: SimulationReport = this.reportBuilder.build({
-            manifest: manifestGame,
+            gameInfo: manifestGame,
             requestedRounds: record.rounds,
             seed: record.seed,
             statistics,

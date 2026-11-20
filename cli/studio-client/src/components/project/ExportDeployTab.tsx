@@ -23,12 +23,12 @@ import {
     type FetchLike,
 } from "../../api/apiClient";
 import type {
-    StudioArtifactBuildView,
-    StudioArtifactBuildJobView,
-    StudioArtifactConversionPlan,
-    StudioArtifactPreviewView,
-    StudioArtifactTargetType,
-    StudioArtifactTargetView,
+    StudioBuildView,
+    StudioBuildJobView,
+    StudioFormatConversionPlan,
+    StudioOutputPreviewView,
+    StudioOutputFormat,
+    StudioOutputFormatView,
     StudioOutcomeLibraryGenerateResultView,
     StudioOutcomeLibraryGenerateJobView,
     StudioOutcomeLibraryGenerateEstimateView,
@@ -60,7 +60,7 @@ import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 import {PathInput} from "../common/PathInput";
 
-function ParConversionDiagnostics({report}: {report: StudioArtifactConversionPlan["parConversion"]}) {
+function ParConversionDiagnostics({report}: {report: StudioFormatConversionPlan["parConversion"]}) {
     if (report === undefined) return null;
     return <>
         <Text size="sm">PAR lossless eligible: {String(report.losslessEligible)}</Text>
@@ -84,21 +84,21 @@ const GROUP_LABELS: Record<ExportDeployTargetKind, {legend: string; blurb: strin
     },
 };
 
-function artifactFileFilters(target: StudioArtifactTargetType) {
+function artifactFileFilters(target: StudioOutputFormat) {
     if (target === "parWorkbook") return [{name: "Excel workbooks", extensions: ["xlsx"]}];
     if (target === "blueprint") return [{name: "Blueprint JSON", extensions: ["json"]}];
     if (target === "wasm") return [{name: "POKIE WASM games", extensions: ["wasm"]}];
     return undefined;
 }
 
-function artifactDestinationTitle(target: StudioArtifactTargetType): string {
+function artifactDestinationTitle(target: StudioOutputFormat): string {
     if (target === "parWorkbook") return "Choose a PAR workbook destination";
     if (target === "blueprint") return "Choose a Blueprint destination";
     if (target === "wasm") return "Choose a portable WASM game destination";
     return "Choose an output folder";
 }
 
-function isFileArtifactTarget(target: StudioArtifactTargetType): boolean {
+function isFileArtifactTarget(target: StudioOutputFormat): boolean {
     return target === "parWorkbook" || target === "blueprint" || target === "wasm";
 }
 
@@ -176,7 +176,7 @@ type OutcomeLibraryRunView =
     | {status: "running"; job: StudioOutcomeLibraryGenerateJobView; browserRequestId?: string; progressSnapshots: readonly OutcomeLibraryProgressSnapshot[]}
     | {status: "ok"; jobId: string; browserRequestId?: string; progressSnapshots: readonly OutcomeLibraryProgressSnapshot[]; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>; durationMs?: number}
     | {status: "cancelled"; browserRequestId?: string; progressSnapshots?: readonly OutcomeLibraryProgressSnapshot[]; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "cancelled"}>}
-    | {status: "error"; jobId?: string; browserRequestId?: string; progressSnapshots?: readonly OutcomeLibraryProgressSnapshot[]; durableStatus?: StudioOutcomeLibraryGenerateJobView["status"]; pollHttpStatus?: number; recovery?: StudioJobView["recovery"]; result?: Exclude<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>; message: string; diagnostic?: string; plan?: StudioArtifactConversionPlan};
+    | {status: "error"; jobId?: string; browserRequestId?: string; progressSnapshots?: readonly OutcomeLibraryProgressSnapshot[]; durableStatus?: StudioOutcomeLibraryGenerateJobView["status"]; pollHttpStatus?: number; recovery?: StudioJobView["recovery"]; result?: Exclude<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>; message: string; diagnostic?: string; plan?: StudioFormatConversionPlan};
 
 type OutcomeLibraryPreflightView =
     | {status: "loading"}
@@ -244,7 +244,7 @@ function generationStrategyLabel(generation: OutcomeLibraryGenerationOptions["ge
     return labels[generation];
 }
 
-function PlannerSummary({plan, label = "Server plan"}: {plan: StudioArtifactConversionPlan | undefined; label?: string}) {
+function PlannerSummary({plan, label = "Server plan"}: {plan: StudioFormatConversionPlan | undefined; label?: string}) {
     if (plan === undefined) return null;
     const summary =
         plan.status === "planned"
@@ -261,22 +261,22 @@ function PlannerSummary({plan, label = "Server plan"}: {plan: StudioArtifactConv
 // independently of every other.
 type ArtifactBuildRunView =
     | {status: "idle"}
-    | {status: "running"; jobId: string; progress?: StudioArtifactBuildJobView["progress"]; cancellationRequested: boolean}
+    | {status: "running"; jobId: string; progress?: StudioBuildJobView["progress"]; cancellationRequested: boolean}
     // Keep the server's last in-flight preflight with the successful result. A very small build can
     // complete between React renders; without retaining it, the user never sees the estimate that
     // governed the build they just started.
-    | {status: "ok"; jobId: string; result: Extract<StudioArtifactBuildView, {status: "ok"}>; progress?: StudioArtifactBuildJobView["progress"]}
-    | {status: "cancelled"; plan: StudioArtifactConversionPlan}
-    | {status: "error"; message: string; plan?: StudioArtifactConversionPlan};
+    | {status: "ok"; jobId: string; result: Extract<StudioBuildView, {status: "ok"}>; progress?: StudioBuildJobView["progress"]}
+    | {status: "cancelled"; plan: StudioFormatConversionPlan}
+    | {status: "error"; message: string; plan?: StudioFormatConversionPlan};
 
-function describeArtifactBuildResultError(view: Exclude<StudioArtifactBuildView, {status: "ok"}>): string {
+function describeArtifactBuildResultError(view: Exclude<StudioBuildView, {status: "ok"}>): string {
     return view.message;
 }
 
 type ArtifactTargetsView = (
-    | {status: "pending"; targets?: readonly StudioArtifactTargetView[]}
-    | {status: "loaded"; targets: readonly StudioArtifactTargetView[]}
-    | {status: "failed"; targets?: readonly StudioArtifactTargetView[]; message: string}
+    | {status: "pending"; targets?: readonly StudioOutputFormatView[]}
+    | {status: "loaded"; targets: readonly StudioOutputFormatView[]}
+    | {status: "failed"; targets?: readonly StudioOutputFormatView[]; message: string}
 ) & {owner: FetchLike};
 
 type ArtifactPreviewQueue = {
@@ -294,14 +294,14 @@ type ArtifactPreviewQueue = {
 // by artifactTarget, same convention as ArtifactBuildRunView above.
 type ArtifactPreviewRunView =
     | {status: "loading"}
-    | {status: "ok"; result: Extract<StudioArtifactPreviewView, {status: "ok"}>}
-    | {status: "unsupported"; message: string; plan: StudioArtifactConversionPlan}
-    | {status: "conflict"; result: Extract<StudioArtifactPreviewView, {status: "conflict"}>}
+    | {status: "ok"; result: Extract<StudioOutputPreviewView, {status: "ok"}>}
+    | {status: "unsupported"; message: string; plan: StudioFormatConversionPlan}
+    | {status: "conflict"; result: Extract<StudioOutputPreviewView, {status: "conflict"}>}
     // Transport failures have no server terminal result. Every server preview
     // error still carries its mandatory plan through toArtifactPreviewRunView.
-    | {status: "error"; message: string; plan?: StudioArtifactConversionPlan};
+    | {status: "error"; message: string; plan?: StudioFormatConversionPlan};
 
-function toArtifactPreviewRunView(view: StudioArtifactPreviewView): ArtifactPreviewRunView {
+function toArtifactPreviewRunView(view: StudioOutputPreviewView): ArtifactPreviewRunView {
     if (view.status === "ok") {
         return {status: "ok", result: view};
     }
@@ -359,11 +359,11 @@ function TargetCard({
     onOpenFolder: (path: string) => void;
     artifactPreview: ArtifactPreviewRunView;
     artifactBuildRun: ArtifactBuildRunView;
-    onBuildArtifact: (target: StudioArtifactTargetType) => void;
-    onCancelArtifactBuild: (target: StudioArtifactTargetType) => void;
+    onBuildArtifact: (target: StudioOutputFormat) => void;
+    onCancelArtifactBuild: (target: StudioOutputFormat) => void;
     artifactDestination: string;
-    onArtifactDestinationChange: (target: StudioArtifactTargetType, destination: string) => void;
-    onOpenAsProject: (result: Extract<StudioArtifactBuildView, {status: "ok"}>) => void;
+    onArtifactDestinationChange: (target: StudioOutputFormat, destination: string) => void;
+    onOpenAsProject: (result: Extract<StudioBuildView, {status: "ok"}>) => void;
     onAddToProjects: (projectRoot: string) => void;
     addedToProjects: boolean;
     onRevealOutput: (path: string) => void;
@@ -1290,7 +1290,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         onFeatureOwnedOutcomeLibraryJobChange?.(outcomeGeneratorVisible ? featureOwnedOutcomeLibraryJobId : undefined);
     }, [featureOwnedOutcomeLibraryJobId, onFeatureOwnedOutcomeLibraryJobChange, outcomeGeneratorVisible]);
 
-    // One registry-backed preview per supported artifactTarget (keyed by StudioArtifactTargetType), fetched
+    // One registry-backed preview per supported artifactTarget (keyed by StudioOutputFormat), fetched
     // automatically as soon as artifactTargets reports it supported -- see ArtifactPreviewRunView's own doc
     // comment for why this runs unprompted rather than behind its own button: the resolved
     // destination/conflict this reports must already be on screen before Build is ever clicked, not only
@@ -1383,7 +1383,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             if (target !== undefined) selectDeploymentTarget(target);
         }
     }, [selectDeploymentTarget, deploymentTargetsView, recoveryRequest, revokeArtifactPreview]);
-    function refreshArtifactPreviews(target?: StudioArtifactTargetType): void {
+    function refreshArtifactPreviews(target?: StudioOutputFormat): void {
         // Revoke synchronously, including during an executing older plan. Its
         // replacement waits for its edit debounce while the obsolete owner drains.
         const targets = target === undefined ? Object.keys(artifactPreviewScope.current?.queues ?? {}) : [target];
@@ -1403,7 +1403,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         // Discovery failure/refresh also removes publication authority and any
         // queued work. Running server work settles without scheduling a successor.
         Object.entries(scope.queues).forEach(([target, queue]) => {
-            if (!supportedTargets.has(target as StudioArtifactTargetType)) {
+            if (!supportedTargets.has(target as StudioOutputFormat)) {
                 queue.version++;
                 queue.approved = false;
                 queue.key = undefined;
@@ -1457,7 +1457,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         });
     }, [artifactTargets, artifactDestinations, artifactPreviewRevision, fetchImpl]);
 
-    // One run per artifactTarget (keyed by StudioArtifactTargetType), each independent of every other --
+    // One run per artifactTarget (keyed by StudioOutputFormat), each independent of every other --
     // see ArtifactBuildRunView's own doc comment.
     const [artifactBuildRuns, setArtifactBuildRuns] = useState<Record<string, ArtifactBuildRunView>>({});
     const artifactBuildPollTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -1671,10 +1671,10 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
     }
 
     // Runs a single "Build artifact" card's own target through BuildOutputBuilderRegistry (via
-    // /api/project/artifacts/build) -- see StudioArtifactBuildService.build's own doc comment for exactly
+    // /api/project/build/build) -- see StudioBuildService.build's own doc comment for exactly
     // what this does and doesn't promise. Guarded by this target's own current run status (rather than a
     // shared useDoubleSubmitGuard) since every target's own build runs fully independently of every other.
-    function handleBuildArtifact(target: StudioArtifactTargetType): void {
+    function handleBuildArtifact(target: StudioOutputFormat): void {
         if (artifactActiveBuilds.current[target]) {
             return;
         }
@@ -1716,7 +1716,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             });
     }
 
-    function handleCancelArtifactBuild(target: StudioArtifactTargetType): void {
+    function handleCancelArtifactBuild(target: StudioOutputFormat): void {
         const active = artifactActiveBuilds.current[target];
         if (!active || active.cancellationRequested) return;
         active.cancellationRequested = true;
@@ -1728,7 +1728,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         if (active.jobId) requestArtifactCancellation(target, active.jobId, artifactRunVersions.current[target]);
     }
 
-    function requestArtifactCancellation(target: StudioArtifactTargetType, jobId: string, version: number): void {
+    function requestArtifactCancellation(target: StudioOutputFormat, jobId: string, version: number): void {
         cancelArtifactBuild(fetchImpl, jobId)
             .then(() => {
                 if (artifactMounted.current && artifactRunVersions.current[target] === version && artifactActiveBuilds.current[target]) pollArtifactBuild(target, jobId, version);
@@ -1746,7 +1746,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             });
     }
 
-    function pollArtifactBuild(target: StudioArtifactTargetType, jobId: string, version: number): void {
+    function pollArtifactBuild(target: StudioOutputFormat, jobId: string, version: number): void {
         if (!artifactMounted.current || artifactRunVersions.current[target] !== version || !artifactActiveBuilds.current[target]) return;
         const read = artifactPollReads.current[target] = (artifactPollReads.current[target] ?? 0) + 1;
         getArtifactBuild(fetchImpl, jobId)
@@ -1831,7 +1831,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
     // transition every other "Open in Studio"/"Open as Project" action in Studio already uses (see
     // useOpenProject's own doc comment). This is this card's own "run/inspect follow-up": once open, the
     // new project's own Play/Replay/Validate tabs are immediately reachable.
-    function handleOpenArtifactAsProject(target: StudioArtifactTargetType, result: Extract<StudioArtifactBuildView, {status: "ok"}>): void {
+    function handleOpenArtifactAsProject(target: StudioOutputFormat, result: Extract<StudioBuildView, {status: "ok"}>): void {
         setArtifactActionError(undefined);
         // Keep the card's target coupled to the terminal output all the way to
         // the Home -> Project transition. A stale/cross-target response must

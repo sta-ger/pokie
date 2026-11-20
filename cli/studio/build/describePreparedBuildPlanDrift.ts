@@ -7,7 +7,7 @@ import type {FormatConversionPlan, OutputFormat} from "@fromstan/pokie";
  * request must be surfaced as recovery, never silently turned into a different
  * conversion.
  */
-export function describePreparedArtifactPlanDrift(
+export function describePreparedBuildPlanDrift(
     plan: FormatConversionPlan | undefined,
     sourcePath: string,
     target: OutputFormat,

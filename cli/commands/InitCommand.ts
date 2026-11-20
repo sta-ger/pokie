@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import {buildPackageJsonPatch, PackageJsonLike, PokieGamePackageValidating, PokieGamePackageValidator} from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {RuntimePreparationCancelledError} from "../materialize/RuntimePreparationCancelledError.js";
+import {RuntimePreparationCancelledError} from "../runtime/RuntimePreparationCancelledError.js";
 import {GamePackagePreparationError, GamePackagePreparationPhase} from "../prepare/GamePackagePreparationError.js";
 import {extractNpmStderr, PackageCommandRunning, runPackageCommand} from "../prepare/PackageCommandRunner.js";
 import {GamePackageMergeOverrides, GamePackageMerging} from "../scaffold/GamePackageMerging.js";
@@ -226,7 +226,7 @@ export class InitCommand implements CliCommandHandling {
         }
 
         if (!parsed.prepare) {
-            console.log(`\nGame package "${scaffold.manifest.name}" (id: "${scaffold.manifest.id}") scaffolded in "${projectRoot}".`);
+            console.log(`\nGame package "${scaffold.info.name}" (id: "${scaffold.info.id}") scaffolded in "${projectRoot}".`);
             console.log(`Next: run "npm install" then "npm run build" in "${projectRoot}" to finish preparing it.`);
             return 0;
         }
@@ -298,7 +298,7 @@ export class InitCommand implements CliCommandHandling {
     }
 
     private printPrepared(scaffold: ScaffoldResult, projectRoot: string): void {
-        console.log(`\nGame package "${scaffold.manifest.name}" (id: "${scaffold.manifest.id}") prepared and verified in "${projectRoot}".`);
+        console.log(`\nGame package "${scaffold.info.name}" (id: "${scaffold.info.id}") prepared and verified in "${projectRoot}".`);
         console.log(`Load it anywhere with: loadPokieGame("${projectRoot}") from "@fromstan/pokie".`);
         console.log(`\nNext:`);
         console.log(`  pokie validate ${projectRoot}`);

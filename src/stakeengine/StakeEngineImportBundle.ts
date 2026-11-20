@@ -28,6 +28,6 @@ export type StakeEngineImportModeFiles = {
 export type StakeEngineImportBundle = {
     readonly stakeDir: string;
     readonly index: StakeEngineImportFileResult<unknown>;
-    readonly manifest: StakeEngineImportFileResult<unknown>;
+    readonly info: StakeEngineImportFileResult<unknown>;
     readonly modeFiles: readonly StakeEngineImportModeFiles[];
 };

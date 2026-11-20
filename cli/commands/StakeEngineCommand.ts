@@ -969,9 +969,9 @@ export class StakeEngineCommand implements CliCommandHandling {
 
 function isStakeEngineImportSourceProvenance(value: unknown): value is StakeEngineImportSourceProvenance {
     if (typeof value !== "object" || value === null) return false;
-    const provenance = value as {indexHash?: unknown; manifestHash?: unknown; modes?: unknown};
+    const provenance = value as {indexHash?: unknown; infoHash?: unknown; modes?: unknown};
     return typeof provenance.indexHash === "string" && (/^sha256:[a-f0-9]{64}$/).test(provenance.indexHash) &&
-        typeof provenance.manifestHash === "string" && (/^sha256:[a-f0-9]{64}$/).test(provenance.manifestHash) &&
+        typeof provenance.infoHash === "string" && (/^sha256:[a-f0-9]{64}$/).test(provenance.infoHash) &&
         Array.isArray(provenance.modes) && provenance.modes.every(isStakeEngineImportSourceProvenanceMode);
 }
 

@@ -7,7 +7,7 @@ import type {GamePackagePreparationPhase} from "./GamePackagePreparationError.js
 // tool's own making* -- safe to pick up from the last completed phase -- rather than an unrelated,
 // pre-existing directory that must never be silently written into.
 export type PreparationState = {
-    manifest: PokieGameInfo;
+    info: PokieGameInfo;
     createdFiles: string[];
     phasesCompleted: GamePackagePreparationPhase[];
 };

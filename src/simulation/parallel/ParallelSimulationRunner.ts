@@ -81,7 +81,7 @@ export type ParallelSimulationRunOptions = {
 };
 
 export type ParallelSimulationResult = {
-    manifest: PokieGameInfo;
+    gameInfo: PokieGameInfo;
     configHash?: string;
     statistics: SimulationStatistics;
     breakdown?: Record<string, SimulationBreakdownComponent>;
@@ -190,7 +190,7 @@ export class ParallelSimulationRunner {
 
             observedPrefix = accumulator.getStatistics();
             return {
-                manifest: game.getInfo(),
+                gameInfo: game.getInfo(),
                 configHash: game.getConfigHash?.(),
                 statistics: observedPrefix,
                 breakdown,
@@ -253,7 +253,7 @@ export class ParallelSimulationRunner {
         );
 
         return {
-            manifest: results[0].manifest,
+            gameInfo: results[0].gameInfo,
             configHash,
             statistics: merged.statistics,
             breakdown: merged.breakdown,

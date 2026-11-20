@@ -31,7 +31,7 @@ export type StudioOutcomeLibraryRegistryModeEntry = {
 // ever written to for this project (default or a caller-chosen outDir), persisted on disk so it survives a
 // Studio server restart, is checked, and each mode reports the most recently generated occurrence of
 // itself across all of them (see StudioOutcomeLibraryGenerateService.registry's own doc comment). The
-// top-level game/currentGame/configHash/artifactPokieVersion/generatedAt/buildStatus fields below mirror
+// top-level game/currentGame/configHash/recordPokieVersion/generatedAt/buildStatus fields below mirror
 // whichever discovered bundle was generated most recently overall.
 export type StudioOutcomeLibraryRegistryView =
     // No bundle exists at the conventional location at all -- nothing has ever been generated for this
@@ -50,7 +50,7 @@ export type StudioOutcomeLibraryRegistryView =
           readonly game: PokieGameInfo;
           readonly currentGame: PokieGameInfo;
           readonly configHash?: string;
-          readonly artifactPokieVersion: string;
+          readonly recordPokieVersion: string;
           readonly currentPokieVersion: string;
           readonly generatedAt: string;
           readonly modes: readonly StudioOutcomeLibraryRegistryModeEntry[];

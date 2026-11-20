@@ -50,7 +50,7 @@ import {copyPackage, digest, inventory, jsonHash, paytablePaths, readJson, write
 
 type NativeOutcome = {
     weight: OptimizationScalar;
-    artifact?: WeightedOutcomeInput["artifact"];
+    artifact?: WeightedOutcomeInput["record"];
     stake?: Omit<StakeEngineOutcomeRecord, "weight">;
 };
 type NativeModel = {
@@ -65,7 +65,7 @@ export interface ProjectOptimizationAdapting {
     model: unknown;
     writable: string[];
     sample(file: string, model: unknown, targets: MathTarget[], policy: OptimizationPolicy, seed: string, samples: number, options: OptimizationSamplingOptions): Promise<{statistics: SimulationStatistics; returnBound: number; validationWork: number; stopReason: string}>;
-    materialize(model: unknown, directory: string, signal?: AbortSignal): Promise<string>;
+    prepare(model: unknown, directory: string, signal?: AbortSignal): Promise<string>;
     read(file: string): Promise<unknown>;
     measure(
         file: string,
@@ -107,7 +107,7 @@ async function readNative(project: PokieProject): Promise<NativeModel> {
     if (project.type === "outcomeLibrary") {
         errors(await new OutcomeLibraryFolderValidator().validate(project.rootPath, {deep: true}));
         const reader = new OutcomeLibraryFolderReader();
-        const manifest = await reader.readManifest(project.rootPath);
+        const manifest = await reader.readIndex(project.rootPath);
         for (const mode of manifest.modes) {
             const library = await reader.readLibrary(project.rootPath, mode.modeName);
             model.modes[mode.modeName] = {
@@ -115,7 +115,7 @@ async function readNative(project: PokieProject): Promise<NativeModel> {
                 outcomes: Object.fromEntries(
                     library.outcomes.map((outcome) => [
                         outcome.id,
-                        {weight: outcome.weight, artifact: outcome.artifact},
+                        {weight: outcome.weight, artifact: outcome.record},
                     ]),
                 ),
             };
@@ -165,7 +165,7 @@ function selectLibraryMetrics(
             case "maxWin":
                 return target.unit === "currency"
                     ? analysis.maxWin
-                    : outcomes.reduce((maximum, outcome) => Math.max(maximum, outcome.artifact.payoutMultiplier), 0);
+                    : outcomes.reduce((maximum, outcome) => Math.max(maximum, outcome.record.payoutMultiplier), 0);
             default:
                 throw new OptimizationUnsupportedError("Unknown metric.");
         }
@@ -230,7 +230,7 @@ export async function acquireOptimizationAdapter(
         if (project.type === "stakeAdapter" && fs.existsSync(path.join(project.rootPath, "pokie-info.json")) && fs.existsSync(path.join(project.rootPath, "optimization-input-pokie-info.json"))) throw new OptimizationUnsupportedError("A prior Stake input-provenance archive already occupies the required companion path.");
         const model = await readNative(project);
         if (!model.modes[policy.mode]) throw new OptimizationUnsupportedError(`Unknown native mode ${policy.mode}.`);
-        if (project.type === "outcomeLibrary" && Object.values(model.modes[policy.mode].outcomes).some(outcome => outcome.artifact!.stake !== policy.stake)) throw new OptimizationUnsupportedError("Native library stake must match every selected artifact.");
+        if (project.type === "outcomeLibrary" && Object.values(model.modes[policy.mode].outcomes).some(outcome => outcome.artifact!.stake !== policy.stake)) throw new OptimizationUnsupportedError("Native library stake must match every selected record.");
         const escapeMode = encode(policy.mode);
         const writable = Object.keys(model.modes[policy.mode].outcomes).map(
             (id) => `/modes/${escapeMode}/outcomes/${encode(id)}/weight`,
@@ -251,7 +251,7 @@ export async function acquireOptimizationAdapter(
         return {
             model,
             writable,
-            async materialize(value, directory, signal) {
+            async prepare(value, directory, signal) {
                 cancelled(signal);
                 const data = value as NativeModel;
                 const output = path.join(directory, "candidate");
@@ -264,7 +264,7 @@ export async function acquireOptimizationAdapter(
                                 .map(([id, outcome]) => ({
                                     id,
                                     weight: outcome.weight as number,
-                                    artifact: outcome.artifact!,
+                                    record: outcome.artifact!,
                                 }))
                                 .sort((a, b) => compareIds(a.id, b.id)),
                         })),
@@ -272,7 +272,7 @@ export async function acquireOptimizationAdapter(
                         {signal},
                     );
                     errors(written.issues);
-                    const sourceManifest = await new OutcomeLibraryFolderReader().readManifest(project.rootPath);
+                    const sourceManifest = await new OutcomeLibraryFolderReader().readIndex(project.rootPath);
                     const canonicalFiles = new Set([...sourceManifest.files, "index.json"]);
                     for (const file of Object.keys(inventory(project.rootPath))) {
                         if (canonicalFiles.has(file)) continue;
@@ -331,14 +331,14 @@ export async function acquireOptimizationAdapter(
                 if (outcomes.length > requested.maxOutcomes) throw new OptimizationExhaustedError("Native outcome population exceeds maxOutcomes; no metric proof was established.");
                 if (project.type === "outcomeLibrary") {
                     if (outcomes.some(([, outcome]) => outcome.artifact!.stake !== requested.stake)) throw new OptimizationUnsupportedError(
-                        "Native library stake must match every selected artifact.",
+                        "Native library stake must match every selected record.",
                     );
                     return Promise.resolve(
                         selectLibraryMetrics(
                             outcomes.map(([id, outcome]) => ({
                                 id,
                                 weight: outcome.weight as number,
-                                artifact: outcome.artifact!,
+                                record: outcome.artifact!,
                             })),
                             mode.libraryId!,
                             targets,
@@ -456,7 +456,7 @@ export async function acquireOptimizationAdapter(
     return {
         model: blueprint,
         writable,
-        async materialize(value, directory, signal) {
+        async prepare(value, directory, signal) {
             cancelled(signal);
             assertBlueprint(value);
             const model = value as GameBlueprint;

@@ -7,12 +7,12 @@ import type {RoundRecord} from "../roundrecord/RoundRecord.js";
 // and therefore the exact same library hash (see computeWeightedOutcomeLibraryHash) — a randomly-generated id
 // would defeat that.
 //
-// Deeply readonly and deeply frozen at build time (see buildWeightedOutcomeLibrary): "artifact" is not
+// Deeply readonly and deeply frozen at build time (see buildWeightedOutcomeLibrary): "record" is not
 // separately deep-copied here since a RoundRecord is already immutable by its own construction (built via
 // buildRoundRecord), so referencing it directly carries no isolation risk — buildWeightedOutcomeLibrary's own
 // deepFreeze pass still recursively freezes it as a matter of course either way.
 export type WeightedOutcome<T extends string | number = string> = {
     readonly id: string;
     readonly weight: number;
-    readonly artifact: RoundRecord<T>;
+    readonly record: RoundRecord<T>;
 };

@@ -584,7 +584,7 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
 });
 
 // Proves "pokie validate" crosses the shared runtime-package-materialization boundary (see
-// materializeRuntimePackage.ts) exactly once per invocation, and only ever validates against whatever
+// prepareRuntimePackage.ts) exactly once per invocation, and only ever validates against whatever
 // runtime path that boundary hands back -- never the caller's own raw packageRoot -- which is also what
 // lets a resolved Blueprint reach a real materialized runtime instead of a raw blueprint file.
 describe("ValidateCommand runtime package materialization boundary", () => {

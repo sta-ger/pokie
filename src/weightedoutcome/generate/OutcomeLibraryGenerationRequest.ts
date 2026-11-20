@@ -11,7 +11,7 @@ import {WeightedOutcomeLibraryGenerationError} from "./WeightedOutcomeLibraryGen
 import type {OutcomeLibraryGenerationStrategy} from "./OutcomeLibraryGeneratorDiagnostics.js";
 
 // This is deliberately the one default used by the public generator, CLI and Studio.  A producer may
-// choose a smaller managed-artifact policy, but it must express that choice as an explicit request rather
+// choose a smaller managed-record policy, but it must express that choice as an explicit request rather
 // than silently replacing this safety boundary.
 export const DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE = BigInt(20_000_000);
 
@@ -22,7 +22,7 @@ export const OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_VERSION = "v1";
 
 /**
  * A deliberately separate compatibility policy for managed Blueprint/package
- * conversion.  Managed artifacts are much larger than raw libraries, so this
+ * conversion.  Managed records are much larger than raw libraries, so this
  * historical 50,000/5,000 boundary must not silently replace the public
  * CLI/Studio default.  Keeping it here gives every adapter one versioned
  * owner and makes policy changes observable in provenance/review.
@@ -44,7 +44,7 @@ export type OutcomeLibraryGenerationMode = "default" | "exact" | "sampled" | "ca
  * `runtimeType`; legacy declarative arrays deliberately remain metadata-only.
  *
  * Keeping this decision at the domain adapter boundary prevents Studio, CLI
- * and managed artifact generation from independently guessing what a mode
+ * and managed record generation from independently guessing what a mode
  * string means.  An unknown mode in an explicit runtime contract is rejected
  * before enumeration.  An unknown legacy label remains supported as the old
  * metadata-only library partition, never falsely advertised as a selected
@@ -303,7 +303,7 @@ export type OutcomeLibraryGenerationRequest = {
     // hooks to distinguish its completion from evaluating/deduplicating the resulting visible grids.
     readonly onPostEnumeration?: () => void;
     readonly onPostEnumerationProgress?: (emittedOutcomes: bigint) => void;
-    readonly artifactValidator?: ValidationRule<RoundRecord>;
+    readonly recordValidator?: ValidationRule<RoundRecord>;
     readonly now?: () => Date;
     readonly heapUsedLimitBytes?: number;
     readonly getHeapUsedBytes?: () => number;
@@ -509,7 +509,7 @@ export function resolveOutcomeLibraryGenerationIdentity(request: OutcomeLibraryG
     validateRequest(request);
     // Do this at the domain boundary, before any estimate, generation, or
     // publisher can observe caller supplied provenance.  CLI, Studio and
-    // managed artifacts consequently share the direct TypeScript caller's
+    // managed records consequently share the direct TypeScript caller's
     // fail-closed identity semantics instead of each owning a local check.
     const loadedConfigHash = request.game.getConfigHash?.();
     if (loadedConfigHash !== undefined && request.configHash !== undefined && request.configHash !== loadedConfigHash) {

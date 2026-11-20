@@ -27,12 +27,12 @@ function isNonEmptyString(value: unknown): value is string {
 
 function homogeneityKeyOf<T extends string | number>(outcome: WeightedOutcomeInput<T>): OutcomeHomogeneityKey {
     return {
-        gameId: outcome.artifact.origin.game.id,
-        gameVersion: outcome.artifact.origin.game.version,
-        configHash: outcome.artifact.origin.configHash,
-        pokieVersion: outcome.artifact.origin.pokieVersion,
-        betMode: outcome.artifact.betMode,
-        stake: outcome.artifact.stake,
+        gameId: outcome.record.origin.game.id,
+        gameVersion: outcome.record.origin.game.version,
+        configHash: outcome.record.origin.configHash,
+        pokieVersion: outcome.record.origin.pokieVersion,
+        betMode: outcome.record.betMode,
+        stake: outcome.record.stake,
     };
 }
 
@@ -55,7 +55,7 @@ export type StreamModeOutcomesResult<T extends string | number> = {
 };
 
 // Consumes "outcomes" exactly once, in arrival order, in a single pass: validates each one (mirroring
-// buildWeightedOutcomeLibrary's own checks — id/weight validity, duplicate/sorted-order id, per-artifact
+// buildWeightedOutcomeLibrary's own checks — id/weight validity, duplicate/sorted-order id, per-record
 // RoundRecordValidator, payoutMultiplier/stake validity, cross-outcome homogeneity — necessarily duplicated
 // here rather than reused, since buildWeightedOutcomeLibrary's own array-based implementation requires every
 // outcome up front, which is exactly what streaming exists to avoid), writes its canonical-JSON line directly to
@@ -159,31 +159,31 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
                 continue;
             }
 
-            if (!Number.isFinite(outcome.artifact.payoutMultiplier) || outcome.artifact.payoutMultiplier < 0) {
+            if (!Number.isFinite(outcome.record.payoutMultiplier) || outcome.record.payoutMultiplier < 0) {
                 issues.push({
                     code: "outcome-library-folder-write-payout-multiplier-invalid",
                     severity: "error",
-                    message: `mode "${modeName}": outcome "${outcome.id}" has an invalid artifact.payoutMultiplier (${outcome.artifact.payoutMultiplier}); must be a finite number >= 0.`,
+                    message: `mode "${modeName}": outcome "${outcome.id}" has an invalid record.payoutMultiplier (${outcome.record.payoutMultiplier}); must be a finite number >= 0.`,
                     details: {modeName, id: outcome.id},
                 });
                 continue;
             }
-            if (!Number.isFinite(outcome.artifact.stake) || outcome.artifact.stake <= 0) {
+            if (!Number.isFinite(outcome.record.stake) || outcome.record.stake <= 0) {
                 issues.push({
                     code: "outcome-library-folder-write-stake-invalid",
                     severity: "error",
-                    message: `mode "${modeName}": outcome "${outcome.id}" has an invalid artifact.stake (${outcome.artifact.stake}); must be a finite number > 0.`,
+                    message: `mode "${modeName}": outcome "${outcome.id}" has an invalid record.stake (${outcome.record.stake}); must be a finite number > 0.`,
                     details: {modeName, id: outcome.id},
                 });
                 continue;
             }
 
-            const artifactIssues = roundRecordValidator.validate(outcome.artifact);
+            const artifactIssues = roundRecordValidator.validate(outcome.record);
             if (artifactIssues.length > 0) {
                 issues.push({
-                    code: "outcome-library-folder-write-artifact-invalid",
+                    code: "outcome-library-folder-write-record-invalid",
                     severity: "error",
-                    message: `mode "${modeName}": outcome "${outcome.id}" has an invalid artifact: ${artifactIssues.map((issue) => issue.code).join(", ")}.`,
+                    message: `mode "${modeName}": outcome "${outcome.id}" has an invalid record: ${artifactIssues.map((issue) => issue.code).join(", ")}.`,
                     details: {modeName, id: outcome.id},
                 });
                 continue;
@@ -239,8 +239,8 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
             if (analysisDescriptor !== undefined) {
                 if (analysisRecord === undefined) throw new Error("Outcome Library analysis staging buffer was not allocated.");
                 analysisRecord.writeDoubleLE(outcome.weight, 0);
-                analysisRecord.writeDoubleLE(outcome.artifact.payoutMultiplier, 8);
-                analysisRecord.writeDoubleLE(outcome.artifact.totalWin, 16);
+                analysisRecord.writeDoubleLE(outcome.record.payoutMultiplier, 8);
+                analysisRecord.writeDoubleLE(outcome.record.totalWin, 16);
                 fs.writeSync(analysisDescriptor, analysisRecord);
             }
             offset += lineBuffer.byteLength + 1;

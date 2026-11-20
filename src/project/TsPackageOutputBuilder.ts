@@ -15,15 +15,15 @@ import {
     reportBuildProgress,
     type BuildOutputOptions,
 } from "./BuildOutputOptions.js";
-import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
-import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
+import {assertBuildDestinationAvailable} from "./internal/assertBuildDestinationAvailable.js";
+import {assertBuildDestinationIsSafe} from "./internal/assertBuildDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
 
 // Builds a "tsPackage" artifact from a resolved "blueprint" source -- the same validate/resolve-reel-strips/
 // generate pipeline "pokie build" always ran (see cli/commands/BuildCommand.ts), now reachable through
 // BuildOutputBuilderRegistry as a real BuildOutputBuilder rather than a command hand-rolling it directly.
 // GamePackageGenerator's own publish step is already atomic (temp dir + rename) -- this builder's own
-// assertArtifactDestinationAvailable precheck is what turns "destination already occupied" into
+// assertBuildDestinationAvailable precheck is what turns "destination already occupied" into
 // BuildConflictError specifically, rather than the bare Error GamePackageGenerator throws itself.
 export class TsPackageOutputBuilder implements BuildOutputBuilder {
     public readonly target = "tsPackage";
@@ -54,8 +54,8 @@ export class TsPackageOutputBuilder implements BuildOutputBuilder {
         let destinationState: ReturnType<typeof captureOutputDestinationState> | undefined;
         try {
             assertBuildNotCancelled(options);
-            assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
-            assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
+            assertBuildDestinationAvailable(destinationPath, this.destinationKind);
+            assertBuildDestinationIsSafe(source.rootPath, destinationPath);
             destinationState = captureOutputDestinationState(destinationPath, this.destinationKind);
 
             reportBuildProgress(options, {status: "running", message: "Loading and validating Blueprint"});

@@ -6,9 +6,9 @@ import type {CertificationPackIndex, ValidationIssue} from "@fromstan/pokie";
 export type StudioCertificationBuildView =
     | {
           readonly status: "ok";
-          readonly artifactHashes?: Readonly<Record<string, string>>;
+          readonly fileHashes?: Readonly<Record<string, string>>;
           readonly preparationNotice?: string;
-          readonly manifest: CertificationPackIndex;
+          readonly index: CertificationPackIndex;
           readonly files: readonly string[];
           readonly warnings: readonly ValidationIssue[];
       }

@@ -57,10 +57,10 @@ import crypto from "crypto";
 import fs from "fs";
 import http, {IncomingMessage, ServerResponse} from "http";
 import path from "path";
-import {StudioArtifactPreflightWorker} from "./artifacts/StudioArtifactPreflightWorker.js";
-import {StudioArtifactPreflightCleanupError} from "./artifacts/StudioArtifactPreflighting.js";
-import {StudioArtifactBuildService} from "./artifacts/StudioArtifactBuildService.js";
-import {validateArtifactBuildRequest, ArtifactBuildRequestInput} from "./artifacts/validateArtifactBuildRequest.js";
+import {StudioBuildCheckWorker} from "./build/StudioBuildCheckWorker.js";
+import {StudioBuildCheckCleanupError} from "./build/StudioBuildChecking.js";
+import {StudioBuildService} from "./build/StudioBuildService.js";
+import {validateBuildRequest, BuildRequestInput} from "./build/validateBuildRequest.js";
 import {buildProjectGameModel} from "./blueprint/buildProjectGameModel.js";
 import {StudioBlueprintService} from "./blueprint/StudioBlueprintService.js";
 import {validateBlueprintBuildRequest, BlueprintBuildRequestInput} from "./blueprint/validateBlueprintBuildRequest.js";
@@ -84,7 +84,7 @@ import {
 import {StudioDeploymentService} from "./deployment/StudioDeploymentService.js";
 import type {StudioDeploymentRunView} from "./deployment/StudioDeploymentRunView.js";
 import {validateDeploymentRunRequest, DeploymentRunRequestInput} from "./deployment/validateDeploymentRunRequest.js";
-import {createMaterializingRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
+import {createPreparingRuntimePackageResolver, RuntimePackageResolving} from "../runtime/prepareRuntimePackage.js";
 import {StudioFairnessService} from "./fairness/StudioFairnessService.js";
 import {validateFairnessConfigureRequest, FairnessConfigureRequestInput} from "./fairness/validateFairnessConfigureRequest.js";
 import {validateFairnessGenerateRequest, FairnessGenerateRequestInput} from "./fairness/validateFairnessGenerateRequest.js";
@@ -278,7 +278,7 @@ export class StudioServer implements StudioServerHandling {
     private readonly loadGame: typeof loadPokieGame;
     // Crosses from "the projectRoot a direct `pokie <path>`/`pokie studio <path>` launch was given" to
     // "a real, loadable runtime" before startProjectDashboardLoad() ever touches loadGame -- same
-    // materializing boundary playService's own resolver crosses (see materializeRuntimePackage.ts),
+    // materializing boundary playService's own resolver crosses (see prepareRuntimePackage.ts),
     // operation STUDIO_OPERATION since opening a project into the Dashboard needs exactly the same
     // "runtime.execute" capability Play does. StudioHomeService carries its own, separate copy of this
     // same kind of resolver for the /api/home/projects/open path -- see its own constructor.
@@ -310,7 +310,7 @@ export class StudioServer implements StudioServerHandling {
     private readonly certificationService: StudioCertificationService;
     private readonly fairnessService: StudioFairnessService;
     private readonly stakeEngineExportService: StudioStakeEngineExportService;
-    private readonly artifactBuildService: StudioArtifactBuildService;
+    private readonly artifactBuildService: StudioBuildService;
     private readonly jobService: StudioJobService;
     private optimizationService?: StudioOptimizationService;
     private stopping = false;
@@ -358,7 +358,7 @@ export class StudioServer implements StudioServerHandling {
         this.openFolder = options.openFolder ?? openInFileManager;
         this.blueprintService = options.blueprintService;
         this.loadGame = options.loadGame ?? loadPokieGame;
-        this.resolveRuntimePackageRoot = options.resolveRuntimePackageRoot ?? createMaterializingRuntimePackageResolver(this.pokieVersion, STUDIO_OPERATION);
+        this.resolveRuntimePackageRoot = options.resolveRuntimePackageRoot ?? createPreparingRuntimePackageResolver(this.pokieVersion, STUDIO_OPERATION);
         this.gamePackageInspector = options.gamePackageInspector ?? new GamePackageInspector();
         this.gamePackageValidator = options.gamePackageValidator ?? new PokieGamePackageValidator();
         this.outcomeSourceProjectAnalyzer = options.outcomeSourceProjectAnalyzer ?? new OutcomeSourceProjectAnalyzer();
@@ -438,7 +438,7 @@ export class StudioServer implements StudioServerHandling {
         this.projectRegistrationService = options.projectRegistrationService ?? createDefaultStudioProjectRegistrationService();
         this.artifactBuildService =
             options.artifactBuildService ??
-            new StudioArtifactBuildService(
+            new StudioBuildService(
                 this.pokieVersion,
                 undefined,
                 undefined,
@@ -463,7 +463,7 @@ export class StudioServer implements StudioServerHandling {
                 }, undefined, (projectRoot) => this.projectRegistrationService.remove(projectRoot)),
                 options.pokiePackageRoot,
                 (projectRoot) => this.projectRegistrationService.remove(projectRoot),
-                options.pokiePackageRoot === undefined ? undefined : new StudioArtifactPreflightWorker(this.pokieVersion, options.pokiePackageRoot),
+                options.pokiePackageRoot === undefined ? undefined : new StudioBuildCheckWorker(this.pokieVersion, options.pokiePackageRoot),
             );
         this.artifactBuildService.attachJobService(this.jobService);
         this.stakeEngineExportService =
@@ -1486,7 +1486,7 @@ export class StudioServer implements StudioServerHandling {
                 const identity = url.searchParams.get("identity") ?? "";
                 const outDir = url.searchParams.get("outDir") ?? "";
                 const file = url.searchParams.get("file") ?? "";
-                const job = this.jobService.list(projectRoot).find(item => item.operation === "certification-build" && item.status === "completed" && item.request.outDir === outDir && (item.result?.provenance?.manifest as {evidenceContentHash?: string} | undefined)?.evidenceContentHash === identity);
+                const job = this.jobService.list(projectRoot).find(item => item.operation === "certification-build" && item.status === "completed" && item.request.outDir === outDir && (item.result?.provenance?.index as {evidenceContentHash?: string} | undefined)?.evidenceContentHash === identity);
                 if (!job) throw new Error("No successful saved certification pack matches this request.");
                 const request = validateCertificationBuildRequest(job.request);
                 if (typeof job.request.inputIdentity === "string" && this.certificationService.requestIdentity(projectRoot, request) !== job.request.inputIdentity) throw new Error("Pack input files changed; prepare a fresh pack.");
@@ -1535,17 +1535,17 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        if (method === "GET" && url.pathname === "/api/project/artifacts/targets") {
+        if (method === "GET" && url.pathname === "/api/project/build/targets") {
             await this.handleListArtifactTargets(req, res);
             return;
         }
 
-        if (method === "POST" && url.pathname === "/api/project/artifacts/preview") {
+        if (method === "POST" && url.pathname === "/api/project/build/preview") {
             await this.handlePreviewArtifact(req, res);
             return;
         }
 
-        if (method === "POST" && url.pathname === "/api/project/artifacts/build") {
+        if (method === "POST" && url.pathname === "/api/project/build/build") {
             await this.handleStartArtifactBuild(req, res);
             return;
         }
@@ -1910,7 +1910,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 400, {error: message, ...(dashboard.status === "error" && dashboard.errorDetail !== undefined ? {detail: dashboard.errorDetail} : {})});
             return;
         }
-        this.sendJson(res, 200, {context: this.currentContext, manifest: dashboard.status === "loaded" ? dashboard.game : undefined});
+        this.sendJson(res, 200, {context: this.currentContext, info: dashboard.status === "loaded" ? dashboard.game : undefined});
     }
 
     // Always 200: same "a well-formed request that fails at the domain level isn't a failed HTTP
@@ -2706,7 +2706,7 @@ export class StudioServer implements StudioServerHandling {
         if (loaded.status === "load-error") {
             return {packageRoot: projectRoot, valid: false, error: loaded.error};
         }
-        return {packageRoot: projectRoot, valid: true, packageJson: readBlueprintManifest(loaded.blueprint)};
+        return {packageRoot: projectRoot, valid: true, packageJson: readBlueprintInfo(loaded.blueprint)};
     }
 
     // Validate's own blueprint counterpart -- runs GameBlueprintValidator (via StudioBlueprintService.
@@ -2763,7 +2763,7 @@ export class StudioServer implements StudioServerHandling {
             const imported = await new ParSheetImporter().importFromFile(project.rootPath);
             const error = imported.issues.find((issue) => issue.severity === "error");
             return error === undefined
-                ? {packageRoot: project.rootPath, valid: true, packageJson: readBlueprintManifest(imported.blueprint)}
+                ? {packageRoot: project.rootPath, valid: true, packageJson: readBlueprintInfo(imported.blueprint)}
                 : {packageRoot: project.rootPath, valid: false, error: error.message};
         } catch (error) {
             return {packageRoot: project.rootPath, valid: false, error: error instanceof Error ? error.message : String(error)};
@@ -3214,9 +3214,9 @@ export class StudioServer implements StudioServerHandling {
             if (validated.seed !== undefined) {
                 const startedAt = Date.now();
                 const {selection} = result;
-                const artifact = selection.outcome.artifact;
+                const record = selection.outcome.record;
                 replay = {
-                    game: artifact.origin.game,
+                    game: record.origin.game,
                     libraryId: selection.libraryId,
                     libraryHash: selection.libraryHash,
                     modeName: validated.modeName,
@@ -3225,18 +3225,18 @@ export class StudioServer implements StudioServerHandling {
                     round: 1,
                     outcomeId: selection.outcome.id,
                     weight: selection.outcome.weight,
-                    totalWin: artifact.totalWin,
-                    payoutMultiplier: artifact.payoutMultiplier,
-                    stake: artifact.stake,
-                    screen: artifact.screen.map((row) => [...row]),
-                    artifact,
+                    totalWin: record.totalWin,
+                    payoutMultiplier: record.payoutMultiplier,
+                    stake: record.stake,
+                    screen: record.screen.map((row) => [...row]),
+                    artifact: record,
                     timestamp: startedAt,
                     durationMs: 0,
                 };
             }
-            const recorded = this.replayService.recordOutcomeSourceSample(projectRoot, result.selection.outcome.artifact, validated.modeName, replay);
+            const recorded = this.replayService.recordOutcomeSourceSample(projectRoot, result.selection.outcome.record, validated.modeName, replay);
             replayId = recorded.id;
-            this.recordOutcomeSourceSample(result.selection.outcome.artifact, projectRoot, validated.seed, validated.modeName, replay, recorded.descriptor!.sessionId);
+            this.recordOutcomeSourceSample(result.selection.outcome.record, projectRoot, validated.seed, validated.modeName, replay, recorded.descriptor!.sessionId);
         }
         this.sendJson(res, 200, {...result, ...(replay === undefined ? {} : {replay}), ...(replayId === undefined ? {} : {replayId})});
     }
@@ -3250,7 +3250,7 @@ export class StudioServer implements StudioServerHandling {
     // game/bet/win/screen/artifact -- is read straight off the real, already-drawn RoundRecord, never
     // recomputed.
     private recordOutcomeSourceSample(
-        artifact: RoundRecord,
+        roundRecord: RoundRecord,
         projectRoot: string,
         seed: string | undefined,
         modeName: string,
@@ -3259,12 +3259,12 @@ export class StudioServer implements StudioServerHandling {
     ): void {
         const view: StudioRuntimeSessionView = {
             sessionId: sessionId ?? crypto.randomUUID(),
-            game: artifact.origin.game,
-            bet: artifact.stake,
-            win: artifact.totalWin,
-            screen: artifact.screen.map((row) => [...row]),
+            game: roundRecord.origin.game,
+            bet: roundRecord.stake,
+            win: roundRecord.totalWin,
+            screen: roundRecord.screen.map((row) => [...row]),
             ...(replay === undefined ? {} : {replay}),
-            debug: {artifact: new PokieJsonRoundRecordProjector().project(artifact)},
+            debug: {artifact: new PokieJsonRoundRecordProjector().project(roundRecord)},
         };
         this.roundRecorder.record(view, {source: "outcome-source-sample", operation: "outcome-source-sample", projectRoot, seed, modeName});
     }
@@ -3414,7 +3414,7 @@ export class StudioServer implements StudioServerHandling {
             }),
             (result, cancelled) => {
                 if (cancelled) return result.status === "load-error" && (/cleanup failed/).test(result.error) ? {status: "failed", error: result.error, recovery} : {status: "cancelled", result: {summary: "Certification evidence build cancellation settled; inspect the retained executor result for cleanup diagnostics."}, recovery};
-                if (result.status === "ok") return {status: "completed", result: {summary: `${result.manifest.pack?.support.notice ?? "Certification-ready preparation only."} Model representation: ${result.manifest.pack?.support.coverage ?? "unavailable"}.`, outputs: result.files.map((file) => ({path: file, label: "Certification evidence", downloadPath: `/api/project/certification/download?${new URLSearchParams({outDir: validated.outDir, identity: result.manifest.evidenceContentHash, file})}`})), provenance: {libraryDir: validated.libraryDir, manifest: result.manifest, artifactHashes: result.artifactHashes ?? {}}, detail: {outDir: validated.outDir, templateHash: result.manifest.presentation?.templateHash}}};
+                if (result.status === "ok") return {status: "completed", result: {summary: `${result.index.pack?.support.notice ?? "Certification-ready preparation only."} Model representation: ${result.index.pack?.support.coverage ?? "unavailable"}.`, outputs: result.files.map((file) => ({path: file, label: "Certification evidence", downloadPath: `/api/project/certification/download?${new URLSearchParams({outDir: validated.outDir, identity: result.index.evidenceContentHash, file})}`})), provenance: {libraryDir: validated.libraryDir, index: result.index, fileHashes: result.fileHashes ?? {}}, detail: {outDir: validated.outDir, templateHash: result.index.presentation?.templateHash}}};
                 return {status: "failed", error: result.status === "load-error" ? result.error : "Certification pack build failed.", recovery: {action: "rebuild", reason: "Correct the source folder and rebuild the certification pack."}};
             },
             (error, cancelled) => cancelled && !(error instanceof Error && (/cleanup failed/).test(error.message))
@@ -3500,7 +3500,7 @@ export class StudioServer implements StudioServerHandling {
         }
         this.sendJson(res, 410, {
             status: "migration",
-            message: "Stake validation moved to /api/project/artifacts/preview. Supply target \"stakeAdapter\" and the final outDir; Build must use the returned preparedOperationId.",
+            message: "Stake validation moved to /api/project/build/preview. Supply target \"stakeAdapter\" and the final outDir; Build must use the returned preparedOperationId.",
         });
     }
 
@@ -3522,7 +3522,7 @@ export class StudioServer implements StudioServerHandling {
         }
         this.sendJson(res, 410, {
             status: "migration",
-            message: "Stake export moved to the pollable artifact job. Preview target \"stakeAdapter\" first, then POST /api/project/artifacts/build with its preparedOperationId.",
+            message: "Stake export moved to the pollable artifact job. Preview target \"stakeAdapter\" first, then POST /api/project/build/build with its preparedOperationId.",
         });
     }
 
@@ -3533,7 +3533,7 @@ export class StudioServer implements StudioServerHandling {
         return status === "conflict" ? 409 : 200;
     }
 
-    // GET /api/project/artifacts/targets -- see StudioArtifactBuildService.listTargets's own doc comment.
+    // GET /api/project/build/targets -- see StudioBuildService.listTargets's own doc comment.
     private async handleListArtifactTargets(req: IncomingMessage, res: ServerResponse): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
@@ -3548,8 +3548,8 @@ export class StudioServer implements StudioServerHandling {
         });
     }
 
-    // POST /api/project/artifacts/preview -- the pre-build counterpart to POST /api/project/artifacts/build
-    // (see StudioArtifactBuildService.preview's own doc comment): same request shape, same 400/409 status
+    // POST /api/project/build/preview -- the pre-build counterpart to POST /api/project/build/build
+    // (see StudioBuildService.preview's own doc comment): same request shape, same 400/409 status
     // conventions as the build route below, but never writes anything -- a "conflict" here is the exact same
     // BuildConflictError a subsequent build would hit, reported before the user ever clicks Build.
     private async handlePreviewArtifact(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -3562,7 +3562,7 @@ export class StudioServer implements StudioServerHandling {
         const body = await this.readJsonBody(req);
         let validated;
         try {
-            validated = validateArtifactBuildRequest((body ?? {}) as ArtifactBuildRequestInput);
+            validated = validateBuildRequest((body ?? {}) as BuildRequestInput);
         } catch (error) {
             this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
@@ -3578,7 +3578,7 @@ export class StudioServer implements StudioServerHandling {
     private async drainArtifactPreflights(): Promise<void> {
         const results = await Promise.allSettled([...this.artifactPreflights.values()]);
         for (const result of results) {
-            if (result.status === "rejected" && result.reason instanceof StudioArtifactPreflightCleanupError) throw result.reason;
+            if (result.status === "rejected" && result.reason instanceof StudioBuildCheckCleanupError) throw result.reason;
         }
     }
 
@@ -3595,7 +3595,7 @@ export class StudioServer implements StudioServerHandling {
         try {
             await operation;
         } catch (error) {
-            if (!controller.signal.aborted || error instanceof StudioArtifactPreflightCleanupError) throw error;
+            if (!controller.signal.aborted || error instanceof StudioBuildCheckCleanupError) throw error;
         } finally {
             this.artifactPreflights.delete(controller);
             req.off("aborted", abort);
@@ -3610,7 +3610,7 @@ export class StudioServer implements StudioServerHandling {
         return status === "conflict" ? 409 : 200;
     }
 
-    // POST /api/project/artifacts/build creates a bounded, pollable job rather than holding one request
+    // POST /api/project/build/build creates a bounded, pollable job rather than holding one request
     // open through an Outcome/Stake publish.  The client consequently sees preflight and live writer
     // progress before the terminal artifact result, and Cancel can address the same server-side job.
     private async handleStartArtifactBuild(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -3624,7 +3624,7 @@ export class StudioServer implements StudioServerHandling {
         const body = await this.readJsonBody(req);
         let validated;
         try {
-            validated = validateArtifactBuildRequest((body ?? {}) as ArtifactBuildRequestInput);
+            validated = validateBuildRequest((body ?? {}) as BuildRequestInput);
         } catch (error) {
             this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
@@ -4526,32 +4526,32 @@ export class StudioServer implements StudioServerHandling {
     }
 }
 
-// A parsed blueprint's own "manifest" object, or undefined when the blueprint isn't at least shaped
+// A parsed blueprint's own "info" object, or undefined when the blueprint isn't at least shaped
 // enough to have one -- shared by inspectBlueprintProject/validateBlueprintProject above so neither
-// re-derives the same "is this a plain object with a plain-object manifest" check for itself.
-function readBlueprintManifestFields(blueprint: unknown): Record<string, unknown> | undefined {
+// re-derives the same "is this a plain object with a plain-object info" check for itself.
+function readBlueprintInfoFields(blueprint: unknown): Record<string, unknown> | undefined {
     if (typeof blueprint !== "object" || blueprint === null) {
         return undefined;
     }
-    const manifest = (blueprint as Record<string, unknown>).manifest;
-    return typeof manifest === "object" && manifest !== null ? (manifest as Record<string, unknown>) : undefined;
+    const info = (blueprint as Record<string, unknown>).info;
+    return typeof info === "object" && info !== null ? (info as Record<string, unknown>) : undefined;
 }
 
-function readBlueprintManifest(blueprint: unknown): {name?: string; version?: string; description?: string} {
-    const manifest = readBlueprintManifestFields(blueprint);
+function readBlueprintInfo(blueprint: unknown): {name?: string; version?: string; description?: string} {
+    const info = readBlueprintInfoFields(blueprint);
     return {
-        name: typeof manifest?.name === "string" ? manifest.name : undefined,
-        version: typeof manifest?.version === "string" ? manifest.version : undefined,
-        description: typeof manifest?.description === "string" ? manifest.description : undefined,
+        name: typeof info?.name === "string" ? info.name : undefined,
+        version: typeof info?.version === "string" ? info.version : undefined,
+        description: typeof info?.description === "string" ? info.description : undefined,
     };
 }
 
 // null (rather than a partially-filled object) unless every one of id/name/version is a real string --
 // mirrors PokieGamePackageValidator's own extractGame(), whose "game" field is likewise all-or-nothing.
 function readBlueprintGameIdentity(blueprint: unknown): {id: string; name: string; version: string} | null {
-    const manifest = readBlueprintManifestFields(blueprint);
-    if (typeof manifest?.id !== "string" || typeof manifest?.name !== "string" || typeof manifest?.version !== "string") {
+    const info = readBlueprintInfoFields(blueprint);
+    if (typeof info?.id !== "string" || typeof info?.name !== "string" || typeof info?.version !== "string") {
         return null;
     }
-    return {id: manifest.id, name: manifest.name, version: manifest.version};
+    return {id: info.id, name: info.name, version: info.version};
 }

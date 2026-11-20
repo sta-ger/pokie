@@ -38,8 +38,8 @@ import type {WeightedOutcomeLibrary} from "../weightedoutcome/WeightedOutcomeLib
 type ImportModeContext = {
     readonly modeName: string;
     readonly cost: number;
-    readonly manifestMode: StakeEngineInfoModeEntry;
-    readonly manifest: StakeEngineInfo;
+    readonly infoMode: StakeEngineInfoModeEntry;
+    readonly info: StakeEngineInfo;
 };
 
 // The exact raw bytes assembleBundle actually read off disk for each file — captured once, at the only point
@@ -49,7 +49,7 @@ type ImportModeContext = {
 type RawModeBytes = {readonly csvBuffer: Buffer | undefined; readonly booksBuffer: Buffer | undefined};
 type RawSourceBytes = {
     readonly indexBuffer: Buffer | undefined;
-    readonly manifestBuffer: Buffer | undefined;
+    readonly infoBuffer: Buffer | undefined;
     readonly modes: ReadonlyMap<string, RawModeBytes>;
 };
 
@@ -60,7 +60,7 @@ type RawSourceBytes = {
 // survive — Stake's own index.json/CSV/books never store them), never invented.
 //
 // This is inherently lossy at the POKIE-object level (see docs/stake-engine-import.md): the original RoundRecord
-// roundId, the real per-round win breakdown, and provenance.pokieVersion (the version that *built* the artifact,
+// roundId, the real per-round win breakdown, and origin.pokieVersion (the version that *built* the record,
 // as opposed to the manifest's own pokieVersion, the version that *ran the export*) are never stored in Stake's
 // format and can't be recovered — disclosed substitutes are used instead (a deterministic synthesized roundId,
 // one synthetic win component per step, and the manifest's own pokieVersion). The real, testable round-trip
@@ -92,14 +92,14 @@ export class StakeEngineImporter<T extends string | number = string> implements 
 
             const structuralIssues = this.validator.validate(bundle);
             if (structuralIssues.some((issue) => issue.severity === "error")) {
-                return Promise.resolve({stakeDir, manifest: undefined, modes: [], sourceProvenance: undefined, issues: structuralIssues});
+                return Promise.resolve({stakeDir, info: undefined, modes: [], sourceProvenance: undefined, issues: structuralIssues});
             }
 
             // Safe: validation passing with no errors guarantees both parsed to "ok" and match the expected shape.
-            const manifest = (bundle.manifest as {status: "ok"; value: unknown}).value as StakeEngineInfo;
+            const manifest = (bundle.info as {status: "ok"; value: unknown}).value as StakeEngineInfo;
             const index = (bundle.index as {status: "ok"; value: unknown}).value as {modes: readonly StakeEngineIndexModeEntry[]};
             const modeFilesByName = new Map(bundle.modeFiles.map((modeFiles) => [modeFiles.modeName, modeFiles]));
-            const manifestModesByName = new Map(manifest.modes.map((mode) => [mode.name, mode]));
+            const infoModesByName = new Map(manifest.modes.map((mode) => [mode.name, mode]));
 
             const requiresExactSource = bundle.modeFiles.some(files => {
                 const lines = (files.csv as {status: "ok"; value: readonly string[]}).value;
@@ -109,20 +109,20 @@ export class StakeEngineImporter<T extends string | number = string> implements 
                 // Validate reversible event semantics without ever constructing a numeric-weight library.
                 const issues: ValidationIssue[] = [...structuralIssues];
                 for (const indexMode of index.modes) {
-                    const context: ImportModeContext = {modeName: indexMode.name, cost: indexMode.cost, manifestMode: manifestModesByName.get(indexMode.name)!, manifest};
+                    const context: ImportModeContext = {modeName: indexMode.name, cost: indexMode.cost, infoMode: infoModesByName.get(indexMode.name)!, info: manifest};
                     const files = modeFilesByName.get(indexMode.name)!;
                     for (const line of (files.books as {status: "ok"; value: readonly StakeEngineImportBookLineResult[]}).value) {
                         this.buildOutcome(context, (line as {status: "ok"; value: {id: number; events: unknown[]; payoutMultiplier: number}}).value, 1, issues);
                     }
                 }
-                if (issues.some(issue => issue.severity === "error")) return Promise.resolve({stakeDir, manifest: undefined, modes: [], sourceProvenance: undefined, issues});
-                const files: Record<string, string> = {"index.json": rawBytes.indexBuffer!.toString("base64"), "pokie-info.json": rawBytes.manifestBuffer!.toString("base64")};
+                if (issues.some(issue => issue.severity === "error")) return Promise.resolve({stakeDir, info: undefined, modes: [], sourceProvenance: undefined, issues});
+                const files: Record<string, string> = {"index.json": rawBytes.indexBuffer!.toString("base64"), "pokie-info.json": rawBytes.infoBuffer!.toString("base64")};
                 for (const mode of index.modes) {
                     files[mode.weights] = rawBytes.modes.get(mode.name)!.csvBuffer!.toString("base64");
                     files[mode.events] = rawBytes.modes.get(mode.name)!.booksBuffer!.toString("base64");
                 }
                 issues.push({code: "stakeengine-import-exact-payload", severity: "info", message: "UInt64 weights retained as an exact Stake payload. Native numeric Outcome Library sampling is unavailable; import/re-export preserves the original events and provenance bytes."});
-                return Promise.resolve({stakeDir, manifest, modes: [], sourceProvenance: this.computeSourceProvenance(index, rawBytes), exactSource: {files}, issues});
+                return Promise.resolve({stakeDir, info: manifest, modes: [], sourceProvenance: this.computeSourceProvenance(index, rawBytes), exactSource: {files}, issues});
             }
 
             const buildIssues: ValidationIssue[] = [];
@@ -130,13 +130,13 @@ export class StakeEngineImporter<T extends string | number = string> implements 
 
             for (const indexMode of index.modes) {
                 const modeFiles = modeFilesByName.get(indexMode.name);
-                const manifestMode = manifestModesByName.get(indexMode.name);
-                if (modeFiles === undefined || manifestMode === undefined) {
+                const infoMode = infoModesByName.get(indexMode.name);
+                if (modeFiles === undefined || infoMode === undefined) {
                     // Unreachable once structural validation passed with no errors.
                     throw new StakeEngineImportInvariantError(`mode "${indexMode.name}": missing mode files or manifest entry after successful validation.`);
                 }
 
-                const context: ImportModeContext = {modeName: indexMode.name, cost: indexMode.cost, manifestMode, manifest};
+                const context: ImportModeContext = {modeName: indexMode.name, cost: indexMode.cost, infoMode, info: manifest};
                 const built = this.buildMode(context, modeFiles);
                 buildIssues.push(...built.issues);
                 if (built.library !== undefined) {
@@ -144,18 +144,18 @@ export class StakeEngineImporter<T extends string | number = string> implements 
                         modeName: indexMode.name,
                         cost: indexMode.cost,
                         library: built.library,
-                        ...(manifestMode.generator === undefined ? {} : {generator: manifestMode.generator}),
+                        ...(infoMode.generator === undefined ? {} : {generator: infoMode.generator}),
                     });
                 }
             }
 
             const allIssues = [...structuralIssues, ...buildIssues];
             if (allIssues.some((issue) => issue.severity === "error")) {
-                return Promise.resolve({stakeDir, manifest: undefined, modes: [], sourceProvenance: undefined, issues: allIssues});
+                return Promise.resolve({stakeDir, info: undefined, modes: [], sourceProvenance: undefined, issues: allIssues});
             }
 
             const sourceProvenance = this.computeSourceProvenance(index, rawBytes);
-            return Promise.resolve({stakeDir, manifest, modes: builtModes.map(mode => ({...mode, sourceProvenance: manifest.sourceProvenance ?? sourceProvenance})), sourceProvenance, issues: allIssues});
+            return Promise.resolve({stakeDir, info: manifest, modes: builtModes.map(mode => ({...mode, sourceProvenance: manifest.sourceProvenance ?? sourceProvenance})), sourceProvenance, issues: allIssues});
         } catch (error) {
             return Promise.reject(error);
         }
@@ -177,7 +177,7 @@ export class StakeEngineImporter<T extends string | number = string> implements 
         };
         return {
             indexHash: hashOf(rawBytes.indexBuffer),
-            manifestHash: hashOf(rawBytes.manifestBuffer),
+            infoHash: hashOf(rawBytes.infoBuffer),
             modes: index.modes.map((mode) => {
                 const modeBytes = rawBytes.modes.get(mode.name);
                 if (modeBytes === undefined) {
@@ -204,7 +204,7 @@ export class StakeEngineImporter<T extends string | number = string> implements 
             }
         }
 
-        const outcomes: {id: string; weight: number; artifact: RoundRecord<T>}[] = [];
+        const outcomes: {id: string; weight: number; record: RoundRecord<T>}[] = [];
         for (const lineResult of bookLineResults) {
             // Safe: validation passing with no errors guarantees every line parsed to "ok" and matched the
             // expected shape.
@@ -226,16 +226,16 @@ export class StakeEngineImporter<T extends string | number = string> implements 
         }
 
         try {
-            const library = buildWeightedOutcomeLibrary<T>({libraryId: context.manifestMode.libraryId, outcomes});
+            const library = buildWeightedOutcomeLibrary<T>({libraryId: context.infoMode.libraryId, outcomes});
             issues.push({
                 code: "stakeengine-import-library-hash-differs-from-manifest",
                 severity: "info",
                 message:
                     `mode "${context.modeName}": the reconstructed library's hash is expected to differ from pokie-info.json's recorded ` +
-                    `libraryHash (${context.manifestMode.libraryHash}) — roundId, the real win breakdown, and provenance.pokieVersion are not ` +
+                    `libraryHash (${context.infoMode.libraryHash}) — roundId, the real win breakdown, and origin.pokieVersion are not ` +
                     "recoverable from the Stake export and are substituted (see docs/stake-engine-import.md). " +
                     "Reconstructed fractional native ratios/amounts are binary64 approximations; raw Stake units are forward-checked.",
-                details: {modeName: context.modeName, manifestLibraryHash: context.manifestMode.libraryHash},
+                details: {modeName: context.modeName, infoLibraryHash: context.infoMode.libraryHash},
             });
             return {library, issues};
         } catch (error) {
@@ -254,12 +254,12 @@ export class StakeEngineImporter<T extends string | number = string> implements 
         line: {id: number; events: unknown[]; payoutMultiplier: number},
         weight: number,
         issues: ValidationIssue[],
-    ): {id: string; weight: number; artifact: RoundRecord<T>} | undefined {
+    ): {id: string; weight: number; record: RoundRecord<T>} | undefined {
         let imported;
         try {
             imported = this.eventsImporter.importEvents(line.events as unknown as readonly StakeEngineEvent[], {
                 cost: context.cost,
-                stake: context.manifestMode.stake,
+                stake: context.infoMode.stake,
             });
         } catch (error) {
             issues.push({
@@ -286,17 +286,17 @@ export class StakeEngineImporter<T extends string | number = string> implements 
         }
 
         try {
-            const artifact = buildRoundRecord<T>({
+            const record = buildRoundRecord<T>({
                 roundId: `stakeengine-import:${context.modeName}:${line.id}`,
                 origin: {
-                    game: context.manifest.game,
-                    pokieVersion: context.manifest.pokieVersion,
+                    game: context.info.game,
+                    pokieVersion: context.info.pokieVersion,
                     // Only set when actually present: an explicit "configHash: undefined" property (as opposed
                     // to the key being absent entirely) fails buildRoundRecord's own JSON-safety check.
-                    ...(context.manifest.configHash !== undefined ? {configHash: context.manifest.configHash} : {}),
+                    ...(context.info.configHash !== undefined ? {configHash: context.info.configHash} : {}),
                 },
-                betMode: context.manifestMode.betMode,
-                stake: context.manifestMode.stake,
+                betMode: context.infoMode.betMode,
+                stake: context.infoMode.stake,
                 steps: imported.steps.map((step) => ({
                     screen: step.screen,
                     winEvaluationResult:
@@ -308,20 +308,20 @@ export class StakeEngineImporter<T extends string | number = string> implements 
                 featureEvents: imported.roundFeatureEvents,
             });
 
-            const selfCheck = convertRatioToStakeUnits(artifact.payoutMultiplier, context.cost);
+            const selfCheck = convertRatioToStakeUnits(record.payoutMultiplier, context.cost);
             if (selfCheck !== line.payoutMultiplier) {
                 throw new StakeEngineImportInvariantError(
                     `mode "${context.modeName}": outcome ${line.id}'s reconstructed payoutMultiplier does not re-convert to the original Stake value.`,
                 );
             }
 
-            return {id: String(line.id), weight, artifact};
+            return {id: String(line.id), weight, record};
         } catch (error) {
             if (error instanceof StakeEngineImportInvariantError) {
                 throw error;
             }
             issues.push({
-                code: "stakeengine-import-outcome-artifact-invalid",
+                code: "stakeengine-import-outcome-record-invalid",
                 severity: "error",
                 message: `mode "${context.modeName}": outcome ${line.id}: ${error instanceof RoundRecordBuildError ? error.message : String(error)}`,
                 details: {modeName: context.modeName, id: line.id},
@@ -358,8 +358,8 @@ export class StakeEngineImporter<T extends string | number = string> implements 
         }
 
         return {
-            bundle: {stakeDir, index: index.result, manifest: manifest.result, modeFiles},
-            rawBytes: {indexBuffer: index.rawBuffer, manifestBuffer: manifest.rawBuffer, modes: modeBytes},
+            bundle: {stakeDir, index: index.result, info: manifest.result, modeFiles},
+            rawBytes: {indexBuffer: index.rawBuffer, infoBuffer: manifest.rawBuffer, modes: modeBytes},
         };
     }
 

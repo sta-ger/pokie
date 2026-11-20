@@ -19,7 +19,7 @@ export type OutcomeLibraryFolderWriteLifecycleStage = "finalization" | "writing"
 
 // A caller may keep a small, non-bundle companion document beside a canonical bundle (for example,
 // a deployment descriptor that refers back to this bundle). These files are intentionally excluded
-// from manifest.files: that inventory remains the exact canonical bundle contract validated by
+// from index.files: that inventory remains the exact canonical bundle contract validated by
 // OutcomeLibraryFolderValidator.
 export type OutcomeLibraryFolderSupplementalFile = {
     readonly fileName: string;
@@ -48,9 +48,9 @@ export type OutcomeLibraryFolderWriteOptions = {
     /**
      * Optional publication order independent of streaming order. Studio uses
      * this when it consumes a newly generated mode first to preserve lifecycle
-     * order while retaining the existing manifest's stable mode order.
+     * order while retaining the existing index's stable mode order.
      */
-    readonly manifestModeOrder?: readonly string[];
+    readonly indexModeOrder?: readonly string[];
     readonly supplementalFiles?: readonly OutcomeLibraryFolderSupplementalFile[];
     readonly generatedBy?: string;
 };

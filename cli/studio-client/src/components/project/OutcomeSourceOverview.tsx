@@ -132,7 +132,7 @@ export function OutcomeSourceOverview({header, onRoundRecorded}: {header: Outcom
                         page-local flat multiplier/total-win summary. A drawn outcome carries no content hash of
                         its own (see RoundRecordDisplayView's own doc comment) and no session state to show
                         before/after it. */}
-                    <RoundRecordInspector artifact={describeRoundRecord(result.selection.outcome.artifact)} />
+                    <RoundRecordInspector artifact={describeRoundRecord(result.selection.outcome.record)} />
                     {result.replayId !== undefined && (
                         <div>
                             <Anchor href={buildReplayDownloadUrl(result.replayId)} download>Download draw replay JSON</Anchor>

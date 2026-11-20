@@ -12,7 +12,7 @@ import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
 const manifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 const scaffoldResult: ScaffoldResult = {
     projectRoot: "/tmp/sample-slot",
-    manifest,
+    info: manifest,
     createdFiles: ["package.json", "tsconfig.json", "README.md", "src/index.ts"],
     updatedFiles: [],
     skippedFiles: [],
@@ -345,7 +345,7 @@ describe("InitCommand", () => {
             await expect(command.run(["some-dir"])).rejects.toMatchObject({phase: "dependencies"});
         });
 
-        it("carries a failed 'npm install's raw stderr as 'details', without leaking it into the primary message -- same convention BlueprintMaterializationError uses", async () => {
+        it("carries a failed 'npm install's raw stderr as 'details', without leaking it into the primary message -- same convention BlueprintPreparationError uses", async () => {
             const runCommand: PackageCommandRunning = () =>
                 Promise.reject(
                     Object.assign(new Error("Command failed: npm install"), {

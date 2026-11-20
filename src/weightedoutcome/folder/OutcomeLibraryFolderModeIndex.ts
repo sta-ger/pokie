@@ -1,5 +1,5 @@
 // Tracks this type's own shape (not the pokie package version), same convention as
-// OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION. Bumped 1 -> 2 for the addition of each entry's own
+// OUTCOME_LIBRARY_FOLDER_INDEX_SCHEMA_VERSION. Bumped 1 -> 2 for the addition of each entry's own
 // "recordHash" (see OutcomeLibraryFolderIndexEntry) — an index written before that addition doesn't carry a
 // recordHash at all, so it must be rejected as unsupported rather than silently read as if that field were
 // simply absent.
@@ -23,7 +23,7 @@ export type OutcomeLibraryFolderIndexEntry = {
 // A small, always-fully-loadable per-mode index — the only file a streaming reader needs to open in order to
 // do a single-outcome random-access read or a weighted draw against "outcomes_<modeName>.jsonl" without ever
 // reading the rest of that (potentially huge) file. "libraryHash"/"librarySchemaVersion" are duplicated from
-// the bundle manifest so a caller that only ever needs one mode (the pre-generated runtime, say) can load and
+// the bundle index so a caller that only ever needs one mode (the pre-generated runtime, say) can load and
 // self-identify a mode without reading index.json at all.
 export type OutcomeLibraryFolderModeIndex = {
     readonly schemaVersion: number;

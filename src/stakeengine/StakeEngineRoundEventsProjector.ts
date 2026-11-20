@@ -56,16 +56,16 @@ function stakeAmount(rawAmount: number, stake: number, cost: number, description
 // Every event is stamped with its own "index" (its position in the final sequence) last, so it always reflects
 // the true position even if a passed-through featureEvent's data happened to carry its own "index" field.
 //
-// artifact.featureEvents is itself every step's own featureEvents flattened, followed by the round-level-only
+// record.featureEvents is itself every step's own featureEvents flattened, followed by the round-level-only
 // ones (see buildRoundRecord: `featureEvents = [...stepFeatureEvents, ...optionFeatureEvents]`) — so once
 // each step's own featureEvents have already been emitted in the loop below, only the tail past that same
 // count is genuinely round-level-only; re-emitting the whole array here would double-count every step's events.
 export class StakeEngineRoundEventsProjector<T extends string | number = string> implements StakeEngineRoundEventsProjecting<T> {
-    public project(artifact: RoundRecord<T>, context: StakeEngineRoundProjectionContext): readonly StakeEngineEvent[] {
+    public project(record: RoundRecord<T>, context: StakeEngineRoundProjectionContext): readonly StakeEngineEvent[] {
         const events: PendingStakeEngineEvent[] = [];
         let stepFeatureEventCount = 0;
 
-        artifact.steps.forEach((step: RoundStepRecord<T>) => {
+        record.steps.forEach((step: RoundStepRecord<T>) => {
             validateRoundRecordCoordinates(step);
             events.push({type: "reveal", board: step.screen});
             (step.featureEvents ?? []).forEach((featureEvent) => {
@@ -73,23 +73,23 @@ export class StakeEngineRoundEventsProjector<T extends string | number = string>
                 stepFeatureEventCount++;
             });
             if (step.totalWin > 0) {
-                events.push({type: "win", amount: stakeAmount(step.totalWin, artifact.stake, context.cost, `step ${step.index}'s win amount`)});
+                events.push({type: "win", amount: stakeAmount(step.totalWin, record.stake, context.cost, `step ${step.index}'s win amount`)});
             }
         });
 
-        (artifact.featureEvents ?? []).slice(stepFeatureEventCount).forEach((featureEvent) => {
+        (record.featureEvents ?? []).slice(stepFeatureEventCount).forEach((featureEvent) => {
             events.push(featureEventToStakeEvent(featureEvent));
         });
 
-        const finalPayoutMultiplier = convertRatioToStakeUnits(artifact.payoutMultiplier, context.cost);
+        const finalPayoutMultiplier = convertRatioToStakeUnits(record.payoutMultiplier, context.cost);
         if (finalPayoutMultiplier === undefined) {
             throw new Error(
-                `round ${artifact.roundId}'s payoutMultiplier (${artifact.payoutMultiplier} * ${context.cost} cost * 100) is not representable as a non-negative safe integer in Stake units.`,
+                `round ${record.roundId}'s payoutMultiplier (${record.payoutMultiplier} * ${context.cost} cost * 100) is not representable as a non-negative safe integer in Stake units.`,
             );
         }
         events.push({
             type: "finalWin",
-            amount: stakeAmount(artifact.totalWin, artifact.stake, context.cost, "the round's final win amount"),
+            amount: stakeAmount(record.totalWin, record.stake, context.cost, "the round's final win amount"),
             payoutMultiplier: finalPayoutMultiplier,
         });
 

@@ -1,5 +1,5 @@
 import {WASM_EXECUTION_BOUNDARY} from "../../../../../src/wasm/PokieWasmRuntimeApi";
-import type {StudioArtifactConversionPlan, StudioArtifactTargetType, StudioArtifactTargetView, StudioDeploymentTargetSummary} from "../../api/types";
+import type {StudioFormatConversionPlan, StudioOutputFormat, StudioOutputFormatView, StudioDeploymentTargetSummary} from "../../api/types";
 import {describeTargetCapability, describeTargetRequirements, LOCAL_JSON_EXAMPLE_TARGET_ID} from "./Deployment";
 
 // Build/Export, the packed browser proof, and the controller handoff all use
@@ -55,9 +55,9 @@ export type ExportDeployTargetCard = {
     readonly deploymentTarget?: StudioDeploymentTargetSummary;
     // The BuildOutputBuilderRegistry target this card describes -- present only for "buildArtifact" cards, so
     // ExportDeployTab can run buildArtifact(fetchImpl, card.artifactTarget) directly against it.
-    readonly artifactTarget?: StudioArtifactTargetType;
+    readonly artifactTarget?: StudioOutputFormat;
     /** Exact server-selected conversion; browser presentation never infers an edge. */
-    readonly artifactPlan?: StudioArtifactConversionPlan;
+    readonly artifactPlan?: StudioFormatConversionPlan;
     /** Public identity for a product-owned card writer, when it has one. */
     readonly transaction?: typeof OUTCOME_LIBRARY_TRANSACTION;
 };
@@ -68,7 +68,7 @@ export type ExportDeployTargetCard = {
 // UNSUPPORTED_NOTES), restated here only as a label/one-line purpose for this card -- never a second,
 // independently-decided description of what building a target does or doesn't do.
 const ARTIFACT_TARGET_CARD_INFO: Readonly<
-    Record<StudioArtifactTargetType, {label: string; purpose: string; destination: string; technicalDestination: string; unavailableReason: string}>
+    Record<StudioOutputFormat, {label: string; purpose: string; destination: string; technicalDestination: string; unavailableReason: string}>
 > = {
     blueprint: {
         label: "Game Blueprint",
@@ -117,10 +117,10 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
 };
 
 // Builds one card per BuildOutputBuilderRegistry target. `supported` is resolved server-side by
-// StudioArtifactBuildService.listTargets (the same registry.supportsConversionFrom() check "pokie build"
+// StudioBuildService.listTargets (the same registry.supportsConversionFrom() check "pokie build"
 // runs). Unsupported cards remain visible and explain why this project cannot build them, rather than
 // making an unavailable output look as though Studio forgot to offer it.
-function unavailableReasonsForArtifactTarget(entry: StudioArtifactTargetView, fallbackReason: string): readonly string[] {
+function unavailableReasonsForArtifactTarget(entry: StudioOutputFormatView, fallbackReason: string): readonly string[] {
     if (entry.supported) return [];
     if (entry.plan?.diagnostic !== undefined) return [entry.plan.diagnostic.message, entry.plan.diagnostic.recovery];
     if (entry.diagnostic !== undefined) return [entry.diagnostic];
@@ -128,7 +128,7 @@ function unavailableReasonsForArtifactTarget(entry: StudioArtifactTargetView, fa
     return [fallbackReason];
 }
 
-export function describeArtifactBuildTargetCards(targets: readonly StudioArtifactTargetView[]): ExportDeployTargetCard[] {
+export function describeArtifactBuildTargetCards(targets: readonly StudioOutputFormatView[]): ExportDeployTargetCard[] {
     return targets
         // A stale server response must not re-advertise a hidden build target in the UI. The server is
         // matrix-authoritative, but this defensive filter makes the hidden/unadvertised contract hold while
@@ -247,7 +247,7 @@ const REMOTE_DEPLOYMENT_PLACEHOLDER_CARD: ExportDeployTargetCard = {
 // the server's artifact plans, never reconstructed from browser capabilities.
 export function describeExportDeployTargetCards(
     deploymentTargets: readonly StudioDeploymentTargetSummary[],
-    artifactTargets: readonly StudioArtifactTargetView[],
+    artifactTargets: readonly StudioOutputFormatView[],
 ): ExportDeployTargetCard[] {
     const outcomeTarget = artifactTargets.find((entry) => entry.target === "outcomeLibrary");
     const cards: ExportDeployTargetCard[] = outcomeTarget !== undefined && !isOutcomeGenerationSource(outcomeTarget)
@@ -258,7 +258,7 @@ export function describeExportDeployTargetCards(
     return cards;
 }
 
-function isOutcomeGenerationSource(entry: StudioArtifactTargetView): boolean {
+function isOutcomeGenerationSource(entry: StudioOutputFormatView): boolean {
     // Only a current plan identifies this as a configurable runtime generation source.
     return entry.plan?.source.kind === "blueprint" || entry.plan?.source.kind === "tsPackage";
 }
@@ -269,8 +269,8 @@ function isOutcomeGenerationSource(entry: StudioArtifactTargetView): boolean {
 // carries managed-outcome reuse, regeneration, losses, and recovery guidance.
 function plannerBackedCard(
     card: ExportDeployTargetCard,
-    target: StudioArtifactTargetType,
-    artifactTargets: readonly StudioArtifactTargetView[],
+    target: StudioOutputFormat,
+    artifactTargets: readonly StudioOutputFormatView[],
 ): ExportDeployTargetCard {
     const entry = artifactTargets.find((candidate) => candidate.target === target);
     const plan = entry?.plan;

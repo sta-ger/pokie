@@ -33,7 +33,7 @@ ever has to hold a whole mode's outcomes in memory at once:
  for the [pre-generated runtime](pregenerated-runtime.md): it serves weighted draws straight from a folder on
  disk and never calls `readLibrary()`, so a game can be played entirely off a folder without ever
  creating a `WeightedOutcomeLibrary`.
-- **The validator has a shallow mode** that never opens an outcomes file's content at all — only the manifest and
+- **The validator has a shallow mode** that never opens an outcomes file's content at all — only the index and
  each mode's own small index, plus an exact byte-layout check (see Validation below) — so validating a folder
  doesn't itself defeat the point of the format.
 - **The Stake Engine exporter can stream a mode directly from a folder** (`StakeEngineBundleStreamingExporter`),
@@ -49,7 +49,7 @@ ever has to hold a whole mode's outcomes in memory at once:
  outcomes_<modeName>.jsonl # one canonical-JSON WeightedOutcome<T> per line, one per mode
 ```
 
-`index.json` carries the "who/what version/when" provenance stamp every generated-artifact manifest in this
+`index.json` carries the "who/what version/when" provenance stamp every generated-output index in this
 codebase uses (`schemaVersion`/`generatedBy`/`pokieVersion`/`generatedAt`, matching
 [`StakeEngineInfo`](stake-engine-export.md)'s own convention), plus one entry per mode:
 
@@ -75,19 +75,19 @@ same bigint-safe number-or-decimal-string convention as [Stake Engine Standalone
 `StakeEngineStandaloneExactDecimal`) — never recomputed by the writer, and absent for a mode built from any other
 outcome source.
 
-The manifest also carries two distinct, deliberately-never-conflated pokie-version fields:
+The index also carries two distinct, deliberately-never-conflated pokie-version fields:
 
 ```ts
 type OutcomeLibraryFolderIndex = {
  //...
  pokieVersion: string; // which package release built *this folder index* (ran the Outcome Library build)
- artifactPokieVersion: string; // which package release *computed* the outcomes themselves
+ recordPokieVersion: string; // which package release *computed* the outcomes themselves
  //...
 };
 ```
 
-`pokieVersion` is the same "who generated this file" stamp every manifest in this codebase carries
-(`StakeEngineInfo`'s own convention). `artifactPokieVersion` is read straight off the first outcome's own
+`pokieVersion` is the same "who generated this file" stamp every index in this codebase carries
+(`StakeEngineInfo`'s own convention). `recordPokieVersion` is read straight off the first outcome's own
 `artifact.origin.pokieVersion` (guaranteed identical across every outcome, by the writer's own homogeneity
 checks) and cross-checked, in deep validation, against every outcome's own origin. The two are never required
 to match: a folder can legitimately be repacked by a newer or different package release than the one that
@@ -107,7 +107,7 @@ type OutcomeLibraryFolderIndexEntry = {
 };
 ```
 
-`libraryHash`/`librarySchemaVersion` are duplicated onto the index (not only the manifest), so a caller that only
+`libraryHash`/`librarySchemaVersion` are duplicated onto the mode index (not only the folder index), so a caller that only
 ever needs one mode — the pre-generated runtime, typically — can load and self-identify a mode from just its own
 `index_<modeName>.json` + `outcomes_<modeName>.jsonl`, without ever reading `index.json`.
 
@@ -139,7 +139,7 @@ Each outcome's own JSONL line is written in the same canonically-sorted-by-id or
 
 ```ts
 interface OutcomeLibraryFolderReading<T extends string | number = string> {
- readManifest(libraryDir: string): Promise<OutcomeLibraryFolderIndex>;
+ readIndex(libraryDir: string): Promise<OutcomeLibraryFolderIndex>;
  readModeIndex(libraryDir: string, modeName: string): Promise<OutcomeLibraryFolderModeIndex>;
  iterateModeOutcomes(libraryDir: string, modeName: string): AsyncIterable<WeightedOutcome<T>>;
  readOutcomeById(libraryDir: string, modeName: string, id: string): Promise<WeightedOutcome<T> | undefined>;
@@ -223,7 +223,7 @@ type OutcomeLibraryFolderModeInput<T extends string | number = string> = {
  libraryId: string;
  schemaVersion?: number;
  outcomes: Iterable<WeightedOutcomeInput<T>> | AsyncIterable<WeightedOutcomeInput<T>>;
- generator?: OutcomeLibraryGeneratorDiagnostics; // copied verbatim into this mode's own manifest entry, see above
+ generator?: OutcomeLibraryGeneratorDiagnostics; // copied verbatim into this mode's own index entry, see above
 };
 ```
 
@@ -258,17 +258,17 @@ opens an outcomes file's content, only an exact byte-layout check against the in
 | Code | Meaning |
 |---|---|
 | `outcome-library-folder-manifest-missing` / `-unreadable` / `-invalid-json` / `-malformed` / `-schema-version-unsupported` | `index.json` doesn't exist / couldn't be read / doesn't parse / doesn't match the expected shape / has an unsupported `schemaVersion` |
-| `outcome-library-folder-manifest-mode-field-invalid` | a manifest mode entry's `betMode`/`stake`/`libraryId`/`libraryHash`/`outcomeCount`/`totalWeight`/`analysis` isn't the expected type/shape |
+| `outcome-library-folder-manifest-mode-field-invalid` | an index mode entry's `betMode`/`stake`/`libraryId`/`libraryHash`/`outcomeCount`/`totalWeight`/`analysis` isn't the expected type/shape |
 | `outcome-library-folder-mode-name-invalid` / `-duplicate-mode-name` / `-mode-name-case-collision` | a mode name doesn't match `[A-Za-z0-9_-]+`, is used by more than one mode, or two mode names differ only in case |
 | `outcome-library-folder-mode-filename-mismatch` | a mode's `indexFile`/`outcomesFile` isn't exactly `index_<modeName>.json`/`outcomes_<modeName>.jsonl` — this format's own fixed naming convention |
 | `outcome-library-folder-manifest-files-invalid` / `-duplicate` / `-entry-unsafe` / `-missing-entry` / `-unexpected-entry` | `index.json`'s `files` isn't a non-empty array of unique, safe filenames that exactly match `"index.json"` plus every current mode's own `indexFile`/`outcomesFile` — nothing missing, nothing extra |
 | `outcome-library-folder-path-unsafe` | a mode's `indexFile`/`outcomesFile` is absolute, contains `..`, contains a path separator, or otherwise resolves outside `libraryDir` |
 | `outcome-library-folder-mode-index-missing` / `-unreadable` / `-invalid-json` / `-malformed` / `-schema-version-unsupported` | the same five outcomes, for a mode's own index file |
 | `outcome-library-folder-mode-index-library-schema-version-unsupported` | the index's `librarySchemaVersion` isn't the currently-supported `WeightedOutcomeLibrary` schema version |
-| `outcome-library-folder-mode-index-mode-name-mismatch` / `-library-id-mismatch` / `-hash-mismatch-with-manifest` / `-outcomes-file-mismatch` | the index and the manifest disagree on a mode's `modeName`/`libraryId`/`libraryHash`/`outcomesFile` |
+| `outcome-library-folder-mode-index-mode-name-mismatch` / `-library-id-mismatch` / `-hash-mismatch-with-index` / `-outcomes-file-mismatch` | the mode index and the folder index disagree on a mode's `modeName`/`libraryId`/`libraryHash`/`outcomesFile` |
 | `outcome-library-folder-mode-index-entry-invalid` | an index entry isn't `{id: non-empty string, weight: positive safe integer, byteOffset/byteLength: non-negative safe integers, recordHash: "sha256:<64 hex chars>"}` |
 | `outcome-library-folder-mode-index-duplicate-id` / `-entries-not-sorted` | the index's own entries have a duplicate id, or aren't canonically sorted by id |
-| `outcome-library-folder-mode-index-count-mismatch` / `-total-weight-overflow` / `-total-weight-mismatch` | the index's own entry count/weight sum disagrees with its own (or the manifest's) recorded `outcomeCount`/`totalWeight`, or the weight sum itself overflows a safe integer |
+| `outcome-library-folder-mode-index-count-mismatch` / `-total-weight-overflow` / `-total-weight-mismatch` | the index's own entry count/weight sum disagrees with its own (or the folder index's) recorded `outcomeCount`/`totalWeight`, or the weight sum itself overflows a safe integer |
 | `outcome-library-folder-outcomes-file-missing` | a mode's outcomes file is absent |
 | `outcome-library-folder-mode-index-byte-range-not-contiguous` | an entry's `byteOffset` doesn't immediately follow the previous entry's own range (ranges must be contiguous, start at 0, in the same canonical order the index is already sorted in) |
 | `outcome-library-folder-mode-index-entry-not-newline-terminated` | the byte right after an entry's own recorded range isn't `"\n"` — its `byteOffset`/`byteLength` don't describe a real line boundary |
@@ -291,12 +291,12 @@ versa):
 | `outcome-library-folder-outcomes-weight-mismatch` | the same id's weight disagrees between the outcomes file and the index |
 | `outcome-library-folder-outcomes-artifact-invalid` | an outcome's artifact fails `RoundRecordValidator` — never a second definition of "valid" |
 | `outcome-library-folder-outcomes-inconsistent-provenance` / `-inconsistent-bet-mode` / `-inconsistent-stake` | an outcome's game/config/pokieVersion, `betMode`, or `stake` disagrees with this mode's other outcomes |
-| `outcome-library-folder-outcomes-manifest-provenance-mismatch` | this mode's outcomes' own (mutually-consistent) game id/version/configHash/pokieVersion doesn't match `index.json`'s own top-level `game`/`configHash`/`artifactPokieVersion` — a gap the cross-*outcome* check above can't catch on its own, since it never reads the index file. Deliberately never compares against `manifest.pokieVersion` (which pokie *tool* version built this folder index, a different, unrelated quantity from `artifactPokieVersion`) |
+| `outcome-library-folder-outcomes-manifest-provenance-mismatch` | this mode's outcomes' own (mutually-consistent) game id/version/configHash/pokieVersion doesn't match `index.json`'s own top-level `game`/`configHash`/`recordPokieVersion` — a gap the cross-*outcome* check above can't catch on its own, since it never reads the index file. Deliberately never compares against `index.pokieVersion` (which pokie *tool* version built this folder index, a different, unrelated quantity from `recordPokieVersion`) |
 | `outcome-library-folder-outcomes-manifest-mode-mismatch` | this mode's outcomes' own betMode/stake doesn't match `index.json`'s own per-mode `betMode`/`stake` entry |
 | `outcome-library-folder-outcomes-not-json-safe` | an outcome can't be re-canonicalized via `toCanonicalJson` (used to recompute the hash) |
 | `outcome-library-folder-outcomes-count-mismatch` | the outcomes file's own valid-record count disagrees with the index's entry count |
-| `outcome-library-folder-hash-mismatch` | the recomputed `libraryHash` doesn't match the manifest's recorded one |
-| `outcome-library-folder-analysis-mismatch` | the recomputed `WeightedOutcomeLibraryAnalyzer` stats don't match the manifest's recorded `analysis` — independent of `hash-mismatch`, since a library's hash never covers `analysis` |
+| `outcome-library-folder-hash-mismatch` | the recomputed `libraryHash` doesn't match the index's recorded one |
+| `outcome-library-folder-analysis-mismatch` | the recomputed `WeightedOutcomeLibraryAnalyzer` stats don't match the index's recorded `analysis` — independent of `hash-mismatch`, since a library's hash never covers `analysis` |
 
 The sequential per-line pass runs regardless of whether the byte-layout checks above found a problem — a
 reordered/duplicated/extra outcome can trip both a byte-layout code and a content-level code at once, and deep
@@ -336,7 +336,7 @@ incompatible source or occupied destination before a folder is published.
 `build`'s config.json lists one outcome source per mode, either a plain `WeightedOutcomeLibrary` JSON file —
 `{"modes": [{"modeName": "base", "libraryPath": "./libraries/base.json"}]}` — fully loaded into memory, or a
 streaming JSONL file of outcomes for a mode too large to hold in memory at once — `{"modeName": "bonus",
-"outcomesPath": "./outcomes-bonus.jsonl", "libraryId": "bonus-lib"}` (one `{"id", "weight", "artifact"}`
+"outcomesPath": "./outcomes-bonus.jsonl", "libraryId": "bonus-lib"}` (one `{"id", "weight", "record"}`
 record per line, not wrapped in a library object; `libraryId` is required since there's no wrapping library
 object to read it from, and `schemaVersion` is optional). Exactly one of `libraryPath`/`outcomesPath` is required
 per mode. The folder validator prints every issue and returns a non-zero exit code if any is `error`-severity;

@@ -6,7 +6,7 @@ import {BuildConflictError} from "../BuildConflictError.js";
 // "tsPackage", applied uniformly (via BuildConflictError, not a bare Error) to every other target so
 // "pokie build" never has a per-target-different overwrite policy. "file" targets (parWorkbook) must simply not
 // exist yet -- there's no "empty file" equivalent.
-export function assertArtifactDestinationAvailable(destinationPath: string, kind: "file" | "directory"): void {
+export function assertBuildDestinationAvailable(destinationPath: string, kind: "file" | "directory"): void {
     try {
         fs.lstatSync(destinationPath);
     } catch (error) {

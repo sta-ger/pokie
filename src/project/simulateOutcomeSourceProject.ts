@@ -1,4 +1,4 @@
-import {artifactAnalyticsObservation} from "../simulation/artifactAnalyticsObservation.js";
+import {recordAnalyticsObservation} from "../simulation/recordAnalyticsObservation.js";
 import type {WeightedOutcomeRandomSource} from "../pregenerated/WeightedOutcomeRandomSource.js";
 import {deriveDeterministicSeed} from "../pregenerated/internal/deriveDeterministicSeed.js";
 import {SeededWeightedOutcomeRandomSource} from "../pregenerated/SeededWeightedOutcomeRandomSource.js";
@@ -38,7 +38,7 @@ export type OutcomeSourceSimulationResult =
 // draws through OutcomeLibraryFolderOutcomeSource -- the exact same selector/session path
 // PreGeneratedSpinCommandHandler/sampleOutcomeSourceProject already draw through -- accumulated into ordinary
 // SimulationAccumulator statistics, never a freshly regenerated game-model simulation (ParallelSimulationRunner/
-// loadPokieGame). Each draw's own artifact.stake/artifact.totalWin feeds the accumulator exactly the way
+// loadPokieGame). Each draw's own record.stake/record.totalWin feeds the accumulator exactly the way
 // AggregateSimulationRunner.run() feeds its own nominalBet/payout per round. Any project lacking
 // OUTCOME_SOURCE_SAMPLE_CAPABILITY -- a "stakeAdapter" export has no draw contract, see that capability's own doc
 // comment -- returns the ordinary capability diagnostic instead of throwing or drawing anything, same as
@@ -74,13 +74,13 @@ export async function simulateOutcomeSourceProject(
         const replayRound = round + 1;
         const roundRandomSource = seed === undefined ? randomSource : new SeededWeightedOutcomeRandomSource(deriveDeterministicSeed(seed, replayRound));
         const selection = await outcomeSource.drawOutcome(roundRandomSource);
-        game = selection.outcome.artifact.origin.game;
+        game = selection.outcome.record.origin.game;
         libraryId = selection.libraryId;
         libraryHash = selection.libraryHash;
-        accumulator.addRound(selection.outcome.artifact.stake, selection.outcome.artifact.totalWin, artifactAnalyticsObservation(selection.outcome.artifact, selection.libraryHash));
+        accumulator.addRound(selection.outcome.record.stake, selection.outcome.record.totalWin, recordAnalyticsObservation(selection.outcome.record, selection.libraryHash));
         if (seed !== undefined) {
             lastReplay = {
-                game: selection.outcome.artifact.origin.game,
+                game: selection.outcome.record.origin.game,
                 libraryId: selection.libraryId,
                 libraryHash: selection.libraryHash,
                 modeName,
@@ -89,11 +89,11 @@ export async function simulateOutcomeSourceProject(
                 round: replayRound,
                 outcomeId: selection.outcome.id,
                 weight: selection.outcome.weight,
-                totalWin: selection.outcome.artifact.totalWin,
-                payoutMultiplier: selection.outcome.artifact.payoutMultiplier,
-                stake: selection.outcome.artifact.stake,
-                screen: selection.outcome.artifact.screen.map((row) => [...row]),
-                artifact: selection.outcome.artifact,
+                totalWin: selection.outcome.record.totalWin,
+                payoutMultiplier: selection.outcome.record.payoutMultiplier,
+                stake: selection.outcome.record.stake,
+                screen: selection.outcome.record.screen.map((row) => [...row]),
+                artifact: selection.outcome.record,
                 timestamp: startedAt,
                 durationMs: Date.now() - startedAt,
             };

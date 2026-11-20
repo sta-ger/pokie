@@ -37,7 +37,7 @@ type BuiltMode = {
     readonly booksFileName: string;
     readonly csvContent: string;
     readonly booksBuffer: Buffer;
-    readonly manifestEntry: StakeEngineInfoModeEntry;
+    readonly infoEntry: StakeEngineInfoModeEntry;
 };
 
 type ModeBuildResult = {
@@ -112,7 +112,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
         try {
             const structuralIssues = this.validator.validate(modes);
             if (structuralIssues.some((issue) => issue.severity === "error")) {
-                return {outDir, files: [], manifest: undefined, issues: structuralIssues};
+                return {outDir, files: [], info: undefined, issues: structuralIssues};
             }
             // Reject an external holder before mode construction can allocate
             // any publication scratch beside it.
@@ -130,7 +130,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
             }
             const allIssues = [...structuralIssues, ...buildResults.flatMap((result) => result.issues)];
             if (allIssues.some((issue) => issue.severity === "error")) {
-                return {outDir, files: [], manifest: undefined, issues: allIssues};
+                return {outDir, files: [], info: undefined, issues: allIssues};
             }
 
             // Safe: no error-level issue above means every buildMode call returned a "built" result.
@@ -152,25 +152,25 @@ export class StakeEngineExporter<T extends string | number = string> implements 
             ];
 
             const firstOutcome = modes[0].library.outcomes[0];
-            const manifest: StakeEngineInfo = {
+            const info: StakeEngineInfo = {
                 schemaVersion: STAKE_ENGINE_INFO_SCHEMA_VERSION,
                 generatedBy: GENERATED_BY,
                 pokieVersion: this.pokieVersion,
                 generatedAt: this.now().toISOString(),
-                game: firstOutcome.artifact.origin.game,
-                configHash: firstOutcome.artifact.origin.configHash,
+                game: firstOutcome.record.origin.game,
+                configHash: firstOutcome.record.origin.configHash,
                 ...(modes[0].sourceProvenance === undefined ? {} : {sourceProvenance: modes[0].sourceProvenance}),
-                modes: builtModes.map((builtMode) => builtMode.manifestEntry),
+                modes: builtModes.map((builtMode) => builtMode.infoEntry),
                 files: relativeFiles,
             };
 
             assertSafeToReplaceStakeEngineExportDirectory(outDir);
             assertNotCancelled(options);
-            const publication = this.writeToTempDirectoryThenSwap(outDir, builtModes, index, manifest, options, destinationOwnership);
+            const publication = this.writeToTempDirectoryThenSwap(outDir, builtModes, index, info, options, destinationOwnership);
             const cleanupWarning = publication.cleanupWarning;
             const finalIssues = cleanupWarning !== undefined ? [...allIssues, cleanupWarning] : allIssues;
 
-            return withPublishedDirectoryOwnership({outDir, files: relativeFiles, manifest, issues: finalIssues}, publication.publication);
+            return withPublishedDirectoryOwnership({outDir, files: relativeFiles, info, issues: finalIssues}, publication.publication);
         } catch (error) {
             return Promise.reject(error);
         }
@@ -189,7 +189,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
         outDir: string,
         builtModes: readonly BuiltMode[],
         index: StakeEngineIndex,
-        manifest: StakeEngineInfo,
+        info: StakeEngineInfo,
         options: StakeEngineExportOptions | undefined,
         destinationOwnership: PublishDirectoryAtomicallyOwnership,
     ): {readonly publication: PublishedDirectoryOwnership; readonly cleanupWarning?: ValidationIssue} {
@@ -222,7 +222,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
                 reportFile("Publishing Stake file index.json");
                 assertNotCancelled(options);
                 assertNotCancelled(options);
-                this.writeFile(path.join(tempDir, "pokie-info.json"), `${JSON.stringify(manifest, null, 4)}\n`);
+                this.writeFile(path.join(tempDir, "pokie-info.json"), `${JSON.stringify(info, null, 4)}\n`);
                 reportFile("Publishing Stake file pokie-info.json");
                 // The final callback is still a cancellation boundary: returning from this closure
                 // authorizes publishDirectoryAtomically to commit its temp directory.
@@ -278,7 +278,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
 
             let events: readonly StakeEngineEvent[];
             try {
-                events = this.eventsProjector.project(outcome.artifact, {cost: mode.cost});
+                events = this.eventsProjector.project(outcome.record, {cost: mode.cost});
             } catch (error) {
                 issues.push({
                     code: "stakeengine-outcome-events-invalid",
@@ -301,7 +301,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
                 continue;
             }
 
-            const stakePayoutMultiplier = convertRatioToStakeUnits(outcome.artifact.payoutMultiplier, mode.cost);
+            const stakePayoutMultiplier = convertRatioToStakeUnits(outcome.record.payoutMultiplier, mode.cost);
             if (stakePayoutMultiplier === undefined) {
                 // Unreachable once StakeEngineExportValidator has run without errors (it rejects exactly this
                 // case) — guarded the same way as the id check above.
@@ -327,10 +327,10 @@ export class StakeEngineExporter<T extends string | number = string> implements 
         }
 
         const firstOutcome = mode.library.outcomes[0];
-        const manifestEntry: StakeEngineInfoModeEntry = {
+        const infoEntry: StakeEngineInfoModeEntry = {
             name: mode.modeName,
-            betMode: firstOutcome.artifact.betMode,
-            stake: firstOutcome.artifact.stake,
+            betMode: firstOutcome.record.betMode,
+            stake: firstOutcome.record.stake,
             cost: mode.cost,
             outcomeCount: mode.library.outcomes.length,
             libraryId: mode.library.libraryId,
@@ -343,11 +343,11 @@ export class StakeEngineExporter<T extends string | number = string> implements 
         return {
             issues: [],
             built: {
-                csvFileName: manifestEntry.weights,
-                booksFileName: manifestEntry.events,
+                csvFileName: infoEntry.weights,
+                booksFileName: infoEntry.events,
                 csvContent: renderStakeEngineLookupCsv(csvRows),
                 booksBuffer: compressStakeEngineBooksJsonl(bookLines),
-                manifestEntry,
+                infoEntry,
             },
         };
     }

@@ -90,7 +90,7 @@ export function describeSectionStatus(sectionId: BlueprintSectionId, view: Bluep
 // LayoutFieldset.tsx) -- an issue whose `path` is one of these shows inline next to that input instead
 // of generically in its section's issue list. Every other issue (no path, or a path with no dedicated
 // input -- most of Symbols/Reels/Paytable/Bets today) stays cross-field/section-level, unchanged.
-const FIELD_LEVEL_PATHS = new Set(["manifest.id", "manifest.name", "manifest.version", "reels", "rows"]);
+const FIELD_LEVEL_PATHS = new Set(["info.id", "info.name", "info.version", "reels", "rows"]);
 
 // A section's own generic issue list should show only what isn't already surfaced next to a specific
 // field -- avoids the same issue appearing twice in the same panel (once inline on the input, once

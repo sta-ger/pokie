@@ -9,7 +9,7 @@ export function projectOutcomeSourceSimulationReport(source: OutcomeSourceSimula
     const report = {
         ...source,
         ...new SimulationReportBuilder().build({
-            manifest: source.game ?? source.lastReplay?.game ?? {id: source.libraryId, name: source.libraryId, version: "unavailable"},
+            gameInfo: source.game ?? source.lastReplay?.game ?? {id: source.libraryId, name: source.libraryId, version: "unavailable"},
             requestedRounds: source.requestedRounds,
             seed: source.seed,
             statistics: source.statistics,

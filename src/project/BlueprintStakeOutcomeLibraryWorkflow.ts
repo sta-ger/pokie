@@ -435,7 +435,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         publication.started = true;
         publication.ownership = result.publication;
         const errors = result.issues.filter((issue) => issue.severity === "error");
-        if (errors.length > 0 || result.manifest === undefined) {
+        if (errors.length > 0 || result.index === undefined) {
             throw new Error(`Could not build Outcome Library from Blueprint "${blueprintPath}": ${errors.map((issue) => issue.message).join("; ")}`);
         }
     }

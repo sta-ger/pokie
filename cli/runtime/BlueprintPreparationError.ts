@@ -1,6 +1,6 @@
-export type BlueprintMaterializationPhase = "validate" | "generate" | "dependencies" | "verify" | "lock";
+export type BlueprintPreparationPhase = "validate" | "generate" | "dependencies" | "verify" | "lock";
 
-// Thrown by BlueprintProjectMaterializer when any lifecycle phase fails to turn a "blueprint" PokieProject
+// Thrown by BlueprintProjectPreparer when any lifecycle phase fails to turn a "blueprint" PokieProject
 // into a real, loadable runtime -- always carries which phase failed (`phase`) and a message that already
 // states the concrete problem (validation errors, a failed "npm install", a failed post-install verify, an
 // abandoned per-cache-key lock that could not be reclaimed), never a raw underlying error surfaced as the
@@ -14,13 +14,13 @@ export type BlueprintMaterializationPhase = "validate" | "generate" | "dependenc
 // the top-level error should get a plain-English summary first, never a wall of npm's own diagnostic text;
 // a caller that wants that text too (the CLI prints it as a secondary block, see cli/dispatch.ts) reads it
 // from here instead of re-parsing `message`.
-export class BlueprintMaterializationError extends Error {
-    public readonly phase: BlueprintMaterializationPhase;
+export class BlueprintPreparationError extends Error {
+    public readonly phase: BlueprintPreparationPhase;
     public readonly details?: string;
 
-    constructor(phase: BlueprintMaterializationPhase, message: string, details?: string) {
+    constructor(phase: BlueprintPreparationPhase, message: string, details?: string) {
         super(message);
-        this.name = "BlueprintMaterializationError";
+        this.name = "BlueprintPreparationError";
         this.phase = phase;
         this.details = details;
     }

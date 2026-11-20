@@ -84,10 +84,10 @@ function isSafeSymbolArtworkReference(reference: string): boolean {
     return normalized.startsWith(`${SYMBOL_ARTWORK_DIRECTORY}/`) && !normalized.split("/").includes("..");
 }
 
-// saveManaged()'s own directory-name policy -- the blueprint's own manifest.id when it's already a
+// saveManaged()'s own directory-name policy -- the blueprint's own info.id when it's already a
 // non-empty string (the same identifier GamePackageCreator/build already treat as this game's own
 // identity), falling back to the fixed literal "blueprint" for a draft that hasn't set one yet (a blank
-// New-flow start, or a manifest.id GameBlueprintValidator would itself reject) rather than failing the
+// New-flow start, or a info.id GameBlueprintValidator would itself reject) rather than failing the
 // save outright -- PokiePathResolver.resolveIndependentProjectDirectory's own "invalid-name" outcome is
 // reserved for a name that's unsafe as a directory segment (contains a path separator, is "."/".."), not
 // for "not yet a valid game id".
@@ -102,7 +102,7 @@ function deriveManagedBlueprintName(blueprint: unknown): string {
 }
 
 // A brand-new guided session's first Save must never silently clobber a *different*, already-existing
-// managed Blueprint Project that just happens to share its manifest.id -- two "New Design Game" sessions
+// managed Blueprint Project that just happens to share its info.id -- two "New Design Game" sessions
 // started from the same starter preset (or a hand-typed id collision) are exactly the case this guards.
 // Rather than asking the user to pick a different id (breaking saveManaged()'s whole "never has to ask"
 // contract), this deterministically walks "<name>", "<name>-2", "<name>-3", ... and takes the first
@@ -458,7 +458,7 @@ export class StudioBlueprintService {
     // path: this resolves one itself (the same platform "POKIE Projects/<name>" convention pokie create
     // and StudioHomeService.resolveDefaultProjectDirectory already use, via PokiePathResolver), creates
     // the directory if needed, and writes `blueprint.json` inside it. `<name>` starts from the blueprint's
-    // own manifest.id when it's a non-empty string, falling back to "blueprint" otherwise -- never
+    // own info.id when it's a non-empty string, falling back to "blueprint" otherwise -- never
     // caller-supplied, since the whole point is the editor never has to ask. Never overwrites an existing
     // managed blueprint.json it did not itself just create in this call -- see
     // resolveAvailableManagedDestination's own doc comment for why this walks to the next "-2", "-3", ...
@@ -837,7 +837,7 @@ export class StudioBlueprintService {
         return {
             status: "ok",
             warnings: validated.warnings,
-            manifest: b.info,
+            info: b.info,
             reels: b.reels,
             rows: b.rows,
             symbolsCount: b.symbols.length,
@@ -1042,7 +1042,7 @@ export class StudioBlueprintService {
             return {
                 status: "ok",
                 projectRoot: generated.projectRoot,
-                manifest: generated.info,
+                info: generated.info,
                 createdFiles: generated.createdFiles,
                 buildInfo: buildGameBuildInfo(blueprint as GameBlueprint, this.pokieVersion, sourcePath, undefined, generated.createdFiles),
                 warnings: validated.warnings,

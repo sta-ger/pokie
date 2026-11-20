@@ -21,7 +21,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
     public static readonly MIN_FEATURE_ROUNDS_FOR_ZERO_WIN_WARNING: number = 20;
 
     public build(input: SimulationReportInput): SimulationReport {
-        const {manifest, requestedRounds, seed, statistics, durationMs, packageRoot, workerSeedStrategy, betMode, targetRtp, stopReason, convergence, configHash, pokieVersion} =
+        const {gameInfo, requestedRounds, seed, statistics, durationMs, packageRoot, workerSeedStrategy, betMode, targetRtp, stopReason, convergence, configHash, pokieVersion} =
             input;
         const workers = input.workers ?? 1;
         const spinsPerSecond = Math.round(statistics.rounds / (Math.max(durationMs, 1) / 1000));
@@ -33,7 +33,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         const rtp = statistics.rtp;
 
         const core: CoreMetrics = {
-            game: {id: manifest.id, name: manifest.name, version: manifest.version},
+            game: {id: gameInfo.id, name: gameInfo.name, version: gameInfo.version},
             requestedRounds,
             rounds,
             seed: seed ?? null,

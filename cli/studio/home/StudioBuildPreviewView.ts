@@ -15,7 +15,7 @@ export type StudioBuildPreviewView =
     | ({
           status: "ok";
           warnings: ValidationIssue[];
-          manifest: GameBlueprintInfo;
+          info: GameBlueprintInfo;
           reels: number;
           rows: number;
           symbolsCount: number;

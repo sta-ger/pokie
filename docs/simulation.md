@@ -244,7 +244,7 @@ const runner = new ParallelSimulationRunner("./sample-slot", 1_000_000, {
 
 const result = await runner.run();
 
-result.manifest; // {id, name, version} — the game's own manifest
+result.gameInfo; // {id, name, version} — the game's own info
 result.statistics; // SimulationStatistics — rtp, volatility, confidence intervals, payout histogram, etc.
 result.breakdown; // Record<string, SimulationBreakdownComponent> | undefined — same shape as pokie sim's own
 result.workers; // the actual worker count used

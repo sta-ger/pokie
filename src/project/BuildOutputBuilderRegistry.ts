@@ -11,8 +11,8 @@ import {requireManagedOutcomeProjectOwnership, type BuildOutputResult} from "./B
 import type {BuildTarget} from "./BuildTarget.js";
 import type {OutputDestinationCheck} from "./OutputDestinationCheck.js";
 import type {OutputFormat} from "./OutputFormat.js";
-import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
-import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
+import {assertBuildDestinationAvailable} from "./internal/assertBuildDestinationAvailable.js";
+import {assertBuildDestinationIsSafe} from "./internal/assertBuildDestinationIsSafe.js";
 import {OutcomeLibraryOutputBuilder} from "./OutcomeLibraryOutputBuilder.js";
 import {ParWorkbookOutputBuilder} from "./ParWorkbookOutputBuilder.js";
 import {BlueprintOutputBuilder} from "./BlueprintOutputBuilder.js";
@@ -45,7 +45,7 @@ import {assertBuildNotCancelled, ensureArtifactDestinationParent, type BuildOutp
 import {FormatConversionPlanner, computeBuildInputHash, computeProjectInputBindingHash, describeFormatConversionPlanDiagnostic, resolveOutputIdentity, type OutputConfigurationOrigin, type FormatConversionPlan, type FormatConversionPlanningOptions, type OutputIdentity} from "./FormatConversionPlanner.js";
 import {WASM_PRODUCT_CONTRACT} from "./WasmProductContract.js";
 import {
-    ADVERTISED_ARTIFACT_BUILD_TARGETS,
+    ADVERTISED_BUILD_TARGETS,
     BUILD_PRODUCT_MATRIX_SOURCE_TYPES,
     getBuildProductMatrixCell,
 } from "./BuildProductMatrix.js";
@@ -62,8 +62,8 @@ export function assertPreparedOutputDestinationAvailable(
     destinationPath: string,
     kind: "file" | "directory",
 ): void {
-    if (sourcePath !== undefined) assertArtifactDestinationIsSafe(sourcePath, destinationPath);
-    assertArtifactDestinationAvailable(destinationPath, kind);
+    if (sourcePath !== undefined) assertBuildDestinationIsSafe(sourcePath, destinationPath);
+    assertBuildDestinationAvailable(destinationPath, kind);
 }
 
 // Which PokieOperation actually produces each OutputFormat as a brand-new artifact -- "build" writes a
@@ -121,7 +121,7 @@ function sameConfigurationProvenance(
         left?.generationSemantics === right?.generationSemantics &&
         left?.gameId === right?.gameId &&
         left?.gameVersion === right?.gameVersion &&
-        left?.manifestIdentity === right?.manifestIdentity &&
+        left?.gameIdentity === right?.gameIdentity &&
         left?.sampleCount === right?.sampleCount &&
         left?.sampleSeed === right?.sampleSeed &&
         left?.maxExactOutcomeSpaceSize === right?.maxExactOutcomeSpaceSize &&
@@ -210,7 +210,7 @@ export class BuildOutputBuilderRegistry {
         // Do not let that make the registry advertise a target it cannot actually produce: the default
         // production set contains every matrix target, while a partial set exposes only its complete
         // target promises.
-        return ADVERTISED_ARTIFACT_BUILD_TARGETS.filter((target) => this.descriptors.has(target) && this.builders.has(target));
+        return ADVERTISED_BUILD_TARGETS.filter((target) => this.descriptors.has(target) && this.builders.has(target));
     }
 
     /**
@@ -335,7 +335,7 @@ export class BuildOutputBuilderRegistry {
                     pokieVersion: prepared.compatibility.pokieVersion,
                     gameId: prepared.compatibility.gameId,
                     gameVersion: prepared.compatibility.gameVersion,
-                    manifestIdentity: `${prepared.compatibility.gameId}@${prepared.compatibility.gameVersion}`,
+                    gameIdentity: `${prepared.compatibility.gameId}@${prepared.compatibility.gameVersion}`,
                     generationSemantics: generation === undefined ? "exact" : "cappedSample",
                     ...(generation === undefined ? {} : {sampleCount: generation.sampleSize.toString(), sampleSeed: generation.seed}),
                     ...(prepared.generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: prepared.generation.maxExactOutcomeSpaceSize.toString()}),
@@ -429,7 +429,7 @@ export class BuildOutputBuilderRegistry {
     }
 
     // Reports whether `destinationPath` would be accepted by `target`'s own build() -- the exact same
-    // assertArtifactDestinationAvailable() precondition build() enforces before ever invoking a builder, off
+    // assertBuildDestinationAvailable() precondition build() enforces before ever invoking a builder, off
     // the same builder-owned destinationKind, but without invoking the builder (and so without ever reading
     // `source` or touching the filesystem beyond the same existence/emptiness check build() itself performs).
     // Lets a caller (a Studio build-preview panel) report the identical conflict a real build would hit
@@ -835,7 +835,7 @@ export class BuildOutputBuilderRegistry {
                         pokieVersion: prepared.compatibility.pokieVersion,
                         gameId: prepared.compatibility.gameId,
                         gameVersion: prepared.compatibility.gameVersion,
-                        manifestIdentity: `${prepared.compatibility.gameId}@${prepared.compatibility.gameVersion}`,
+                        gameIdentity: `${prepared.compatibility.gameId}@${prepared.compatibility.gameVersion}`,
                         generationSemantics: sampled === undefined ? "exact" : "cappedSample",
                         ...(sampled === undefined ? {} : {sampleCount: sampled.sampleSize.toString(), sampleSeed: sampled.seed}),
                         ...(prepared.generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: prepared.generation.maxExactOutcomeSpaceSize.toString()}),

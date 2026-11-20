@@ -101,8 +101,8 @@ async function *iterateAnalysisRecords(
             if (line.status !== "ok") {
                 throw new OutcomeLibraryFolderInvariantError(`outcomes file line ${line.position} is not valid JSON on a re-read of a file this same writer just wrote.`);
             }
-            const outcome = line.value as {weight: number; artifact: {payoutMultiplier: number; totalWin: number}};
-            yield {weight: outcome.weight, payoutMultiplier: outcome.artifact.payoutMultiplier, totalWin: outcome.artifact.totalWin};
+            const outcome = line.value as {weight: number; record: {payoutMultiplier: number; totalWin: number}};
+            yield {weight: outcome.weight, payoutMultiplier: outcome.record.payoutMultiplier, totalWin: outcome.record.totalWin};
         }
         return;
     }

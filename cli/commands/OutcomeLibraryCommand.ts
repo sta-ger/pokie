@@ -62,7 +62,7 @@ const GENERATE_HINT =
 const CONFIG_HINT =
     '<config.json> lists one outcome source per mode, either a plain WeightedOutcomeLibrary JSON file — ' +
     '{"modes": [{"modeName": "base", "libraryPath": "./libraries/base.json"}, ...]} — which is fully loaded into ' +
-    'memory, or a streaming JSONL file of outcomes (one canonical {"id","weight","artifact"} record per line, ' +
+    'memory, or a streaming JSONL file of outcomes (one canonical {"id","weight","record"} record per line, ' +
     'not wrapped in a library object) for a mode too large to hold in memory at once — {"modeName": "bonus", ' +
     '"outcomesPath": "./outcomes-bonus.jsonl", "libraryId": "bonus-lib"} ("libraryId" is required for this form, ' +
     'since there\'s no wrapping library object to read it from; "schemaVersion" is optional). Exactly one of ' +
@@ -385,7 +385,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     private provenanceOf(modeName: string, library: WeightedOutcomeLibrary): BundleModeProvenance {
         // Called only after WeightedOutcomeLibraryValidator and the bundle-specific checks found no
         // errors, which guarantees a non-empty mode and a complete first outcome provenance.
-        const provenance = library.outcomes[0].artifact.origin;
+        const provenance = library.outcomes[0].record.origin;
         return {
             modeName,
             gameId: provenance.game.id,

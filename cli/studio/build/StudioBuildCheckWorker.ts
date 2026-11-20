@@ -3,8 +3,8 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import type {OutputFormat, PackageBlueprintExtractionResult} from "@fromstan/pokie";
-import {StudioArtifactPreflightCleanupError, type StudioArtifactPreflighting, type StudioPreparedArtifactPreview} from "./StudioArtifactPreflighting.js";
-import type {StudioArtifactTargetView} from "./StudioArtifactTargetView.js";
+import {StudioBuildCheckCleanupError, type StudioBuildChecking, type StudioPreparedArtifactPreview} from "./StudioBuildChecking.js";
+import type {StudioOutputFormatView} from "./StudioOutputFormatView.js";
 import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";
 
 /**
@@ -12,10 +12,10 @@ import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIden
  * Native import caches and dependency process listeners die with the worker. The parent owns
  * and drains its temporary directory, including when cancellation interrupts snapshot creation.
  */
-export class StudioArtifactPreflightWorker implements StudioArtifactPreflighting {
+export class StudioBuildCheckWorker implements StudioBuildChecking {
     private tail: Promise<unknown> = Promise.resolve();
     private readonly requests = new Map<AbortController, {projectRoot: string; target?: OutputFormat | "packageModel"; promise: Promise<unknown>}>();
-    private cleanupFailure?: StudioArtifactPreflightCleanupError;
+    private cleanupFailure?: StudioBuildCheckCleanupError;
     private accepting = true;
     private readonly workerEntry: string;
 
@@ -24,14 +24,14 @@ export class StudioArtifactPreflightWorker implements StudioArtifactPreflighting
         private readonly runtimePackageRoot: string,
         workerEntry?: string,
     ) {
-        this.workerEntry = workerEntry ?? path.join(runtimePackageRoot, "dist/cli/studio/artifacts/artifactPreflightWorkerEntry.js");
+        this.workerEntry = workerEntry ?? path.join(runtimePackageRoot, "dist/cli/studio/build/buildCheckWorkerEntry.js");
     }
 
     public extractPackage(projectRoot: string, signal?: AbortSignal): Promise<PackageBlueprintExtractionResult> {
         return this.run(projectRoot, "packageModel", undefined, signal);
     }
 
-    public listTargets(projectRoot: string, signal?: AbortSignal): Promise<readonly StudioArtifactTargetView[]> {
+    public listTargets(projectRoot: string, signal?: AbortSignal): Promise<readonly StudioOutputFormatView[]> {
         return this.run(projectRoot, undefined, undefined, signal);
     }
 
@@ -118,7 +118,7 @@ export class StudioArtifactPreflightWorker implements StudioArtifactPreflighting
                 await fs.promises.rm(temporaryRoot, {recursive: true, force: true});
             }
         } catch (error) {
-            this.cleanupFailure ??= new StudioArtifactPreflightCleanupError(error);
+            this.cleanupFailure ??= new StudioBuildCheckCleanupError(error);
             throw this.cleanupFailure;
         }
     }

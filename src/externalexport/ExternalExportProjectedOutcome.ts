@@ -4,7 +4,7 @@ import type {JsonObject} from "../json/JsonValue.js";
 // actually receives, never a raw RoundRecord. "id"/"weight" are carried over unchanged from the source
 // WeightedOutcome (see ExternalExportProjectedModeInput's own doc comment for why projection, not
 // generation, is where that carry-over happens); "projected" is exactly whatever
-// `target.roundProjector.project(outcome.artifact)` returned, already confirmed canonical-JSON-safe by
+// `target.roundProjector.project(outcome.record)` returned, already confirmed canonical-JSON-safe by
 // ExternalExportService before a generator ever sees it.
 export type ExternalExportProjectedOutcome = {
     readonly id: string;

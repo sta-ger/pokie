@@ -95,7 +95,7 @@ export type OutcomeSourceProjectReportView = {
 export type OutcomeSourceSampleView =
     | {
           supported: true;
-          selection: {libraryId: string; libraryHash: string; totalWeight: number; outcome: {id: string; weight: number; artifact: RoundRecord}};
+          selection: {libraryId: string; libraryHash: string; totalWeight: number; outcome: {id: string; weight: number; record: RoundRecord}};
           // Present for a seeded sample: this is the same portable identity the public replay command
           // consumes, rather than a UI-only approximation of the selected outcome.
           replay?: OutcomeSourceReplayDescriptorView;
@@ -196,7 +196,7 @@ export type ValidationIssue = {
     message: string;
     details?: Record<string, unknown>;
     suggestion?: string;
-    // Optional dotted/bracketed field path (e.g. "manifest.id", "reels") this issue is about, when the
+    // Optional dotted/bracketed field path (e.g. "info.id", "reels") this issue is about, when the
     // server-side check targets exactly one field -- absent for cross-field/structural checks. See
     // domain/interpret/BlueprintSections.ts's own use of this for field-level Mantine input errors.
     path?: string;
@@ -422,7 +422,7 @@ export type StudioBuildPreviewView =
     | ({
           status: "ok";
           warnings: ValidationIssue[];
-          manifest: PokieGameInfo;
+          info: PokieGameInfo;
           reels: number;
           rows: number;
           symbolsCount: number;
@@ -439,7 +439,7 @@ export type StudioBuildResult =
     | {
           status: "ok";
           projectRoot: string;
-          manifest: PokieGameInfo;
+          info: PokieGameInfo;
           createdFiles: string[];
           buildInfo: GameBuildInfo;
           warnings: ValidationIssue[];
@@ -1121,7 +1121,7 @@ export type StudioDeploymentStageSummary = {
 // own doc comment. `stages` is the authoritative per-stage status; the fields below it are the raw
 // ExternalExportResult mirror `stages` was itself computed from.
 export type StudioDeploymentRunView = {
-    plan: StudioArtifactConversionPlan;
+    plan: StudioFormatConversionPlan;
     status?: "ok" | "unavailable" | "conflict";
     error?: string;
     targetId: string;
@@ -1190,7 +1190,7 @@ export type StudioOutcomeLibraryGenerateEstimateView =
           };
           sampleSize?: number | string;
           seed?: string;
-          plan: StudioArtifactConversionPlan;
+          plan: StudioFormatConversionPlan;
           defaults: {
               compatibilityVersion: string;
               maxExactOutcomeSpaceSize: number | string;
@@ -1201,11 +1201,11 @@ export type StudioOutcomeLibraryGenerateEstimateView =
     // Transport validation happens before the service can resolve a project
     // plan.  Keep it in this same classified union so callers never have to
     // turn a preflight failure back into an untyped HTTP exception.
-    | {status: "invalid"; error: string; plan?: StudioArtifactConversionPlan}
-    | {status: "unsupported"; error: string; plan?: StudioArtifactConversionPlan}
-    | {status: "conflict"; error: string; plan?: StudioArtifactConversionPlan}
-    | {status: "generation-error"; error: string; code?: string; plan?: StudioArtifactConversionPlan}
-    | {status: "load-error"; error: string; plan?: StudioArtifactConversionPlan};
+    | {status: "invalid"; error: string; plan?: StudioFormatConversionPlan}
+    | {status: "unsupported"; error: string; plan?: StudioFormatConversionPlan}
+    | {status: "conflict"; error: string; plan?: StudioFormatConversionPlan}
+    | {status: "generation-error"; error: string; code?: string; plan?: StudioFormatConversionPlan}
+    | {status: "load-error"; error: string; plan?: StudioFormatConversionPlan};
 
 // OutcomeLibraryGeneratorDiagnostics, embedded verbatim -- see its own doc comment
 // (src/weightedoutcome/generate/OutcomeLibraryGeneratorDiagnostics.ts).
@@ -1237,11 +1237,11 @@ export type StudioOutcomeLibraryGenerateResultView =
           generator: OutcomeLibraryGeneratorDiagnostics;
           coverage: number;
           selector: OutcomeLibrarySelector;
-          plan: StudioArtifactConversionPlan;
+          plan: StudioFormatConversionPlan;
       }
-    | {status: "unsupported"; error: string; plan: StudioArtifactConversionPlan}
-    | {status: "conflict"; error: string; plan: StudioArtifactConversionPlan}
-    | {status: "generation-error"; code: string; error: string; plan: StudioArtifactConversionPlan}
+    | {status: "unsupported"; error: string; plan: StudioFormatConversionPlan}
+    | {status: "conflict"; error: string; plan: StudioFormatConversionPlan}
+    | {status: "generation-error"; code: string; error: string; plan: StudioFormatConversionPlan}
     | {
           status: "cancelled";
           processedRawIndex: string;
@@ -1249,10 +1249,10 @@ export type StudioOutcomeLibraryGenerateResultView =
           /** Present only when an exact enumeration can be safely resumed. */
           checkpoint?: {id: string; processedRawIndex: string; progressTotal: string; sourceEnumerationId: string};
           recovery: string;
-          plan: StudioArtifactConversionPlan;
+          plan: StudioFormatConversionPlan;
       }
-    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]; plan: StudioArtifactConversionPlan}
-    | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan};
+    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]; plan: StudioFormatConversionPlan}
+    | {status: "load-error"; error: string; plan: StudioFormatConversionPlan};
 
 // The pollable Studio lifecycle deliberately contains only decimal strings and an opaque checkpoint id;
 // accumulated grids never cross the HTTP boundary or become browser-owned state.
@@ -1300,7 +1300,7 @@ export type StudioOutcomeLibraryRegistryView =
           game: {id: string; name: string; version: string};
           currentGame: {id: string; name: string; version: string};
           configHash?: string;
-          artifactPokieVersion: string;
+          recordPokieVersion: string;
           currentPokieVersion: string;
           generatedAt: string;
           modes: StudioOutcomeLibraryRegistryModeEntry[];
@@ -1341,9 +1341,9 @@ export type CertificationPackIndex = {
     generatedAt: string;
     game: PokieGameInfo;
     configHash?: string;
-    artifactPokieVersion: string;
+    recordPokieVersion: string;
     sourceLibraryDir: string;
-    sourceLibraryManifestHash: string;
+    sourceLibraryIndexHash: string;
     modes: CertificationPackModeEntry[];
     deepValidation: CertificationPackDeepValidation;
     files: string[];
@@ -1355,7 +1355,7 @@ export type CertificationPackIndex = {
 // CertificationPackBuilder's own "no partial bundle" contract: `manifest` is present iff
 // `status` is "ok".
 export type StudioCertificationBuildView =
-    | {status: "ok"; manifest: CertificationPackIndex; files: string[]; artifactHashes?: Record<string, string>; warnings: ValidationIssue[]}
+    | {status: "ok"; index: CertificationPackIndex; files: string[]; fileHashes?: Record<string, string>; warnings: ValidationIssue[]}
     | {status: "error"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
     | {status: "load-error"; error: string};
 
@@ -1433,14 +1433,14 @@ export type StudioStakeEngineExportModeSummary = {
 // POST /api/project/stakeengine/validate's own DTO — see
 // cli/studio/stakeengine/StudioStakeEngineExportValidateView.ts's own doc comment.
 export type StudioStakeEngineExportValidateView =
-    | {status: "ok"; modes: StudioStakeEngineExportModeSummary[]; errors: ValidationIssue[]; warnings: ValidationIssue[]; plan: StudioArtifactConversionPlan}
+    | {status: "ok"; modes: StudioStakeEngineExportModeSummary[]; errors: ValidationIssue[]; warnings: ValidationIssue[]; plan: StudioFormatConversionPlan}
     // Validation is a planner terminal action just like export.  Keep every
     // server state representable in the browser rather than making callers
     // treat an unavailable source or destination conflict as a transport
     // failure.
-    | {status: "conflict"; error: string; plan: StudioArtifactConversionPlan}
-    | {status: "unavailable"; error: string; plan: StudioArtifactConversionPlan}
-    | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan}
+    | {status: "conflict"; error: string; plan: StudioFormatConversionPlan}
+    | {status: "unavailable"; error: string; plan: StudioFormatConversionPlan}
+    | {status: "load-error"; error: string; plan: StudioFormatConversionPlan}
     | StudioStakeEngineExportMigrationView;
 
 export type StudioStakeEngineExportMigrationView = {
@@ -1481,58 +1481,58 @@ export type StakeEngineInfo = {
 // `true` when `outDir` is recognized as a prior Stake Engine export's own output — resubmitting with
 // `overwrite: true` can never succeed otherwise, so the UI must never offer that action when it's `false`.
 export type StudioStakeEngineExportView =
-    | {status: "ok"; outDir: string; files: string[]; manifest: StakeEngineInfo; warnings: ValidationIssue[]; plan: StudioArtifactConversionPlan}
-    | {status: "conflict"; outDir: string; overwritable: boolean; error: string; plan: StudioArtifactConversionPlan}
-    | {status: "unavailable"; error: string; plan: StudioArtifactConversionPlan}
-    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]; plan: StudioArtifactConversionPlan}
-    | {status: "cancelled"; message: string; plan: StudioArtifactConversionPlan}
-    | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan}
+    | {status: "ok"; outDir: string; files: string[]; info: StakeEngineInfo; warnings: ValidationIssue[]; plan: StudioFormatConversionPlan}
+    | {status: "conflict"; outDir: string; overwritable: boolean; error: string; plan: StudioFormatConversionPlan}
+    | {status: "unavailable"; error: string; plan: StudioFormatConversionPlan}
+    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]; plan: StudioFormatConversionPlan}
+    | {status: "cancelled"; message: string; plan: StudioFormatConversionPlan}
+    | {status: "load-error"; error: string; plan: StudioFormatConversionPlan}
     | StudioStakeEngineExportMigrationView;
 
 // Mirrors the "@fromstan/pokie" package's own OutputFormat -- the closed vocabulary BuildOutputBuilderRegistry
 // (and "pokie build <project> --target <target>") builds toward. Studio-client never imports the pokie
 // package directly (see ExportDeployTargets.ts's own top-level doc comment), so this is a plain literal
 // mirror, same convention as StudioProjectType above.
-export type StudioArtifactTargetType = "blueprint" | "tsPackage" | "outcomeLibrary" | "stakeAdapter" | "parWorkbook" | "wasm";
+export type StudioOutputFormat = "blueprint" | "tsPackage" | "outcomeLibrary" | "stakeAdapter" | "parWorkbook" | "wasm";
 
 // JSON-safe mirror of the server planner.  Studio deliberately consumes this payload instead of maintaining
 // another source/target table in the browser.
-export type StudioArtifactConversionPlan = {
+export type StudioFormatConversionPlan = {
     parConversion?: ParSheetConversionReport;
     packageExtraction?: PackageBlueprintExtractionResult;
     status: "planned" | "unavailable" | "conflict";
-    source: {kind: string; canonicalLocation?: string; recognitionProvenance?: string; capabilities: string[]; configurationProvenance?: {inputBindingHash?: string; configurationHash?: string; pokieVersion?: string; generationSemantics?: "exact" | "cappedSample"; gameId?: string; gameVersion?: string; manifestIdentity?: string; sampleCount?: string; sampleSeed?: string}};
+    source: {kind: string; canonicalLocation?: string; recognitionProvenance?: string; capabilities: string[]; configurationProvenance?: {inputBindingHash?: string; configurationHash?: string; pokieVersion?: string; generationSemantics?: "exact" | "cappedSample"; gameId?: string; gameVersion?: string; gameIdentity?: string; sampleCount?: string; sampleSeed?: string}};
     target: {kind: string; canonicalLocation?: string; capabilities: string[]; configurationProvenance?: {generationSemantics?: "exact" | "cappedSample"; sampleCount?: string; sampleSeed?: string}};
     steps: {kind: "extractPackageModel" | "importParWorkbook" | "publish" | "materializeRuntime" | "generateOutcomeLibrary" | "reuseManagedOutcomeLibrary"; choice: "materialize" | "reuse" | "publish"; estimatedWork: "none" | "read" | "materialize" | "generate" | "publish"; output: {kind: string; canonicalLocation?: string; recognitionProvenance?: string; capabilities: string[]}; losses?: string[]}[];
     preflight: {destinationKind: "file" | "directory"; estimatedWork: "none" | "read" | "materialize" | "generate" | "publish"; losses: string[]; oneWay: boolean};
     managedOutcome?: {disposition: "reused" | "ineligible"; reason?: string};
-    diagnostic?: {code: "missing-capability" | "missing-data" | "unsupported-boundary" | "stale-provenance" | "destination-conflict" | "unrecognized-source"; failedEdge: {from: StudioProjectType; to: StudioArtifactTargetType}; message: string; recovery: string};
+    diagnostic?: {code: "missing-capability" | "missing-data" | "unsupported-boundary" | "stale-provenance" | "destination-conflict" | "unrecognized-source"; failedEdge: {from: StudioProjectType; to: StudioOutputFormat}; message: string; recovery: string};
 };
 
-// GET /api/project/artifacts/targets' own DTO — see cli/studio/artifacts/StudioArtifactTargetView.ts's
+// GET /api/project/build/targets' own DTO — see cli/studio/build/StudioOutputFormatView.ts's
 // own doc comment. `supported` is already resolved against the active project's own ProjectType server-side
 // (the exact same BuildOutputBuilderRegistry.supportsConversionFrom() check "pokie build" itself runs) — the
 // Build/Export tab never re-derives that rule itself.
-export type StudioArtifactTargetView = {
-    target: StudioArtifactTargetType;
+export type StudioOutputFormatView = {
+    target: StudioOutputFormat;
     supported: boolean;
     state: "supported" | "diagnostic-required" | "hidden/unadvertised";
     diagnostic?: string;
     unsupportedNotes: string[];
-    plan: StudioArtifactConversionPlan;
+    plan: StudioFormatConversionPlan;
 };
 
-// POST /api/project/artifacts/build's own DTO — see cli/studio/artifacts/StudioArtifactBuildView.ts's own
+// POST /api/project/build/build's own DTO — see cli/studio/build/StudioBuildView.ts's own
 // doc comment. Mirrors BuildOutputBuilderRegistry.build()'s own outcomes exactly: a successful build's
 // outputPath/sourceType, an unsupported conversion, a destination conflict, or any other build failure.
-export type StudioArtifactBuildView =
+export type StudioBuildView =
     | {
           status: "ok";
-          target: StudioArtifactTargetType;
+          target: StudioOutputFormat;
           outputPath: string;
           outputKind: "file" | "directory";
           sourceType: StudioProjectType;
-          plan: StudioArtifactConversionPlan;
+          plan: StudioFormatConversionPlan;
           preflight?: {estimatedItemCount?: string; estimatedBytes?: string; complexityWarning?: string};
           stakeManifest?: StakeEngineInfo;
           stakeFiles?: string[];
@@ -1541,16 +1541,16 @@ export type StudioArtifactBuildView =
           conversionEvidencePath?: string;
           parConversion?: ParSheetConversionReport;
       }
-    | {status: "unsupported"; target: StudioArtifactTargetType; message: string; plan: StudioArtifactConversionPlan}
-    | {status: "conflict"; target: StudioArtifactTargetType; message: string; plan: StudioArtifactConversionPlan}
-    | {status: "cancelled"; message: string; plan: StudioArtifactConversionPlan}
-    | {status: "error"; message: string; plan: StudioArtifactConversionPlan};
+    | {status: "unsupported"; target: StudioOutputFormat; message: string; plan: StudioFormatConversionPlan}
+    | {status: "conflict"; target: StudioOutputFormat; message: string; plan: StudioFormatConversionPlan}
+    | {status: "cancelled"; message: string; plan: StudioFormatConversionPlan}
+    | {status: "error"; message: string; plan: StudioFormatConversionPlan};
 
 // The Build/Export artifact publisher is a server-side job, not a held-open request.  This lets the
 // screen render the same BuildOutputOptions preflight/progress callbacks that the CLI receives.
-export type StudioArtifactBuildJobView = {
+export type StudioBuildJobView = {
     id: string;
-    target: StudioArtifactTargetType;
+    target: StudioOutputFormat;
     status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "recovery-required";
     cancellationRequested: boolean;
     progress?: {
@@ -1562,38 +1562,38 @@ export type StudioArtifactBuildJobView = {
         preflight?: {estimatedItemCount?: string; estimatedBytes?: string; complexityWarning?: string};
         message?: string;
     };
-    result?: StudioArtifactBuildView;
+    result?: StudioBuildView;
     error?: string;
     recovery?: StudioJobView["recovery"];
 };
 
-// POST /api/project/artifacts/preview's own DTO — see cli/studio/artifacts/StudioArtifactPreviewView.ts's
-// own doc comment. The pre-build counterpart to StudioArtifactBuildView above: the same registry-resolved
+// POST /api/project/build/preview's own DTO — see cli/studio/build/StudioOutputPreviewView.ts's
+// own doc comment. The pre-build counterpart to StudioBuildView above: the same registry-resolved
 // target/destination/sourceType and the same capability/conflict diagnostics a subsequent build would
 // report, computed without ever writing anything.
-export type StudioArtifactPreviewView =
+export type StudioOutputPreviewView =
     | {
           status: "ok";
-          target: StudioArtifactTargetType;
+          target: StudioOutputFormat;
           destination: string;
           destinationKind: "file" | "directory";
           plannedOutputs: string[];
           sourceType: StudioProjectType;
-          plan: StudioArtifactConversionPlan;
+          plan: StudioFormatConversionPlan;
           preparedOperationId?: string;
           stakePreflight?: {route: "reuse" | "generate" | "publish"; selectedPrerequisiteLocation?: string; estimatedItemCount?: string; estimatedBytes?: string; complexityWarning?: string; unavailableMetrics?: string[]; warnings: string[]};
       }
-    | {status: "unsupported"; target: StudioArtifactTargetType; message: string; plan: StudioArtifactConversionPlan}
+    | {status: "unsupported"; target: StudioOutputFormat; message: string; plan: StudioFormatConversionPlan}
     | {
           status: "conflict";
-          target: StudioArtifactTargetType;
+          target: StudioOutputFormat;
           destination: string;
           destinationKind: "file" | "directory";
           plannedOutputs: string[];
           message: string;
-          plan: StudioArtifactConversionPlan;
+          plan: StudioFormatConversionPlan;
       }
-    | {status: "error"; message: string; plan: StudioArtifactConversionPlan};
+    | {status: "error"; message: string; plan: StudioFormatConversionPlan};
 
 
 export type PackageBlueprintExtractionResult = {

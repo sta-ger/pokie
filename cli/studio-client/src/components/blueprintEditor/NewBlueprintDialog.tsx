@@ -22,11 +22,11 @@ type RandomGenerationView = {status: "idle"} | {status: "loading"} | {status: "e
 type Step = "confirmDirty" | "choose" | "random" | "load";
 
 function blueprintNameAndId(blueprint: unknown): {name: string; id: string} {
-    const manifest = blueprint !== null && typeof blueprint === "object" ? (blueprint as Record<string, unknown>).manifest : undefined;
-    const manifestRecord = manifest !== null && typeof manifest === "object" ? (manifest as Record<string, unknown>) : {};
+    const info = blueprint !== null && typeof blueprint === "object" ? (blueprint as Record<string, unknown>).info : undefined;
+    const infoRecord = info !== null && typeof info === "object" ? (info as Record<string, unknown>) : {};
     return {
-        name: typeof manifestRecord.name === "string" ? manifestRecord.name : "(unnamed)",
-        id: typeof manifestRecord.id === "string" ? manifestRecord.id : "(no id)",
+        name: typeof infoRecord.name === "string" ? infoRecord.name : "(unnamed)",
+        id: typeof infoRecord.id === "string" ? infoRecord.id : "(no id)",
     };
 }
 

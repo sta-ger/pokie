@@ -12,18 +12,18 @@ import type {WeightedOutcome} from "./WeightedOutcome.js";
 export type WeightedOutcomeInput<T extends string | number = string> = {
     id: string;
     weight: number;
-    artifact: RoundRecord<T>;
+    record: RoundRecord<T>;
 };
 
 export type WeightedOutcomeLibraryBuildOptions<T extends string | number = string> = {
     libraryId: string;
     outcomes: readonly WeightedOutcomeInput<T>[];
     schemaVersion?: number;
-    // A real RoundRecordValidator always runs against every outcome's artifact, regardless of this option —
+    // A real RoundRecordValidator always runs against every outcome's record, regardless of this option —
     // this is only ever an *additional* check, never a replacement for it (so a permissive custom validator can
     // never let a malformed RoundRecord through). Use it to layer on extra, library- or game-specific
     // invariants beyond what RoundRecordValidator already covers.
-    artifactValidator?: ValidationRule<RoundRecord<T>>;
+    recordValidator?: ValidationRule<RoundRecord<T>>;
 };
 
 // A single outcome's provenance/betMode/stake, compared against the library's first outcome to enforce that
@@ -38,22 +38,22 @@ type OutcomeHomogeneityKey = {
     stake: number;
 };
 
-function homogeneityKeyOf<T extends string | number>(artifact: RoundRecord<T>): OutcomeHomogeneityKey {
+function homogeneityKeyOf<T extends string | number>(record: RoundRecord<T>): OutcomeHomogeneityKey {
     return {
-        gameId: artifact.origin.game.id,
-        gameVersion: artifact.origin.game.version,
-        configHash: artifact.origin.configHash,
-        pokieVersion: artifact.origin.pokieVersion,
-        betMode: artifact.betMode,
-        stake: artifact.stake,
+        gameId: record.origin.game.id,
+        gameVersion: record.origin.game.version,
+        configHash: record.origin.configHash,
+        pokieVersion: record.origin.pokieVersion,
+        betMode: record.betMode,
+        stake: record.stake,
     };
 }
 
 // The one place a WeightedOutcomeLibrary is assembled — always from already-built RoundRecords, never a
 // second calculation path. Fails fast with WeightedOutcomeLibraryBuildError — before any library is ever
 // returned — on: an invalid libraryId/schemaVersion, an empty outcomes list, an invalid or duplicate outcome
-// id, an invalid (non-finite or <= 0) weight or artifact.payoutMultiplier, an invalid (non-finite or <= 0)
-// artifact.stake, an artifact that fails RoundRecordValidator (always run — see "artifact validation" below),
+// id, an invalid (non-finite or <= 0) weight or record.payoutMultiplier, an invalid (non-finite or <= 0)
+// record.stake, an record that fails RoundRecordValidator (always run — see "record validation" below),
 // a total weight that isn't a finite number > 0 (covers both "sums to zero" and "the sum of otherwise-finite
 // weights overflows to Infinity"), content that isn't JSON-safe, or a library whose outcomes don't all share
 // the same game id/version/configHash/pokieVersion/betMode/stake.
@@ -62,12 +62,12 @@ function homogeneityKeyOf<T extends string | number>(artifact: RoundRecord<T>): 
 // (by definition) and contributes nothing to any statistic, so admitting it would only let a caller believe a
 // jackpot (or any other outcome) is "in" the library's analysis when it can never actually be drawn.
 //
-// Artifact validation — RoundRecordValidator always runs against every outcome's artifact, whether or not an
-// `artifactValidator` option is given; that option can only ever add further checks on top; a permissive custom
+// Record validation — RoundRecordValidator always runs against every outcome's record, whether or not an
+// `recordValidator` option is given; that option can only ever add further checks on top; a permissive custom
 // validator (e.g. one that always returns no issues) can never let a malformed RoundRecord through.
 //
 // That last check — "library homogeneity" — exists because a WeightedOutcomeLibrary models the distribution of
-// results for one specific paid bet (see docs/weighted-outcome-library.md): every outcome's artifact.stake must
+// results for one specific paid bet (see docs/weighted-outcome-library.md): every outcome's record.stake must
 // therefore be the same positive amount, not a mix of a real stake and a `0` for a free-games round captured as
 // its own outcome. A free-games (or any other multi-step) round belongs inside the *same* RoundRecord as the
 // base-game spin that paid for it — as additional steps (RoundRecord already supports this, see
@@ -102,7 +102,7 @@ export function buildWeightedOutcomeLibrary<T extends string | number = string>(
         );
     }
     const roundRecordValidator = new RoundRecordValidator<T>();
-    const extraArtifactValidator: ValidationRule<RoundRecord<T>> | undefined = options.artifactValidator;
+    const extraRecordValidator: ValidationRule<RoundRecord<T>> | undefined = options.recordValidator;
 
     const seenIds = new Set<string>();
     let reference: OutcomeHomogeneityKey | undefined;
@@ -128,32 +128,32 @@ export function buildWeightedOutcomeLibrary<T extends string | number = string>(
             );
         }
 
-        if (!Number.isFinite(input.artifact.payoutMultiplier) || input.artifact.payoutMultiplier < 0) {
+        if (!Number.isFinite(input.record.payoutMultiplier) || input.record.payoutMultiplier < 0) {
             throw new WeightedOutcomeLibraryBuildError(
                 "weighted-outcome-payout-multiplier-invalid",
-                `outcome "${input.id}" has an invalid artifact.payoutMultiplier (${input.artifact.payoutMultiplier}); must be a finite number >= 0.`,
+                `outcome "${input.id}" has an invalid record.payoutMultiplier (${input.record.payoutMultiplier}); must be a finite number >= 0.`,
             );
         }
 
-        if (!Number.isFinite(input.artifact.stake) || input.artifact.stake <= 0) {
+        if (!Number.isFinite(input.record.stake) || input.record.stake <= 0) {
             throw new WeightedOutcomeLibraryBuildError(
                 "weighted-outcome-stake-invalid",
-                `outcome "${input.id}" has an invalid artifact.stake (${input.artifact.stake}); must be a finite number > 0.`,
+                `outcome "${input.id}" has an invalid record.stake (${input.record.stake}); must be a finite number > 0.`,
             );
         }
 
         const artifactIssues = [
-            ...roundRecordValidator.validate(input.artifact),
-            ...(extraArtifactValidator?.validate(input.artifact) ?? []),
+            ...roundRecordValidator.validate(input.record),
+            ...(extraRecordValidator?.validate(input.record) ?? []),
         ];
         if (artifactIssues.length > 0) {
             throw new WeightedOutcomeLibraryBuildError(
-                "weighted-outcome-artifact-invalid",
-                `outcome "${input.id}" has an invalid artifact: ${artifactIssues.map((issue) => issue.code).join(", ")}.`,
+                "weighted-outcome-record-invalid",
+                `outcome "${input.id}" has an invalid record: ${artifactIssues.map((issue) => issue.code).join(", ")}.`,
             );
         }
 
-        const current = homogeneityKeyOf(input.artifact);
+        const current = homogeneityKeyOf(input.record);
         if (reference === undefined) {
             reference = current;
         } else {
@@ -182,7 +182,7 @@ export function buildWeightedOutcomeLibrary<T extends string | number = string>(
             }
         }
 
-        return {id: input.id, weight: input.weight, artifact: input.artifact};
+        return {id: input.id, weight: input.weight, record: input.record};
     });
 
     outcomes.sort((a, b) => compareIds(a.id, b.id));

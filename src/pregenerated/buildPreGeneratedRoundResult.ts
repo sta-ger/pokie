@@ -24,7 +24,7 @@ export type PreGeneratedRoundBuildOptions<T extends string | number = string> = 
 // The one place a PreGeneratedRoundResult is assembled — always from a PreGeneratedOutcomeSelection already
 // produced by a PreGeneratedOutcomeSourcing implementation (InMemoryPreGeneratedOutcomeSource,
 // OutcomeLibraryFolderOutcomeSource, or reproduced by PreGeneratedRoundReplayer), never a second calculation
-// path. `selection.outcome.artifact` is referenced directly (already deeply frozen/immutable by
+// path. `selection.outcome.record` is referenced directly (already deeply frozen/immutable by
 // buildRoundRecord/buildWeightedOutcomeLibrary), never copied or mutated.
 //
 // Fails fast with PreGeneratedRoundBuildError — before any result is ever returned — on: a `selection` whose
@@ -130,7 +130,7 @@ export function buildPreGeneratedRoundResult<T extends string | number = string>
             balanceAfter: runtime.balanceAfter,
             transactions: runtime.transactions.map((transaction) => ({...transaction})),
         },
-        artifact: selection.outcome.artifact,
+        artifact: selection.outcome.record,
     };
 
     try {

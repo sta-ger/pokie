@@ -21,14 +21,14 @@ import type {CertificationPackValidating} from "./CertificationPackValidating.js
 import type {CertificationPackVerifying} from "./CertificationPackVerifying.js";
 import type {CertificationPackSampleRecord} from "./CertificationPackSampleRecord.js";
 import type {CertificationPackVerifyOptions} from "./CertificationPackVerifyOptions.js";
-import {isManifestShape, isModeEntryShape, isSampleRecordShape} from "./internal/certificationPackBundleShapeGuards.js";
+import {isCertificationPackIndexShape, isModeEntryShape, isSampleRecordShape} from "./internal/certificationPackBundleShapeGuards.js";
 import {sha256OfBytes} from "./internal/sha256OfBytes.js";
 
 // Structural-only codes CertificationPackValidating can report when index.json itself couldn't
 // even be parsed far enough to know what source bundle to cross-check against — a genuine "nothing to verify"
 // case, as opposed to a structural issue against one particular mode/sample that still leaves the rest
 // cross-checkable.
-const MANIFEST_UNREADABLE_CODES = new Set([
+const INDEX_UNREADABLE_CODES = new Set([
     "certification-pack-bundle-malformed",
     "certification-pack-bundle-manifest-missing",
     "certification-pack-bundle-manifest-unreadable",
@@ -44,13 +44,13 @@ function canonicalJsonEqual(a: unknown, b: unknown): boolean {
 }
 
 // Verifies a certification/evidence bundle against the live source Outcome Library Bundle it was built from.
-// Requires an explicit options.sourceLibraryDir — the manifest's own recorded sourceLibraryDir is purely
-// informational (a hand-crafted or tampered manifest could point it anywhere) and is NEVER read or trusted
+// Requires an explicit options.sourceLibraryDir — the index's own recorded sourceLibraryDir is purely
+// informational (a hand-crafted or tampered index could point it anywhere) and is NEVER read or trusted
 // here; without it, verify() returns a diagnostic and reads nothing beyond certDir's own structural self-
 // consistency check. Never throws — every fallible step (re-reading index.json, reading a samples file,
 // parsing a sample line, reading the live bundle) is individually guarded, and a top-level try/catch is the
 // final safety net — and never reads a path outside certDir/sourceLibraryDir: every filename this class reads
-// off manifest data (a mode's own samplesFile) is resolved through resolveSafeStakeEngineFilePath first, the
+// off index data (a mode's own samplesFile) is resolved through resolveSafeStakeEngineFilePath first, the
 // same guard CertificationPackValidator itself uses, independently re-checked here rather than
 // assumed from the validator's own earlier pass (a re-read of the same file could in principle observe
 // something different).
@@ -59,11 +59,11 @@ function canonicalJsonEqual(a: unknown, b: unknown): boolean {
 //
 // Cross-checks four distinct things against the live bundle, none of them a second, differently-derived
 // calculation:
-// - the evidence bundle's own manifest fields (game/configHash/artifactPokieVersion, and the whole source
-//   bundle manifest's own recomputed hash);
+// - the evidence bundle's own index fields (game/configHash/recordPokieVersion, and the whole source
+//   bundle index's own recomputed hash);
 // - the source bundle's own on-disk files, via a shallow OutcomeLibraryFolderValidating pass;
 // - each mode's own metrics (libraryHash/outcomeCount/totalWeight/analysis), read straight off the live
-//   manifest and compared field-by-field;
+//   index and compared field-by-field;
 // - each sampled outcome, two ways: its own recordHash compared directly against the live mode index's own
 //   entry (cheap, index-only — no byte-range read), and the *sequence itself* reproduced by redrawing this
 //   mode's own recorded seed against the live bundle via OutcomeLibraryFolderReading.drawOutcome (the same
@@ -108,11 +108,11 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
         checkCancellation(options?.signal);
         const structuralIssues = await this.validator.validate(certDir, options?.signal);
         checkCancellation(options?.signal);
-        if (structuralIssues.some((issue) => MANIFEST_UNREADABLE_CODES.has(issue.code))) {
+        if (structuralIssues.some((issue) => INDEX_UNREADABLE_CODES.has(issue.code))) {
             return structuralIssues;
         }
 
-        // manifest.sourceLibraryDir is informational only (see its own doc comment) and is NEVER read or
+        // index.sourceLibraryDir is informational only (see its own doc comment) and is NEVER read or
         // trusted here — a caller must always give an explicit sourceLibraryDir. Checked before anything else
         // below touches a path outside certDir (including re-parsing index.json, which is only ever needed
         // for the live cross-check that follows), so a caller who omits it gets a diagnostic without this class
@@ -124,7 +124,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
                     code: "certification-pack-verify-source-bundle-dir-required",
                     severity: "error",
                     message:
-                        "no sourceLibraryDir was given. This evidence bundle's own manifest.sourceLibraryDir is " +
+                        "no sourceLibraryDir was given. This evidence bundle's own index.sourceLibraryDir is " +
                         "informational only and is never trusted for verification — pass an explicit " +
                         '{sourceLibraryDir} (or "--source <folder>" on the CLI) to cross-check against the live source folder.',
                 },
@@ -132,10 +132,10 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
         }
         const sourceLibraryDir = options.sourceLibraryDir;
 
-        let manifest: CertificationPackIndex;
+        let index: CertificationPackIndex;
         try {
             const parsed: unknown = parseCertificationJson(fs.readFileSync(path.join(certDir, "index.json"), "utf-8"));
-            if (!isManifestShape(parsed)) {
+            if (!isCertificationPackIndexShape(parsed)) {
                 return [
                     ...structuralIssues,
                     {
@@ -145,7 +145,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
                     },
                 ];
             }
-            manifest = parsed;
+            index = parsed;
         } catch (error) {
             return [
                 ...structuralIssues,
@@ -159,10 +159,10 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
 
         const issues: ValidationIssue[] = [...structuralIssues];
 
-        if (!resolveSafeCertificationPackFilePath(sourceLibraryDir, "index.json")) return [...issues, {code: "certification-pack-source-unsafe", severity: "error", message: "Explicit source manifest is missing or symlinked."}];
+        if (!resolveSafeCertificationPackFilePath(sourceLibraryDir, "index.json")) return [...issues, {code: "certification-pack-source-unsafe", severity: "error", message: "Explicit source index is missing or symlinked."}];
         let sourceManifest: OutcomeLibraryFolderIndex;
         try {
-            sourceManifest = await this.reader.readManifest(sourceLibraryDir);
+            sourceManifest = await this.reader.readIndex(sourceLibraryDir);
         } catch (error) {
             issues.push({
                 code: "certification-pack-verify-source-bundle-unreadable",
@@ -175,15 +175,15 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
         checkCancellation(options.signal);
         if (sourceManifest.files.some(file => !resolveSafeCertificationPackFilePath(sourceLibraryDir, file))) return [...issues, {code: "certification-pack-source-unsafe", severity: "error", message: "Source inventory contains a missing, symlinked or escaping file."}];
         try {
-            if (manifest.presentation.templateArtifactHash !== null) {
+            if (index.presentation.templateArtifactHash !== null) {
                 if (!options.templateFile) throw new Error("Explicit templateFile authority is required for a custom template; pass --template <json>.");
                 const template = loadCertificationPackTemplate(options.templateFile);
-                if (packHash(template) !== manifest.presentation.templateHash || sha256OfBytes(fs.readFileSync(options.templateFile)) !== manifest.presentation.templateArtifactHash) throw new Error("Template differs from the explicitly selected raw/semantic authority.");
-            } else if (manifest.presentation.templateHash !== packHash(DEFAULT_CERTIFICATION_PACK_TEMPLATE)) throw new Error("Unselected custom template has no explicit artifact authority.");
-            if (manifest.pack.rules.status === "available" && !options.pack?.modelSource) throw new Error("Explicit pack modelSource authority is required; retained model locations are never followed.");
-            if ((options.pack?.reportFiles?.length ?? 0) !== manifest.pack.statistics.estimates.length || (options.pack?.replayFiles?.length ?? 0) !== manifest.pack.reproduction.recordings.length) throw new Error("Explicit reportFiles/replayFiles trusted sources must cover every attached item.");
+                if (packHash(template) !== index.presentation.templateHash || sha256OfBytes(fs.readFileSync(options.templateFile)) !== index.presentation.templateArtifactHash) throw new Error("Template differs from the explicitly selected raw/semantic authority.");
+            } else if (index.presentation.templateHash !== packHash(DEFAULT_CERTIFICATION_PACK_TEMPLATE)) throw new Error("Unselected custom template has no explicit artifact authority.");
+            if (index.pack.rules.status === "available" && !options.pack?.modelSource) throw new Error("Explicit pack modelSource authority is required; retained model locations are never followed.");
+            if ((options.pack?.reportFiles?.length ?? 0) !== index.pack.statistics.estimates.length || (options.pack?.replayFiles?.length ?? 0) !== index.pack.reproduction.recordings.length) throw new Error("Explicit reportFiles/replayFiles trusted sources must cover every attached item.");
             const actual = await acquireCertificationPack(sourceManifest, packHash(sourceManifest), options.pack, options.signal, sourceLibraryDir);
-            if (packHash(actual) !== packHash(manifest.pack)) throw new Error("Pack model/report/replay/revision evidence differs from selected authority or runtime reproduction.");
+            if (packHash(actual) !== packHash(index.pack)) throw new Error("Pack model/report/replay/revision evidence differs from selected authority or runtime reproduction.");
         } catch (error) {
             if (error instanceof Error && (/cleanup failed/).test(error.message)) throw error;
             if (error instanceof CertificationPackBuildCancelledError) throw error;
@@ -198,7 +198,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
         issues.push(...(await this.sourceValidator.validate(sourceLibraryDir, {signal: options.signal})));
 
         checkCancellation(options.signal);
-        if (sha256OfBytes(JSON.stringify(toCanonicalJson(sourceManifest))) !== manifest.sourceLibraryManifestHash) {
+        if (sha256OfBytes(JSON.stringify(toCanonicalJson(sourceManifest))) !== index.sourceLibraryIndexHash) {
             issues.push({
                 code: "certification-pack-verify-source-bundle-manifest-changed",
                 severity: "error",
@@ -207,19 +207,19 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
         }
 
         if (
-            manifest.game.id !== sourceManifest.game.id ||
-            manifest.game.version !== sourceManifest.game.version ||
-            manifest.configHash !== sourceManifest.configHash ||
-            manifest.artifactPokieVersion !== sourceManifest.artifactPokieVersion
+            index.game.id !== sourceManifest.game.id ||
+            index.game.version !== sourceManifest.game.version ||
+            index.configHash !== sourceManifest.configHash ||
+            index.recordPokieVersion !== sourceManifest.recordPokieVersion
         ) {
             issues.push({
                 code: "certification-pack-verify-manifest-provenance-mismatch",
                 severity: "error",
-                message: `this evidence bundle's own game/configHash/artifactPokieVersion no longer matches "${sourceLibraryDir}"'s own index.json.`,
+                message: `this evidence bundle's own game/configHash/recordPokieVersion no longer matches "${sourceLibraryDir}"'s own index.json.`,
             });
         }
 
-        for (const rawModeEntry of manifest.modes) {
+        for (const rawModeEntry of index.modes) {
             if (!isModeEntryShape(rawModeEntry)) {
                 issues.push({
                     code: "certification-pack-bundle-mode-field-invalid",

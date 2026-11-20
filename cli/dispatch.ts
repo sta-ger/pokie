@@ -1,5 +1,5 @@
 import {CliCommandHandling} from "./CliCommandHandling.js";
-import {BlueprintMaterializationError} from "./materialize/BlueprintMaterializationError.js";
+import {BlueprintPreparationError} from "./runtime/BlueprintPreparationError.js";
 import {GamePackagePreparationError} from "./prepare/GamePackagePreparationError.js";
 import {isTopLevelHelpRequest, isTopLevelVersionRequest, resolveCliInvocation} from "./resolveCliInvocation.js";
 import {buildUsageText} from "./usageText.js";
@@ -103,14 +103,14 @@ export async function dispatch(commands: CliCommandHandling[], argv: string[], v
         return exitCode ?? 0;
     } catch (error) {
         console.error(error instanceof Error ? error.message : String(error));
-        // A BlueprintMaterializationError's or GamePackagePreparationError's own "details" (a failed
+        // A BlueprintPreparationError's or GamePackagePreparationError's own "details" (a failed
         // "npm install"'s raw npm stderr) is deliberately never folded into the human-readable message
         // above -- printed here, after it and clearly labeled, so the human explanation always leads and
         // the technical output stays a secondary, skippable block rather than the first thing a reader
         // hits. Both error types share this same "details" convention (see their own doc comments) --
         // Blueprint materialization and "pokie init" share one dependency-install mechanism
         // (withLocalPokieInstall), so their failures are surfaced identically here too.
-        if ((error instanceof BlueprintMaterializationError || error instanceof GamePackagePreparationError) && error.details !== undefined) {
+        if ((error instanceof BlueprintPreparationError || error instanceof GamePackagePreparationError) && error.details !== undefined) {
             console.error(`\nnpm output:\n${error.details}`);
         }
         return 1;

@@ -18,7 +18,7 @@ export type LoadedPokieGame = {
 export async function loadPokieGameRuntime(
     packageRoot: string,
     loadEntryModule?: PokieGameEntryModuleLoading,
-    options?: {readonly detachInfoData?: (manifest: unknown) => unknown},
+    options?: {readonly detachInfoData?: (info: unknown) => unknown},
 ): Promise<LoadedPokieGame> {
     const {entryPath, candidate, release} = await resolvePokieGameEntryModule(packageRoot, loadEntryModule);
 

@@ -20,10 +20,10 @@ export type BlueprintEditorState = {
 };
 
 // A minimal but structurally valid starting point for "New Blueprint" — small enough to edit by hand
-// in the form right away, not a stand-in for GameBlueprintValidator's own rules (an empty "manifest.id"
+// in the form right away, not a stand-in for GameBlueprintValidator's own rules (an empty "info.id"
 // will still validate as an error, exactly as it should).
 const STARTER_BLUEPRINT: Record<string, unknown> = {
-    manifest: {id: "", name: "", version: "0.1.0"},
+    info: {id: "", name: "", version: "0.1.0"},
     reels: 5,
     rows: 3,
     symbols: [],
@@ -43,7 +43,7 @@ const STARTER_BLUEPRINT: Record<string, unknown> = {
 // peers, preserving the starter's warning-free payout/rarity model.
 export function createRecommendedBlueprint(): Record<string, unknown> {
     return {
-        manifest: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"},
+        info: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"},
         reels: 5,
         rows: 3,
         symbols: ["A", "K", "Q", "J"],

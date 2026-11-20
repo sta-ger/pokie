@@ -9,7 +9,7 @@ function isNonEmptyString(value: unknown): value is string {
 // Validates only what's knowable *before* a mode's own outcomes stream is ever consumed — mode name format/
 // duplicates/case-collisions and libraryId shape, all of which depend solely on the OutcomeLibraryFolderModeInput
 // entries themselves, never on their "outcomes" source. Everything that genuinely requires seeing outcome data
-// (per-outcome id/weight/artifact validity, cross-outcome sortedness/duplicates within a mode, cross-mode
+// (per-outcome id/weight/record validity, cross-outcome sortedness/duplicates within a mode, cross-mode
 // provenance consistency) happens incrementally, streamed, inside OutcomeLibraryFolderWriter itself (see
 // streamModeOutcomesToTempFile) — this validator exists purely as a fast upfront check that never needs to
 // touch a stream, so an obviously-broken request (two modes both named "base") fails immediately without

@@ -41,8 +41,8 @@ export type CertificationPack = {
         readonly runtimeVersion: "pokie.session-runtime.v1";
         readonly modelHash: string | null;
         readonly modelArtifactHash: string | null;
-        readonly sourceLibraryManifestHash: string;
-        readonly sourceLibraryManifest: OutcomeLibraryFolderIndex;
+        readonly sourceLibraryIndexHash: string;
+        readonly sourceLibraryIndex: OutcomeLibraryFolderIndex;
         readonly sourceRevision: string | null;
         readonly candidateRevision: string | null;
     };

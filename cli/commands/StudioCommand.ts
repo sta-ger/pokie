@@ -1,7 +1,7 @@
 import {Command} from "commander";
 import {PokieGamePackageValidator, STUDIO_OPERATION} from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {createMaterializingRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
+import {createPreparingRuntimePackageResolver, RuntimePackageResolving} from "../runtime/prepareRuntimePackage.js";
 import {openBrowser} from "../openBrowser.js";
 import {StudioBlueprintService} from "../studio/blueprint/StudioBlueprintService.js";
 import {StudioHomeService} from "../studio/home/StudioHomeService.js";
@@ -59,7 +59,7 @@ export class StudioCommand implements CliCommandHandling {
     // The one materializing resolver this command builds -- shared, by identity, between homeService's
     // own Open/Recent-Projects flow and the Project Dashboard/Play runtime StudioServer drives once
     // started (see run() below), rather than each independently building its own. Both go through the
-    // exact same BlueprintProjectMaterializer instance (same cacheRoot, same pokiePackageRoot), so "one
+    // exact same BlueprintProjectPreparer instance (same cacheRoot, same pokiePackageRoot), so "one
     // materialization service" is true by construction, not just by the cache directory happening to
     // agree.
     private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
@@ -71,7 +71,7 @@ export class StudioCommand implements CliCommandHandling {
         this.openBrowserImpl = dependencies.openBrowser ?? openBrowser;
         this.contextResolver = dependencies.contextResolver ?? new StudioContextResolver();
         const projectRegistrationService = createDefaultStudioProjectRegistrationService();
-        this.resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver(pokieVersion, STUDIO_OPERATION, pokiePackageRoot);
+        this.resolveRuntimePackageRoot = createPreparingRuntimePackageResolver(pokieVersion, STUDIO_OPERATION, pokiePackageRoot);
         this.loadGame = createStudioGameLoader(pokiePackageRoot);
         this.gamePackageValidator = createStudioGamePackageValidator(pokiePackageRoot);
         this.homeService =

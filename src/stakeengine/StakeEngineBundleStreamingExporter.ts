@@ -99,7 +99,7 @@ type ModeProvenanceKey = {
 };
 
 type BuiltMode = {
-    readonly manifestEntry: StakeEngineInfoModeEntry;
+    readonly infoEntry: StakeEngineInfoModeEntry;
     readonly provenance: {readonly game: StakeEngineInfo["game"]; readonly configHash?: string; readonly pokieVersion: string};
 };
 
@@ -164,14 +164,14 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
         preflightAtomicDirectoryPublication(outDir, destinationOwnership.destinationIdentity === undefined);
         const upfrontIssues = this.validateUpfront(modes);
         if (upfrontIssues.some((issue) => issue.severity === "error")) {
-            return {outDir, files: [], manifest: undefined, issues: upfrontIssues};
+            return {outDir, files: [], info: undefined, issues: upfrontIssues};
         }
 
         const stagingDir = `${outDir}.staging-${crypto.randomBytes(6).toString("hex")}`;
         fs.mkdirSync(stagingDir, {recursive: true});
         try {
             const issues: ValidationIssue[] = [...upfrontIssues];
-            const manifestEntries: StakeEngineInfoModeEntry[] = [];
+            const infoEntries: StakeEngineInfoModeEntry[] = [];
             let reference: ModeProvenanceKey | undefined;
             let gameManifest: StakeEngineInfo["game"] | undefined;
             let configHash: string | undefined;
@@ -183,8 +183,8 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
                 if (built === undefined) {
                     continue;
                 }
-                manifestEntries.push(built.manifestEntry);
-                completed += BigInt(built.manifestEntry.outcomeCount);
+                infoEntries.push(built.infoEntry);
+                completed += BigInt(built.infoEntry.outcomeCount);
 
                 const current: ModeProvenanceKey = {
                     gameId: built.provenance.game.id,
@@ -212,14 +212,14 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
             }
 
             if (issues.some((issue) => issue.severity === "error") || gameManifest === undefined) {
-                return {outDir, files: [], manifest: undefined, issues};
+                return {outDir, files: [], info: undefined, issues};
             }
 
             const index: StakeEngineIndex = {
-                modes: manifestEntries.map((entry) => ({name: entry.name, cost: entry.cost, events: entry.events, weights: entry.weights})),
+                modes: infoEntries.map((entry) => ({name: entry.name, cost: entry.cost, events: entry.events, weights: entry.weights})),
             };
-            const relativeFiles = [...manifestEntries.flatMap((entry) => [entry.weights, entry.events]), "index.json", "pokie-info.json"];
-            const manifest: StakeEngineInfo = {
+            const relativeFiles = [...infoEntries.flatMap((entry) => [entry.weights, entry.events]), "index.json", "pokie-info.json"];
+            const info: StakeEngineInfo = {
                 schemaVersion: STAKE_ENGINE_INFO_SCHEMA_VERSION,
                 generatedBy: GENERATED_BY,
                 pokieVersion: this.pokieVersion,
@@ -227,11 +227,11 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
                 game: gameManifest,
                 ...(configHash !== undefined ? {configHash} : {}),
                 ...(modes[0].sourceProvenance === undefined ? {} : {sourceProvenance: modes[0].sourceProvenance}),
-                modes: manifestEntries,
+                modes: infoEntries,
                 files: relativeFiles,
             };
             fs.writeFileSync(path.join(stagingDir, "index.json"), `${JSON.stringify(index, null, 4)}\n`);
-            fs.writeFileSync(path.join(stagingDir, "pokie-info.json"), `${JSON.stringify(manifest, null, 4)}\n`);
+            fs.writeFileSync(path.join(stagingDir, "pokie-info.json"), `${JSON.stringify(info, null, 4)}\n`);
 
             assertSafeToReplaceStakeEngineExportDirectory(outDir);
             assertNotCancelled(options);
@@ -266,7 +266,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
                     ? [...issues, {code: "stakeengine-stale-export-cleanup-failed", severity: "warning", message: cleanupWarning, details: {outDir}}]
                     : issues;
 
-            return withPublishedDirectoryOwnership({outDir, files: relativeFiles, manifest, issues: finalIssues}, publication);
+            return withPublishedDirectoryOwnership({outDir, files: relativeFiles, info, issues: finalIssues}, publication);
         } finally {
             try {
                 this.removeDirectory(stagingDir);
@@ -355,7 +355,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
 
         let completed = BigInt(0);
         let sawError = false;
-        let firstArtifact: {betMode: string; stake: number; payoutMultiplier: number; provenance: {game: StakeEngineInfo["game"]; configHash?: string; pokieVersion: string}} | undefined;
+        let firstRecord: {betMode: string; stake: number; payoutMultiplier: number; provenance: {game: StakeEngineInfo["game"]; configHash?: string; pokieVersion: string}} | undefined;
 
         try {
             for await (const outcome of this.reader.iterateModeOutcomes(mode.libraryDir, mode.libraryModeName)) {
@@ -369,8 +369,8 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
                     });
                     assertNotCancelled(options);
                 }
-                if (firstArtifact === undefined) {
-                    firstArtifact = outcome.artifact as never;
+                if (firstRecord === undefined) {
+                    firstRecord = outcome.record as never;
                 }
 
                 const id = parseStakeEngineOutcomeId(outcome.id);
@@ -397,7 +397,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
 
                 let events: readonly StakeEngineEvent[];
                 try {
-                    events = this.eventsProjector.project(outcome.artifact, {cost: mode.cost});
+                    events = this.eventsProjector.project(outcome.record, {cost: mode.cost});
                 } catch (error) {
                     issues.push({
                         code: "stakeengine-outcome-events-invalid",
@@ -422,15 +422,15 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
                     continue;
                 }
 
-                const stakePayoutMultiplier = convertRatioToStakeUnits(outcome.artifact.payoutMultiplier, mode.cost);
+                const stakePayoutMultiplier = convertRatioToStakeUnits(outcome.record.payoutMultiplier, mode.cost);
                 if (stakePayoutMultiplier === undefined) {
                     issues.push({
                         code: "stakeengine-outcome-payout-multiplier-not-representable",
                         severity: "error",
                         message:
-                            `mode "${mode.modeName}": outcome "${outcome.id}"'s artifact.payoutMultiplier (${outcome.artifact.payoutMultiplier}) is not representable as a ` +
+                            `mode "${mode.modeName}": outcome "${outcome.id}"'s record.payoutMultiplier (${outcome.record.payoutMultiplier}) is not representable as a ` +
                             `non-negative safe integer once converted to Stake units (payoutMultiplier * cost (${mode.cost}) * 100).`,
-                        details: {modeName: mode.modeName, id: outcome.id, payoutMultiplier: outcome.artifact.payoutMultiplier, cost: mode.cost},
+                        details: {modeName: mode.modeName, id: outcome.id, payoutMultiplier: outcome.record.payoutMultiplier, cost: mode.cost},
                     });
                     sawError = true;
                     continue;
@@ -463,15 +463,15 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
         }
         assertNotCancelled(options);
 
-        if (sawError || firstArtifact === undefined) {
+        if (sawError || firstRecord === undefined) {
             return undefined;
         }
 
         return {
-            manifestEntry: {
+            infoEntry: {
                 name: mode.modeName,
-                betMode: firstArtifact.betMode,
-                stake: firstArtifact.stake,
+                betMode: firstRecord.betMode,
+                stake: firstRecord.stake,
                 cost: mode.cost,
                 outcomeCount: index.outcomeCount,
                 libraryId: index.libraryId,
@@ -480,7 +480,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
                 weights: csvFileName,
                 ...(mode.generator === undefined ? {} : {generator: mode.generator}),
             },
-            provenance: firstArtifact.provenance,
+            provenance: firstRecord.provenance,
         };
     }
 }

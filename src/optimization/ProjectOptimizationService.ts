@@ -14,8 +14,8 @@ import fs from "fs";
 import path from "path";
 import type {PokieProject} from "../project/PokieProject.js";
 import {ProjectTargetResolver} from "../project/ProjectTargetResolver.js";
-import {assertArtifactDestinationAvailable} from "../project/internal/assertArtifactDestinationAvailable.js";
-import {assertArtifactDestinationIsSafe} from "../project/internal/assertArtifactDestinationIsSafe.js";
+import {assertBuildDestinationAvailable} from "../project/internal/assertBuildDestinationAvailable.js";
+import {assertBuildDestinationIsSafe} from "../project/internal/assertBuildDestinationIsSafe.js";
 import {OutputPublicationOwnership, rollbackArtifactPublication} from "../project/OutputPublicationOwnership.js";
 import type {
     OptimizationCandidate,
@@ -200,7 +200,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                         options.onProgress?.(structuredClone(evidence));
                         assertCurrent();
                         if (options.signal?.aborted) throw new OptimizationCancelledError("Cancelled before candidate materialization.");
-                        const file = await adapter.materialize(model, directory, options.signal);
+                        const file = await adapter.prepare(model, directory, options.signal);
                         if (options.signal?.aborted) throw new OptimizationCancelledError("Cancelled during candidate materialization.");
                         const resolved = await new ProjectTargetResolver().resolve(file, {readConfigurationProvenance: false});
                         if (!resolved || resolved.type !== project.type) throw new Error("Candidate did not resolve as the original ProjectType.");
@@ -367,23 +367,23 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
         await assertExecutable(candidate.path);
         destination = path.resolve(destination);
         assertNoFilesystemAliases(destination);
-        assertArtifactDestinationIsSafe(candidate.sourcePath, destination);
-        assertArtifactDestinationIsSafe(candidate.path, destination);
-        assertArtifactDestinationIsSafe(candidate.workspace, destination);
-        assertArtifactDestinationIsSafe(this.scratchRoot, destination);
+        assertBuildDestinationIsSafe(candidate.sourcePath, destination);
+        assertBuildDestinationIsSafe(candidate.path, destination);
+        assertBuildDestinationIsSafe(candidate.workspace, destination);
+        assertBuildDestinationIsSafe(this.scratchRoot, destination);
         const directory = fs.statSync(candidate.path).isDirectory();
-        assertArtifactDestinationAvailable(destination, directory ? "directory" : "file");
+        assertBuildDestinationAvailable(destination, directory ? "directory" : "file");
         const members = [[candidate.path, destination]];
         if (candidate.type === "wasm") for (const suffix of [".pokie-wasm.json", ".tuning.json"]) members.push([`${candidate.path}${suffix}`, `${destination}${suffix}`]);
         for (const [, target] of members) {
-            assertArtifactDestinationIsSafe(candidate.sourcePath, target);
-            assertArtifactDestinationAvailable(target, directory ? "directory" : "file");
+            assertBuildDestinationIsSafe(candidate.sourcePath, target);
+            assertBuildDestinationAvailable(target, directory ? "directory" : "file");
         }
         if (request.policy.strategy === "seeded-search-v1") {
             const companion = `${destination}.optimization.json`;
             assertNoFilesystemAliases(companion);
-            assertArtifactDestinationIsSafe(candidate.sourcePath, companion);
-            assertArtifactDestinationAvailable(companion, "file");
+            assertBuildDestinationIsSafe(candidate.sourcePath, companion);
+            assertBuildDestinationAvailable(companion, "file");
             const receiptFile = path.join(candidate.workspace, "publication-evidence.json");
             fs.writeFileSync(receiptFile, JSON.stringify({status: receipt.status, candidateRevision: candidate.revision, evidence: receipt.evidence}, null, 2));
             members.push([receiptFile, companion]);

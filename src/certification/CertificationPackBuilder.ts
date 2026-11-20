@@ -37,8 +37,8 @@ import {isPositiveSafeInteger, MODE_NAME_PATTERN} from "./internal/certification
 import {assertSafeToReplaceCertificationPackDirectory} from "./internal/assertSafeToReplaceCertificationPackDirectory.js";
 import {sha256OfBytes} from "./internal/sha256OfBytes.js";
 
-function hashManifest(manifest: OutcomeLibraryFolderIndex): string {
-    return sha256OfBytes(JSON.stringify(toCanonicalJson(manifest)));
+function hashSourceIndex(index: OutcomeLibraryFolderIndex): string {
+    return sha256OfBytes(JSON.stringify(toCanonicalJson(index)));
 }
 
 function assertNotCancelled(options: CertificationPackBuildOptions | undefined): void {
@@ -50,7 +50,7 @@ function assertNotCancelled(options: CertificationPackBuildOptions | undefined):
 // file could have its entries (byteOffset/byteLength/recordHash, even their order) rewritten while the
 // libraryHash *string* is left untouched. Hashing the whole object makes that indistinguishable from any other
 // content change.
-function hashIndex(index: OutcomeLibraryFolderModeIndex): string {
+function hashModeIndex(index: OutcomeLibraryFolderModeIndex): string {
     return sha256OfBytes(JSON.stringify(toCanonicalJson(index)));
 }
 
@@ -73,7 +73,7 @@ function hashIndex(index: OutcomeLibraryFolderModeIndex): string {
 // recordHash check readOutcomeById/drawOutcome themselves rely on) directly — never through drawOutcome, which
 // would re-read a fresh index on every single call and could therefore observe a different snapshot mid-mode.
 //
-// Snapshot consistency: the source bundle's own manifest and each sampled mode's own index are hashed *exactly*
+// Snapshot consistency: the source bundle's own index and each sampled mode's own index are hashed *exactly*
 // (the whole object, not just one field) once, before any sampling begins, and re-read and compared again right
 // before publishing — a bundle directory is plain files on disk, not a transaction, so this before/after
 // comparison is the compensating control against the source bundle being rebuilt or otherwise mutated while
@@ -82,7 +82,7 @@ function hashIndex(index: OutcomeLibraryFolderModeIndex): string {
 //
 // Publish-time self-check: immediately before publishing, the fully-assembled staging directory is itself
 // validated via CertificationPackValidating — an internal inconsistency there (a bug in this class
-// producing a manifest that doesn't hash to its own evidenceContentHash, say) aborts the publish exactly like
+// producing an index that doesn't hash to its own evidenceContentHash, say) aborts the publish exactly like
 // any other error, rather than ever making a broken bundle visible at outDir.
 export class CertificationPackBuilder<T extends string | number = string> implements CertificationPackBuilding {
     private readonly pokieVersion: string;
@@ -156,13 +156,13 @@ export class CertificationPackBuilder<T extends string | number = string> implem
         preflightAtomicDirectoryPublication(outDir, true);
         const upfrontIssues = this.validateModesInput(modes);
         if (upfrontIssues.some((issue) => issue.severity === "error")) {
-            return {outDir, files: [], manifest: undefined, issues: upfrontIssues};
+            return {outDir, files: [], index: undefined, issues: upfrontIssues};
         }
 
         let sourceManifest: OutcomeLibraryFolderIndex;
         try {
-            if (!resolveSafeCertificationPackFilePath(libraryDir, "index.json")) throw new Error("Source manifest is missing, symlinked or unsafe.");
-            sourceManifest = await this.reader.readManifest(libraryDir);
+            if (!resolveSafeCertificationPackFilePath(libraryDir, "index.json")) throw new Error("Source index is missing, symlinked or unsafe.");
+            sourceManifest = await this.reader.readIndex(libraryDir);
         } catch (error) {
             return this.failed(outDir, upfrontIssues, [
                 {
@@ -173,7 +173,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
             ]);
         }
         if (sourceManifest.files.some(file => !resolveSafeCertificationPackFilePath(libraryDir, file))) return this.failed(outDir, upfrontIssues, [{code: "certification-pack-source-unsafe", severity: "error", message: "Source inventory contains a missing, symlinked or escaping file."}]);
-        const initialManifestHash = hashManifest(sourceManifest);
+        const initialManifestHash = hashSourceIndex(sourceManifest);
 
         const deepValidationIssues = await this.bundleValidator.validate(libraryDir, {deep: true, signal: options?.signal, throwIfAborted: () => assertNotCancelled(options)});
         assertNotCancelled(options);
@@ -272,13 +272,13 @@ export class CertificationPackBuilder<T extends string | number = string> implem
                 pokieVersion: this.pokieVersion,
                 game: sourceManifest.game,
                 ...(sourceManifest.configHash !== undefined ? {configHash: sourceManifest.configHash} : {}),
-                artifactPokieVersion: sourceManifest.artifactPokieVersion,
-                sourceLibraryManifestHash: initialManifestHash,
+                recordPokieVersion: sourceManifest.recordPokieVersion,
+                sourceLibraryIndexHash: initialManifestHash,
                 modes: modeEntries,
                 deepValidation: {ranAt: generatedAt, issues: deepValidationIssues},
                 files: relativeFiles,
             };
-            const manifest: CertificationPackIndex = {
+            const index: CertificationPackIndex = {
                 ...draftManifest,
                 generatedAt,
                 sourceLibraryDir: libraryDir,
@@ -288,11 +288,11 @@ export class CertificationPackBuilder<T extends string | number = string> implem
             for (const format of formats) {
                 assertNotCancelled(options);
                 options?.onStage?.(`Rendering ${format}`);
-                const rendered = await renderer.render(manifest, format, template, options?.signal);
+                const rendered = await renderer.render(index, format, template, options?.signal);
                 this.writeFile(path.join(stagingDir, certificationPackFileName(format)), rendered);
             }
             assertNotCancelled(options);
-            this.writeFile(path.join(stagingDir, "index.json"), `${JSON.stringify(manifest, null, 4)}\n`);
+            this.writeFile(path.join(stagingDir, "index.json"), `${JSON.stringify(index, null, 4)}\n`);
 
             // Publish-time self-check: validates the fully-assembled staging directory exactly the way any
             // other consumer would validate a published bundle — an internal inconsistency here is a bug in
@@ -337,7 +337,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
                 },
             });
             publication = published.publication;
-            const artifactHashes = Object.fromEntries(relativeFiles.map(file => [file, sha256OfBytes(this.readFileBytes(path.join(outDir, file)))]));
+            const fileHashes = Object.fromEntries(relativeFiles.map(file => [file, sha256OfBytes(this.readFileBytes(path.join(outDir, file)))]));
             assertNotCancelled(options);
 
             const finalIssues = [...upfrontIssues, ...deepValidationIssues];
@@ -345,7 +345,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
                 finalIssues.push({code: "certification-pack-build-stale-cleanup-failed", severity: "warning", message: published.cleanupWarning, details: {outDir}});
             }
 
-            return {outDir, files: relativeFiles, artifactHashes, manifest, issues: finalIssues, publication};
+            return {outDir, files: relativeFiles, fileHashes, index, issues: finalIssues, publication};
         } catch (error) {
             if (publication !== undefined) {
                 if (!removePublishedDirectoryIfOwned(publication)) throw new Error(`Certification rollback cleanup failed at "${outDir}": publication ownership changed; preserve competing files and inspect the retained output. Original failure: ${String(error)}`);
@@ -386,7 +386,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
     // outDir is never created/touched for any of these failure paths — every one of them returns before
     // publishDirectoryAtomically is ever called.
     private failed(outDir: string, upfrontIssues: readonly ValidationIssue[], rest: readonly ValidationIssue[]): CertificationPackBuildResult {
-        return {outDir, files: [], manifest: undefined, issues: [...upfrontIssues, ...rest]};
+        return {outDir, files: [], index: undefined, issues: [...upfrontIssues, ...rest]};
     }
 
     private async readModeIndexes(
@@ -400,7 +400,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
         return indexes;
     }
 
-    // Re-reads the source bundle's own manifest and each sampled mode's own index, comparing the exact hash of
+    // Re-reads the source bundle's own index and each sampled mode's own index, comparing the exact hash of
     // each against the snapshot captured before sampling began — never just one field (like libraryHash) picked
     // out of the index, which a hand-tampered index (entries reordered/rewritten, its libraryHash field left
     // stale) could otherwise slip past. Returns the drift ValidationIssue if anything differs, or a read itself
@@ -413,7 +413,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
     ): Promise<ValidationIssue | undefined> {
         let finalManifest: OutcomeLibraryFolderIndex;
         try {
-            finalManifest = await this.reader.readManifest(libraryDir);
+            finalManifest = await this.reader.readIndex(libraryDir);
         } catch (error) {
             return {
                 code: "certification-pack-build-source-bundle-drift",
@@ -421,7 +421,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
                 message: `the source bundle at "${libraryDir}" could no longer be read after sampling (${error instanceof Error ? error.message : String(error)}); refusing to publish evidence against a possibly-inconsistent snapshot.`,
             };
         }
-        if (hashManifest(finalManifest) !== initialManifestHash) {
+        if (hashSourceIndex(finalManifest) !== initialManifestHash) {
             return {
                 code: "certification-pack-build-source-bundle-drift",
                 severity: "error",
@@ -443,7 +443,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
             }
             // Safe: every requested mode's index was captured in initialIndexes before sampling began.
             const initialIndex = initialIndexes.get(modeInput.modeName)!;
-            if (hashIndex(finalIndex) !== hashIndex(initialIndex)) {
+            if (hashModeIndex(finalIndex) !== hashModeIndex(initialIndex)) {
                 return {
                     code: "certification-pack-build-source-bundle-drift",
                     severity: "error",
@@ -491,8 +491,8 @@ export class CertificationPackBuilder<T extends string | number = string> implem
                 outcomeId: outcome.id,
                 weight: outcome.weight,
                 recordHash: winningEntry.recordHash,
-                artifactHash: computeRoundRecordHash(outcome.artifact),
-                artifact: outcome.artifact,
+                roundRecordHash: computeRoundRecordHash(outcome.record),
+                record: outcome.record,
             };
             lines.push(`${JSON.stringify(toCanonicalJson(record))}\n`);
             onSample();

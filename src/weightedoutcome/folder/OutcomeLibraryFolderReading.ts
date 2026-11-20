@@ -11,7 +11,7 @@ import type {OutcomeLibraryFolderModeIndex} from "./OutcomeLibraryFolderModeInde
 //   runtime) that needs a full in-memory WeightedOutcomeLibrary anyway — the one shared path both of those
 //   integration points call, so they can never end up disagreeing about what a bundle contains.
 export interface OutcomeLibraryFolderReading<T extends string | number = string> {
-    readManifest(libraryDir: string): Promise<OutcomeLibraryFolderIndex>;
+    readIndex(libraryDir: string): Promise<OutcomeLibraryFolderIndex>;
 
     readModeIndex(libraryDir: string, modeName: string): Promise<OutcomeLibraryFolderModeIndex>;
 

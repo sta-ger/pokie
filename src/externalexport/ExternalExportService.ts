@@ -211,7 +211,7 @@ export class ExternalExportService<T extends string | number = string> implement
             mode.library.outcomes.forEach((outcome) => {
                 let projected;
                 try {
-                    projected = target.roundProjector.project(outcome.artifact);
+                    projected = target.roundProjector.project(outcome.record);
                 } catch (error) {
                     issues.push({
                         code: "external-deployment-projection-failed",

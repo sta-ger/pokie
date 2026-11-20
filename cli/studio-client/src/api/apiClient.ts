@@ -9,10 +9,11 @@ import type {
     PokieGameInfo,
     PokieGamePackageValidationReport,
     ProjectDashboardContext,
-    StudioArtifactBuildJobView,
-    StudioArtifactPreviewView,
-    StudioArtifactTargetType,
-    StudioArtifactTargetView,
+    StudioBuildJobView,
+    StudioBuildPreviewView,
+    StudioOutputPreviewView,
+    StudioOutputFormat,
+    StudioOutputFormatView,
     StudioBlueprintCheckView,
     StudioBlueprintLoadView,
     StudioBlueprintRandomView,
@@ -20,7 +21,6 @@ import type {
     StudioBlueprintSaveView,
     StudioSymbolArtworkImportView,
     StudioBlueprintValidationView,
-    StudioBuildPreviewView,
     StudioBuildResult,
     StudioCertificationBuildView,
     StudioCertificationSourceValidateView,
@@ -130,7 +130,7 @@ export type FetchLike = (
 // `/api/home/projects/open` only succeeds after Studio has selected a project context. Keep that
 // contract precise so every caller routes from the server-resolved project identity rather than the
 // potentially non-canonical registry location it submitted.
-type ProjectActionResult = {context: Extract<StudioContext, {mode: "project"}>; manifest: PokieGameInfo};
+type ProjectActionResult = {context: Extract<StudioContext, {mode: "project"}>; info: PokieGameInfo};
 
 /** A server-enforced transition guard, with the exact affected operation names. */
 export class ProjectTransitionConflict extends Error {
@@ -421,7 +421,7 @@ export async function saveBlueprint(
 
 // The guided Design Game editor's own "first Save" -- the caller never picks a path (see
 // StudioBlueprintService.saveManaged()'s own doc comment for the path Studio itself resolves). Never
-// throws for a domain-level outcome ("invalid-name"/"unavailable" are ordinary results of a manifest.id
+// throws for a domain-level outcome ("invalid-name"/"unavailable" are ordinary results of a info.id
 // this service can't turn into a safe directory segment, or a machine with no writable default project
 // location) -- same "only a malformed request throws" convention every other apiClient function here
 // follows. `sourceWorkbookPath`, when given, is the .xlsx workbook this blueprint was Applied from (see
@@ -1396,21 +1396,21 @@ export async function exportStakeEngine(
 
 // The Build/Export tab's own "Build artifact" group -- every BuildOutputBuilderRegistry target, each already
 // marked `supported` against the active project's own resolved ProjectType (see
-// StudioArtifactBuildService.listTargets's own doc comment).
-export async function listArtifactTargets(fetchImpl: FetchLike, signal?: AbortSignal): Promise<StudioArtifactTargetView[]> {
-    const response = await fetchImpl("/api/project/artifacts/targets", {signal});
+// StudioBuildService.listTargets's own doc comment).
+export async function listArtifactTargets(fetchImpl: FetchLike, signal?: AbortSignal): Promise<StudioOutputFormatView[]> {
+    const response = await fetchImpl("/api/project/build/targets", {signal});
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to load the output format list"));
     }
-    return (await response.json()) as StudioArtifactTargetView[];
+    return (await response.json()) as StudioOutputFormatView[];
 }
 
 // Reports what building `target` against the active project would do -- the same registry-resolved
 // destination/capability/conflict diagnostics buildArtifact() below would report, without ever writing
 // anything. "unsupported" and "conflict" are both normal parsed results (never thrown), same convention as
 // buildArtifact below.
-export async function previewArtifact(fetchImpl: FetchLike, target: StudioArtifactTargetType, outDir?: string, signal?: AbortSignal): Promise<StudioArtifactPreviewView> {
-    const response = await fetchImpl("/api/project/artifacts/preview", {
+export async function previewArtifact(fetchImpl: FetchLike, target: StudioOutputFormat, outDir?: string, signal?: AbortSignal): Promise<StudioOutputPreviewView> {
+    const response = await fetchImpl("/api/project/build/preview", {
         signal,
         method: "POST",
         headers: {"Content-Type": "application/json"},
@@ -1419,7 +1419,7 @@ export async function previewArtifact(fetchImpl: FetchLike, target: StudioArtifa
     if (!response.ok && response.status !== 409) {
         throw new Error(await extractErrorMessage(response, "Failed to preview the build"));
     }
-    return (await response.json()) as StudioArtifactPreviewView;
+    return (await response.json()) as StudioOutputPreviewView;
 }
 
 // Runs the active project through BuildOutputBuilderRegistry directly, the exact same
@@ -1427,12 +1427,12 @@ export async function previewArtifact(fetchImpl: FetchLike, target: StudioArtifa
 // results (never thrown) -- same convention as exportStakeEngine above.
 export async function startArtifactBuild(
     fetchImpl: FetchLike,
-    target: StudioArtifactTargetType,
+    target: StudioOutputFormat,
     outDir?: string,
     preparedOperationId?: string,
     deferExecution?: boolean,
-): Promise<StudioArtifactBuildJobView> {
-    const response = await fetchImpl("/api/project/artifacts/build", {
+): Promise<StudioBuildJobView> {
+    const response = await fetchImpl("/api/project/build/build", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({target, outDir, ...(deferExecution === undefined ? {} : {deferExecution}), ...(preparedOperationId === undefined ? {} : {preparedOperationId})}),
@@ -1440,26 +1440,26 @@ export async function startArtifactBuild(
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to start the build"));
     }
-    const view = (await response.json()) as {status: "created"; job: StudioArtifactBuildJobView};
+    const view = (await response.json()) as {status: "created"; job: StudioBuildJobView};
     return view.job;
 }
 
 /** Release a queued Studio build only after its ID and startup cancellation intent are known. */
 export async function activateArtifactBuild(fetchImpl: FetchLike, id: string): Promise<void> {
-    const response = await fetchImpl(`/api/project/artifacts/build/${encodeURIComponent(id)}/activate`, {method: "POST"});
+    const response = await fetchImpl(`/api/project/build/build/${encodeURIComponent(id)}/activate`, {method: "POST"});
     if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to activate the build"));
 }
 
-export async function getArtifactBuild(fetchImpl: FetchLike, id: string): Promise<StudioArtifactBuildJobView> {
-    const response = await fetchImpl(`/api/project/artifacts/build/${encodeURIComponent(id)}`, {cache: "no-store"});
+export async function getArtifactBuild(fetchImpl: FetchLike, id: string): Promise<StudioBuildJobView> {
+    const response = await fetchImpl(`/api/project/build/build/${encodeURIComponent(id)}`, {cache: "no-store"});
     if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to read the build status"));
-    return (await response.json()) as StudioArtifactBuildJobView;
+    return (await response.json()) as StudioBuildJobView;
 }
 
-export async function cancelArtifactBuild(fetchImpl: FetchLike, id: string): Promise<StudioArtifactBuildJobView> {
-    const response = await fetchImpl(`/api/project/artifacts/build/${encodeURIComponent(id)}/cancel`, {method: "POST"});
+export async function cancelArtifactBuild(fetchImpl: FetchLike, id: string): Promise<StudioBuildJobView> {
+    const response = await fetchImpl(`/api/project/build/build/${encodeURIComponent(id)}/cancel`, {method: "POST"});
     if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to cancel the build"));
-    return (await response.json()) as StudioArtifactBuildJobView;
+    return (await response.json()) as StudioBuildJobView;
 }
 
 /** Preview only. The response is the shared server differ's versioned machine result. */

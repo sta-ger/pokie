@@ -1,5 +1,5 @@
 // What a future BuildOutputBuilder.build() resolves to on success: where the produced artifact now lives.
-// Deliberately contract-only here, same as ProjectMaterializationResult was in P3-POLISH-02 -- no
+// Deliberately contract-only here, same as ProjectPreparationResult was in P3-POLISH-02 -- no
 // implementation wires a concrete builder to this shape yet (see BuildOutputBuilder's own doc comment); this type
 // only fixes what a future implementation must report.
 /**

@@ -67,7 +67,7 @@ export class OutcomeSourceProjectAnalyzer implements OutcomeSourceProjectAnalyzi
             return {rootPath: libraryDir, descriptor, issues, modes: []};
         }
 
-        const manifest = await this.outcomeLibraryReader.readManifest(libraryDir);
+        const manifest = await this.outcomeLibraryReader.readIndex(libraryDir);
         return {
             rootPath: libraryDir,
             descriptor,

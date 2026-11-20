@@ -190,18 +190,18 @@ export class ProjectTargetResolver implements ProjectResolving {
                     inputBindingHash: computeProjectInputBindingHash({type, rootPath}),
                     gameId: blueprint.info.id,
                     gameVersion: blueprint.info.version,
-                    manifestIdentity: `${blueprint.info.id}@${blueprint.info.version}`,
+                    gameIdentity: `${blueprint.info.id}@${blueprint.info.version}`,
                 };
             }
             if (type === "outcomeLibrary") {
-                const manifest = await new OutcomeLibraryFolderReader().readManifest(rootPath);
+                const manifest = await new OutcomeLibraryFolderReader().readIndex(rootPath);
                 return {
                     configurationHash: manifest.configHash,
                     inputBindingHash: computeBuildInputHash([rootPath]),
-                    pokieVersion: manifest.artifactPokieVersion,
+                    pokieVersion: manifest.recordPokieVersion,
                     gameId: manifest.game.id,
                     gameVersion: manifest.game.version,
-                    manifestIdentity: `${manifest.game.id}@${manifest.game.version}`,
+                    gameIdentity: `${manifest.game.id}@${manifest.game.version}`,
                 };
             }
             if (type === "tsPackage") {
@@ -214,7 +214,7 @@ export class ProjectTargetResolver implements ProjectResolving {
                         inputBindingHash: computeProjectInputBindingHash({type, rootPath}),
                         gameId: manifest.id,
                         gameVersion: manifest.version,
-                        manifestIdentity: `${manifest.id}@${manifest.version}`,
+                        gameIdentity: `${manifest.id}@${manifest.version}`,
                     };
                 } finally {
                     await releasePokieGame(game);

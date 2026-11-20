@@ -1,4 +1,4 @@
-import {OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION} from "../weightedoutcome/folder/OutcomeLibraryFolderIndex.js";
+import {OUTCOME_LIBRARY_FOLDER_INDEX_SCHEMA_VERSION} from "../weightedoutcome/folder/OutcomeLibraryFolderIndex.js";
 import {recognizeOutcomeLibraryFolderDirectory} from "./internal/isOutcomeLibraryFolderDirectory.js";
 import {ProjectTargetMalformedError} from "./ProjectTargetMalformedError.js";
 import type {ProjectTargetTypeAdapter} from "./ProjectTargetTypeAdapter.js";
@@ -19,7 +19,7 @@ export class OutcomeLibraryProjectTargetAdapter implements ProjectTargetTypeAdap
             return Promise.resolve(undefined);
         }
         return Promise.resolve(
-            `"index.json" matches the outcome-library bundle manifest shape (schemaVersion ${OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION})`,
+            `"index.json" matches the outcome-library bundle manifest shape (schemaVersion ${OUTCOME_LIBRARY_FOLDER_INDEX_SCHEMA_VERSION})`,
         );
     }
 }

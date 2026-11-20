@@ -1,12 +1,12 @@
 import type {FormatConversionPlan, OutputFormat, ProjectType, StakeEngineInfo} from "@fromstan/pokie";
 
-// POST /api/project/artifacts/build's own DTO -- mirrors BuildOutputBuilderRegistry.build()'s own outcomes
+// POST /api/project/build/build's own DTO -- mirrors BuildOutputBuilderRegistry.build()'s own outcomes
 // exactly, the same ones "pokie build <project> --target <target>" itself can hit: a successful build's
 // outputPath/sourceType, an unsupported conversion (the same capability diagnostic
 // registry.supportsConversionFrom() reports at listTargets() time, re-checked here), a destination
 // conflict (BuildConflictError -- an existing, non-empty destination), or any other build failure
 // (e.g. an invalid blueprint for a "tsPackage" build).
-export type StudioArtifactBuildView =
+export type StudioBuildView =
     | {
           readonly status: "ok";
           readonly target: OutputFormat;

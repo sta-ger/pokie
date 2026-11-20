@@ -47,7 +47,7 @@ type PathInputProps = TextInputProps & {
     // field and overwrite confirmation.  Existing-file controls retain the normal Open dialog.
     filePickerMode?: "open" | "save";
     // What a blank field actually resolves to once submitted as `undefined` -- e.g. Build's own
-    // "<project root>/<manifest.id>" default output directory. Resolved the same way a typed value
+    // "<project root>/<info.id>" default output directory. Resolved the same way a typed value
     // would be (relative to `relevantDirectory`/Studio's root), so the blank-field hint shows the real
     // destination the action will use instead of just that root, which is merely where resolution
     // *starts*, not necessarily where the action writes. Omitted entirely (every caller whose blank

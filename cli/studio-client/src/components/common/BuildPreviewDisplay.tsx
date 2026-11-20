@@ -39,7 +39,7 @@ export function BuildPreviewDisplay({view}: {view: BuildPreviewView}) {
             ) : (
                 <Stack gap={4}>
                     <Text size="sm">
-                        Game: {view.manifest.name} (id: &quot;{view.manifest.id}&quot;, v{view.manifest.version})
+                        Game: {view.info.name} (id: &quot;{view.info.id}&quot;, v{view.info.version})
                     </Text>
                     <Text size="sm">
                         Reels x rows: {view.reels} x {view.rows}

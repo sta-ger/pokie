@@ -25,9 +25,9 @@ function isFinitePositiveNumber(value: unknown): value is number {
 
 function isSourceProvenance(value: unknown): value is StakeEngineImportSourceProvenance {
     if (typeof value !== "object" || value === null) return false;
-    const provenance = value as {indexHash?: unknown; manifestHash?: unknown; modes?: unknown};
+    const provenance = value as {indexHash?: unknown; infoHash?: unknown; modes?: unknown};
     return typeof provenance.indexHash === "string" && LIBRARY_HASH_PATTERN.test(provenance.indexHash) &&
-        typeof provenance.manifestHash === "string" && LIBRARY_HASH_PATTERN.test(provenance.manifestHash) &&
+        typeof provenance.infoHash === "string" && LIBRARY_HASH_PATTERN.test(provenance.infoHash) &&
         Array.isArray(provenance.modes) && provenance.modes.every(isSourceProvenanceMode);
 }
 
@@ -86,26 +86,26 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
         const index = this.parseIndex(bundle.stakeDir, bundle.index.value, issues);
 
         let manifest: StakeEngineInfo | undefined;
-        if (bundle.manifest.status === "missing") {
+        if (bundle.info.status === "missing") {
             issues.push({
                 code: "stakeengine-import-manifest-missing",
                 severity: "error",
                 message: `"${bundle.stakeDir}" has no pokie-info.json — import only ever round-trips a directory "pokie stakeengine export" itself produced.`,
             });
-        } else if (bundle.manifest.status === "unreadable") {
+        } else if (bundle.info.status === "unreadable") {
             issues.push({
                 code: "stakeengine-import-manifest-unreadable",
                 severity: "error",
-                message: `pokie-info.json could not be read: ${bundle.manifest.error}`,
+                message: `pokie-info.json could not be read: ${bundle.info.error}`,
             });
-        } else if (bundle.manifest.status === "invalid") {
+        } else if (bundle.info.status === "invalid") {
             issues.push({
                 code: "stakeengine-import-manifest-invalid-json",
                 severity: "error",
-                message: `pokie-info.json is not valid JSON: ${bundle.manifest.error}`,
+                message: `pokie-info.json is not valid JSON: ${bundle.info.error}`,
             });
         } else {
-            manifest = this.parseManifest(bundle.stakeDir, bundle.manifest.value, issues);
+            manifest = this.parseManifest(bundle.stakeDir, bundle.info.value, issues);
         }
 
         if (index === undefined || manifest === undefined) {

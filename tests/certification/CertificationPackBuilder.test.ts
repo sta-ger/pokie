@@ -60,22 +60,22 @@ describe("CertificationPackBuilder", () => {
 
     it("builds a certification bundle whose manifest reuses the source bundle's own hash/metrics verbatim", async () => {
         const writeResult = await buildSourceOutcomeLibraryFolder(libraryDir, ["base"]);
-        const sourceModeEntry = writeResult.manifest!.modes[0];
+        const sourceModeEntry = writeResult.index!.modes[0];
 
         const builder = new CertificationPackBuilder(CERTIFICATION_TEST_POKIE_VERSION);
         const modes: CertificationPackModeSampleInput[] = [{modeName: "base", seed: "cert-seed-1", sampleCount: 10}];
         const result = await builder.buildFromBundle(libraryDir, modes, certDir);
 
         expect(result.issues.filter((issue) => issue.severity === "error")).toEqual([]);
-        expect(result.manifest).toBeDefined();
-        const manifest = result.manifest as CertificationPackIndex;
+        expect(result.index).toBeDefined();
+        const index = result.index as CertificationPackIndex;
 
-        expect(manifest.game).toEqual(writeResult.manifest!.game);
-        expect(manifest.artifactPokieVersion).toBe(writeResult.manifest!.artifactPokieVersion);
-        expect(manifest.sourceLibraryDir).toBe(libraryDir);
-        expect(manifest.modes).toHaveLength(1);
+        expect(index.game).toEqual(writeResult.index!.game);
+        expect(index.recordPokieVersion).toBe(writeResult.index!.recordPokieVersion);
+        expect(index.sourceLibraryDir).toBe(libraryDir);
+        expect(index.modes).toHaveLength(1);
 
-        const modeEntry = manifest.modes[0];
+        const modeEntry = index.modes[0];
         expect(modeEntry.libraryHash).toBe(sourceModeEntry.libraryHash);
         expect(modeEntry.outcomeCount).toBe(sourceModeEntry.outcomeCount);
         expect(modeEntry.totalWeight).toBe(sourceModeEntry.totalWeight);
@@ -120,7 +120,7 @@ describe("CertificationPackBuilder", () => {
                 });
             },
         });
-        expect(result.manifest).toBeUndefined();
+        expect(result.index).toBeUndefined();
         expect(result.issues).toEqual(expect.arrayContaining([expect.objectContaining({code: "certification-pack-build-source-bundle-drift"})]));
         expect(fs.existsSync(certDir)).toBe(false);
     });
@@ -151,7 +151,7 @@ describe("CertificationPackBuilder", () => {
         fs.writeFileSync(templateFile, JSON.stringify({schemaVersion: 999}));
         const builder = new CertificationPackBuilder(CERTIFICATION_TEST_POKIE_VERSION);
         const result = await builder.buildFromBundle(libraryDir, [{modeName: "base", seed: "s", sampleCount: 1}], certDir, {output: {templateFile}});
-        expect(result).toMatchObject({manifest: undefined, files: [], issues: [{code: "certification-pack-input-invalid"}]});
+        expect(result).toMatchObject({index: undefined, files: [], issues: [{code: "certification-pack-input-invalid"}]});
         expect(fs.existsSync(certDir)).toBe(false);
         await expect(builder.buildFromBundle(libraryDir, [{modeName: "base", seed: "s", sampleCount: 1}], path.join(libraryDir, "nested"))).rejects.toThrow(/overlap/);
         fs.mkdirSync(certDir);
@@ -166,7 +166,7 @@ describe("CertificationPackBuilder", () => {
         const builder = new CertificationPackBuilder(CERTIFICATION_TEST_POKIE_VERSION);
         const result = await builder.buildFromBundle(libraryDir, [{modeName: "base", seed: "cert-seed-1", sampleCount: 12}], certDir);
 
-        const modeEntry = result.manifest!.modes[0];
+        const modeEntry = result.index!.modes[0];
         const records = readSampleLines(certDir, modeEntry.samplesFile);
         expect(records).toHaveLength(12);
 
@@ -177,7 +177,7 @@ describe("CertificationPackBuilder", () => {
             expect(record.sampleIndex).toBe(position);
             expect(record.modeName).toBe("base");
             expect(record.seed).toBe("cert-seed-1");
-            expect(record.artifactHash).toBe(computeRoundRecordHash(record.artifact));
+            expect(record.roundRecordHash).toBe(computeRoundRecordHash(record.record));
 
             const indexEntry = index.entries.find((entry) => entry.id === record.outcomeId);
             expect(indexEntry).toBeDefined();
@@ -214,8 +214,8 @@ describe("CertificationPackBuilder", () => {
         const resultA = await builder.buildFromBundle(libraryDir, [{modeName: "base", seed: "seed-a", sampleCount: 25}], path.join(tmpRoot, "cert-a"));
         const resultB = await builder.buildFromBundle(libraryDir, [{modeName: "base", seed: "seed-b", sampleCount: 25}], path.join(tmpRoot, "cert-b"));
 
-        const idsA = readSampleLines(path.join(tmpRoot, "cert-a"), resultA.manifest!.modes[0].samplesFile).map((record) => record.outcomeId);
-        const idsB = readSampleLines(path.join(tmpRoot, "cert-b"), resultB.manifest!.modes[0].samplesFile).map((record) => record.outcomeId);
+        const idsA = readSampleLines(path.join(tmpRoot, "cert-a"), resultA.index!.modes[0].samplesFile).map((record) => record.outcomeId);
+        const idsB = readSampleLines(path.join(tmpRoot, "cert-b"), resultB.index!.modes[0].samplesFile).map((record) => record.outcomeId);
         expect(idsA).not.toEqual(idsB);
     });
 
@@ -317,7 +317,7 @@ describe("CertificationPackBuilder", () => {
 
         const result = await builder.buildFromBundle(libraryDir, [], certDir);
 
-        expect(result.manifest).toBeUndefined();
+        expect(result.index).toBeUndefined();
         expect(result.issues).toEqual([{code: "certification-pack-build-modes-empty", severity: "error", message: expect.any(String)}]);
         expect(fs.existsSync(certDir)).toBe(false);
     });
@@ -328,7 +328,7 @@ describe("CertificationPackBuilder", () => {
 
         const result = await builder.buildFromBundle(libraryDir, [{modeName: "not a valid name!", seed: "s", sampleCount: 1}], certDir);
 
-        expect(result.manifest).toBeUndefined();
+        expect(result.index).toBeUndefined();
         expect(result.issues.map((issue) => issue.code)).toContain("certification-pack-build-mode-name-invalid");
     });
 
@@ -388,7 +388,7 @@ describe("CertificationPackBuilder", () => {
 
         const result = await builder.buildFromBundle(libraryDir, [{modeName: "bogus", seed: "s", sampleCount: 1}], certDir);
 
-        expect(result.manifest).toBeUndefined();
+        expect(result.index).toBeUndefined();
         expect(result.issues.map((issue) => issue.code)).toContain("certification-pack-build-mode-not-found-in-bundle");
         expect(fs.existsSync(certDir)).toBe(false);
     });
@@ -403,7 +403,7 @@ describe("CertificationPackBuilder", () => {
 
         const result = await builder.buildFromBundle(libraryDir, [{modeName: "base", seed: "s", sampleCount: 1}], certDir);
 
-        expect(result.manifest).toBeUndefined();
+        expect(result.index).toBeUndefined();
         expect(result.issues.map((issue) => issue.code)).toContain("outcome-library-folder-hash-mismatch");
         expect(fs.existsSync(certDir)).toBe(false);
     });
@@ -413,7 +413,7 @@ describe("CertificationPackBuilder", () => {
 
         const result = await builder.buildFromBundle(path.join(tmpRoot, "does-not-exist"), [{modeName: "base", seed: "s", sampleCount: 1}], certDir);
 
-        expect(result.manifest).toBeUndefined();
+        expect(result.index).toBeUndefined();
         expect(result.issues.map((issue) => issue.code)).toContain("certification-pack-build-source-bundle-manifest-unreadable");
     });
 
@@ -423,8 +423,8 @@ describe("CertificationPackBuilder", () => {
 
         const result = await builder.buildFromBundle(libraryDir, [{modeName: "base", seed: "s", sampleCount: 1}], certDir);
 
-        expect(result.manifest!.deepValidation.issues).toEqual([]);
-        expect(result.manifest!.deepValidation.ranAt).toBe(result.manifest!.generatedAt);
+        expect(result.index!.deepValidation.issues).toEqual([]);
+        expect(result.index!.deepValidation.ranAt).toBe(result.index!.generatedAt);
     });
 
     it("produces the same evidenceContentHash regardless of generatedAt or the source bundle's own path (deterministic content identity)", async () => {
@@ -439,29 +439,29 @@ describe("CertificationPackBuilder", () => {
         const resultA = await builderA.buildFromBundle(libraryDir, modes, path.join(tmpRoot, "cert-a"));
         const resultB = await builderB.buildFromBundle(libraryDirCopy, modes, path.join(tmpRoot, "cert-b"));
 
-        expect(resultA.manifest!.generatedAt).not.toBe(resultB.manifest!.generatedAt);
-        expect(resultA.manifest!.sourceLibraryDir).not.toBe(resultB.manifest!.sourceLibraryDir);
-        expect(resultA.manifest!.evidenceContentHash).toBe(resultB.manifest!.evidenceContentHash);
+        expect(resultA.index!.generatedAt).not.toBe(resultB.index!.generatedAt);
+        expect(resultA.index!.sourceLibraryDir).not.toBe(resultB.index!.sourceLibraryDir);
+        expect(resultA.index!.evidenceContentHash).toBe(resultB.index!.evidenceContentHash);
     });
 
     it("aborts without writing anything when the source bundle drifts between the initial snapshot and the final pre-publish check", async () => {
         await buildSourceOutcomeLibraryFolder(libraryDir, ["base"]);
         const realReader = new OutcomeLibraryFolderReader();
-        let readManifestCalls = 0;
+        let readIndexCalls = 0;
         // Simulates a concurrent rebuild landing exactly between the initial snapshot (capture before
-        // sampling) and the final pre-publish re-check (both of which call readManifest — see
+        // sampling) and the final pre-publish re-check (both of which call readIndex — see
         // CertificationPackBuilder.detectSourceBundleDrift) by actually rewriting the bundle on disk
         // via the real writer right before the second call's own read.
         const driftingReader: OutcomeLibraryFolderReading = {
-            readManifest: async (dir: string) => {
-                readManifestCalls++;
-                if (readManifestCalls === 2) {
+            readIndex: async (dir: string) => {
+                readIndexCalls++;
+                if (readIndexCalls === 2) {
                     await new OutcomeLibraryFolderWriter(CERTIFICATION_TEST_POKIE_VERSION).writeToDirectory(
                         [buildOutcomeLibraryFolderModeInput("base", "base-lib-drifted")],
                         dir,
                     );
                 }
-                return realReader.readManifest(dir);
+                return realReader.readIndex(dir);
             },
             readModeIndex: (dir, modeName) => realReader.readModeIndex(dir, modeName),
             iterateModeOutcomes: (dir, modeName) => realReader.iterateModeOutcomes(dir, modeName),
@@ -473,7 +473,7 @@ describe("CertificationPackBuilder", () => {
         const builder = new CertificationPackBuilder(CERTIFICATION_TEST_POKIE_VERSION, driftingReader);
         const result = await builder.buildFromBundle(libraryDir, [{modeName: "base", seed: "cert-seed-1", sampleCount: 5}], certDir);
 
-        expect(result.manifest).toBeUndefined();
+        expect(result.index).toBeUndefined();
         expect(result.issues.map((issue) => issue.code)).toContain("certification-pack-build-source-bundle-drift");
         expect(fs.existsSync(certDir)).toBe(false);
     });
@@ -484,16 +484,16 @@ describe("CertificationPackBuilder", () => {
         copyDirectoryShallow(libraryDir, backupDir);
 
         const realReader = new OutcomeLibraryFolderReader();
-        let readManifestCalls = 0;
-        // Intercepts only the very first readManifest call (the initial snapshot, before readModeIndexes or any
+        let readIndexCalls = 0;
+        // Intercepts only the very first readIndex call (the initial snapshot, before readModeIndexes or any
         // sampling runs) to simulate the bundle transiently changing and reverting back to its exact original
         // bytes entirely within that window — proving sampling (which pins one in-memory index snapshot per
         // mode and never re-reads it) is completely unaffected either way, and the final pre-publish check
         // (seeing the bundle back in its original state) reports no drift.
         const flickeringReader: OutcomeLibraryFolderReading = {
-            readManifest: async (dir: string) => {
-                readManifestCalls++;
-                if (readManifestCalls === 1) {
+            readIndex: async (dir: string) => {
+                readIndexCalls++;
+                if (readIndexCalls === 1) {
                     await new OutcomeLibraryFolderWriter(CERTIFICATION_TEST_POKIE_VERSION).writeToDirectory(
                         [buildOutcomeLibraryFolderModeInput("base", "base-lib-transient")],
                         dir,
@@ -502,7 +502,7 @@ describe("CertificationPackBuilder", () => {
                         fs.copyFileSync(path.join(backupDir, file), path.join(dir, file));
                     }
                 }
-                return realReader.readManifest(dir);
+                return realReader.readIndex(dir);
             },
             readModeIndex: (dir, modeName) => realReader.readModeIndex(dir, modeName),
             iterateModeOutcomes: (dir, modeName) => realReader.iterateModeOutcomes(dir, modeName),
@@ -523,9 +523,9 @@ describe("CertificationPackBuilder", () => {
             path.join(tmpRoot, "cert-flickering"),
         );
 
-        expect(flickeringResult.manifest).toBeDefined();
+        expect(flickeringResult.index).toBeDefined();
         expect(flickeringResult.issues.filter((issue) => issue.severity === "error")).toEqual([]);
-        expect(flickeringResult.manifest!.evidenceContentHash).toBe(cleanResult.manifest!.evidenceContentHash);
+        expect(flickeringResult.index!.evidenceContentHash).toBe(cleanResult.index!.evidenceContentHash);
     });
 
     it("detects index drift at the final pre-publish check even when the index's own libraryHash field is left unchanged", async () => {
@@ -538,7 +538,7 @@ describe("CertificationPackBuilder", () => {
         // single string field elsewhere in the same object — is left completely untouched, simulating a
         // hand-tampered index file a libraryHash-only comparison would never catch.
         const tamperedFinalIndexReader: OutcomeLibraryFolderReading = {
-            readManifest: (dir) => realReader.readManifest(dir),
+            readIndex: (dir) => realReader.readIndex(dir),
             readModeIndex: async (dir, modeName) => {
                 readModeIndexCalls++;
                 const realIndex = await realReader.readModeIndex(dir, modeName);
@@ -566,7 +566,7 @@ describe("CertificationPackBuilder", () => {
         const builder = new CertificationPackBuilder(CERTIFICATION_TEST_POKIE_VERSION, tamperedFinalIndexReader);
         const result = await builder.buildFromBundle(libraryDir, [{modeName: "base", seed: "cert-seed-1", sampleCount: 5}], certDir);
 
-        expect(result.manifest).toBeUndefined();
+        expect(result.index).toBeUndefined();
         expect(result.issues.map((issue) => issue.code)).toContain("certification-pack-build-source-bundle-drift");
         expect(fs.existsSync(certDir)).toBe(false);
     });
@@ -591,7 +591,7 @@ describe("CertificationPackBuilder", () => {
 
         const result = await builder.buildFromBundle(libraryDir, [{modeName: "base", seed: "s", sampleCount: 3}], certDir);
 
-        expect(result.manifest).toBeUndefined();
+        expect(result.index).toBeUndefined();
         expect(result.issues.map((issue) => issue.code)).toContain("certification-pack-bundle-content-hash-mismatch");
         expect(fs.existsSync(certDir)).toBe(false);
     });
@@ -635,7 +635,7 @@ describe("CertificationPackBuilder", () => {
         const modes = [{modeName: "base", seed: "cert-seed-1", sampleCount: 3}];
         fs.mkdirSync(certDir);
         const identity = fs.statSync(certDir).ino;
-        await expect(builder.buildFromBundle(libraryDir, modes, certDir)).resolves.toMatchObject({issues: [], manifest: {schemaVersion: 2}});
+        await expect(builder.buildFromBundle(libraryDir, modes, certDir)).resolves.toMatchObject({issues: [], index: {schemaVersion: 2}});
         expect(fs.statSync(certDir).ino).toBe(identity);
         for (const file of fs.readdirSync(certDir)) fs.unlinkSync(path.join(certDir, file));
 

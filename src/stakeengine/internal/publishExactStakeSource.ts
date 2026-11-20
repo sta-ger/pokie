@@ -12,7 +12,7 @@ import {StakeEngineStandaloneValidator} from "../standalone/StakeEngineStandalon
 import type {StakeEngineStandaloneFileResult, StakeEngineStandaloneBookLineResult, StakeEngineStandaloneBundle} from "../standalone/StakeEngineStandaloneBundle.js";
 import {decompressZstdSync} from "./zstd.js";
 import {capturePublishDirectoryOwnership, publishDirectoryAtomically, removePublishedDirectoryIfOwned, withPublishedDirectoryOwnership} from "./publishDirectoryAtomically.js";
-import {assertArtifactDestinationAvailable} from "../../project/internal/assertArtifactDestinationAvailable.js";
+import {assertBuildDestinationAvailable} from "../../project/internal/assertBuildDestinationAvailable.js";
 
 /** Validate the captured bytes rather than rereading mutable source paths at publication. */
 export function validateExactStakeSource(source: StakeEngineExactSource): void {
@@ -46,7 +46,7 @@ export function validateExactStakeSource(source: StakeEngineExactSource): void {
     const issues = new StakeEngineStandaloneValidator().validate(bundle);
     if (source.files["pokie-info.json"] !== undefined) {
         const manifestFile = file("pokie-info.json", bytes => JSON.parse(bytes.toString("utf8")));
-        issues.push(...new StakeEngineImportValidator().validate({...bundle, manifest: manifestFile}));
+        issues.push(...new StakeEngineImportValidator().validate({...bundle, info: manifestFile}));
         if (!issues.some(issue => issue.severity === "error") && manifestFile.status === "ok") {
             const manifest = manifestFile.value as StakeEngineInfo;
             const importer = new StakeEngineRoundEventsImporter();
@@ -81,7 +81,7 @@ export function publishExactStakeSource(source: StakeEngineExactSource, outDir: 
     };
     cancelled();
     validateExactStakeSource(source);
-    assertArtifactDestinationAvailable(outDir, "directory");
+    assertBuildDestinationAvailable(outDir, "directory");
     const ownership = options?.destinationOwnership ?? capturePublishDirectoryOwnership(outDir);
     const files = Object.keys(source.files);
     const manifest = source.files["pokie-info.json"] === undefined ? undefined : JSON.parse(Buffer.from(source.files["pokie-info.json"], "base64").toString("utf8")) as StakeEngineInfo;
@@ -104,5 +104,5 @@ export function publishExactStakeSource(source: StakeEngineExactSource, outDir: 
         removePublishedDirectoryIfOwned(publication);
         throw error;
     }
-    return withPublishedDirectoryOwnership({outDir, files, manifest, issues: []}, publication);
+    return withPublishedDirectoryOwnership({outDir, files, info: manifest, issues: []}, publication);
 }

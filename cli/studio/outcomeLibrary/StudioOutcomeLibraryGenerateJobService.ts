@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import {randomUUID} from "crypto";
 import type {ExactEnumerationCheckpoint} from "@fromstan/pokie";
-import {createUnresolvedRuntimePlan} from "../artifacts/createExternalFormatConversionPlan.js";
+import {createUnresolvedRuntimePlan} from "../build/createExternalFormatConversionPlan.js";
 import type {StudioOutcomeLibraryGenerateResultView} from "./StudioOutcomeLibraryGenerateResultView.js";
 import {
     StudioOutcomeLibraryGenerateService,

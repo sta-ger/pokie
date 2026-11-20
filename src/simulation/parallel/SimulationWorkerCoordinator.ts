@@ -210,7 +210,7 @@ export class SimulationWorkerCoordinator {
                             case "result": {
                                 const result: SimulationWorkerResult = {
                                     workerIndex: message.workerIndex,
-                                    manifest: message.manifest,
+                                    gameInfo: message.gameInfo,
                                     configHash: message.configHash,
                                     accumulator: message.accumulator,
                                     breakdown: message.breakdown,

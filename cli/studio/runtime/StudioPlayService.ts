@@ -53,7 +53,7 @@ import {
 import {captureCoordinatePublicPayload} from "../../../src/server/session/internal/captureCoordinatePublicPayload.js";
 import {deriveDeterministicSeed} from "../../../src/pregenerated/internal/deriveDeterministicSeed.js";
 import crypto from "crypto";
-import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
+import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../runtime/prepareRuntimePackage.js";
 import {StudioRoundRecorder, type StudioRoundOperation} from "./StudioRoundRecorder.js";
 import {describeRuntimePackageLoadError} from "../../commands/internal/describeLocalRuntimeError.js";
 import type {StudioRuntimeSessionView} from "./StudioRuntimeSessionView.js";
@@ -75,7 +75,7 @@ export type StudioWasmRuntimeLoading = typeof loadPokieWasmFileRuntime;
 // so it has nowhere else to live between draws.
 type ActiveRuntimeSession = {
     readonly kind: "runtime";
-    readonly manifest: {id: string; name: string; version: string};
+    readonly info: {id: string; name: string; version: string};
     readonly spinHandler: SpinCommandHandler;
     // Retained so this session keeps ownership of its isolated executable package until reset.
     readonly game: PokieGame;
@@ -93,7 +93,7 @@ type ActiveRuntimeSession = {
 
 type ActiveOutcomeSourceSession = {
     readonly kind: "outcomeSource";
-    readonly manifest: {id: string; name: string; version: string};
+    readonly info: {id: string; name: string; version: string};
     readonly outcomeSource: PreGeneratedOutcomeSourcing;
     // Matches the portable server/CLI selector: a seed-derived source per one-based round.
     roundsPlayed: number;
@@ -109,7 +109,7 @@ type ActiveOutcomeSourceSession = {
 
 type ActiveWasmSession = {
     readonly kind: "wasm";
-    readonly manifest: {id: string; name: string; version: string};
+    readonly info: {id: string; name: string; version: string};
     readonly runtime: PokieWasmRuntime;
     readonly session: PokieWasmRuntimeSession;
     readonly projectRoot: string;
@@ -281,7 +281,7 @@ export class StudioPlayService {
             return this.fail(error, projectRoot);
         }
 
-        const manifest = game.getInfo();
+        const info = game.getInfo();
         const wallet = new InMemoryWallet();
         const sessionRepository = new InMemorySessionRepository();
         const transactionalWallet = isTransactionalWalletPort(wallet) ? wallet : new TransactionalWalletAdapter(wallet);
@@ -318,11 +318,11 @@ export class StudioPlayService {
             return this.fail(error);
         }
 
-        this.active = {kind: "runtime", manifest, game, spinHandler, session, projectRoot, seed};
+        this.active = {kind: "runtime", info, game, spinHandler, session, projectRoot, seed};
         this.currentSessionId = sessionId;
 
         const credits = await wallet.getBalance(sessionId);
-        return {status: "ok", session: this.buildSessionView(sessionId, manifest, state, credits, undefined, state.initialPayload, session)};
+        return {status: "ok", session: this.buildSessionView(sessionId, info, state, credits, undefined, state.initialPayload, session)};
     }
 
     // sessionId is always checked against the one currently active session -- Play never keeps more than
@@ -428,7 +428,7 @@ export class StudioPlayService {
                     status: "ok",
                     session: this.buildSessionView(
                         sessionId,
-                        active.manifest,
+                        active.info,
                         handled.state,
                         handled.credits,
                         handled.win,
@@ -443,7 +443,7 @@ export class StudioPlayService {
             }
             if (handled.status !== "played" && handled.committedResult && (result.status === "error" || result.status === "blocked")) {
                 const prefix = handled.committedResult;
-                result.session = this.buildSessionView(sessionId, active.manifest, prefix.state, prefix.credits, prefix.win, prefix.state.roundPayload, active.session);
+                result.session = this.buildSessionView(sessionId, active.info, prefix.state, prefix.credits, prefix.win, prefix.state.roundPayload, active.session);
                 result.session.studioRequestId = (prefix.state.logicalRound?.entry as {requestId?: string} | undefined)?.requestId ?? prefix.requestId;
                 const recording = prefix.audit ? new ReplayRecorder().describeAudit(prefix.audit) : undefined;
                 result.session.debug = {...result.session.debug, stateBefore: prefix.previousState, requestId: prefix.requestId,
@@ -666,7 +666,7 @@ export class StudioPlayService {
             const sessionId = crypto.randomUUID();
             const active: ActiveWasmSession = {
                 kind: "wasm",
-                manifest: {id: manifest.component.id, name: manifest.component.id, version: manifest.component.version},
+                info: {id: manifest.component.id, name: manifest.component.id, version: manifest.component.version},
                 runtime,
                 session: runtime.createSession(sessionSeed),
                 projectRoot: project.rootPath,
@@ -682,7 +682,7 @@ export class StudioPlayService {
                     ...active.session.getInitialData?.(),
                     logicalRoundDeliverySupported: active.session.getInitialData !== undefined,
                     sessionId,
-                    game: active.manifest,
+                    game: active.info,
                     credits: state?.credits ?? 1000,
                     scenarioCapabilities: WASM_SCENARIO_CAPABILITIES,
                     debug: state === undefined ? {} : {stateAfter: state},
@@ -797,7 +797,7 @@ export class StudioPlayService {
         let bundleGame: {id: string; name: string; version: string};
         let resolvedModeName: string;
         try {
-            const manifest = await this.outcomeLibraryReader.readManifest(project.rootPath);
+            const manifest = await this.outcomeLibraryReader.readIndex(project.rootPath);
             if (manifest.modes.length === 0) {
                 return {status: "failed", error: `"${project.rootPath}" has no outcome-library modes to play.`};
             }
@@ -814,7 +814,7 @@ export class StudioPlayService {
         // portable (seed, round, mode) provenance interchangeable with those public surfaces.
         this.active = {
             kind: "outcomeSource",
-            manifest: bundleGame,
+            info: bundleGame,
             outcomeSource: new OutcomeLibraryFolderOutcomeSource(project.rootPath, resolvedModeName),
             roundsPlayed: 0,
             credits: 0,
@@ -834,7 +834,7 @@ export class StudioPlayService {
     // running ledger over this draw's real stake/totalWin, the only place this bundle-backed session's
     // "credits" figure lives at all (see the class doc comment).
     private async spinOutcomeSource(sessionId: string, active: ActiveOutcomeSourceSession): Promise<StudioPlaySpinResult> {
-        let artifact: RoundRecord;
+        let roundRecord: RoundRecord;
         let replay: PreGeneratedRoundReplayDescriptor | undefined;
         try {
             const nextRound = active.roundsPlayed + 1;
@@ -844,10 +844,10 @@ export class StudioPlayService {
                     ? new SecureWeightedOutcomeRandomSource()
                     : new SeededWeightedOutcomeRandomSource(deriveDeterministicSeed(String(active.seed), nextRound));
             const selection = await active.outcomeSource.drawOutcome(randomSource);
-            artifact = selection.outcome.artifact;
+            roundRecord = selection.outcome.record;
             if (active.seed !== undefined) {
                 replay = {
-                    game: active.manifest,
+                    game: active.info,
                     libraryId: selection.libraryId,
                     libraryHash: selection.libraryHash,
                     modeName: active.modeName,
@@ -856,11 +856,11 @@ export class StudioPlayService {
                     round: nextRound,
                     outcomeId: selection.outcome.id,
                     weight: selection.outcome.weight,
-                    totalWin: artifact.totalWin,
-                    payoutMultiplier: artifact.payoutMultiplier,
-                    stake: artifact.stake,
-                    screen: artifact.screen.map((row) => [...row]),
-                    artifact,
+                    totalWin: roundRecord.totalWin,
+                    payoutMultiplier: roundRecord.payoutMultiplier,
+                    stake: roundRecord.stake,
+                    screen: roundRecord.screen.map((row) => [...row]),
+                    artifact: roundRecord,
                     timestamp: startedAt,
                     durationMs: Date.now() - startedAt,
                 };
@@ -872,9 +872,9 @@ export class StudioPlayService {
             return {status: "error", error: error instanceof Error ? error.message : String(error)};
         }
 
-        active.credits = active.credits - artifact.stake + artifact.totalWin;
+        active.credits = active.credits - roundRecord.stake + roundRecord.totalWin;
 
-        return {status: "ok", session: this.buildOutcomeSourceSessionView(sessionId, active, artifact, replay)};
+        return {status: "ok", session: this.buildOutcomeSourceSessionView(sessionId, active, roundRecord, replay)};
     }
 
     private fail(error: unknown, projectRoot = "the selected project"): StudioPlaySessionResult {
@@ -986,7 +986,7 @@ export class StudioPlayService {
     private buildWasmSessionView(active: ActiveWasmSession, sessionId: string, round: PokieWasmRound, stateBefore?: unknown, stateAfter?: unknown): StudioRuntimeSessionView {
         const artifact = this.canInspectWasmRound(active) ? this.projectWasmRoundRecord(active, sessionId, round) : undefined;
         return {...active.session.getInitialData?.(), ...round.network, logicalRoundDeliverySupported: active.session.getInitialData !== undefined,
-            sessionId, game: active.manifest, credits: round.credits, bet: round.network?.bet ?? round.stake, win: round.win ?? round.payout,
+            sessionId, game: active.info, credits: round.credits, bet: round.network?.bet ?? round.stake, win: round.win ?? round.payout,
             stake: round.stake, payout: round.payout, sequenceSelections: round.sequenceSelections, sequenceStatistics: round.sequenceStatistics,
             weightedBonusStatistics: round.weightedBonusStatistics,
             ...(round.logicalRound ? {logicalRound: projectLogicalRound(round.logicalRound), logicalRoundDurability: "process-only" as const} : {}),
@@ -996,7 +996,7 @@ export class StudioPlayService {
     }
 
     private projectWasmRoundRecord(active: ActiveWasmSession, sessionId: string, round: PokieWasmRound): RoundRecordJson {
-        return projectPokieWasmRoundRecord(round, {game: active.manifest, pokieVersion: this.pokieVersion,
+        return projectPokieWasmRoundRecord(round, {game: active.info, pokieVersion: this.pokieVersion,
             ...(active.runtime.manifest.artifact?.configurationHash ? {configHash: active.runtime.manifest.artifact.configurationHash} : {})},
         `wasm:${active.integrity}:${sessionId}:${round.sequence}`, active.runtime.manifest.capabilities);
     }
@@ -1011,21 +1011,21 @@ export class StudioPlayService {
     private buildOutcomeSourceSessionView(
         sessionId: string,
         active: ActiveOutcomeSourceSession,
-        artifact: RoundRecord | undefined,
+        roundRecord: RoundRecord | undefined,
         replay?: PreGeneratedRoundReplayDescriptor,
     ): StudioRuntimeSessionView {
         const view = {
             sessionId,
-            game: active.manifest,
+            game: active.info,
             credits: active.credits,
-            ...(artifact !== undefined
-                ? {bet: artifact.stake, win: artifact.totalWin, screen: artifact.screen.map((row) => [...row])}
+            ...(roundRecord !== undefined
+                ? {bet: roundRecord.stake, win: roundRecord.totalWin, screen: roundRecord.screen.map((row) => [...row])}
                 : {}),
             ...(replay === undefined ? {} : {replay}),
         } as StudioRuntimeSessionView;
 
-        if (artifact !== undefined) {
-            view.debug = {artifact: new PokieJsonRoundRecordProjector().project(artifact)};
+        if (roundRecord !== undefined) {
+            view.debug = {artifact: new PokieJsonRoundRecordProjector().project(roundRecord)};
         }
 
         return view;

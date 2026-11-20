@@ -1,4 +1,4 @@
-import {expectInconclusiveArtifactValidation} from "../testUtils/expectInconclusiveArtifactValidation.js";
+import {expectInconclusiveBuildValidation} from "../testUtils/expectInconclusiveBuildValidation.js";
 import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../v2/fixtures/PackageExtractionFixture.js";
 import {GameBlueprint, ValidationIssue} from "@fromstan/pokie";
 import fs from "fs";
@@ -65,7 +65,7 @@ describe("CLI workflow (integration): first-class random game generation", () =>
             const game = require(path.join(projectRoot, "dist", "index.js")) as {getInfo(): {id: string}};
             expect(game.getInfo().id).toBe("my-random-game");
 
-            await expectInconclusiveArtifactValidation([projectRoot]);
+            await expectInconclusiveBuildValidation([projectRoot]);
         } finally {
             process.chdir(originalCwd);
         }
@@ -88,7 +88,7 @@ describe("CLI workflow (integration): first-class random game generation", () =>
             const buildExitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--target", "tsPackage", "--out", projectRoot]);
             expect(buildExitCode).toBe(0);
 
-            await expectInconclusiveArtifactValidation([projectRoot]);
+            await expectInconclusiveBuildValidation([projectRoot]);
         } finally {
             process.chdir(originalCwd);
         }

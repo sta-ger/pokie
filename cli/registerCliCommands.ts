@@ -24,7 +24,7 @@ import {SampleCommand} from "./commands/SampleCommand.js";
 import {SimCommand} from "./commands/SimCommand.js";
 import {StudioCommand} from "./commands/StudioCommand.js";
 import {ValidateCommand} from "./commands/ValidateCommand.js";
-import {createMaterializingRuntimePackageResolver} from "./materialize/materializeRuntimePackage.js";
+import {createPreparingRuntimePackageResolver} from "./runtime/prepareRuntimePackage.js";
 import {withLocalPokieInstall} from "./prepare/PackageCommandRunner.js";
 
 export type RegisterCliCommandsOptions = {
@@ -56,13 +56,13 @@ export function registerCliCommands(options: RegisterCliCommandsOptions): CliCom
             undefined,
             undefined,
             {clientRoot, pokieVersion: version},
-            createMaterializingRuntimePackageResolver(version, DEV_OPERATION, pokiePackageRoot),
+            createPreparingRuntimePackageResolver(version, DEV_OPERATION, pokiePackageRoot),
         ),
         new DiffCommand(),
         new EditCommand(),
         new FairnessCommand(),
         new GenerateCommand(version),
-        // withLocalPokieInstall(pokiePackageRoot): the same mechanism createMaterializingRuntimePackageResolver
+        // withLocalPokieInstall(pokiePackageRoot): the same mechanism createPreparingRuntimePackageResolver
         // wires into every Blueprint materialization below -- so a freshly scaffolded package's own "npm
         // install" resolves "@fromstan/pokie" against this exact running installation instead of the registry, even
         // when its own version has never been published.
@@ -77,18 +77,18 @@ export function registerCliCommands(options: RegisterCliCommandsOptions): CliCom
             undefined,
             undefined,
             undefined,
-            createMaterializingRuntimePackageResolver(version, REPLAY_OPERATION, pokiePackageRoot),
+            createPreparingRuntimePackageResolver(version, REPLAY_OPERATION, pokiePackageRoot),
         ),
         new ReportCommand(),
         new SampleCommand(),
-        new ServeCommand(undefined, undefined, createMaterializingRuntimePackageResolver(version, SERVE_OPERATION, pokiePackageRoot)),
+        new ServeCommand(undefined, undefined, createPreparingRuntimePackageResolver(version, SERVE_OPERATION, pokiePackageRoot)),
         new SimCommand(
             undefined,
             undefined,
             undefined,
             undefined,
             undefined,
-            createMaterializingRuntimePackageResolver(version, SIM_OPERATION, pokiePackageRoot),
+            createPreparingRuntimePackageResolver(version, SIM_OPERATION, pokiePackageRoot),
             undefined,
             undefined,
             undefined,
@@ -98,7 +98,7 @@ export function registerCliCommands(options: RegisterCliCommandsOptions): CliCom
         new ValidateCommand(
             undefined,
             undefined,
-            createMaterializingRuntimePackageResolver(version, VALIDATE_OPERATION, pokiePackageRoot),
+            createPreparingRuntimePackageResolver(version, VALIDATE_OPERATION, pokiePackageRoot),
         ),
     ];
 }

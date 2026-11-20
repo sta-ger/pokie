@@ -32,8 +32,8 @@ import {
     WeightedOutcomeRandomSource,
 } from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
-import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
+import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../runtime/prepareRuntimePackage.js";
+import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOperationError.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {writeOutputFileAtomically} from "./internal/writeOutputFile.js";
 import {describeRuntimePackageLoadError} from "./internal/describeLocalRuntimeError.js";
@@ -110,7 +110,7 @@ export class SimCommand implements CliCommandHandling {
     ) => ParallelSimulationRunner;
     // Crosses from "the packageRoot the caller gave us" to "a real, loadable runtime" before this.loadGame
     // (or a spawned simulation worker, which never sees this.loadGame at all -- see runSingleMode()) ever
-    // touches it -- see materializeRuntimePackage.ts's own doc comment. Defaults to a no-op passthrough so
+    // touches it -- see prepareRuntimePackage.ts's own doc comment. Defaults to a no-op passthrough so
     // every existing caller/test keeps behaving exactly as before this boundary existed; cli/pokie.ts wires
     // the real, materializing one in.
     private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
@@ -381,7 +381,7 @@ export class SimCommand implements CliCommandHandling {
         try {
             const results = await collectPokieWasmSimulation(runtime, seed, options.rounds, {mode: options.mode});
             const reports = results.map(result => this.reportBuilder.build({
-                manifest: {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version},
+                gameInfo: {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version},
                 requestedRounds: options.rounds, seed, statistics: result.statistics, durationMs: Date.now() - startedAt,
                 packageRoot: project.rootPath, configHash: runtime.manifest.artifact?.configurationHash, pokieVersion: this.pokieVersion,
                 workers: 1, workerSeedStrategy: "portable seeded host stream (single in-process WASM runtime)", stopReason: "maxRounds", betMode: result.mode, targetRtp: result.targetRtp,
@@ -489,7 +489,7 @@ export class SimCommand implements CliCommandHandling {
         const durationMs = Date.now() - startedAt;
 
         return this.reportBuilder.build({
-            manifest: result.manifest,
+            gameInfo: result.gameInfo,
             requestedRounds: options.rounds,
             seed: options.seed,
             statistics: result.statistics,

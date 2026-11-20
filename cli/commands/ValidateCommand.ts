@@ -26,7 +26,7 @@ import {
 import fs from "fs";
 import path from "path";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
+import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../runtime/prepareRuntimePackage.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 class ValidationLeaseCleanupError extends Error {}
@@ -64,7 +64,7 @@ export class ValidateCommand implements CliCommandHandling {
     private readonly validator: PokieGamePackageValidating;
     private readonly writeFile: (file: string, contents: string) => void;
     // Crosses from "the packageRoot the caller gave us" to "a real, loadable runtime" before this.validator
-    // ever touches it -- see materializeRuntimePackage.ts's own doc comment. Defaults to a no-op
+    // ever touches it -- see prepareRuntimePackage.ts's own doc comment. Defaults to a no-op
     // passthrough so every existing caller/test keeps behaving exactly as before this boundary existed;
     // cli/pokie.ts wires the real, materializing one in.
     private readonly resolveRuntimePackageRoot: RuntimePackageResolving;

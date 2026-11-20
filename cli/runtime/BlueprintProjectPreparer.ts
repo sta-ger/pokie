@@ -14,26 +14,26 @@ import {
     PokieGamePackageValidating,
     PokieGamePackageValidator,
     PokieProject,
-    ProjectMaterializationResult,
-    ProjectMaterializing,
-    type ProjectMaterializationOptions,
+    ProjectPreparationResult,
+    ProjectPreparing,
+    type ProjectPreparationOptions,
 } from "@fromstan/pokie";
-import {BlueprintMaterializationError} from "./BlueprintMaterializationError.js";
+import {BlueprintPreparationError} from "./BlueprintPreparationError.js";
 import {RuntimePreparationCancelledError} from "./RuntimePreparationCancelledError.js";
 import {RuntimePreparationCleanupError} from "./RuntimePreparationCleanupError.js";
 import {extractNpmStderr, PackageCommandRunning, runPackageCommand} from "../prepare/PackageCommandRunner.js";
 
-// Where every BlueprintProjectMaterializer defaults to caching a materialized runtime -- a machine-wide,
+// Where every BlueprintProjectPreparer defaults to caching a materialized runtime -- a machine-wide,
 // process-external location, deliberately never inside the blueprint's own directory or the caller's cwd
 // (see this class's own doc comment for why "no user-directory artifacts" matters).
-const DEFAULT_CACHE_ROOT = path.join(os.tmpdir(), "pokie-materialize-cache");
+const DEFAULT_CACHE_ROOT = path.join(os.tmpdir(), "pokie-runtime-cache");
 
 // Written into a cache entry only once every phase below has completed -- its presence (with a matching
-// "cacheKey") is what tells a later materialize() call, or a concurrent one racing this one, that this exact
+// "cacheKey") is what tells a later prepare() call, or a concurrent one racing this one, that this exact
 // directory is a complete, verified runtime it can borrow rather than a partial/stale one it must rebuild or
 // discard. Never "pokie.entry"/"package.json" alone: those are written by GamePackageGenerator itself as part
 // of "generate", well before "dependencies"/"verify" have run.
-const MATERIALIZED_MARKER_FILE = ".pokie-materialized.json";
+const PREPARED_MARKER_FILE = ".pokie-prepared.json";
 
 // How long a contender waits, between `mkdir` retries, for another caller's per-cache-key lock (see
 // acquireLock()) to be released. Only affects how promptly a *blocked* contender notices the lock is free --
@@ -68,8 +68,8 @@ type MaterializedMarker = {readonly cacheKey: string};
 // always fails, since a real token is never undefined.
 type LockHolder = {readonly pid: number; readonly token?: string};
 
-// The concrete ProjectMaterializing for "blueprint" (and, trivially, "tsPackage") PokieProjects -- the
-// implementation ProjectMaterializing.ts was left contract-only in P3-POLISH-02. Turns a blueprint source
+// The concrete ProjectPreparing for "blueprint" (and, trivially, "tsPackage") PokieProjects -- the
+// implementation ProjectPreparing.ts was left contract-only in P3-POLISH-02. Turns a blueprint source
 // file into the exact same real, loadable runtime "pokie build" itself produces (GamePackageGenerator -- never
 // a simplified/in-memory blueprint interpreter), then a real "npm install" so its "require(\"pokie\")" actually
 // resolves, then verifies it the same way "pokie validate" does (PokieGamePackageValidator) -- so a caller
@@ -92,7 +92,7 @@ type LockHolder = {readonly pid: number; readonly token?: string};
 // served -- it's evicted and rebuilt.
 //
 // Stale-cache recovery (evicting a marker-less/mismatched cacheDir and rebuilding it) is serialized per
-// cache key by a filesystem mutex directory (`<cacheDir>.lock`), across every real, separate materialize()
+// cache key by a filesystem mutex directory (`<cacheDir>.lock`), across every real, separate prepare()
 // caller -- not just promises racing in one process. Only the caller holding that lock for a given cache key
 // may ever evict or claim its cacheDir, and it always re-observes readiness *after* acquiring the lock,
 // never before -- so it can never evict or rename a cacheDir that's since become ready underneath it. Every
@@ -108,7 +108,7 @@ type LockHolder = {readonly pid: number; readonly token?: string};
 // contender just keeps waiting, no matter how long; gone, the next contender to notice reclaims it and
 // proceeds exactly as if it had been released normally. A lock that genuinely can't be reclaimed (e.g. a
 // filesystem permissions failure) is surfaced as a thrown error, never silently retried forever.
-export class BlueprintProjectMaterializer implements ProjectMaterializing {
+export class BlueprintProjectPreparer implements ProjectPreparing {
     private readonly pokieVersion: string;
     private readonly generator: GamePackageGenerating;
     private readonly validator: GameBlueprintValidating;
@@ -138,16 +138,16 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         this.runtimeIdentity = runtimeIdentity;
     }
 
-    public async materialize(project: PokieProject, options: ProjectMaterializationOptions = {}): Promise<ProjectMaterializationResult> {
+    public async prepare(project: PokieProject, options: ProjectPreparationOptions = {}): Promise<ProjectPreparationResult> {
         this.assertNotCancelled(options.signal);
         if (project.type === "tsPackage") {
             // Already runtime-shaped -- nothing to build, nothing new allocated (see
-            // ProjectMaterializationResult's own doc comment on "ownsRuntimePath: false").
+            // ProjectPreparationResult's own doc comment on "ownsRuntimePath: false").
             return this.borrowed(project.rootPath);
         }
         if (project.type !== "blueprint") {
             throw new Error(
-                `BlueprintProjectMaterializer cannot materialize a "${project.type}" project into a runnable runtime -- ` +
+                `BlueprintProjectPreparer cannot prepare a "${project.type}" project into a runnable runtime -- ` +
                     `only "blueprint" (built fresh) and "tsPackage" (already runtime-shaped) are supported.`,
             );
         }
@@ -172,7 +172,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
     // holds `<cacheDir>.lock` -- acquireLock() blocks until no other caller anywhere (this process or
     // another) holds it. The re-check of isReady() immediately below is the reason this is safe: it runs
     // strictly *after* acquiring exclusive ownership, so unlike the initial, lock-free check in
-    // materialize(), it can never be stale by the time this call acts on it -- nobody else can be
+    // prepare(), it can never be stale by the time this call acts on it -- nobody else can be
     // concurrently building or claiming this same cacheKey while the lock is held. That's what lets
     // evictStale() below safely discard whatever's at cacheDir on a "not ready" verdict: it's guaranteed to
     // still be genuinely stale, never a winner's entry this call raced past.
@@ -182,7 +182,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         cacheDir: string,
         cacheKey: string,
         signal?: AbortSignal,
-    ): Promise<ProjectMaterializationResult> {
+    ): Promise<ProjectPreparationResult> {
         // Must exist before acquireLock() below can even attempt `mkdir(lockDir)` -- otherwise a
         // never-yet-used cacheRoot would fail that `mkdir` with ENOENT (no such parent directory), not the
         // EEXIST acquireLock() actually knows how to retry on.
@@ -232,7 +232,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         const errors = this.validator.validate(raw).filter((issue) => issue.severity === "error");
         if (errors.length > 0) {
             const details = errors.map((issue) => `  - ${issue.code}: ${issue.message}`).join("\n");
-            throw new BlueprintMaterializationError(
+            throw new BlueprintPreparationError(
                 "validate",
                 `Blueprint "${blueprintPath}" has ${errors.length} error(s) and cannot be materialized:\n${details}`,
             );
@@ -254,7 +254,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         try {
             this.generator.generate(blueprint, path.dirname(stagingDir), path.basename(stagingDir));
         } catch (error) {
-            throw new BlueprintMaterializationError("generate", error instanceof Error ? error.message : String(error));
+            throw new BlueprintPreparationError("generate", error instanceof Error ? error.message : String(error));
         }
     }
 
@@ -283,7 +283,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         // The only exit after every bounded install attempt has failed is the materialization boundary --
         // never the runner's arbitrary rejection shape. materializeUnderLock() then removes this call's
         // disposable staging directory before releasing the cache-key lock, so a later caller starts fresh.
-        throw new BlueprintMaterializationError(
+        throw new BlueprintPreparationError(
             "dependencies",
             `Could not install this Blueprint's runtime dependencies in "${stagingDir}". This is usually a local ` +
                 "npm or network problem, not a problem with the Blueprint itself -- see this error's own \"details\" " +
@@ -298,7 +298,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
             return;
         }
         const details = report.errors.map((issue) => `  - ${issue.code}: ${issue.message}`).join("\n");
-        throw new BlueprintMaterializationError(
+        throw new BlueprintPreparationError(
             "verify",
             `Blueprint "${blueprintPath}" prepared at "${stagingDir}" but failed verification:\n${details}`,
         );
@@ -306,7 +306,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
 
     private markReady(stagingDir: string, cacheKey: string): void {
         const marker: MaterializedMarker = {cacheKey};
-        fs.writeFileSync(path.join(stagingDir, MATERIALIZED_MARKER_FILE), `${JSON.stringify(marker, null, 4)}\n`);
+        fs.writeFileSync(path.join(stagingDir, PREPARED_MARKER_FILE), `${JSON.stringify(marker, null, 4)}\n`);
     }
 
     // Blocks until this process holds exclusive claim/cleanup ownership of `lockDir`'s cache key -- a
@@ -445,7 +445,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
                 // lock first. Nothing left for this call to do; the next mkdir retry sees a free path.
                 return;
             }
-            throw new BlueprintMaterializationError(
+            throw new BlueprintPreparationError(
                 "lock",
                 `Abandoned materialization lock "${lockDir}" could not be removed: ${error instanceof Error ? error.message : String(error)}. ` +
                     "Remove it manually before retrying.",
@@ -462,7 +462,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         } catch (error) {
             const code = (error as NodeJS.ErrnoException)?.code;
             if (code !== "EEXIST" && code !== "ENOTEMPTY") {
-                throw new BlueprintMaterializationError(
+                throw new BlueprintPreparationError(
                     "lock",
                     `Active materialization lock "${lockDir}" could not be restored after quarantine: ${error instanceof Error ? error.message : String(error)}. ` +
                         "Remove any stray quarantine directory manually before retrying.",
@@ -556,7 +556,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
     }
 
     private async isReady(cacheDir: string, cacheKey: string): Promise<boolean> {
-        const markerPath = path.join(cacheDir, MATERIALIZED_MARKER_FILE);
+        const markerPath = path.join(cacheDir, PREPARED_MARKER_FILE);
         let raw: string;
         try {
             raw = await fs.promises.readFile(markerPath, "utf-8");
@@ -588,7 +588,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         }
     }
 
-    private borrowed(runtimePath: string): ProjectMaterializationResult {
+    private borrowed(runtimePath: string): ProjectPreparationResult {
         return {runtimePath, ownsRuntimePath: false, release: () => Promise.resolve()};
     }
 }

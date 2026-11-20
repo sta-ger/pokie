@@ -55,13 +55,13 @@ export class GamePackagePreparer implements GamePackagePreparing {
         if (!phasesCompleted.includes("dependencies")) {
             await this.runManagedCommand("dependencies", scaffold.projectRoot, ["install"]);
             phasesCompleted.push("dependencies");
-            writePreparationState(scaffold.projectRoot, {manifest: scaffold.manifest, createdFiles: scaffold.createdFiles, phasesCompleted});
+            writePreparationState(scaffold.projectRoot, {info: scaffold.info, createdFiles: scaffold.createdFiles, phasesCompleted});
         }
 
         if (!phasesCompleted.includes("build")) {
             await this.runManagedCommand("build", scaffold.projectRoot, ["run", "build"]);
             phasesCompleted.push("build");
-            writePreparationState(scaffold.projectRoot, {manifest: scaffold.manifest, createdFiles: scaffold.createdFiles, phasesCompleted});
+            writePreparationState(scaffold.projectRoot, {info: scaffold.info, createdFiles: scaffold.createdFiles, phasesCompleted});
         }
 
         await this.runVerifyPhase(scaffold.projectRoot);
@@ -70,7 +70,7 @@ export class GamePackagePreparer implements GamePackagePreparing {
 
         return {
             projectRoot: scaffold.projectRoot,
-            manifest: scaffold.manifest,
+            info: scaffold.info,
             createdFiles: scaffold.createdFiles,
             phasesCompleted,
         };
@@ -80,7 +80,7 @@ export class GamePackagePreparer implements GamePackagePreparing {
         const projectRoot = path.join(parentDir, name.trim());
         const resumable = readPreparationState(projectRoot);
         if (resumable) {
-            return {projectRoot, manifest: resumable.manifest, createdFiles: resumable.createdFiles, updatedFiles: [], skippedFiles: []};
+            return {projectRoot, info: resumable.info, createdFiles: resumable.createdFiles, updatedFiles: [], skippedFiles: []};
         }
 
         let result: ScaffoldResult;
@@ -90,9 +90,9 @@ export class GamePackagePreparer implements GamePackagePreparing {
             throw new GamePackagePreparationError("create", error instanceof Error ? error.message : String(error));
         }
 
-        fs.writeFileSync(path.join(result.projectRoot, "README.md"), renderPackageReadme(result.manifest));
+        fs.writeFileSync(path.join(result.projectRoot, "README.md"), renderPackageReadme(result.info));
         const createdFiles = [...result.createdFiles, "README.md"];
-        writePreparationState(result.projectRoot, {manifest: result.manifest, createdFiles, phasesCompleted: ["create"]});
+        writePreparationState(result.projectRoot, {info: result.info, createdFiles, phasesCompleted: ["create"]});
 
         return {...result, createdFiles};
     }

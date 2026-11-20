@@ -11,7 +11,7 @@ import {WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION} from "../WeightedOutcomeLibrary
 import {computeOnlineWeightedOutcomeLibraryAnalysis} from "./internal/computeOnlineWeightedOutcomeLibraryAnalysis.js";
 import {iterateOutcomesJsonl} from "./internal/iterateOutcomesJsonl.js";
 import {readAndVerifyOutcomeAtByteRangeFromFileDescriptor} from "./internal/readOutcomeAtByteRange.js";
-import {OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION, type OutcomeLibraryFolderIndex, type OutcomeLibraryFolderIndexModeEntry} from "./OutcomeLibraryFolderIndex.js";
+import {OUTCOME_LIBRARY_FOLDER_INDEX_SCHEMA_VERSION, type OutcomeLibraryFolderIndex, type OutcomeLibraryFolderIndexModeEntry} from "./OutcomeLibraryFolderIndex.js";
 import {OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION, type OutcomeLibraryFolderIndexEntry, type OutcomeLibraryFolderModeIndex} from "./OutcomeLibraryFolderModeIndex.js";
 import type {OutcomeLibraryFolderValidateOptions, OutcomeLibraryFolderValidating} from "./OutcomeLibraryFolderValidating.js";
 
@@ -75,7 +75,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
         const issues: ValidationIssue[] = [];
         assertNotCancelled(options);
 
-        const manifest = this.readManifest(libraryDir, issues);
+        const manifest = this.readIndex(libraryDir, issues);
         if (manifest === undefined) {
             return issues;
         }
@@ -87,7 +87,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
         return issues;
     }
 
-    private readManifest(libraryDir: string, issues: ValidationIssue[]): OutcomeLibraryFolderIndex | undefined {
+    private readIndex(libraryDir: string, issues: ValidationIssue[]): OutcomeLibraryFolderIndex | undefined {
         const manifestPath = path.join(libraryDir, "index.json");
         if (!fs.existsSync(manifestPath)) {
             issues.push({code: "outcome-library-folder-manifest-missing", severity: "error", message: `"${libraryDir}" has no index.json.`});
@@ -128,17 +128,17 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
         }
 
         const manifest = parsed as OutcomeLibraryFolderIndex;
-        if (manifest.schemaVersion !== OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION) {
+        if (manifest.schemaVersion !== OUTCOME_LIBRARY_FOLDER_INDEX_SCHEMA_VERSION) {
             issues.push({
                 code: "outcome-library-folder-manifest-schema-version-unsupported",
                 severity: "error",
-                message: `index.json's schemaVersion (${manifest.schemaVersion}) is not supported (expected ${OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION}).`,
+                message: `index.json's schemaVersion (${manifest.schemaVersion}) is not supported (expected ${OUTCOME_LIBRARY_FOLDER_INDEX_SCHEMA_VERSION}).`,
             });
             return undefined;
         }
 
-        const modeEntriesOk = this.validateManifestModeEntries(manifest.modes, issues);
-        const filesOk = this.validateManifestFiles(manifest, issues);
+        const modeEntriesOk = this.validateIndexModeEntries(manifest.modes, issues);
+        const filesOk = this.validateIndexFiles(manifest, issues);
         if (!modeEntriesOk || !filesOk) {
             return undefined;
         }
@@ -146,7 +146,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
         return manifest;
     }
 
-    // Validates every manifest mode entry's own field types (betMode/stake/libraryId/libraryHash/outcomeCount/
+    // Validates every index mode entry's own field types (betMode/stake/libraryId/libraryHash/outcomeCount/
     // totalWeight/indexFile/outcomesFile), the mode name itself (format, duplicates, case collisions — the same
     // rules OutcomeLibraryFolderWriteValidator enforces when a bundle is written, checked again here since a
     // hand-edited or otherwise-produced index.json was never guaranteed to go through that writer), and the
@@ -154,7 +154,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
     // ("index_<modeName>.json"/"outcomes_<modeName>.jsonl") — not just that they *resolve* safely (see
     // validateMode's own path-safety check), but that they're exactly the filenames this bundle format always
     // uses, so two modes can never be confused for one another via a mismatched or swapped filename.
-    private validateManifestModeEntries(rawModes: unknown, issues: ValidationIssue[]): boolean {
+    private validateIndexModeEntries(rawModes: unknown, issues: ValidationIssue[]): boolean {
         if (!Array.isArray(rawModes)) {
             return false;
         }
@@ -288,12 +288,12 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
         return true;
     }
 
-    // Validates manifest.files as an exact, unique set: "index.json" itself, and every current mode's own
+    // Validates index.files as an exact, unique set: "index.json" itself, and every current mode's own
     // indexFile/outcomesFile — nothing missing, nothing extra, no duplicate or case-colliding entry, and no
     // entry that isn't itself a safe filename. Only runs against modes whose own fields already validated
     // cleanly (validateManifestModeEntries runs first) — an inconsistent files list on top of an already-broken
     // modes array would only add noise, not a new diagnosis.
-    private validateManifestFiles(manifest: OutcomeLibraryFolderIndex, issues: ValidationIssue[]): boolean {
+    private validateIndexFiles(manifest: OutcomeLibraryFolderIndex, issues: ValidationIssue[]): boolean {
         if (!Array.isArray(manifest.files) || manifest.files.length === 0 || manifest.files.some((file) => typeof file !== "string" || file.trim().length === 0)) {
             issues.push({
                 code: "outcome-library-folder-manifest-files-invalid",
@@ -456,7 +456,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
                 issues.push({
                     code: "outcome-library-folder-mode-index-count-mismatch",
                     severity: "error",
-                    message: `mode "${modeName}": index has ${index.entries.length} entries, but recorded outcomeCount is ${index.outcomeCount} (index) / ${modeEntry.outcomeCount} (manifest).`,
+                    message: `mode "${modeName}": index has ${index.entries.length} entries, but recorded outcomeCount is ${index.outcomeCount} (index) / ${modeEntry.outcomeCount} (folder index).`,
                     details: {modeName},
                 });
             }
@@ -471,7 +471,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
                 issues.push({
                     code: "outcome-library-folder-mode-index-total-weight-mismatch",
                     severity: "error",
-                    message: `mode "${modeName}": the sum of index entry weights (${totalWeight}) does not match the recorded totalWeight (${index.totalWeight} in the index, ${modeEntry.totalWeight} in the manifest).`,
+                    message: `mode "${modeName}": the sum of index entry weights (${totalWeight}) does not match the recorded totalWeight (${index.totalWeight} in the index, ${modeEntry.totalWeight} in the folder index).`,
                     details: {modeName},
                 });
             }
@@ -508,7 +508,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
     // record found there really is that entry's own {id, weight}, and hashes to that entry's own recordHash —
     // reusing readAndVerifyOutcomeAtByteRange, the exact same check OutcomeLibraryFolderReader itself relies on
     // before ever handing a caller a drawn/looked-up outcome. The recordHash check is what catches a record
-    // tampered in place (its artifact rewritten) without touching id/weight at all — something an id/weight
+    // tampered in place (its record rewritten) without touching id/weight at all — something an id/weight
     // check alone would miss entirely. This is deliberately independent of validateModeDeep's own sequential
     // per-line pass below: that
     // pass matches every record against the index *by id*, via a map, so it would never notice a file whose
@@ -748,18 +748,18 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
     // Streams every outcomes line (never materializing the whole file, and never accumulating an array of
     // outcomes — the same end-to-end streaming discipline OutcomeLibraryFolderWriter itself follows), cross-
     // checking each record against the index by id (never by row position — a hand-edited/reordered file must
-    // still validate correctly), running RoundRecordValidator against each one's own artifact and checking
+    // still validate correctly), running RoundRecordValidator against each one's own record and checking
     // cross-outcome homogeneity (game/config/pokieVersion/betMode/stake consistency) the same way
     // buildWeightedOutcomeLibrary itself would — and recomputes the mode's own hash incrementally, in this same
     // pass (see streamModeOutcomesToTempFile's own doc comment for why a hash never needs a second pass, unlike
     // the exact analyzer statistics, which do — see computeOnlineWeightedOutcomeLibraryAnalysis). Also cross-
     // checks the outcomes' own common provenance/betMode/stake against index.json's own claimed game/
-    // configHash/artifactPokieVersion (top-level) and betMode/stake (per mode entry) — a check the cross-
+    // configHash/recordPokieVersion (top-level) and betMode/stake (per mode entry) — a check the cross-
     // *outcome* consistency check above can never catch on its own, since it only ever compares outcomes against
-    // each other, never against the manifest itself. Deliberately compares against manifest.artifactPokieVersion,
-    // never manifest.pokieVersion: the latter records which pokie *tool* version built this bundle file, a
-    // different, unrelated quantity from an artifact's own provenance.pokieVersion (which pokie version
-    // *computed* that artifact) — the two are never required to match, so it would be wrong to treat a
+    // each other, never against the index itself. Deliberately compares against the folder index's recordPokieVersion,
+    // never its pokieVersion: the latter records which pokie *tool* version built this bundle file, a
+    // different, unrelated quantity from a record's own origin.pokieVersion (which pokie version
+    // *computed* that record) — the two are never required to match, so it would be wrong to treat a
     // difference there as corruption.
     private async validateModeDeep(
         outcomesPath: string,
@@ -815,20 +815,20 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
                 value === null ||
                 typeof (value as {id?: unknown}).id !== "string" ||
                 typeof (value as {weight?: unknown}).weight !== "number" ||
-                typeof (value as {artifact?: unknown}).artifact !== "object" ||
-                (value as {artifact?: unknown}).artifact === null
+                typeof (value as {record?: unknown}).record !== "object" ||
+                (value as {record?: unknown}).record === null
                 ) {
                     issues.push({
                         code: "outcome-library-folder-outcomes-line-malformed",
                         severity: "error",
-                        message: `mode "${modeName}": outcomes line ${line.position} is not {id, weight, artifact}.`,
+                        message: `mode "${modeName}": outcomes line ${line.position} is not {id, weight, record}.`,
                         details: {modeName, position: line.position},
                     });
                     sawError = true;
                     continue;
                 }
 
-                const outcome = value as {id: string; weight: number; artifact: {payoutMultiplier?: unknown; stake?: unknown; betMode?: unknown; origin?: {game?: {id?: unknown; version?: unknown}; configHash?: unknown; pokieVersion?: unknown}}};
+                const outcome = value as {id: string; weight: number; record: {payoutMultiplier?: unknown; stake?: unknown; betMode?: unknown; origin?: {game?: {id?: unknown; version?: unknown}; configHash?: unknown; pokieVersion?: unknown}}};
                 if (seenIds.has(outcome.id)) {
                     issues.push({
                         code: "outcome-library-folder-outcomes-duplicate-id",
@@ -863,12 +863,12 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
                     continue;
                 }
 
-                const artifactIssues = this.roundRecordValidator.validate(outcome.artifact as never);
+                const artifactIssues = this.roundRecordValidator.validate(outcome.record as never);
                 if (artifactIssues.length > 0) {
                     issues.push({
-                        code: "outcome-library-folder-outcomes-artifact-invalid",
+                        code: "outcome-library-folder-outcomes-record-invalid",
                         severity: "error",
-                        message: `mode "${modeName}": outcome "${outcome.id}" has an invalid artifact: ${artifactIssues.map((issue) => issue.code).join(", ")}.`,
+                        message: `mode "${modeName}": outcome "${outcome.id}" has an invalid record: ${artifactIssues.map((issue) => issue.code).join(", ")}.`,
                         details: {modeName, id: outcome.id},
                     });
                     sawError = true;
@@ -876,12 +876,12 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
                 }
 
                 const current = {
-                    gameId: outcome.artifact.origin?.game?.id,
-                    gameVersion: outcome.artifact.origin?.game?.version,
-                    configHash: outcome.artifact.origin?.configHash,
-                    pokieVersion: outcome.artifact.origin?.pokieVersion,
-                    betMode: outcome.artifact.betMode,
-                    stake: outcome.artifact.stake,
+                    gameId: outcome.record.origin?.game?.id,
+                    gameVersion: outcome.record.origin?.game?.version,
+                    configHash: outcome.record.origin?.configHash,
+                    pokieVersion: outcome.record.origin?.pokieVersion,
+                    betMode: outcome.record.betMode,
+                    stake: outcome.record.stake,
                 };
                 if (reference === undefined) {
                     reference = current;
@@ -889,14 +889,14 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
                     // Cross-checked once, against the first outcome only: every later outcome is already required
                     // (see the "inconsistent-provenance"/"inconsistent-bet-mode"/"inconsistent-stake" checks below)
                     // to agree with this same reference, so checking the reference itself against index.json's
-                    // own claims is enough to catch a manifest whose game/version/configHash/betMode/stake doesn't
+                    // own claims is enough to catch an index whose game/version/configHash/betMode/stake doesn't
                     // actually match what this mode's outcomes were built from — a gap the existing cross-*outcome*
                     // consistency check alone can't catch, since it never reads index.json at all.
                     if (
                         current.gameId !== manifest.game.id ||
                     current.gameVersion !== manifest.game.version ||
                     current.configHash !== manifest.configHash ||
-                    current.pokieVersion !== manifest.artifactPokieVersion
+                    current.pokieVersion !== manifest.recordPokieVersion
                     ) {
                         issues.push({
                             code: "outcome-library-folder-outcomes-manifest-provenance-mismatch",
@@ -905,8 +905,8 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
                             `mode "${modeName}": this mode's outcomes have provenance (game id "${String(current.gameId)}", version ` +
                             `"${String(current.gameVersion)}", configHash "${String(current.configHash)}", pokieVersion ` +
                             `"${String(current.pokieVersion)}") that does not match index.json's own game (id "${manifest.game.id}", version ` +
-                            `"${manifest.game.version}") / configHash ("${String(manifest.configHash)}") / artifactPokieVersion ` +
-                            `("${String(manifest.artifactPokieVersion)}").`,
+                            `"${manifest.game.version}") / configHash ("${String(manifest.configHash)}") / recordPokieVersion ` +
+                            `("${String(manifest.recordPokieVersion)}").`,
                             details: {modeName},
                         });
                         sawError = true;
@@ -972,12 +972,12 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
                     continue;
                 }
 
-                // This is written only after the independent JSON/shape/artifact
+                // This is written only after the independent JSON/shape/record
                 // checks above pass.  A corrupt file therefore cannot borrow a
                 // publication-time spool to hide from deep validation.
                 analysisRecord.writeDoubleLE(outcome.weight, 0);
-                analysisRecord.writeDoubleLE(Number(outcome.artifact.payoutMultiplier), 8);
-                analysisRecord.writeDoubleLE(Number((outcome.artifact as {totalWin?: unknown}).totalWin), 16);
+                analysisRecord.writeDoubleLE(Number(outcome.record.payoutMultiplier), 8);
+                analysisRecord.writeDoubleLE(Number((outcome.record as {totalWin?: unknown}).totalWin), 16);
                 if (analysisDescriptor === undefined) throw new Error("Outcome Library validation analysis spool was not opened.");
                 fs.writeSync(analysisDescriptor, analysisRecord);
 
@@ -1027,7 +1027,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
             issues.push({
                 code: "outcome-library-folder-hash-mismatch",
                 severity: "error",
-                message: `mode "${modeName}": the recomputed libraryHash (${recomputedHash}) does not match the manifest's recorded one (${modeEntry.libraryHash}).`,
+                message: `mode "${modeName}": the recomputed libraryHash (${recomputedHash}) does not match the folder index's recorded one (${modeEntry.libraryHash}).`,
                 details: {modeName},
             });
         }
@@ -1053,7 +1053,7 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
             issues.push({
                 code: "outcome-library-folder-analysis-mismatch",
                 severity: "error",
-                message: `mode "${modeName}": the recomputed analysis does not match the manifest's recorded one.`,
+                message: `mode "${modeName}": the recomputed analysis does not match the folder index's recorded one.`,
                 details: {modeName},
             });
         }

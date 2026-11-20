@@ -71,7 +71,7 @@ describe("StakeEngineExportValidator", () => {
             ...bonus.library,
             outcomes: bonus.library.outcomes.map((outcome) => ({
                 ...outcome,
-                artifact: {...outcome.artifact, origin: {...outcome.artifact.origin, game: {...outcome.artifact.origin.game, id: "other-game"}}},
+                record: {...outcome.record, origin: {...outcome.record.origin, game: {...outcome.record.origin.game, id: "other-game"}}},
             })),
         };
 
@@ -98,7 +98,7 @@ describe("StakeEngineExportValidator", () => {
             ...mode.library,
             outcomes: mode.library.outcomes.map((outcome) =>
                 // 0.001 * 1 (this mode's cost) * 100 = 0.1 — not representable without rounding.
-                outcome.id === "1" ? {...outcome, artifact: {...outcome.artifact, payoutMultiplier: 0.001}} : outcome,
+                outcome.id === "1" ? {...outcome, record: {...outcome.record, payoutMultiplier: 0.001}} : outcome,
             ),
         };
 
@@ -110,7 +110,7 @@ describe("StakeEngineExportValidator", () => {
         const library = {
             ...mode.library,
             // 0.1 * 1 (this mode's cost) * 100 = 10 — exact, even though the raw payoutMultiplier is fractional.
-            outcomes: mode.library.outcomes.map((outcome) => (outcome.id === "1" ? {...outcome, artifact: {...outcome.artifact, payoutMultiplier: 0.1}} : outcome)),
+            outcomes: mode.library.outcomes.map((outcome) => (outcome.id === "1" ? {...outcome, record: {...outcome.record, payoutMultiplier: 0.1}} : outcome)),
         };
 
         expect(issueCodes(validator, [{...mode, library}])).not.toContain("stakeengine-outcome-payout-multiplier-not-representable");

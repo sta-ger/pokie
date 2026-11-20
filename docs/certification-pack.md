@@ -53,7 +53,7 @@ pokie report assessment/index.json --format html --template presentation.json --
 
 The trusted-sources file contains the **pack object**, with explicit relocated model, report and replay
 paths and the same revision labels. Its paths are relative to that file. Verification never follows
-`manifest.sourceLibraryDir`, any saved model location, or attachment locations. Supply every attached
+`index.sourceLibraryDir`, any saved model location, or attachment locations. Supply every attached
 report and replay, in order. Copies can move to a fresh runtime: no saved session, optimization receipt
 or original workspace is required. The fresh runtime must provide the same POKIE runtime and
 dependencies and unchanged authored source bytes. Changing package bytes (even a comment), evidence,
@@ -69,7 +69,7 @@ const result = await new CertificationPackBuilder("2.0.0").buildFromBundle(
 const issues = await new CertificationPackVerifier().verify(result.outDir, {
  sourceLibraryDir: relocatedSource, pack: relocatedSources, templateFile, signal,
 });
-const bytes = await new CertificationPackRenderer().render(result.manifest!, "pdf", undefined, signal);
+const bytes = await new CertificationPackRenderer().render(result.index!, "pdf", undefined, signal);
 ```
 
 ## Pack contents and integrity
@@ -103,18 +103,18 @@ prerelease/build labels), with saved **1.3.x** reading compatibility for interna
 evidence. Other runtime lanes and malformed versions reject with a rebuild diagnostic; origin metadata
 must never be relabelled. The independent interfaces remain: descriptor and Blueprint schema 1,
 simulation report schema 1, `pokie.audit-round.v1` and `pokie.session-runtime.v1`. Legacy sample-only
-manifests, legacy reports and incompatible versions must be regenerated. Missing, duplicate or unknown
+indexes, legacy reports and incompatible versions must be regenerated. Missing, duplicate or unknown
 sections, malformed metric extensions, missing or extra inventory entries, symlinked attachments, stale
 hashes and rehashed model/report/replay substitutions reject. Hash integrity does not prove authorship
 or authenticity.
 
-`evidenceContentHash` hashes every semantic manifest field, including pack attachments and template
+`evidenceContentHash` hashes every semantic index field, including pack attachments and template
 semantic/raw-byte identities, except `generatedAt`, `sourceLibraryDir` and `deepValidation.ranAt`. Those
 location and time fields can differ on rebuild. Supplied raw reports remain exact files: a newly timed
 simulation file has a different raw identity even when its mathematics match. Reproduction ignores
 timing and command location when comparing simulation mathematics. Rendered files are bound by exact,
-reproducible regeneration from the manifest, avoiding circular output-file hashes.
-`result.artifactHashes` reports each published file's exact-byte SHA-256 separately.
+reproducible regeneration from the index, avoiding circular output-file hashes.
+`result.fileHashes` reports each published file's exact-byte SHA-256 separately.
 
 ## Metrics and templates
 
@@ -160,7 +160,7 @@ Destinations must be new or physically empty. Existing evidence is never replace
 `generatedBy` says POKIE. Source/output overlap and symlink aliases reject. All files render and validate
 in owned staging first. New folders publish by no-clobber namespace installation; a caller-owned empty
 folder keeps its inode and receives owned no-clobber file links with `index.json` last as the commit
-marker. Readers must require that manifest. A competing entry causes rollback of only this operation's
+marker. Readers must require that index. A competing entry causes rollback of only this operation's
 unchanged files, preserving the foreign entry and caller-owned folder. Authored models, packages,
 workbooks, source folders, reports, replays and templates are not rewritten.
 

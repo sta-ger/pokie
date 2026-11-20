@@ -22,7 +22,7 @@ function winEvaluationResultFor(totalWin: number): WinEvaluationResult<string> {
 
 // A single-step RoundRecord, with everything overridable — stake fixed at 1 by default, so payoutMultiplier
 // equals totalWin exactly unless a different stake is given. Used across the weightedoutcome test suite to
-// build small, hand-computable artifacts without depending on real reel/paytable randomness.
+// build small, hand-computable records without depending on real reel/paytable randomness.
 export function artifactWith(options: {
     roundId: string;
     totalWin: number;

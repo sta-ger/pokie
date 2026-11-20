@@ -18,8 +18,8 @@ import {
     type BuildOutputOptions,
     type BuildCheck,
 } from "./BuildOutputOptions.js";
-import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
-import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
+import {assertBuildDestinationAvailable} from "./internal/assertBuildDestinationAvailable.js";
+import {assertBuildDestinationIsSafe} from "./internal/assertBuildDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
 import {OutcomeLibraryFolderReader} from "../weightedoutcome/folder/OutcomeLibraryFolderReader.js";
 import {buildWeightedOutcomeLibrary} from "../weightedoutcome/buildWeightedOutcomeLibrary.js";
@@ -63,8 +63,8 @@ export class StakeAdapterOutputBuilder implements BuildOutputBuilder {
 
     public async build(source: PokieProject, destinationPath: string, options?: BuildOutputOptions): Promise<BuildOutputResult> {
         assertBuildNotCancelled(options);
-        assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
-        assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
+        assertBuildDestinationAvailable(destinationPath, this.destinationKind);
+        assertBuildDestinationIsSafe(source.rootPath, destinationPath);
         const destinationOwnership = capturePublishDirectoryOwnership(destinationPath);
 
         const sourceBinding = computeProjectInputBindingHash(source);
@@ -88,7 +88,7 @@ export class StakeAdapterOutputBuilder implements BuildOutputBuilder {
                 publication = result.publication;
                 assertBuildNotCancelled(options);
                 reportBuildProgress(options, {status: "completed", preflight});
-                return {outputPath: result.outDir, preflight, stakeManifest: result.manifest, stakeFiles: result.files, publishedStakeDirectoryOwnership: publication === undefined ? undefined : {...publication, restoreEmptyOnRollback: destinationOwnership.destinationIdentity !== undefined}};
+                return {outputPath: result.outDir, preflight, stakeManifest: result.info, stakeFiles: result.files, publishedStakeDirectoryOwnership: publication === undefined ? undefined : {...publication, restoreEmptyOnRollback: destinationOwnership.destinationIdentity !== undefined}};
             }
             const modes = prepared.modes;
             const preflight = stakePreflight(modes);
@@ -102,7 +102,7 @@ export class StakeAdapterOutputBuilder implements BuildOutputBuilder {
                 assertBuildNotCancelled(options);
             }
             reportBuildProgress(options, {status: "running", phase: "Preparing Stake publication", preflight, message: "Publishing Stake export"});
-            assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
+            assertBuildDestinationAvailable(destinationPath, this.destinationKind);
             assertSourceUnchanged();
             const result = await this.exporter.exportToDirectory(modes, destinationPath, {
                 signal: options?.signal,
@@ -122,7 +122,7 @@ export class StakeAdapterOutputBuilder implements BuildOutputBuilder {
             publication = result.publication;
             assertBuildNotCancelled(options);
             const exportErrors = result.issues.filter((issue) => issue.severity === "error");
-            if (exportErrors.length > 0 || result.manifest === undefined) {
+            if (exportErrors.length > 0 || result.info === undefined) {
                 throw new Error(
                     `Could not republish Stake Engine export "${source.rootPath}" to "${destinationPath}": ${exportErrors
                         .map((issue) => `${issue.code}: ${issue.message}`)
@@ -131,7 +131,7 @@ export class StakeAdapterOutputBuilder implements BuildOutputBuilder {
             }
 
             reportBuildProgress(options, {status: "completed", preflight});
-            return {outputPath: result.outDir, preflight, stakeManifest: result.manifest, stakeFiles: result.files, publishedStakeDirectoryOwnership: publication === undefined ? undefined : {...publication, restoreEmptyOnRollback: destinationOwnership.destinationIdentity !== undefined}};
+            return {outputPath: result.outDir, preflight, stakeManifest: result.info, stakeFiles: result.files, publishedStakeDirectoryOwnership: publication === undefined ? undefined : {...publication, restoreEmptyOnRollback: destinationOwnership.destinationIdentity !== undefined}};
         } catch (error) {
             // Atomic publishers clean their staging on failure. Only a returned ownership token
             // authorizes removal of a public path; a claimant may have appeared during source reads.
@@ -168,7 +168,7 @@ export class StakeAdapterOutputBuilder implements BuildOutputBuilder {
 
     private async readOutcomeLibraryModes(sourcePath: string): Promise<readonly StakeEngineExportModeInput[]> {
         const reader = new OutcomeLibraryFolderReader();
-        const manifest = await reader.readManifest(sourcePath);
+        const manifest = await reader.readIndex(sourcePath);
         const provenanceFile = path.join(sourcePath, "source-provenance.json");
         const sourceProvenance = fs.existsSync(provenanceFile) ? JSON.parse(fs.readFileSync(provenanceFile, "utf8")) as import("../stakeengine/StakeEngineImportSourceProvenance.js").StakeEngineImportSourceProvenance : undefined;
         return Promise.all(

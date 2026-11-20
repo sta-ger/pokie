@@ -31,41 +31,41 @@ describe("buildWeightedOutcomeLibrary", () => {
         const library = buildWeightedOutcomeLibrary({
             libraryId: "lib-1",
             outcomes: [
-                {id: "no-win", weight: 70, artifact: losing},
-                {id: "win-10x", weight: 30, artifact: winning},
+                {id: "no-win", weight: 70, record: losing},
+                {id: "win-10x", weight: 30, record: winning},
             ],
         });
 
         expect(library.schemaVersion).toBe(WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION);
         expect(library.libraryId).toBe("lib-1");
         expect(library.outcomes).toHaveLength(2);
-        expect(library.outcomes[0]).toEqual({id: "no-win", weight: 70, artifact: losing});
-        expect(library.outcomes[1]).toEqual({id: "win-10x", weight: 30, artifact: winning});
+        expect(library.outcomes[0]).toEqual({id: "no-win", weight: 70, record: losing});
+        expect(library.outcomes[1]).toEqual({id: "win-10x", weight: 30, record: winning});
     });
 
-    it("references the same artifact objects rather than copying them (already immutable)", () => {
-        const artifact = artifactWithTotalWin("r1", 5);
-        const library = buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id: "a", weight: 1, artifact}]});
+    it("references the same record objects rather than copying them (already immutable)", () => {
+        const record = artifactWithTotalWin("r1", 5);
+        const library = buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id: "a", weight: 1, record}]});
 
-        expect(library.outcomes[0].artifact).toBe(artifact);
+        expect(library.outcomes[0].record).toBe(record);
     });
 
     it("accepts the current WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION explicitly", () => {
-        const artifact = artifactWithTotalWin("r1", 0);
+        const record = artifactWithTotalWin("r1", 0);
         expect(() =>
             buildWeightedOutcomeLibrary({
                 libraryId: "lib-1",
                 schemaVersion: WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION,
-                outcomes: [{id: "a", weight: 1, artifact}],
+                outcomes: [{id: "a", weight: 1, record}],
             }),
         ).not.toThrow();
     });
 
     describe("fail-fast input validation", () => {
         it.each(["", "  "])("throws for libraryId %p", (libraryId) => {
-            const artifact = artifactWithTotalWin("r1", 0);
+            const record = artifactWithTotalWin("r1", 0);
             expect(
-                getCode(() => buildWeightedOutcomeLibrary({libraryId, outcomes: [{id: "a", weight: 1, artifact}]})),
+                getCode(() => buildWeightedOutcomeLibrary({libraryId, outcomes: [{id: "a", weight: 1, record}]})),
             ).toBe("weighted-outcome-library-id-invalid");
         });
 
@@ -76,22 +76,22 @@ describe("buildWeightedOutcomeLibrary", () => {
         });
 
         it.each([0, -1, 1.5, 2])("throws for schemaVersion %p", (schemaVersion) => {
-            const artifact = artifactWithTotalWin("r1", 0);
+            const record = artifactWithTotalWin("r1", 0);
             expect(
                 getCode(() =>
                     buildWeightedOutcomeLibrary({
                         libraryId: "lib-1",
                         schemaVersion,
-                        outcomes: [{id: "a", weight: 1, artifact}],
+                        outcomes: [{id: "a", weight: 1, record}],
                     }),
                 ),
             ).toBe("weighted-outcome-library-schema-version-invalid");
         });
 
         it.each(["", "  "])("throws for an outcome id %p", (id) => {
-            const artifact = artifactWithTotalWin("r1", 0);
+            const record = artifactWithTotalWin("r1", 0);
             expect(
-                getCode(() => buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id, weight: 1, artifact}]})),
+                getCode(() => buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id, weight: 1, record}]})),
             ).toBe("weighted-outcome-id-invalid");
         });
 
@@ -103,8 +103,8 @@ describe("buildWeightedOutcomeLibrary", () => {
                     buildWeightedOutcomeLibrary({
                         libraryId: "lib-1",
                         outcomes: [
-                            {id: "dup", weight: 1, artifact: a},
-                            {id: "dup", weight: 1, artifact: b},
+                            {id: "dup", weight: 1, record: a},
+                            {id: "dup", weight: 1, record: b},
                         ],
                     }),
                 ),
@@ -112,49 +112,49 @@ describe("buildWeightedOutcomeLibrary", () => {
         });
 
         it.each([0, -1, NaN, Infinity])("throws for an outcome weight %p", (weight) => {
-            const artifact = artifactWithTotalWin("r1", 0);
+            const record = artifactWithTotalWin("r1", 0);
             expect(
-                getCode(() => buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id: "a", weight, artifact}]})),
+                getCode(() => buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id: "a", weight, record}]})),
             ).toBe("weighted-outcome-weight-invalid");
         });
 
-        it.each([-1, NaN, Infinity])("throws for an invalid artifact.payoutMultiplier %p", (payoutMultiplier) => {
-            const artifact = {...artifactWithTotalWin("r1", 0), payoutMultiplier};
+        it.each([-1, NaN, Infinity])("throws for an invalid record.payoutMultiplier %p", (payoutMultiplier) => {
+            const record = {...artifactWithTotalWin("r1", 0), payoutMultiplier};
             expect(
                 getCode(() =>
-                    buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id: "a", weight: 1, artifact}]}),
+                    buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id: "a", weight: 1, record}]}),
                 ),
             ).toBe("weighted-outcome-payout-multiplier-invalid");
         });
 
-        it("throws when a hand-crafted artifact is not JSON-safe (cyclic debug), caught by the per-outcome artifact validation", () => {
+        it("throws when a hand-crafted record is not JSON-safe (cyclic debug), caught by the per-outcome record validation", () => {
             const cyclic: Record<string, unknown> = {};
             cyclic.self = cyclic;
-            const artifact = {...artifactWithTotalWin("r1", 0), debug: cyclic} as unknown as RoundRecord<string>;
+            const record = {...artifactWithTotalWin("r1", 0), debug: cyclic} as unknown as RoundRecord<string>;
             // RoundRecordValidator itself checks JSON safety, so this is caught by the per-outcome delegation
             // (item 5) before the library's own final toCanonicalJson pass would ever see it.
             expect(
                 getCode(() =>
-                    buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id: "a", weight: 1, artifact}]}),
+                    buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id: "a", weight: 1, record}]}),
                 ),
-            ).toBe("weighted-outcome-artifact-invalid");
+            ).toBe("weighted-outcome-record-invalid");
         });
 
-        it.each([0, -1, NaN, Infinity])("throws for an invalid artifact.stake %p", (stake) => {
-            const artifact = {...artifactWithTotalWin("r1", 0), stake};
+        it.each([0, -1, NaN, Infinity])("throws for an invalid record.stake %p", (stake) => {
+            const record = {...artifactWithTotalWin("r1", 0), stake};
             expect(
                 getCode(() =>
-                    buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id: "a", weight: 1, artifact}]}),
+                    buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id: "a", weight: 1, record}]}),
                 ),
             ).toBe("weighted-outcome-stake-invalid");
         });
 
-        it("throws for a malformed-but-JSON-safe artifact (mismatched screen), never reaching the canonical library", () => {
-            const artifact = {...artifactWithTotalWin("r1", 0), screen: [["Z", "Z", "Z"]]};
+        it("throws for a malformed-but-JSON-safe record (mismatched screen), never reaching the canonical library", () => {
+            const record = {...artifactWithTotalWin("r1", 0), screen: [["Z", "Z", "Z"]]};
             const code = getCode(() =>
-                buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id: "a", weight: 1, artifact}]}),
+                buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id: "a", weight: 1, record}]}),
             );
-            expect(code).toBe("weighted-outcome-artifact-invalid");
+            expect(code).toBe("weighted-outcome-record-invalid");
         });
 
         it("throws for a total weight that overflows to Infinity even though every individual weight is finite", () => {
@@ -166,8 +166,8 @@ describe("buildWeightedOutcomeLibrary", () => {
                     buildWeightedOutcomeLibrary({
                         libraryId: "lib-1",
                         outcomes: [
-                            {id: "a", weight: Number.MAX_VALUE, artifact: a},
-                            {id: "b", weight: Number.MAX_VALUE, artifact: b},
+                            {id: "a", weight: Number.MAX_VALUE, record: a},
+                            {id: "b", weight: Number.MAX_VALUE, record: b},
                         ],
                     }),
                 ),
@@ -188,8 +188,8 @@ describe("buildWeightedOutcomeLibrary", () => {
                     buildWeightedOutcomeLibrary({
                         libraryId: "lib-1",
                         outcomes: [
-                            {id: "a", weight: 1, artifact: a},
-                            {id: "b", weight: 1, artifact: b},
+                            {id: "a", weight: 1, record: a},
+                            {id: "b", weight: 1, record: b},
                         ],
                     }),
                 ),
@@ -208,8 +208,8 @@ describe("buildWeightedOutcomeLibrary", () => {
                     buildWeightedOutcomeLibrary({
                         libraryId: "lib-1",
                         outcomes: [
-                            {id: "a", weight: 1, artifact: a},
-                            {id: "b", weight: 1, artifact: b},
+                            {id: "a", weight: 1, record: a},
+                            {id: "b", weight: 1, record: b},
                         ],
                     }),
                 ),
@@ -224,8 +224,8 @@ describe("buildWeightedOutcomeLibrary", () => {
                     buildWeightedOutcomeLibrary({
                         libraryId: "lib-1",
                         outcomes: [
-                            {id: "a", weight: 1, artifact: a},
-                            {id: "b", weight: 1, artifact: b},
+                            {id: "a", weight: 1, record: a},
+                            {id: "b", weight: 1, record: b},
                         ],
                     }),
                 ),
@@ -240,8 +240,8 @@ describe("buildWeightedOutcomeLibrary", () => {
                     buildWeightedOutcomeLibrary({
                         libraryId: "lib-1",
                         outcomes: [
-                            {id: "a", weight: 1, artifact: a},
-                            {id: "b", weight: 1, artifact: b},
+                            {id: "a", weight: 1, record: a},
+                            {id: "b", weight: 1, record: b},
                         ],
                     }),
                 ),
@@ -256,8 +256,8 @@ describe("buildWeightedOutcomeLibrary", () => {
                     buildWeightedOutcomeLibrary({
                         libraryId: "lib-1",
                         outcomes: [
-                            {id: "a", weight: 1, artifact: a},
-                            {id: "b", weight: 1, artifact: b},
+                            {id: "a", weight: 1, record: a},
+                            {id: "b", weight: 1, record: b},
                         ],
                     }),
                 ),
@@ -272,8 +272,8 @@ describe("buildWeightedOutcomeLibrary", () => {
                     buildWeightedOutcomeLibrary({
                         libraryId: "lib-1",
                         outcomes: [
-                            {id: "a", weight: 1, artifact: a},
-                            {id: "b", weight: 1, artifact: b},
+                            {id: "a", weight: 1, record: a},
+                            {id: "b", weight: 1, record: b},
                         ],
                     }),
                 ),
@@ -290,9 +290,9 @@ describe("buildWeightedOutcomeLibrary", () => {
             const library = buildWeightedOutcomeLibrary({
                 libraryId: "lib-1",
                 outcomes: [
-                    {id: "charlie", weight: 1, artifact: c},
-                    {id: "alpha", weight: 1, artifact: a},
-                    {id: "bravo", weight: 1, artifact: b},
+                    {id: "charlie", weight: 1, record: c},
+                    {id: "alpha", weight: 1, record: a},
+                    {id: "bravo", weight: 1, record: b},
                 ],
             });
 
@@ -300,51 +300,51 @@ describe("buildWeightedOutcomeLibrary", () => {
         });
     });
 
-    describe("custom artifact validator", () => {
-        it("still rejects a malformed-but-JSON-safe artifact even with a permissive custom validator injected", () => {
+    describe("custom record validator", () => {
+        it("still rejects a malformed-but-JSON-safe record even with a permissive custom validator injected", () => {
             const permissive = {validate: () => []};
-            const artifact = {...artifactWithTotalWin("r1", 0), screen: [["Z", "Z", "Z"]]};
+            const record = {...artifactWithTotalWin("r1", 0), screen: [["Z", "Z", "Z"]]};
 
             expect(
                 getCode(() =>
                     buildWeightedOutcomeLibrary({
                         libraryId: "lib-1",
-                        outcomes: [{id: "a", weight: 1, artifact}],
-                        artifactValidator: permissive,
+                        outcomes: [{id: "a", weight: 1, record}],
+                        recordValidator: permissive,
                     }),
                 ),
-            ).toBe("weighted-outcome-artifact-invalid");
+            ).toBe("weighted-outcome-record-invalid");
         });
 
-        it("rejects an otherwise-valid artifact when the additional custom validator itself reports an issue", () => {
+        it("rejects an otherwise-valid record when the additional custom validator itself reports an issue", () => {
             const alwaysFails = {
                 validate: () => [{code: "custom-rule-violated", severity: "error" as const, message: "nope"}],
             };
-            const artifact = artifactWithTotalWin("r1", 0);
+            const record = artifactWithTotalWin("r1", 0);
 
             expect(
                 getCode(() =>
                     buildWeightedOutcomeLibrary({
                         libraryId: "lib-1",
-                        outcomes: [{id: "a", weight: 1, artifact}],
-                        artifactValidator: alwaysFails,
+                        outcomes: [{id: "a", weight: 1, record}],
+                        recordValidator: alwaysFails,
                     }),
                 ),
-            ).toBe("weighted-outcome-artifact-invalid");
+            ).toBe("weighted-outcome-record-invalid");
         });
 
-        it("builds successfully without a custom validator when the artifact is genuinely valid", () => {
-            const artifact = artifactWithTotalWin("r1", 0);
+        it("builds successfully without a custom validator when the record is genuinely valid", () => {
+            const record = artifactWithTotalWin("r1", 0);
             expect(() =>
-                buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id: "a", weight: 1, artifact}]}),
+                buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id: "a", weight: 1, record}]}),
             ).not.toThrow();
         });
     });
 
     describe("immutability", () => {
         it("returns a deeply frozen library that throws on any attempted mutation", () => {
-            const artifact = artifactWithTotalWin("r1", 5);
-            const library = buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id: "a", weight: 1, artifact}]});
+            const record = artifactWithTotalWin("r1", 5);
+            const library = buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id: "a", weight: 1, record}]});
 
             expect(() => {
                 (library as {libraryId: string}).libraryId = "tampered";

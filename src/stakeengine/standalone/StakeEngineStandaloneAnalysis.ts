@@ -30,7 +30,7 @@ export type StakeEngineOutcomePayoutBucket = {
 // The enumerated -- not sampled -- statistics (approximate numeric moments) StakeEngineStandaloneAnalyzer computes over one mode's own normalized
 // outcomes. Mirrors WeightedOutcomeLibraryAnalysis's own shape/semantics where the underlying data supports it
 // (rtp/hitFrequency/variance/standardDeviation are all defined over each outcome's own stake-normalized "ratio",
-// the same way WeightedOutcomeLibraryAnalysis.rtp is defined over artifact.payoutMultiplier), but is computed
+// the same way WeightedOutcomeLibraryAnalysis.rtp is defined over record.payoutMultiplier), but is computed
 // directly off StakeEngineOutcomeRecord -- no RoundRecord/WeightedOutcomeLibrary is ever built to get here.
 export type StakeEngineStandaloneModeAnalysis = {
     readonly modeName: string;

@@ -4,9 +4,9 @@ import path from "path";
 import {
     FormatConversionPlanner,
     PokieProject,
-    ProjectMaterializationResult,
-    ProjectMaterializing,
-    type ProjectMaterializationOptions,
+    ProjectPreparationResult,
+    ProjectPreparing,
+    type ProjectPreparationOptions,
 } from "@fromstan/pokie";
 import {BlueprintOutputBuilder} from "../../src/project/BlueprintOutputBuilder.js";
 import {computeBuildInputHash} from "../../src/project/FormatConversionPlanner.js";
@@ -19,29 +19,29 @@ import {RuntimePreparationCleanupError} from "./RuntimePreparationCleanupError.j
  * Blueprints use the verified runtime cache, and PAR is imported into a
  * private Blueprint/evidence stage which is removed when the lease ends.
  */
-export class RunnableArtifactMaterializer implements ProjectMaterializing {
-    private readonly blueprintMaterializer: ProjectMaterializing;
+export class RunnableBuildPreparer implements ProjectPreparing {
+    private readonly blueprintPreparer: ProjectPreparing;
     private readonly planner: FormatConversionPlanner;
     private readonly blueprintBuilder: BlueprintOutputBuilder;
 
     public constructor(
-        blueprintMaterializer: ProjectMaterializing,
+        blueprintPreparer: ProjectPreparing,
         planner = new FormatConversionPlanner(),
         blueprintBuilder = new BlueprintOutputBuilder(),
     ) {
-        this.blueprintMaterializer = blueprintMaterializer;
+        this.blueprintPreparer = blueprintPreparer;
         this.planner = planner;
         this.blueprintBuilder = blueprintBuilder;
     }
 
-    public async materialize(project: PokieProject, options: ProjectMaterializationOptions = {}): Promise<ProjectMaterializationResult> {
+    public async prepare(project: PokieProject, options: ProjectPreparationOptions = {}): Promise<ProjectPreparationResult> {
         this.assertNotCancelled(options.signal);
         const plan = this.planner.planRuntime(project);
         if (plan.status !== "planned") {
             throw new Error(this.describeUnavailable(plan));
         }
         if (project.type !== "parWorkbook") {
-            return this.blueprintMaterializer.materialize(project, options);
+            return this.blueprintPreparer.prepare(project, options);
         }
 
         // The temporary directory is operation-owned.  BlueprintOutputBuilder
@@ -49,7 +49,7 @@ export class RunnableArtifactMaterializer implements ProjectMaterializing {
         // removes both on every failure/cancellation/release path.
         const stage = await fs.promises.mkdtemp(path.join(os.tmpdir(), "pokie-runtime-par-"));
         const blueprintPath = path.join(stage, "imported.blueprint.json");
-        let result: ProjectMaterializationResult | undefined;
+        let result: ProjectPreparationResult | undefined;
         let released = false;
         const release = async (): Promise<void> => {
             if (released) return;
@@ -68,7 +68,7 @@ export class RunnableArtifactMaterializer implements ProjectMaterializing {
             this.assertNotCancelled(options.signal);
             await this.blueprintBuilder.build(project, blueprintPath, {signal: options.signal});
             this.assertNotCancelled(options.signal);
-            result = await this.blueprintMaterializer.materialize({
+            result = await this.blueprintPreparer.prepare({
                 type: "blueprint",
                 rootPath: blueprintPath,
                 provenance: `temporary runtime import from PAR workbook ${project.rootPath}`,

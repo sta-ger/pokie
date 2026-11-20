@@ -39,11 +39,11 @@ function outcomeArtifact(roundId: string, totalWin: number): RoundRecord<string>
 // exact same underlying outcomes either way.
 function testOutcomes(libraryId: string): WeightedOutcomeInput<string>[] {
     return [
-        {id: "0", weight: 500, artifact: outcomeArtifact(`${libraryId}-0`, 0)},
-        {id: "1", weight: 300, artifact: outcomeArtifact(`${libraryId}-1`, 2)},
-        {id: "2", weight: 150, artifact: outcomeArtifact(`${libraryId}-2`, 5)},
-        {id: "3", weight: 40, artifact: outcomeArtifact(`${libraryId}-3`, 10)},
-        {id: "4", weight: 10, artifact: outcomeArtifact(`${libraryId}-4`, 100)},
+        {id: "0", weight: 500, record: outcomeArtifact(`${libraryId}-0`, 0)},
+        {id: "1", weight: 300, record: outcomeArtifact(`${libraryId}-1`, 2)},
+        {id: "2", weight: 150, record: outcomeArtifact(`${libraryId}-2`, 5)},
+        {id: "3", weight: 40, record: outcomeArtifact(`${libraryId}-3`, 10)},
+        {id: "4", weight: 10, record: outcomeArtifact(`${libraryId}-4`, 100)},
     ];
 }
 

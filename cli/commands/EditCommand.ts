@@ -12,7 +12,7 @@ import {
     writeFileAtomically,
 } from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
+import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOperationError.js";
 import {GameBlueprintWizard} from "../wizard/GameBlueprintWizard.js";
 import {GameBlueprintWizarding} from "../wizard/GameBlueprintWizarding.js";
 import {PromptAdapting} from "../wizard/PromptAdapting.js";

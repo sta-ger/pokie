@@ -62,8 +62,8 @@ export type GameModelProjectionFallback = {
     // `reason` below for why) -- typically a build's own recorded manifest (GameBuildInfo.game) or a
     // package.json's name/version/description. Omitted entirely (not merely all-undefined fields) when
     // nothing at all is known, which is what makes `basics` itself "unavailable" too.
-    manifest?: GameModelBasics;
-    // Why every other section (and `basics`, when `manifest` is also omitted) is "unavailable" -- shown
+    info?: GameModelBasics;
+    // Why every other section (and `basics`, when `info` is also omitted) is "unavailable" -- shown
     // to the user verbatim as that section's own diagnostic.
     reason: string;
 };
@@ -80,7 +80,7 @@ export function buildGameModelProjection(
 ): GameModelProjection {
     if (blueprint === undefined) {
         const reason = fallback?.reason ?? "This project's game model isn't available.";
-        const basics: GameModelSection<GameModelBasics> = fallback?.manifest !== undefined ? available(fallback.manifest) : unavailable(reason);
+        const basics: GameModelSection<GameModelBasics> = fallback?.info !== undefined ? available(fallback.info) : unavailable(reason);
         return {
             basics,
             layout: unavailable(reason),
@@ -140,7 +140,7 @@ export function buildPackageGameModelProjection(extraction: PackageBlueprintExtr
     ));
     const effective = valid ? {...model, availableBets: model!.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100],
         paylines: model!.paylines ?? Array.from({length: model!.screenGeometry?.evaluated.rows ?? model!.rows!}, (_, row) => Array.from({length: model!.reels!}, () => row)),} as GameBlueprint : undefined;
-    const projection = valid ? buildGameModelProjection(effective!) : buildGameModelProjection(undefined, {manifest: model?.info, reason});
+    const projection = valid ? buildGameModelProjection(effective!) : buildGameModelProjection(undefined, {info: model?.info, reason});
     projection.packageExtraction = extraction;
     if (!valid && model && extraction.status === "partial") {
         if (Number.isInteger(model.reels) && Number.isInteger(model.rows) && model.reels! > 0 && model.rows! > 0) {

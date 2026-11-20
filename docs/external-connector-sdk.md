@@ -31,7 +31,7 @@ descriptor validation ExternalExportTargetDescriptorValidator (always) + extra (
 compatibility validation ExternalExportCompatibilityValidator (always) + extra (additive) — before
  │ (no error-severity issues) any file exists
  ▼
-projection target.roundProjector.project(outcome.artifact) for every outcome —
+projection target.roundProjector.project(outcome.record) for every outcome —
  │ (no error-severity issues) run by the service itself
  ▼
 generation target.artifactGenerator.generate(projectedModes) — fully in-memory,
@@ -190,7 +190,7 @@ into an `ExternalExportProjectedModeInput` (plain, already-projected JSON):
 type ExternalExportProjectedOutcome = {
  readonly id: string;
  readonly weight: number;
- readonly projected: JsonObject; // target.roundProjector.project(outcome.artifact)
+ readonly projected: JsonObject; // target.roundProjector.project(outcome.record)
 };
 
 type ExternalExportProjectedModeInput = {

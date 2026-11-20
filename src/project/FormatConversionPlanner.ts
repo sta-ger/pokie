@@ -56,7 +56,7 @@ export type OutputConfigurationOrigin = {
     readonly generationSemantics?: "exact" | "cappedSample";
     readonly gameId?: string;
     readonly gameVersion?: string;
-    readonly manifestIdentity?: string;
+    readonly gameIdentity?: string;
     // Bounded generation is only reproducible when both values agree.  Keeping these
     // separate from the display-oriented generationSemantics string makes a sampled
     // bundle ineligible for an exact (or differently seeded) request.
@@ -366,7 +366,7 @@ function sameArtifactIdentity(left: OutputIdentity, right: OutputIdentity): bool
         left.configurationProvenance?.pokieVersion === right.configurationProvenance?.pokieVersion &&
         left.configurationProvenance?.gameId === right.configurationProvenance?.gameId &&
         left.configurationProvenance?.gameVersion === right.configurationProvenance?.gameVersion &&
-        left.configurationProvenance?.manifestIdentity === right.configurationProvenance?.manifestIdentity;
+        left.configurationProvenance?.gameIdentity === right.configurationProvenance?.gameIdentity;
 }
 
 // Presentation-only compatibility wording for callers that historically showed the product matrix.  It is
@@ -458,7 +458,7 @@ export function verifyManagedOutcomeCandidate(
         ["configuration hash", expected.configurationHash, actual.configurationHash],
         ["game id", expected.gameId, actual.gameId],
         ["game version", expected.gameVersion, actual.gameVersion],
-        ["manifest identity", expected.manifestIdentity, actual.manifestIdentity],
+        ["game identity", expected.gameIdentity, actual.gameIdentity],
         ["POKIE version", options.pokieVersion ?? expected.pokieVersion, actual.pokieVersion],
         ["generation semantics", expectedGeneration, actual.generationSemantics],
         ["sample count", expectedSampleCount, actual.sampleCount],

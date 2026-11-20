@@ -8,7 +8,7 @@ import {
     type BuildOutputOptions,
     type FormatConversionPlan,
     OutputFormat,
-    ADVERTISED_ARTIFACT_BUILD_TARGETS,
+    ADVERTISED_BUILD_TARGETS,
     computeGameBlueprintHash,
     describeFormatConversionPlanDiagnostic,
     buildGameBuildInfo,
@@ -34,7 +34,7 @@ import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderErr
 
 // The complete product matrix: every OutputFormat is selectable through
 // one registry.  WASM is deliberately not a second build command.
-const TARGET_TYPES: readonly OutputFormat[] = ADVERTISED_ARTIFACT_BUILD_TARGETS;
+const TARGET_TYPES: readonly OutputFormat[] = ADVERTISED_BUILD_TARGETS;
 
 const USAGE = "Usage: pokie build <project> --target <format> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]";
 const TARGET_HINT = `--target must be one of: ${TARGET_TYPES.join(", ")}.`;
@@ -42,7 +42,7 @@ const PROJECT_HINT =
     "<project> is a POKIE game design, game package, outcome library, PAR workbook, Stake Engine export or WASM build. " +
     'Run "pokie build --help" for the supported conversions.';
 // parWorkbook is the one target whose artifact is a single file rather than a directory (see
-// assertArtifactDestinationAvailable's own "file"/"directory" split) -- its default destination needs a real
+// assertBuildDestinationAvailable's own "file"/"directory" split) -- its default destination needs a real
 // file extension, every other target's default is just a bare directory name.
 const PAR_WORKBOOK_DEFAULT_EXTENSION = ".xlsx";
 const WASM_DEFAULT_EXTENSION = ".wasm";
@@ -228,11 +228,11 @@ export class BuildCommand implements CliCommandHandling {
                 if (target === "outcomeLibrary") {
                     const prepared = new OutcomeLibraryCommand(this.pokieVersion).prepareDescriptorBuildOperation(source, destination, signal);
                     const execution = await this.executeDescriptorOperation(prepared, dryRun);
-                    return {published: execution?.published === true && execution.publication?.manifest !== undefined, issues: execution?.publication?.issues ?? []};
+                    return {published: execution?.published === true && execution.publication?.index !== undefined, issues: execution?.publication?.issues ?? []};
                 } else if (target === "stakeAdapter") {
                     const prepared = new StakeEngineCommand(this.pokieVersion).prepareDescriptorExportOperation(source, destination, signal);
                     const execution = await this.executeDescriptorOperation(prepared, dryRun);
-                    return {published: execution?.published === true && execution.publication?.manifest !== undefined, issues: execution?.publication?.issues ?? []};
+                    return {published: execution?.published === true && execution.publication?.info !== undefined, issues: execution?.publication?.issues ?? []};
                 } else {
                     const prepared = new ParCommand(this.pokieVersion).prepareDescriptorExportOperation(source, destination, signal);
                     const execution = await this.executeDescriptorOperation(prepared, dryRun);
@@ -288,7 +288,7 @@ export class BuildCommand implements CliCommandHandling {
     // target-appropriate (the name itself says what got built there) without needing to load/inspect the
     // project's own contents (a blueprint's manifest.id, an outcome-library bundle's manifest, ...) just to
     // name a directory. Never collides with `rootPath` itself: a sibling name always differs from the resolved
-    // project's own basename, so the existing conflict protections (assertArtifactDestinationAvailable) are
+    // project's own basename, so the existing conflict protections (assertBuildDestinationAvailable) are
     // the only thing standing between this default and an existing, unrelated file/directory of the same name.
     private resolveDestination(rootPath: string, target: OutputFormat): string {
         let siblingName: string = target;

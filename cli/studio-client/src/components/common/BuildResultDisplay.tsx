@@ -29,7 +29,7 @@ export function BuildResultDisplay({view, onOpen, onOpenFolder}: {view: BuildPro
     return (
         <Stack gap="sm">
             <Text style={{overflowWrap: "anywhere"}}>
-                &quot;{view.manifest.name}&quot; (id: &quot;{view.manifest.id}&quot;, v{view.manifest.version}) built at {formatTimestamp(view.buildInfo.generatedAt)} in
+                &quot;{view.info.name}&quot; (id: &quot;{view.info.id}&quot;, v{view.info.version}) built at {formatTimestamp(view.buildInfo.generatedAt)} in
                 &quot;{view.projectRoot}&quot;.
             </Text>
             <Text size="xs" c="dimmed" style={{overflowWrap: "anywhere"}}>

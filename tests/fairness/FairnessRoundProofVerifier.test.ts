@@ -18,7 +18,7 @@ import {buildFairnessSourceBundle, FAIRNESS_TEST_POKIE_VERSION, issueFairnessCom
 
 function createNeverCalledReader(onCalled: () => void): OutcomeLibraryFolderReading {
     return {
-        readManifest: () => {
+        readIndex: () => {
             onCalled();
             return Promise.reject(new Error("should never be called"));
         },
@@ -319,7 +319,7 @@ describe("FairnessRoundProofVerifier", () => {
 
         let call = 0;
         const driftingReader: OutcomeLibraryFolderReading = {
-            readManifest: (dir) => reader.readManifest(dir),
+            readIndex: (dir) => reader.readIndex(dir),
             readModeIndex: () => {
                 call++;
                 return Promise.resolve(call === 1 ? originalIndex : tamperedIndex);

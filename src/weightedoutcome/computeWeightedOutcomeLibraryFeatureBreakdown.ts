@@ -15,8 +15,8 @@ export function computeWeightedOutcomeLibraryFeatureBreakdown<T extends string |
     const featureEventTally = new Map<string, {weight: number; count: number}>();
 
     library.outcomes.forEach((outcome) => {
-        tally(betModeTally, outcome.artifact.betMode, outcome.weight);
-        const eventTypes = new Set((outcome.artifact.featureEvents ?? []).map((event) => event.type));
+        tally(betModeTally, outcome.record.betMode, outcome.weight);
+        const eventTypes = new Set((outcome.record.featureEvents ?? []).map((event) => event.type));
         eventTypes.forEach((type) => tally(featureEventTally, type, outcome.weight));
     });
 

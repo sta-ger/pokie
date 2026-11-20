@@ -4,7 +4,7 @@ import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import type {WeightedOutcomeLibraryAnalysis} from "../weightedoutcome/WeightedOutcomeLibraryAnalysis.js";
 
 // Tracks this type's own shape (not the pokie package version), same convention as
-// OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION/STAKE_ENGINE_INFO_SCHEMA_VERSION.
+// OUTCOME_LIBRARY_FOLDER_INDEX_SCHEMA_VERSION/STAKE_ENGINE_INFO_SCHEMA_VERSION.
 export const CERTIFICATION_PACK_INDEX_SCHEMA_VERSION = 2;
 
 // One mode's certification evidence: the same libraryHash/outcomeCount/totalWeight/analysis an
@@ -26,7 +26,7 @@ export type CertificationPackModeEntry = {
 };
 
 // The source outcome-library bundle's own deep validation ({deep: true}), run once at build time and embedded
-// verbatim — never a second, differently-derived notion of "valid". "ranAt" is separate from the manifest's own
+// verbatim — never a second, differently-derived notion of "valid". "ranAt" is separate from the index's own
 // "generatedAt" only in spirit (both are stamped from the same builder call); kept as its own field so a reader
 // never has to assume they're the same thing.
 export type CertificationPackDeepValidation = {
@@ -49,7 +49,7 @@ export type CertificationPackIndex = {
     readonly generatedAt: string;
     readonly game: PokieGameInfo;
     readonly configHash?: string;
-    readonly artifactPokieVersion: string;
+    readonly recordPokieVersion: string;
     // Where the source Outcome Library Bundle was read from at *build* time — purely informational (a
     // directory can move, and this field is only ever as trustworthy as whoever last wrote this index.json).
     // CertificationPackVerifying.verify NEVER reads this field and never falls back to it: a caller
@@ -57,17 +57,17 @@ export type CertificationPackIndex = {
     // on the CLI), or verification reports a diagnostic and reads nothing outside certDir.
     readonly sourceLibraryDir: string;
     // sha256 of the source bundle's own index.json, canonicalized the same way computeWeightedOutcomeLibraryHash
-    // hashes a library — lets a verifier confirm the exact source-bundle-manifest state this evidence was built
+    // hashes a library — lets a verifier confirm the exact source-bundle-index state this evidence was built
     // against, independent of any single mode's own libraryHash.
-    readonly sourceLibraryManifestHash: string;
+    readonly sourceLibraryIndexHash: string;
     readonly modes: readonly CertificationPackModeEntry[];
     readonly deepValidation: CertificationPackDeepValidation;
     readonly files: readonly string[];
-    // computeCertificationPackContentHash(this manifest) — a deterministic identity over every field above
+    // computeCertificationPackContentHash(this index) — a deterministic identity over every field above
     // except "generatedAt"/"sourceLibraryDir" (and "deepValidation.ranAt", a timestamp for the same reason):
     // the same source-bundle snapshot sampled with the same modes/seeds/sampleCounts always produces the same
     // evidenceContentHash, regardless of when or where it was (re)built. Recomputed and compared by
     // CertificationPackValidator as a single, unified self-consistency check covering every other
-    // field in this manifest at once.
+    // field in this index at once.
     readonly evidenceContentHash: string;
 };

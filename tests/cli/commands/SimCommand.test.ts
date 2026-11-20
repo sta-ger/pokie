@@ -26,7 +26,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {SimCommand} from "../../../cli/commands/SimCommand.js";
-import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
+import {createPreparingRuntimePackageResolver} from "../../../cli/runtime/prepareRuntimePackage.js";
 import {buildOutcomeLibraryFolderModeInput} from "../../weightedoutcome/folder/OutcomeLibraryFolderTestFixtures.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
@@ -1093,7 +1093,7 @@ describe("SimCommand (integration, real game with an explicit custom category)",
 });
 
 // Proves "pokie sim" crosses the shared runtime-package-materialization boundary (see
-// materializeRuntimePackage.ts) exactly once per invocation, and only ever loads/simulates against
+// prepareRuntimePackage.ts) exactly once per invocation, and only ever loads/simulates against
 // whatever runtime path that boundary hands back -- never the caller's own raw packageRoot -- which is
 // also what lets a resolved Blueprint reach a real materialized runtime instead of a raw blueprint file.
 describe("SimCommand runtime package materialization boundary", () => {
@@ -1201,7 +1201,7 @@ describe("SimCommand runtime package materialization boundary", () => {
         await workbook.xlsx.writeFile(incomplete);
         const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
         const writeFile = jest.fn();
-        const command = new SimCommand(loadGame, writeFile, undefined, undefined, undefined, createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION));
+        const command = new SimCommand(loadGame, writeFile, undefined, undefined, undefined, createPreparingRuntimePackageResolver("1.3.0", SIM_OPERATION));
 
         try {
             for (const workbookPath of [corrupt, incomplete]) {

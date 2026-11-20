@@ -1,12 +1,12 @@
 import type {FormatConversionPlan, OutputFormat, BuildProductMatrixCellState} from "@fromstan/pokie";
 
-// GET /api/project/artifacts/targets' own DTO -- one entry per BuildOutputBuilderRegistry.listTargets(),
+// GET /api/project/build/targets' own DTO -- one entry per BuildOutputBuilderRegistry.listTargets(),
 // with `supported` already resolved against the active project's own ProjectType (see
-// StudioArtifactBuildService.listTargets). ExportDeployTab uses this server-resolved flag to enable only
+// StudioBuildService.listTargets). ExportDeployTab uses this server-resolved flag to enable only
 // buildable cards and to explain why unavailable cards cannot run, rather than re-deriving its own
 // ProjectType/capability rule -- see ExportDeployTargets.ts's own doc comment for why that duplication is
 // exactly what this endpoint exists to remove.
-export type StudioArtifactTargetView = {
+export type StudioOutputFormatView = {
     readonly target: OutputFormat;
     readonly supported: boolean;
     readonly state: BuildProductMatrixCellState;

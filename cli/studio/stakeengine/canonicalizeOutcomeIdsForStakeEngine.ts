@@ -41,7 +41,7 @@ export function canonicalizeOutcomeIdsForStakeEngine(library: WeightedOutcomeLib
             outcomes: library.outcomes.map((outcome, index) => ({
                 id: String(index),
                 weight: outcome.weight,
-                artifact: outcome.artifact,
+                record: outcome.record,
             })),
         });
         return {status: "ok", library: canonicalized};

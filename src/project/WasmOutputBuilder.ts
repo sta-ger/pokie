@@ -10,8 +10,8 @@ import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import type {BuildOutputBuilder} from "./BuildOutputBuilder.js";
 import type {BuildOutputResult} from "./BuildOutputResult.js";
 import {assertBuildNotCancelled, captureOutputDestinationState, cleanupIncompleteArtifactOutput, ensureArtifactDestinationParent, reportBuildProgress, type BuildOutputOptions} from "./BuildOutputOptions.js";
-import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
-import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
+import {assertBuildDestinationAvailable} from "./internal/assertBuildDestinationAvailable.js";
+import {assertBuildDestinationIsSafe} from "./internal/assertBuildDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
 import {POKIE_WASM_ABI_VERSION, POKIE_WASM_ADAPTER, POKIE_WASM_CONTRACT_VERSION, type PokieWasmComponentInfo} from "./wasm/PokieWasmComponentInfo.js";
 import {wasmComponentInfoCompanionPath} from "./WasmProjectTargetAdapter.js";
@@ -66,10 +66,10 @@ export class WasmOutputBuilder implements BuildOutputBuilder {
     public async build(source: PokieProject, destinationPath: string, options?: BuildOutputOptions): Promise<BuildOutputResult> {
         if (source.type !== "blueprint") throw new Error("A canonical WASM artifact requires a Game Blueprint source.");
         assertBuildNotCancelled(options);
-        assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
-        assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
+        assertBuildDestinationIsSafe(source.rootPath, destinationPath);
+        assertBuildDestinationAvailable(destinationPath, this.destinationKind);
         const sidecarPath = wasmComponentInfoCompanionPath(destinationPath);
-        assertArtifactDestinationAvailable(sidecarPath, this.destinationKind);
+        assertBuildDestinationAvailable(sidecarPath, this.destinationKind);
         const destinationState = captureOutputDestinationState(destinationPath, this.destinationKind);
         const sidecarState = captureOutputDestinationState(sidecarPath, this.destinationKind);
         let wasmStage: string | undefined;

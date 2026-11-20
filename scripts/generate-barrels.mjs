@@ -5,6 +5,9 @@ const sourceDirectory = "./src";
 
 const outputFile = "./src/index.ts";
 
+// Browser-only fixture surface: exported from ./browser.ts, never from the Node-oriented root barrel.
+const excludedFiles = new Set(["fixtures/StudioFixtureGame.ts"]);
+
 function scanDirectory(directory) {
     const files = fs.readdirSync(directory).sort();
 
@@ -23,7 +26,11 @@ function scanDirectory(directory) {
         if (stat.isDirectory()) {
             scanDirectory(filePath);
         } else if (file !== "index.ts" && path.extname(file) === ".ts") {
-            const fPath = path.relative(sourceDirectory, filePath).replace(".ts", ".js");
+            const relativePath = path.relative(sourceDirectory, filePath);
+            if (excludedFiles.has(relativePath)) {
+                return;
+            }
+            const fPath = relativePath.replace(".ts", ".js");
             const exportStatement = `export * from "./${fPath}";\n`;
             fs.appendFileSync(outputFile, exportStatement);
         }

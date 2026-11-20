@@ -60,7 +60,7 @@ export function isReplayTerminal(job: StudioReplayJobView): boolean {
 // in canonicalArtifact, which owns the Full artifact JSON and its original hash. The optional
 // presentation hash identifies that canonical source -- this is the one
 // shared shape every "round we can inspect" is normalized into (Replay's own recorded/recreated
-// artifacts, Session Spin's `debug.artifact`, and an Outcome Source draw's `selection.outcome.artifact`
+// artifacts, Session Spin's `debug.artifact`, and an Outcome Source draw's `selection.outcome.record`
 // -- see RoundRecordInspector's own callers), and only the first of those three ever actually carries
 // a content hash.
 export type RoundRecordDisplayView = Omit<RoundRecord, "screen" | "steps" | "geometry" | "generatedScreen"> & {

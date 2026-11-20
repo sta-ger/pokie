@@ -10,7 +10,7 @@ export type OutcomeLibraryGenerationStrategy = "exact" | "capped-coverage";
 // Generator/algorithm/seed/build/provenance diagnostics for one generateExactWeightedOutcomeLibrary run --
 // returned alongside the library itself (see GenerateExactWeightedOutcomeLibraryResult) and, when a caller
 // threads it into OutcomeLibraryFolderModeInput.generator, copied verbatim into that mode's own bundle
-// manifest entry. totalOutcomeSpaceSize/sampledRawCount use the same bigint-safe number-or-decimal-string
+// index entry. totalOutcomeSpaceSize/sampledRawCount use the same bigint-safe number-or-decimal-string
 // convention as StakeEngineStandaloneExactDecimal (see toBigIntSafeDecimal) since an exact reel-stop
 // combination space routinely exceeds Number.MAX_SAFE_INTEGER.
 export type OutcomeLibraryGeneratorDiagnostics = {

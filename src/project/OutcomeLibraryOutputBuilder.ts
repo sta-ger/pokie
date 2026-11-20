@@ -15,12 +15,12 @@ import {
     type BuildOutputOptions,
     type BuildCheck,
 } from "./BuildOutputOptions.js";
-import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
-import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
+import {assertBuildDestinationAvailable} from "./internal/assertBuildDestinationAvailable.js";
+import {assertBuildDestinationIsSafe} from "./internal/assertBuildDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
 
 // (Re)publishes an already-built "outcomeLibrary" bundle to a new destination, atomically -- every mode's
-// manifest entry is read back (OutcomeLibraryFolderReader.readManifest), each mode's full outcome set is
+// manifest entry is read back (OutcomeLibraryFolderReader.readIndex), each mode's full outcome set is
 // loaded (OutcomeLibraryFolderReader.readLibrary, the same reader loadWeightedOutcomeLibraryFromFolder wraps),
 // and the result is streamed straight into OutcomeLibraryFolderWriter -- a WeightedOutcomeLibrary's own
 // "outcomes" array is already exactly the Iterable<WeightedOutcomeInput> shape OutcomeLibraryFolderModeInput
@@ -47,7 +47,7 @@ export class OutcomeLibraryOutputBuilder implements BuildOutputBuilder {
         if (source.type !== "outcomeLibrary") {
             throw new Error('OutcomeLibraryOutputBuilder only validates an "outcomeLibrary" project.');
         }
-        const manifest = await this.reader.readManifest(source.rootPath);
+        const manifest = await this.reader.readIndex(source.rootPath);
         for (const entry of manifest.modes) {
             await this.reader.readLibrary(source.rootPath, entry.modeName);
         }
@@ -55,8 +55,8 @@ export class OutcomeLibraryOutputBuilder implements BuildOutputBuilder {
 
     public async build(source: PokieProject, destinationPath: string, options?: BuildOutputOptions): Promise<BuildOutputResult> {
         assertBuildNotCancelled(options);
-        assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
-        assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
+        assertBuildDestinationAvailable(destinationPath, this.destinationKind);
+        assertBuildDestinationIsSafe(source.rootPath, destinationPath);
         const destinationState = captureOutputDestinationState(destinationPath, this.destinationKind);
         let finalDestinationRejected = false;
 
@@ -69,7 +69,7 @@ export class OutcomeLibraryOutputBuilder implements BuildOutputBuilder {
 
         let publication: PublishedDirectoryOwnership | undefined;
         try {
-            const manifest = await this.reader.readManifest(source.rootPath);
+            const manifest = await this.reader.readIndex(source.rootPath);
             const preflight = outcomePreflight(manifest);
             reportBuildProgress(options, {status: "preflight", preflight, message: "Inspecting outcome-library modes"});
             assertBuildNotCancelled(options);
@@ -94,8 +94,8 @@ export class OutcomeLibraryOutputBuilder implements BuildOutputBuilder {
                 signal: options?.signal,
                 assertDestinationAvailable: () => {
                     try {
-                        assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
-                        assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
+                        assertBuildDestinationIsSafe(source.rootPath, destinationPath);
+                        assertBuildDestinationAvailable(destinationPath, this.destinationKind);
                     } catch (error) {
                         // Do not let the generic failure cleanup remove a
                         // directory claimed by another caller after our
@@ -124,7 +124,7 @@ export class OutcomeLibraryOutputBuilder implements BuildOutputBuilder {
             publication = result.publication;
             assertBuildNotCancelled(options);
             const errors = result.issues.filter((issue) => issue.severity === "error");
-            if (errors.length > 0 || result.manifest === undefined) {
+            if (errors.length > 0 || result.index === undefined) {
                 throw new Error(
                     `Could not republish outcome-library bundle "${source.rootPath}" to "${destinationPath}": ${errors
                         .map((issue) => `${issue.code}: ${issue.message}`)
@@ -148,7 +148,7 @@ export class OutcomeLibraryOutputBuilder implements BuildOutputBuilder {
     }
 }
 
-function outcomePreflight(manifest: Awaited<ReturnType<OutcomeLibraryFolderReading["readManifest"]>>): BuildCheck {
+function outcomePreflight(manifest: Awaited<ReturnType<OutcomeLibraryFolderReading["readIndex"]>>): BuildCheck {
     const estimatedItemCount = manifest.modes.reduce((total, mode) => total + BigInt(mode.outcomeCount), BigInt(0));
     return {
         estimatedItemCount,
