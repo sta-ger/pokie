@@ -1,12 +1,12 @@
 export type FairnessConfigureRequestInput = {
-    bundleDir?: unknown;
+    libraryDir?: unknown;
     modeName?: unknown;
     serverSeed?: unknown;
     clientSeed?: unknown;
     nonce?: unknown;
 };
 export type ValidatedFairnessConfigureRequest = {
-    readonly bundleDir: string;
+    readonly libraryDir: string;
     readonly modeName: string;
     readonly serverSeed: string;
     readonly clientSeed: string;
@@ -21,8 +21,8 @@ function isNonEmptyString(value: unknown): value is string {
 // computeFairnessServerSeedCommitment/computeFairnessCommitment (see FairnessCommitmentValidator), never
 // duplicated here.
 export function validateFairnessConfigureRequest(input: FairnessConfigureRequestInput): ValidatedFairnessConfigureRequest {
-    if (!isNonEmptyString(input.bundleDir)) {
-        throw new Error('"bundleDir" must be a non-empty string.');
+    if (!isNonEmptyString(input.libraryDir)) {
+        throw new Error('"libraryDir" must be a non-empty string.');
     }
     if (!isNonEmptyString(input.modeName)) {
         throw new Error('"modeName" must be a non-empty string.');
@@ -36,5 +36,5 @@ export function validateFairnessConfigureRequest(input: FairnessConfigureRequest
     if (typeof input.nonce !== "number") {
         throw new Error('"nonce" must be a number.');
     }
-    return {bundleDir: input.bundleDir, modeName: input.modeName, serverSeed: input.serverSeed, clientSeed: input.clientSeed, nonce: input.nonce};
+    return {libraryDir: input.libraryDir, modeName: input.modeName, serverSeed: input.serverSeed, clientSeed: input.clientSeed, nonce: input.nonce};
 }

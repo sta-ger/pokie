@@ -1,7 +1,7 @@
 import type {StakeEngineExportModeInput} from "./StakeEngineExportModeInput.js";
 import type {StakeEngineExportResult} from "./StakeEngineExportResult.js";
 
-// Export lifecycle belongs to the public exporter contract so a direct caller and an ArtifactBuilder see the
+// Export lifecycle belongs to the public exporter contract so a direct caller and an BuildOutputBuilder see the
 // same cooperative cancellation points while books and files are actually being produced.
 export type StakeEngineExportProgress = {
     readonly phase?: string;

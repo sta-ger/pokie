@@ -275,7 +275,7 @@ if (importResult.issues.some((issue) => issue.severity === "error")) {
 POKIE accepts nonnegative safe-integer numeric Stake IDs and raw payouts (at most
 `Number.MAX_SAFE_INTEGER`, **9007199254740991**); it does not support the complete UInt64 ID/payout range.
 Standalone reading supports positive UInt64 weights with exact BigInt weight accounting,
-while native persisted bundles and import/export retain their existing numeric weight restrictions.
+while native persisted folders and import/export retain their existing numeric weight restrictions.
 Numeric analytics are approximate; standalone decimal fractions are capped at 40 fractional digits.
 
 ## Exact wide-weight interchange
@@ -299,7 +299,7 @@ and re-export with `pokie build SOURCE --target stakeAdapter --out NEW` or
 `StakeEngineExporter.exportExactSourceToDirectory(result.exactSource, NEW)`.
 Native numeric sampling/Outcome Library selectors remain unavailable for this
 payload and diagnose that boundary explicitly. This is a bounded interchange
-path, not a widening of the native sampling SDK or bundle schema.
+path, not a widening of the native sampling SDK or folder schema.
 
 Exact payload publication accepts only new/empty directories and revalidates the
 captured bytes. Cancellation and write/commit failure remove owned staging and

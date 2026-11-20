@@ -1,18 +1,18 @@
-import type {ArtifactTargetType} from "./ArtifactTargetType.js";
-import {ArtifactConversionPlanner} from "./ArtifactConversionPlanner.js";
+import type {OutputFormat} from "./OutputFormat.js";
+import {FormatConversionPlanner} from "./FormatConversionPlanner.js";
 import type {ProjectType} from "./ProjectType.js";
 import {WASM_PRODUCT_CONTRACT} from "./WasmProductContract.js";
 
 // The build product contract is deliberately data, rather than a collection of capability checks spread
 // across the CLI, registry and Studio.  It includes every resolver source kind and every artifact target;
 // `hidden/unadvertised` is a real state so inspection-only kinds can never accidentally appear as build
-// choices just because they are part of ArtifactTargetType. Legacy sidecar-only WASM remains an inspection-only
+// choices just because they are part of OutputFormat. Legacy sidecar-only WASM remains an inspection-only
 // source, while Blueprint/PAR can build a canonical WASM product through its explicit planner edges.
 export type BuildProductMatrixCellState = "supported" | "diagnostic-required" | "hidden/unadvertised";
 
 export type BuildProductMatrixCell = {
     readonly source: ProjectType;
-    readonly target: ArtifactTargetType;
+    readonly target: OutputFormat;
     readonly state: BuildProductMatrixCellState;
     readonly missingPrerequisite?: string;
     readonly nextAction?: string;
@@ -27,7 +27,7 @@ export const BUILD_PRODUCT_MATRIX_SOURCE_TYPES: readonly ProjectType[] = [
     "wasm",
 ];
 
-export const BUILD_PRODUCT_MATRIX_TARGETS: readonly ArtifactTargetType[] = [
+export const BUILD_PRODUCT_MATRIX_TARGETS: readonly OutputFormat[] = [
     "blueprint",
     "tsPackage",
     "outcomeLibrary",
@@ -38,7 +38,7 @@ export const BUILD_PRODUCT_MATRIX_TARGETS: readonly ArtifactTargetType[] = [
 
 // Every build target is advertised because each has a complete source-to-artifact matrix, including canonical
 // WASM from Blueprint and PAR sources.
-export const ADVERTISED_ARTIFACT_BUILD_TARGETS: readonly ArtifactTargetType[] = BUILD_PRODUCT_MATRIX_TARGETS;
+export const ADVERTISED_ARTIFACT_BUILD_TARGETS: readonly OutputFormat[] = BUILD_PRODUCT_MATRIX_TARGETS;
 
 const PUBLIC_PROJECT_TYPE_NAMES: Readonly<Record<ProjectType, string>> = {
     blueprint: "Game Blueprint",
@@ -50,8 +50,8 @@ const PUBLIC_PROJECT_TYPE_NAMES: Readonly<Record<ProjectType, string>> = {
 };
 
 // Compatibility wording retained for callers of the former matrix API. The matrix state itself is now
-// derived from ArtifactConversionPlanner; new callers should use its path-aware diagnostic instead.
-const TARGET_PREREQUISITES: Readonly<Record<ArtifactTargetType, {missingPrerequisite: string; nextAction: string}>> = {
+// derived from FormatConversionPlanner; new callers should use its path-aware diagnostic instead.
+const TARGET_PREREQUISITES: Readonly<Record<OutputFormat, {missingPrerequisite: string; nextAction: string}>> = {
     blueprint: {missingPrerequisite: "a PAR workbook source", nextAction: "Open a PAR workbook, then run `pokie build <path> --target blueprint`."},
     tsPackage: {missingPrerequisite: "a Game Blueprint source", nextAction: "Open a Game Blueprint, then run `pokie build <path> --target tsPackage`."},
     outcomeLibrary: {missingPrerequisite: "a Game Blueprint, POKIE game package, or Outcome Library", nextAction: "Open one of those sources, then run `pokie build <path> --target outcomeLibrary`."},
@@ -60,8 +60,8 @@ const TARGET_PREREQUISITES: Readonly<Record<ArtifactTargetType, {missingPrerequi
     wasm: {missingPrerequisite: "a Game Blueprint or PAR workbook source", nextAction: "Open a Game Blueprint or PAR workbook, then run `pokie build <path> --target wasm`."},
 };
 
-function buildCell(source: ProjectType, target: ArtifactTargetType): BuildProductMatrixCell {
-    const plan = new ArtifactConversionPlanner().planType(source, target);
+function buildCell(source: ProjectType, target: OutputFormat): BuildProductMatrixCell {
+    const plan = new FormatConversionPlanner().planType(source, target);
     if (plan.status === "planned") {
         return {source, target, state: "supported"};
     }
@@ -73,7 +73,7 @@ function buildCell(source: ProjectType, target: ArtifactTargetType): BuildProduc
     };
 }
 
-export const BUILD_PRODUCT_MATRIX: Readonly<Record<ProjectType, Readonly<Record<ArtifactTargetType, BuildProductMatrixCell>>>> =
+export const BUILD_PRODUCT_MATRIX: Readonly<Record<ProjectType, Readonly<Record<OutputFormat, BuildProductMatrixCell>>>> =
     Object.freeze(
         Object.fromEntries(
             BUILD_PRODUCT_MATRIX_SOURCE_TYPES.map((source) => [
@@ -81,19 +81,19 @@ export const BUILD_PRODUCT_MATRIX: Readonly<Record<ProjectType, Readonly<Record<
                 Object.freeze(Object.fromEntries(BUILD_PRODUCT_MATRIX_TARGETS.map((target) => [target, Object.freeze(buildCell(source, target))]))),
             ]),
         ),
-    ) as Readonly<Record<ProjectType, Readonly<Record<ArtifactTargetType, BuildProductMatrixCell>>>>;
+    ) as Readonly<Record<ProjectType, Readonly<Record<OutputFormat, BuildProductMatrixCell>>>>;
 
-export function getBuildProductMatrixCell(source: ProjectType, target: ArtifactTargetType): BuildProductMatrixCell {
+export function getBuildProductMatrixCell(source: ProjectType, target: OutputFormat): BuildProductMatrixCell {
     return BUILD_PRODUCT_MATRIX[source][target];
 }
 
-export function isAdvertisedArtifactBuildTarget(target: ArtifactTargetType): boolean {
+export function isAdvertisedBuildTarget(target: OutputFormat): boolean {
     return ADVERTISED_ARTIFACT_BUILD_TARGETS.includes(target);
 }
 
 // Shared public diagnostic for CLI, direct-library consumers and Studio. Keeping names, missing data and
 // next action here prevents a supported target from acquiring a second, stale explanation elsewhere.
-export function describeBuildProductMatrixDiagnostic(source: ProjectType, target: ArtifactTargetType, sourcePath?: string): string {
+export function describeBuildProductMatrixDiagnostic(source: ProjectType, target: OutputFormat, sourcePath?: string): string {
     const cell = getBuildProductMatrixCell(source, target);
     const sourceDescription = sourcePath === undefined ? `A ${PUBLIC_PROJECT_TYPE_NAMES[source]}` : `"${sourcePath}" is a ${PUBLIC_PROJECT_TYPE_NAMES[source]}`;
     const targetDescription = PUBLIC_PROJECT_TYPE_NAMES[target];

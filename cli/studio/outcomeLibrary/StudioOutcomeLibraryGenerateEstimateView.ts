@@ -1,4 +1,4 @@
-import type {ArtifactConversionPlan, OutcomeLibraryGenerationStrategy, PokieGameManifest} from "@fromstan/pokie";
+import type {FormatConversionPlan, OutcomeLibraryGenerationStrategy, PokieGameManifest} from "@fromstan/pokie";
 
 // The Studio Generate step's own "how big is this?" preview -- mirrors "pokie outcomelibrary generate
 // --estimate" exactly (see OutcomeLibraryCommand.executeEstimate): the same estimateExactOutcomeSpaceSize
@@ -38,7 +38,7 @@ export type StudioOutcomeLibraryGenerateEstimateView =
           // were supplied -- the same "requires --bounded --sample-size --seed" signal the CLI reports,
           // surfaced here before the caller ever commits to a real generate() run.
           readonly requiresBounded: boolean;
-          readonly plan: ArtifactConversionPlan;
+          readonly plan: FormatConversionPlan;
           /** Versioned public domain policy serialized for browser clients. */
           readonly defaults: {
               readonly compatibilityVersion: string;
@@ -53,8 +53,8 @@ export type StudioOutcomeLibraryGenerateEstimateView =
     // "weighted-outcome-library-generation-unsupported" code).
     // Request parsing can fail before a project plan exists.  It is still a
     // domain-classified preflight outcome, not an unstructured HTTP error.
-    | {readonly status: "invalid"; readonly error: string; readonly plan?: ArtifactConversionPlan}
-    | {readonly status: "unsupported"; readonly error: string; readonly plan?: ArtifactConversionPlan}
-    | {readonly status: "conflict"; readonly error: string; readonly plan?: ArtifactConversionPlan}
-    | {readonly status: "generation-error"; readonly error: string; readonly code?: string; readonly plan?: ArtifactConversionPlan}
-    | {readonly status: "load-error"; readonly error: string; readonly plan?: ArtifactConversionPlan};
+    | {readonly status: "invalid"; readonly error: string; readonly plan?: FormatConversionPlan}
+    | {readonly status: "unsupported"; readonly error: string; readonly plan?: FormatConversionPlan}
+    | {readonly status: "conflict"; readonly error: string; readonly plan?: FormatConversionPlan}
+    | {readonly status: "generation-error"; readonly error: string; readonly code?: string; readonly plan?: FormatConversionPlan}
+    | {readonly status: "load-error"; readonly error: string; readonly plan?: FormatConversionPlan};

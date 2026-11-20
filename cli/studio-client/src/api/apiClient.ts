@@ -1262,11 +1262,11 @@ export async function getOutcomeLibraryRegistry(fetchImpl: FetchLike): Promise<S
 // The Certification tab's own preflight (see StudioCertificationSourceValidateView) — the exact same
 // deep bundle validation the Build step's own builder runs internally, exposed here so it can be run
 // (and inspected) before committing to a build.
-export async function validateCertificationSourceBundle(fetchImpl: FetchLike, bundleDir: string): Promise<StudioCertificationSourceValidateView> {
+export async function validateCertificationSourceBundle(fetchImpl: FetchLike, libraryDir: string): Promise<StudioCertificationSourceValidateView> {
     const response = await fetchImpl("/api/project/certification/validate-source", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({bundleDir}),
+        body: JSON.stringify({libraryDir}),
     });
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to validate the source outcome-library bundle"));
@@ -1278,7 +1278,7 @@ export type CertificationBuildModeInput = {modeName: string; seed: string; sampl
 
 export async function buildCertificationPack(
     fetchImpl: FetchLike,
-    bundleDir: string,
+    libraryDir: string,
     modes: CertificationBuildModeInput[],
     outDir: string,
     configuration?: {pack?: CertificationPackInputs; output?: CertificationPackOutput},
@@ -1286,7 +1286,7 @@ export async function buildCertificationPack(
     const response = await fetchImpl("/api/project/certification/build", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({bundleDir, modes, outDir, ...configuration}),
+        body: JSON.stringify({libraryDir, modes, outDir, ...configuration}),
     });
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to build the certification pack"));
@@ -1299,7 +1299,7 @@ export async function buildCertificationPack(
 // libraryId/libraryHash for the requested mode.
 export async function configureFairnessRound(
     fetchImpl: FetchLike,
-    request: {bundleDir: string; modeName: string; serverSeed: string; clientSeed: string; nonce: number},
+    request: {libraryDir: string; modeName: string; serverSeed: string; clientSeed: string; nonce: number},
 ): Promise<StudioFairnessConfigureView> {
     const response = await fetchImpl("/api/project/fairness/configure", {
         method: "POST",
@@ -1314,14 +1314,14 @@ export async function configureFairnessRound(
 
 export async function generateFairnessProof(
     fetchImpl: FetchLike,
-    bundleDir: string,
+    libraryDir: string,
     commitment: FairnessCommitment,
     serverSeed: string,
 ): Promise<StudioFairnessGenerateView> {
     const response = await fetchImpl("/api/project/fairness/generate", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({bundleDir, commitment, serverSeed}),
+        body: JSON.stringify({libraryDir, commitment, serverSeed}),
     });
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to generate the Provably Fair round proof"));
@@ -1336,12 +1336,12 @@ export async function verifyFairnessProof(
     fetchImpl: FetchLike,
     proof: unknown,
     commitment: unknown,
-    sourceBundleDir: string | undefined,
+    sourceLibraryDir: string | undefined,
 ): Promise<StudioFairnessVerifyView> {
     const response = await fetchImpl("/api/project/fairness/verify", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({proof, commitment, sourceBundleDir}),
+        body: JSON.stringify({proof, commitment, sourceLibraryDir}),
     });
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to verify the Provably Fair round proof"));
@@ -1394,7 +1394,7 @@ export async function exportStakeEngine(
     return (await response.json()) as StudioStakeEngineExportView;
 }
 
-// The Build/Export tab's own "Build artifact" group -- every ArtifactBuilderRegistry target, each already
+// The Build/Export tab's own "Build artifact" group -- every BuildOutputBuilderRegistry target, each already
 // marked `supported` against the active project's own resolved ProjectType (see
 // StudioArtifactBuildService.listTargets's own doc comment).
 export async function listArtifactTargets(fetchImpl: FetchLike, signal?: AbortSignal): Promise<StudioArtifactTargetView[]> {
@@ -1422,7 +1422,7 @@ export async function previewArtifact(fetchImpl: FetchLike, target: StudioArtifa
     return (await response.json()) as StudioArtifactPreviewView;
 }
 
-// Runs the active project through ArtifactBuilderRegistry directly, the exact same
+// Runs the active project through BuildOutputBuilderRegistry directly, the exact same
 // "pokie build <project> --target <target>" pipeline. "unsupported" and "conflict" are both normal parsed
 // results (never thrown) -- same convention as exportStakeEngine above.
 export async function startArtifactBuild(

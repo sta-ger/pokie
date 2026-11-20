@@ -2,11 +2,11 @@ import {Command} from "commander";
 import fs from "fs";
 import path from "path";
 import {
-    ArtifactBuilderRegistry,
-    ArtifactConversionPlanner,
-    ArtifactImportOutputPlan,
-    ArtifactDestinationCheck,
-    computeArtifactInputBindingHash,
+    BuildOutputBuilderRegistry,
+    FormatConversionPlanner,
+    ImportOutputPlan,
+    OutputDestinationCheck,
+    computeBuildInputHash,
     describeUnsupportedProjectOperation,
     GameBlueprint,
     loadGameBlueprint,
@@ -37,7 +37,7 @@ const EXPORT_USAGE = "Usage: pokie par export <config.json> [--out <output.xlsx>
 
 type ImportFormat = "summary" | "json";
 type BlueprintFileWriting = (filePath: string, contents: string) => void | BlueprintFileWriteResult;
-type ParSheetDestinationChecking = (sourcePath: string, destinationPath: string) => ArtifactDestinationCheck;
+type ParSheetDestinationChecking = (sourcePath: string, destinationPath: string) => OutputDestinationCheck;
 type ParImportRegistering = (publishedPath: string) => Promise<void> | void;
 
 function createCliImportCancellation(): {readonly signal: AbortSignal; readonly cleanup: () => void} {
@@ -59,8 +59,8 @@ export class ParCommand implements CliCommandHandling {
     private readonly resolveProject: ProjectResolving;
     private readonly checkDestination: ParSheetDestinationChecking;
     private readonly registerImport: ParImportRegistering | undefined;
-    private readonly planner = new ArtifactConversionPlanner();
-    private readonly registry: ArtifactBuilderRegistry;
+    private readonly planner = new FormatConversionPlanner();
+    private readonly registry: BuildOutputBuilderRegistry;
 
     constructor(
         pokieVersion: string,
@@ -76,9 +76,9 @@ export class ParCommand implements CliCommandHandling {
         // parWorkbook`. Keep that build-owned safety policy in one place, while injecting the small
         // check for unit callers that do not use the filesystem.
         checkDestination: ParSheetDestinationChecking = (sourcePath, destinationPath) =>
-            new ArtifactBuilderRegistry(pokieVersion).checkDestination("parWorkbook", destinationPath, sourcePath),
+            new BuildOutputBuilderRegistry(pokieVersion).checkDestination("parWorkbook", destinationPath, sourcePath),
         registerImport: ParImportRegistering | undefined = undefined,
-        registry: ArtifactBuilderRegistry = new ArtifactBuilderRegistry(pokieVersion),
+        registry: BuildOutputBuilderRegistry = new BuildOutputBuilderRegistry(pokieVersion),
     ) {
         this.importer = importer;
         this.exporter = exporter;
@@ -167,7 +167,7 @@ export class ParCommand implements CliCommandHandling {
     /** Executes the exact generic-import operation prepared by ImportCommand. */
     public runPreparedImport(
         source: PokieProject,
-        plan: ArtifactImportOutputPlan,
+        plan: ImportOutputPlan,
         inputPath: string,
         outPath: string,
         format: ImportFormat = "summary",
@@ -248,7 +248,7 @@ export class ParCommand implements CliCommandHandling {
         inputPath: string,
         outPath: string,
         format: ImportFormat,
-        prepared?: {readonly source: PokieProject; readonly plan: ArtifactImportOutputPlan},
+        prepared?: {readonly source: PokieProject; readonly plan: ImportOutputPlan},
     ): Promise<number> {
         if (prepared === undefined) {
             // `par import` is a public import entry point in its own right.  Do
@@ -326,7 +326,7 @@ export class ParCommand implements CliCommandHandling {
         return this.importer instanceof ParSheetImporter && this.writeFile === writeBlueprintFileAtomically;
     }
 
-    private printPreparedPlan(plan: import("@fromstan/pokie").ArtifactConversionPlan): void {
+    private printPreparedPlan(plan: import("@fromstan/pokie").FormatConversionPlan): void {
         console.log(`Conversion plan: ${plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "no executable steps"}.`);
         console.log(`Final destination: ${plan.target.canonicalLocation ?? "selected destination"} (${plan.preflight.destinationKind}).`);
         for (const step of plan.steps) {
@@ -462,14 +462,14 @@ export class ParCommand implements CliCommandHandling {
         }
     }
 
-    private exportDescriptorSource(blueprintPath: string): import("@fromstan/pokie").ArtifactIdentity {
+    private exportDescriptorSource(blueprintPath: string): import("@fromstan/pokie").OutputIdentity {
         const canonicalLocation = path.resolve(blueprintPath);
         return {
             kind: "blueprint",
             canonicalLocation,
             recognitionProvenance: "verified CLI Blueprint export descriptor",
             capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
-            configurationProvenance: {configurationHash: computeArtifactInputBindingHash([canonicalLocation])},
+            configurationProvenance: {configurationHash: computeBuildInputHash([canonicalLocation])},
         };
     }
 

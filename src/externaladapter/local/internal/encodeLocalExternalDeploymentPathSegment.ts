@@ -6,7 +6,7 @@ import crypto from "crypto";
 // contains only `[0-9a-f]` and can therefore never itself be ".." or contain a path separator, however hostile
 // the input. Deterministic — the same input always encodes to the same segment, so regenerating the same
 // content reproduces byte-identical output — and collision risk is a genuine sha256 collision, not something
-// this SDK defends against further. See LocalJsonExternalArtifactGenerator, which stores the original raw
+// this SDK defends against further. See LocalJsonExternalFileGenerator, which stores the original raw
 // modeName/outcome id in index.json precisely because this encoding is one-way.
 export function encodeLocalExternalDeploymentPathSegment(raw: string): string {
     return crypto.createHash("sha256").update(raw, "utf8").digest("hex");

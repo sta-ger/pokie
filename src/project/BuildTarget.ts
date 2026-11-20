@@ -1,0 +1,36 @@
+import type {OutputFormat} from "./OutputFormat.js";
+import type {PokieOperation} from "./PokieOperation.js";
+import type {ProjectCapability} from "./ProjectCapability.js";
+import type {ProjectType} from "./ProjectType.js";
+import type {BuildProductMatrixCell} from "./BuildProductMatrix.js";
+
+// What BuildOutputBuilderRegistry.describe() reports for a single build target -- the one place a caller (a
+// future "replace build semantics" step, a Studio build-preview panel) asks "can I build this artifact, and
+// from what source" instead of re-deriving it from PokieOperation/ProjectCapabilities independently. Every
+// field here is truthful about TODAY's supported conversions only -- a narrow source set is
+// BuildOutputBuilderRegistry reporting a fact computed from the same
+// OPERATION_REQUIRED_CAPABILITY/PROJECT_TYPE_CAPABILITIES contracts describeUnsupportedProjectOperation
+// already reads, not a placeholder left to fill in later.
+export type BuildTarget = {
+    readonly target: OutputFormat;
+    // The PokieOperation BuildOutputBuilderRegistry.build() checks `describeUnsupportedProjectOperation` against
+    // before ever invoking a builder -- exposed here so a caller (BuildOutputBuilderRegistry itself, a future
+    // Studio build-preview panel) can produce the exact same capability diagnostic this registry's own build()
+    // does, without re-deriving a target-to-operation mapping independently.
+    readonly operation: PokieOperation;
+    // The single ProjectCapability a source PokieProject must carry to build this target -- the same
+    // capability OPERATION_REQUIRED_CAPABILITY already names for this target's own PokieOperation, not a
+    // second, independently-decided requirement (see BuildOutputBuilderRegistry's own TARGET_OPERATION map).
+    readonly requiredSourceCapability: ProjectCapability;
+    // Every ProjectType whose own PROJECT_TYPE_CAPABILITIES already grants requiredSourceCapability today.
+    readonly supportedSources: readonly ProjectType[];
+    // One matrix cell for every resolver source kind. Consumers that need to present an unavailable
+    // conversion must use this data instead of inferring support from a target-level capability alone.
+    readonly sourceCells: readonly BuildProductMatrixCell[];
+    // Explicit, human-readable statement of what this target's build does NOT promise -- e.g. that an
+    // "outcomeLibrary"/"stakeAdapter" build never reconstructs the game model that produced its outcomes (a
+    // one-way conversion). Exists so a caller
+    // surfacing this descriptor to a user states the limitation directly, rather than a reader having to infer
+    // it from an empty/narrow supportedSources array alone.
+    readonly unsupportedNotes: readonly string[];
+};

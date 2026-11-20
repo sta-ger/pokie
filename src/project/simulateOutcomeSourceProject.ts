@@ -5,7 +5,7 @@ import {SeededWeightedOutcomeRandomSource} from "../pregenerated/SeededWeightedO
 import type {PreGeneratedRoundReplayDescriptor} from "../pregenerated/PreGeneratedRoundReplayDescriptor.js";
 import {SimulationAccumulator} from "../simulation/SimulationAccumulator.js";
 import type {SimulationStatistics} from "../simulation/SimulationStatistics.js";
-import {OutcomeLibraryBundleOutcomeSource} from "../weightedoutcome/bundle/OutcomeLibraryBundleOutcomeSource.js";
+import {OutcomeLibraryFolderOutcomeSource} from "../weightedoutcome/folder/OutcomeLibraryFolderOutcomeSource.js";
 import {OUTCOME_SOURCE_SIMULATE_OPERATION} from "./PokieOperation.js";
 import type {PokieProject} from "./PokieProject.js";
 import type {UnsupportedProjectOperationDiagnostic} from "./UnsupportedProjectOperationDiagnostic.js";
@@ -35,7 +35,7 @@ export type OutcomeSourceSimulationResult =
     | {readonly supported: false; readonly diagnostic: UnsupportedProjectOperationDiagnostic};
 
 // Runs a real sampling simulation against a resolved "outcomeLibrary" project's own mode: `rounds` independent
-// draws through OutcomeLibraryBundleOutcomeSource -- the exact same selector/session path
+// draws through OutcomeLibraryFolderOutcomeSource -- the exact same selector/session path
 // PreGeneratedSpinCommandHandler/sampleOutcomeSourceProject already draw through -- accumulated into ordinary
 // SimulationAccumulator statistics, never a freshly regenerated game-model simulation (ParallelSimulationRunner/
 // loadPokieGame). Each draw's own artifact.stake/artifact.totalWin feeds the accumulator exactly the way
@@ -59,7 +59,7 @@ export async function simulateOutcomeSourceProject(
         throw new Error("Cannot exactly simulate an outcome-library round with a blank seed. Provide a non-empty seed, or omit it for a best-effort secure simulation.");
     }
 
-    const outcomeSource = new OutcomeLibraryBundleOutcomeSource(project.rootPath, modeName);
+    const outcomeSource = new OutcomeLibraryFolderOutcomeSource(project.rootPath, modeName);
     const accumulator = new SimulationAccumulator();
     let game: OutcomeSourceSimulationReport["game"];
     let libraryId = "";

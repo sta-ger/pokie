@@ -2,15 +2,15 @@ import {
     GenerateExactWeightedOutcomeLibraryResult,
     loadPokieGame,
     releasePokieGame,
-    OutcomeLibraryBundleManifest,
-    OutcomeLibraryBundleModeInput,
-    OutcomeLibraryBundleReader,
-    OutcomeLibraryBundleValidator,
-    OutcomeLibraryBundleReading,
-    OutcomeLibraryBundleWriter,
-    OutcomeLibraryBundleWriting,
-    OutcomeLibraryBundleWriteProgress,
-    OutcomeLibraryBundleWriteCancelledError,
+    OutcomeLibraryFolderManifest,
+    OutcomeLibraryFolderModeInput,
+    OutcomeLibraryFolderReader,
+    OutcomeLibraryFolderValidator,
+    OutcomeLibraryFolderReading,
+    OutcomeLibraryFolderWriter,
+    OutcomeLibraryFolderWriting,
+    OutcomeLibraryFolderWriteProgress,
+    OutcomeLibraryFolderWriteCancelledError,
     OutcomeSpaceEstimate,
     OutcomeLibraryGenerationRequest,
     ExactEnumerationRecoveryAuthority,
@@ -18,17 +18,17 @@ import {
     PokieGame,
     WeightedOutcomeLibraryGenerationError,
     WeightedOutcomeLibraryGenerationCancelledError,
-    ArtifactConversionPlanner,
-    ArtifactConversionPlan,
-    assertPreparedArtifactDestinationAvailable,
+    FormatConversionPlanner,
+    FormatConversionPlan,
+    assertPreparedOutputDestinationAvailable,
     capturePublishDirectoryOwnership,
     DEFAULT_BOUNDED_OUTCOME_LIBRARY_SAMPLE_SIZE,
     DEFAULT_BOUNDED_OUTCOME_LIBRARY_SEED,
     DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
     OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_VERSION,
-    describeArtifactConversionPlanDiagnostic,
+    describeFormatConversionPlanDiagnostic,
     describeWasmLifecycleBoundary,
-    computeArtifactInputBindingHash,
+    computeBuildInputHash,
     isWasmComponentFile,
     estimateExactOutcomeSpaceSize,
     generateStreamingWeightedOutcomeLibrary,
@@ -40,9 +40,9 @@ import fs from "fs";
 import path from "path";
 import {randomUUID} from "crypto";
 import {resolveProjectDirectory} from "./resolveProjectDirectory.js";
-import {StudioArtifactConversionPlanning, StudioArtifactConversionPlanningService} from "../artifacts/StudioArtifactConversionPlanningService.js";
+import {StudioFormatConversionPlanning, StudioFormatConversionPlanningService} from "../artifacts/StudioFormatConversionPlanningService.js";
 import {describePreparedArtifactPlanDrift} from "../artifacts/describePreparedArtifactPlanDrift.js";
-import {createUnresolvedRuntimePlan} from "../artifacts/createExternalArtifactConversionPlan.js";
+import {createUnresolvedRuntimePlan} from "../artifacts/createExternalFormatConversionPlan.js";
 import type {StudioOutcomeLibraryGenerateEstimateView} from "./StudioOutcomeLibraryGenerateEstimateView.js";
 import type {StudioOutcomeLibraryGenerateResultView} from "./StudioOutcomeLibraryGenerateResultView.js";
 import type {StudioOutcomeLibraryRegistryView} from "./StudioOutcomeLibraryRegistryView.js";
@@ -75,7 +75,7 @@ function resolveSample(request: {sample?: {sampleSize: bigint; seed: string}; sa
     return request.sample ?? request.sampled ?? request.bounded;
 }
 
-type OtherModesResult = {readonly status: "ok"; readonly modes: readonly OutcomeLibraryBundleModeInput<string>[]; readonly manifestModeOrder: readonly string[]} | {readonly status: "error"; readonly message: string};
+type OtherModesResult = {readonly status: "ok"; readonly modes: readonly OutcomeLibraryFolderModeInput<string>[]; readonly manifestModeOrder: readonly string[]} | {readonly status: "error"; readonly message: string};
 export type StudioOutcomeLibraryGenerationLifecycleStage = "generation" | "finalization" | "writing" | "analyzing" | "building-index" | "serialization" | "validation" | "publication";
 
 /** Immutable source/destination snapshot behind a Studio preflight token. */
@@ -103,7 +103,7 @@ type ManagedBlueprintSourceBinding = {
 // identity and bytes before using that runtime.
 type StudioOutcomeLibraryPreflightSnapshot = {
     readonly binding: StudioOutcomeLibraryPreflightBinding;
-    readonly plan: ArtifactConversionPlan;
+    readonly plan: FormatConversionPlan;
     // Permission to replace a non-empty destination is bound at preflight.
     // A token-bound Blueprint generation must not adopt files created while
     // it is running.
@@ -114,7 +114,7 @@ type StudioOutcomeLibraryPreflightSnapshot = {
 
 // The Project Dashboard's Generate step (and Registry panel), built directly on top of the exact same
 // public generation service "pokie outcomelibrary generate"/"build" already drive
-// (generateExactWeightedOutcomeLibrary / estimateExactOutcomeSpaceSize / OutcomeLibraryBundleWriter) --
+// (generateExactWeightedOutcomeLibrary / estimateExactOutcomeSpaceSize / OutcomeLibraryFolderWriter) --
 // this class never computes an outcome space, sweeps a reel-stop tuple, or plays a round itself; it only
 // owns Studio-specific plumbing: resolving the project's own build (packageRoot === projectRoot, same
 // convention as StudioSimulationService), writing into the project's conventional bundle directory by
@@ -140,19 +140,19 @@ export class StudioOutcomeLibraryGenerateService {
     // Optional solely for existing in-process embeddings. The normal Studio
     // service publishes the generator's stream directly to the bundle writer.
     private readonly generateLibrary: (request: OutcomeLibraryGenerationRequest) => Promise<GenerateExactWeightedOutcomeLibraryResult>;
-    private readonly writer: OutcomeLibraryBundleWriting<string>;
-    private readonly bundleReader: OutcomeLibraryBundleReading<string>;
+    private readonly writer: OutcomeLibraryFolderWriting<string>;
+    private readonly bundleReader: OutcomeLibraryFolderReading<string>;
     private readonly realpath: (resolvedPath: string) => string;
     private readonly directoryExists: (dirPath: string) => boolean;
     private readonly isDirectory: (dirPath: string) => boolean;
     private readonly readTextFile: (filePath: string) => string;
     private readonly writeTextFile: (filePath: string, contents: string) => void;
     private readonly ensureDirectory: (dirPath: string) => void;
-    private readonly planning: StudioArtifactConversionPlanning;
+    private readonly planning: StudioFormatConversionPlanning;
     // Kept as a narrow port for existing in-process embeddings/tests; the
     // production default is the bundle format's canonical validator.
-    private readonly validateExistingBundle: (bundleDir: string, deep: boolean) => Promise<readonly {readonly severity: string; readonly code: string; readonly message: string}[]>;
-    private readonly planner = new ArtifactConversionPlanner();
+    private readonly validateExistingBundle: (libraryDir: string, deep: boolean) => Promise<readonly {readonly severity: string; readonly code: string; readonly message: string}[]>;
+    private readonly planner = new FormatConversionPlanner();
     private readonly preflightSnapshots = new Map<string, StudioOutcomeLibraryPreflightSnapshot>();
     private nextPreflightToken = 1;
 
@@ -161,8 +161,8 @@ export class StudioOutcomeLibraryGenerateService {
         loadGame: typeof loadPokieGame = loadPokieGame,
         estimateSpace: (game: PokieGame) => OutcomeSpaceEstimate = estimateExactOutcomeSpaceSize,
         generateLibrary: (request: OutcomeLibraryGenerationRequest) => Promise<GenerateExactWeightedOutcomeLibraryResult> = generateWeightedOutcomeLibrary,
-        writer: OutcomeLibraryBundleWriting<string> = new OutcomeLibraryBundleWriter<string>(pokieVersion),
-        bundleReader: OutcomeLibraryBundleReading<string> = new OutcomeLibraryBundleReader<string>(),
+        writer: OutcomeLibraryFolderWriting<string> = new OutcomeLibraryFolderWriter<string>(pokieVersion),
+        bundleReader: OutcomeLibraryFolderReading<string> = new OutcomeLibraryFolderReader<string>(),
         realpath: (resolvedPath: string) => string = (resolvedPath) => fs.realpathSync(resolvedPath),
         directoryExists: (dirPath: string) => boolean = (dirPath) => fs.existsSync(dirPath),
         isDirectory: (dirPath: string) => boolean = (dirPath) => {
@@ -175,9 +175,9 @@ export class StudioOutcomeLibraryGenerateService {
         readTextFile: (filePath: string) => string = (filePath) => fs.readFileSync(filePath, "utf-8"),
         writeTextFile: (filePath: string, contents: string) => void = (filePath, contents) => fs.writeFileSync(filePath, contents, "utf-8"),
         ensureDirectory: (dirPath: string) => void = (dirPath) => fs.mkdirSync(dirPath, {recursive: true}),
-        planning: StudioArtifactConversionPlanning = new StudioArtifactConversionPlanningService(pokieVersion),
-        validateExistingBundle: (bundleDir: string, deep: boolean) => Promise<readonly {readonly severity: string; readonly code: string; readonly message: string}[]> =
-        (bundleDir, deep) => new OutcomeLibraryBundleValidator<string>().validate(bundleDir, {deep}),
+        planning: StudioFormatConversionPlanning = new StudioFormatConversionPlanningService(pokieVersion),
+        validateExistingBundle: (libraryDir: string, deep: boolean) => Promise<readonly {readonly severity: string; readonly code: string; readonly message: string}[]> =
+        (libraryDir, deep) => new OutcomeLibraryFolderValidator<string>().validate(libraryDir, {deep}),
     ) {
         this.pokieVersion = pokieVersion;
         this.loadGame = loadGame;
@@ -261,7 +261,7 @@ export class StudioOutcomeLibraryGenerateService {
                 return {status: "conflict", error: plan.diagnostic?.message ?? "Outcome library generation has a destination conflict.", plan};
             }
             if (plan.status !== "planned") {
-                return {status: "unsupported", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library generation is unavailable.", plan};
+                return {status: "unsupported", error: describeFormatConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library generation is unavailable.", plan};
             }
             const preflightToken = String(this.nextPreflightToken++);
             let managedBlueprint: ManagedBlueprintSourceBinding | undefined;
@@ -437,7 +437,7 @@ export class StudioOutcomeLibraryGenerateService {
 
     // Drives generateExactWeightedOutcomeLibrary -- the exact same "core, reusable public producer" (see
     // its own doc comment) "pokie outcomelibrary generate" calls -- then immediately persists the result
-    // into the project's own conventional outcome-library bundle via OutcomeLibraryBundleWriter, the same
+    // into the project's own conventional outcome-library bundle via OutcomeLibraryFolderWriter, the same
     // writer "pokie outcomelibrary build" uses. Every other mode already in that bundle is preserved (see
     // this class's own doc comment); only "request.mode ?? 'base'" is (re)computed.
     public async generate(
@@ -445,7 +445,7 @@ export class StudioOutcomeLibraryGenerateService {
         request: ValidatedOutcomeLibraryGenerateRequest,
         onLifecycleStage?: (stage: StudioOutcomeLibraryGenerationLifecycleStage) => void,
         onPostEnumerationProgress?: (emittedOutcomes: bigint) => void,
-        onBundleProgress?: (progress: OutcomeLibraryBundleWriteProgress) => void,
+        onBundleProgress?: (progress: OutcomeLibraryFolderWriteProgress) => void,
     ): Promise<StudioOutcomeLibraryGenerateResultView> {
         // Generation can report post-enumeration work in multiple internal
         // chunks. Studio's public lifecycle is deliberately coarser: advance
@@ -570,7 +570,7 @@ export class StudioOutcomeLibraryGenerateService {
                 return {status: "conflict", error: plan.diagnostic?.message ?? "Outcome library generation has a destination conflict.", plan};
             }
             if (plan.status === "unavailable") {
-                return {status: "unsupported", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library generation is unavailable.", plan};
+                return {status: "unsupported", error: describeFormatConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library generation is unavailable.", plan};
             }
             // Studio addresses a managed project by its directory, while the
             // conversion planner correctly binds that project's editable source
@@ -596,7 +596,7 @@ export class StudioOutcomeLibraryGenerateService {
             | {readonly status: "terminal"; readonly view: StudioOutcomeLibraryGenerateResultView}
             | {
                 readonly status: "ready";
-                readonly modes: readonly OutcomeLibraryBundleModeInput<string>[];
+                readonly modes: readonly OutcomeLibraryFolderModeInput<string>[];
                 readonly manifestModeOrder: readonly string[];
                 readonly libraryId: string;
                 readonly generator?: GenerateExactWeightedOutcomeLibraryResult["diagnostics"];
@@ -614,7 +614,7 @@ export class StudioOutcomeLibraryGenerateService {
         const assertDestinationAvailable = async () => {
             // The token retains the managed Blueprint source identity, but
             // publication must still re-check its physical output:
-            // OutcomeLibraryBundleWriter atomically replaces an existing
+            // OutcomeLibraryFolderWriter atomically replaces an existing
             // directory. Use the registry's direct source-alias/missing-or-
             // empty guard here rather than re-planning, so a cancelled retry
             // does not depend on transient source recognition while a late
@@ -625,7 +625,7 @@ export class StudioOutcomeLibraryGenerateService {
                     if (currentBundle.error !== undefined) throw new Error(currentBundle.error);
                     if (currentBundle.allowed) return;
                 }
-                assertPreparedArtifactDestinationAvailable(
+                assertPreparedOutputDestinationAvailable(
                     tokenBoundBlueprintPlan.source.canonicalLocation,
                     boundDestination,
                     "directory",
@@ -681,7 +681,7 @@ export class StudioOutcomeLibraryGenerateService {
                             const sourceManifest = await this.bundleReader.readManifest(sourceDir);
                             const sourceMode = sourceManifest.modes.find((entry) => entry.modeName === modeName);
                             if (sourceMode?.generator === undefined) return {status: "terminal", view: {status: "load-error", error: `The prepared reusable Outcome Library does not contain generated provenance for mode "${modeName}". Regenerate that mode before reusing it.`, plan}};
-                            const modes: OutcomeLibraryBundleModeInput<string>[] = [];
+                            const modes: OutcomeLibraryFolderModeInput<string>[] = [];
                             for (const entry of sourceManifest.modes) {
                                 const index = await this.bundleReader.readModeIndex(sourceDir, entry.modeName);
                                 modes.push({
@@ -795,7 +795,7 @@ export class StudioOutcomeLibraryGenerateService {
 
             return {
                 status: "ok",
-                bundleDir: outDirRelative,
+                libraryDir: outDirRelative,
                 resolvedBundleDir: boundDestination,
                 files: writeResult.files,
                 byteSize: writeResult.files.reduce((total, file) => total + fs.statSync(path.join(boundDestination, file)).size, 0),
@@ -810,7 +810,7 @@ export class StudioOutcomeLibraryGenerateService {
                 },
                 generator,
                 coverage,
-                selector: {kind: "bundle", bundleDir: outDirRelative, modeName},
+                selector: {kind: "folder", libraryDir: outDirRelative, modeName},
                 plan,
             };
         } catch (error) {
@@ -834,7 +834,7 @@ export class StudioOutcomeLibraryGenerateService {
                     plan,
                 };
             }
-            if (error instanceof OutcomeLibraryBundleWriteCancelledError) {
+            if (error instanceof OutcomeLibraryFolderWriteCancelledError) {
                 return {
                     status: "cancelled",
                     processedRawIndex: BigInt(0),
@@ -877,9 +877,9 @@ export class StudioOutcomeLibraryGenerateService {
         try {
             const currentGame = game.getManifest();
 
-            const discovered: {bundleDir: string; manifest: OutcomeLibraryBundleManifest}[] = [];
-            for (const bundleDir of this.discoverBundleDirs(projectRoot)) {
-                const resolved = resolveProjectDirectory(projectRoot, bundleDir, this.realpath);
+            const discovered: {libraryDir: string; manifest: OutcomeLibraryFolderManifest}[] = [];
+            for (const libraryDir of this.discoverBundleDirs(projectRoot)) {
+                const resolved = resolveProjectDirectory(projectRoot, libraryDir, this.realpath);
                 if (resolved.status === "error") {
                     return {status: "load-error", error: resolved.message};
                 }
@@ -887,24 +887,24 @@ export class StudioOutcomeLibraryGenerateService {
                     continue;
                 }
 
-                let manifest: OutcomeLibraryBundleManifest;
+                let manifest: OutcomeLibraryFolderManifest;
                 try {
                     manifest = await this.bundleReader.readManifest(resolved.resolvedPath);
                 } catch (error) {
                     return {
                         status: "load-error",
-                        error: `Could not read the outcome library bundle at "${bundleDir}": ${error instanceof Error ? error.message : String(error)}`,
+                        error: `Could not read the outcome library bundle at "${libraryDir}": ${error instanceof Error ? error.message : String(error)}`,
                     };
                 }
-                discovered.push({bundleDir, manifest});
+                discovered.push({libraryDir, manifest});
             }
 
             if (discovered.length === 0) {
-                return {status: "ok", bundleDir: StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR, buildStatus: "missing"};
+                return {status: "ok", libraryDir: StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR, buildStatus: "missing"};
             }
 
             const currentConfigHash = game.getConfigHash?.();
-            const classify = (manifest: OutcomeLibraryBundleManifest): "compatible" | "stale" | "wrong" => {
+            const classify = (manifest: OutcomeLibraryFolderManifest): "compatible" | "stale" | "wrong" => {
                 if (manifest.game.id !== currentGame.id) {
                     return "wrong";
                 }
@@ -920,14 +920,14 @@ export class StudioOutcomeLibraryGenerateService {
                 return "compatible";
             };
 
-        type ModeCandidate = {bundleDir: string; manifest: OutcomeLibraryBundleManifest; entry: OutcomeLibraryBundleManifest["modes"][number]};
+        type ModeCandidate = {libraryDir: string; manifest: OutcomeLibraryFolderManifest; entry: OutcomeLibraryFolderManifest["modes"][number]};
         const latestByMode = new Map<string, ModeCandidate>();
-        for (const {bundleDir, manifest} of discovered) {
+        for (const {libraryDir, manifest} of discovered) {
             for (const entry of manifest.modes) {
                 const generatedAt = entry.generator?.generatedAt ?? manifest.generatedAt;
                 const existing = latestByMode.get(entry.modeName);
                 if (existing === undefined || generatedAt > (existing.entry.generator?.generatedAt ?? existing.manifest.generatedAt)) {
-                    latestByMode.set(entry.modeName, {bundleDir, manifest, entry});
+                    latestByMode.set(entry.modeName, {libraryDir, manifest, entry});
                 }
             }
         }
@@ -940,7 +940,7 @@ export class StudioOutcomeLibraryGenerateService {
 
         return {
             status: "ok",
-            bundleDir: primary.bundleDir,
+            libraryDir: primary.libraryDir,
             buildStatus: classify(primary.manifest),
             game: primary.manifest.game,
             currentGame,
@@ -948,10 +948,10 @@ export class StudioOutcomeLibraryGenerateService {
             artifactPokieVersion: primary.manifest.artifactPokieVersion,
             currentPokieVersion: this.pokieVersion,
             generatedAt: primary.manifest.generatedAt,
-            modes: Array.from(latestByMode.values()).map(({bundleDir, manifest, entry}) => ({
+            modes: Array.from(latestByMode.values()).map(({libraryDir, manifest, entry}) => ({
                 modeName: entry.modeName,
                 libraryId: entry.libraryId,
-                bundleDir,
+                libraryDir,
                 buildStatus: classify(manifest),
                 outcomeCount: entry.outcomeCount,
                 totalWeight: entry.totalWeight,
@@ -988,7 +988,7 @@ export class StudioOutcomeLibraryGenerateService {
      * retains physical identity and byte binding, so cancellation recovery
      * keeps canonical identity without accepting a changed source.
      */
-    private captureManagedBlueprintBinding(plan: ArtifactConversionPlan): ManagedBlueprintSourceBinding | undefined {
+    private captureManagedBlueprintBinding(plan: FormatConversionPlan): ManagedBlueprintSourceBinding | undefined {
         const source = plan.source;
         if (source.kind !== "blueprint" || source.canonicalLocation === undefined) return undefined;
         let physicalLocation: string;
@@ -1004,7 +1004,7 @@ export class StudioOutcomeLibraryGenerateService {
             canonicalLocation: source.canonicalLocation,
             physicalLocation,
             fileIdentity: this.managedBlueprintFileIdentity(source.canonicalLocation),
-            inputBindingHash: computeArtifactInputBindingHash([source.canonicalLocation]),
+            inputBindingHash: computeBuildInputHash([source.canonicalLocation]),
         };
     }
 
@@ -1032,7 +1032,7 @@ export class StudioOutcomeLibraryGenerateService {
             throw new Error("The managed Blueprint source was replaced after the check. Refresh the displayed check before generating.");
         }
         const expectedInputBindingHash = managedBlueprint?.inputBindingHash ?? source.configurationProvenance?.inputBindingHash;
-        if (expectedInputBindingHash !== undefined && computeArtifactInputBindingHash([canonicalLocation]) !== expectedInputBindingHash) {
+        if (expectedInputBindingHash !== undefined && computeBuildInputHash([canonicalLocation]) !== expectedInputBindingHash) {
             throw new Error("The managed Blueprint input changed after the check. Refresh the displayed check before generating.");
         }
         const manifest = game.getManifest();
@@ -1096,9 +1096,9 @@ export class StudioOutcomeLibraryGenerateService {
     }
 
     // Reconstructs every mode OTHER than `excludeModeName` already in the bundle at `resolvedOutDir`, as
-    // fresh OutcomeLibraryBundleModeInput entries ready to hand straight back into writeToDirectory --
+    // fresh OutcomeLibraryFolderModeInput entries ready to hand straight back into writeToDirectory --
     // required because writeToDirectory always atomically replaces the whole directory with exactly the
-    // modes it's given (see OutcomeLibraryBundleWriter's own doc comment), never merges. A directory that
+    // modes it's given (see OutcomeLibraryFolderWriter's own doc comment), never merges. A directory that
     // doesn't exist yet simply has no other modes to preserve; a directory that exists but doesn't parse as
     // a valid bundle is left alone rather than silently clobbered.
     private async readOtherModes(resolvedOutDir: string, excludeModeName: string, deep = true): Promise<OtherModesResult> {
@@ -1153,7 +1153,7 @@ export class StudioOutcomeLibraryGenerateService {
             };
         }
 
-        const modes: OutcomeLibraryBundleModeInput<string>[] = [];
+        const modes: OutcomeLibraryFolderModeInput<string>[] = [];
         for (const entry of manifest.modes) {
             if (entry.modeName === excludeModeName) {
                 continue;
@@ -1248,7 +1248,7 @@ export class StudioOutcomeLibraryGenerateService {
         }
     }
 
-    // Persists `bundleDir` into the project-scoped registry index (creating it, and its parent directory,
+    // Persists `libraryDir` into the project-scoped registry index (creating it, and its parent directory,
     // on first use) so a later registry() call -- from this same service instance or a fresh one entirely,
     // e.g. after a Studio server restart -- still discovers it. Holds only directory names, never outcome
     // data itself (see REGISTRY_INDEX_RELATIVE_PATH's own doc comment), and is deliberately best-effort:
@@ -1256,18 +1256,18 @@ export class StudioOutcomeLibraryGenerateService {
     // (a read-only project checkout, an unresolvable index path) must not turn that already-successful
     // generate() into a reported failure -- it only means this one library stays discoverable exclusively
     // from within the current process, same as before this index existed.
-    private recordDiscoveredBundleDir(projectRoot: string, bundleDir: string): void {
+    private recordDiscoveredBundleDir(projectRoot: string, libraryDir: string): void {
         try {
             const resolved = resolveProjectDirectory(projectRoot, StudioOutcomeLibraryGenerateService.REGISTRY_INDEX_RELATIVE_PATH, this.realpath);
             if (resolved.status === "error") {
                 return;
             }
             const existing = this.readRegistryIndex(projectRoot);
-            if (existing.includes(bundleDir)) {
+            if (existing.includes(libraryDir)) {
                 return;
             }
             this.ensureDirectory(path.dirname(resolved.resolvedPath));
-            this.writeTextFile(resolved.resolvedPath, JSON.stringify([...existing, bundleDir]));
+            this.writeTextFile(resolved.resolvedPath, JSON.stringify([...existing, libraryDir]));
         } catch {
             // Best-effort persistence -- see this method's own doc comment.
         }

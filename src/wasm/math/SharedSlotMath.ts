@@ -192,7 +192,7 @@ export function compileSharedSlotMath(model: SharedSlotMathModel): Uint8Array<Ar
     parts.push(section(11, [1, 0, 0x41, 0, 0x0b, ...leb(layout.data.length), ...layout.data]));
     return concat(parts);
 }
-export function compileSharedSlotArtifact(model: SharedSlotMathModel, descriptor: unknown): Uint8Array<ArrayBuffer> {
+export function compileSharedSlotBuild(model: SharedSlotMathModel, descriptor: unknown): Uint8Array<ArrayBuffer> {
     return concat([compileSharedSlotMath(model), sharedSlotCustomSection(SHARED_SLOT_MODEL_VERSION, stableSlotMathJson(model)), sharedSlotCustomSection("pokie.component.v2", stableSlotMathJson(descriptor))]);
 }
 export type SharedSlotMathComponent = {

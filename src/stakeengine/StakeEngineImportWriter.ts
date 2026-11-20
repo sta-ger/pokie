@@ -1,21 +1,21 @@
 import {publishExactStakeSource} from "./internal/publishExactStakeSource.js";
-import {OutcomeLibraryBundleWriter} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriter.js";
-import type {OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
+import {OutcomeLibraryFolderWriter} from "../weightedoutcome/folder/OutcomeLibraryFolderWriter.js";
+import type {OutcomeLibraryFolderWriting} from "../weightedoutcome/folder/OutcomeLibraryFolderWriting.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import type {StakeEngineImportResult} from "./StakeEngineImportResult.js";
 import type {StakeEngineImportWriteOptions, StakeEngineImportWriting} from "./StakeEngineImportWriting.js";
 import {withPublishedDirectoryOwnership} from "./internal/publishDirectoryAtomically.js";
 
 // A reconstructed Stake export is a reusable Outcome Library first, with a small config.json companion
-// that makes its modes immediately exportable to Stake again. Writing both through OutcomeLibraryBundleWriter
+// that makes its modes immediately exportable to Stake again. Writing both through OutcomeLibraryFolderWriter
 // means the directory public `inspect` and `validate` receive is a canonical, self-contained project rather
 // than an unrecognized collection of otherwise-valid library JSON files.
 export class StakeEngineImportWriter<T extends string | number = string> implements StakeEngineImportWriting<T> {
-    private readonly bundleWriter: OutcomeLibraryBundleWriting<T>;
+    private readonly bundleWriter: OutcomeLibraryFolderWriting<T>;
 
     constructor(
         pokieVersion = "unknown",
-        bundleWriter: OutcomeLibraryBundleWriting<T> = new OutcomeLibraryBundleWriter<T>(pokieVersion),
+        bundleWriter: OutcomeLibraryFolderWriting<T> = new OutcomeLibraryFolderWriter<T>(pokieVersion),
     ) {
         this.bundleWriter = bundleWriter;
     }
@@ -52,8 +52,8 @@ export class StakeEngineImportWriter<T extends string | number = string> impleme
                             modes: importResult.modes.map((mode) => ({
                                 modeName: mode.modeName,
                                 cost: mode.cost,
-                                bundleDir: ".",
-                                bundleModeName: mode.modeName,
+                                libraryDir: ".",
+                                libraryModeName: mode.modeName,
                                 ...(mode.generator === undefined ? {} : {generator: mode.generator}),
                             })),
                         }, null, 4)}\n`,

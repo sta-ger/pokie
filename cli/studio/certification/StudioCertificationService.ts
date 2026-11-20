@@ -10,8 +10,8 @@ import {
     CertificationPackBuildCancelledError,
     CertificationPackBuilding,
     CertificationPackModeSampleInput,
-    OutcomeLibraryBundleValidating,
-    OutcomeLibraryBundleValidator,
+    OutcomeLibraryFolderValidating,
+    OutcomeLibraryFolderValidator,
 } from "@fromstan/pokie";
 import fs from "fs";
 import {resolveProjectDirectory} from "../outcomeLibrary/resolveProjectDirectory.js";
@@ -39,20 +39,20 @@ function executionOptions(options: AbortSignal | StudioCertificationExecutionOpt
 }
 
 // The Certification tab, built directly on top of pokie's own CertificationPackBuilder /
-// OutcomeLibraryBundleValidator (see docs/certification-pack-bundle.md) -- this class never samples
+// OutcomeLibraryFolderValidator (see docs/certification-pack-bundle.md) -- this class never samples
 // a round, computes a hash, or re-implements the builder's own "no partial bundle"/self-validation
 // contracts; it only resolves a request's paths against the active project's root (the same
 // resolveProjectDirectory containment check every other project-scoped Studio service already uses) and
 // shapes the result into a view.
 export class StudioCertificationService {
-    private readonly bundleValidator: OutcomeLibraryBundleValidating;
+    private readonly bundleValidator: OutcomeLibraryFolderValidating;
     private readonly builder: CertificationPackBuilding;
     private readonly realpath: (resolvedPath: string) => string;
 
     constructor(
         pokieVersion: string,
         builder: CertificationPackBuilding = new CertificationPackBuilder(pokieVersion),
-        bundleValidator: OutcomeLibraryBundleValidating = new OutcomeLibraryBundleValidator(),
+        bundleValidator: OutcomeLibraryFolderValidating = new OutcomeLibraryFolderValidator(),
         realpath: (resolvedPath: string) => string = (resolvedPath) => fs.realpathSync(resolvedPath),
     ) {
         this.builder = builder;
@@ -62,7 +62,7 @@ export class StudioCertificationService {
 
     public requestIdentity(projectRoot: string, request: ValidatedCertificationBuildRequest): string {
         const inputs = this.resolvePackPaths(projectRoot, request.pack, request.output);
-        const source = resolveProjectDirectory(projectRoot, request.bundleDir, this.realpath);
+        const source = resolveProjectDirectory(projectRoot, request.libraryDir, this.realpath);
         const out = this.resolveOutputDirectory(projectRoot, request.outDir);
         if (out.status === "error") throw new Error(out.message);
         if (source.status === "error") throw new Error(source.message);
@@ -71,10 +71,10 @@ export class StudioCertificationService {
 
     public async download(projectRoot: string, request: ValidatedCertificationBuildRequest, file: string, identity: string, signal?: AbortSignal): Promise<{bytes: Buffer; mime: string}> {
         const out = this.resolveOutputDirectory(projectRoot, request.outDir);
-        const source = resolveProjectDirectory(projectRoot, request.bundleDir, this.realpath);
+        const source = resolveProjectDirectory(projectRoot, request.libraryDir, this.realpath);
         if (out.status === "error" || source.status === "error") throw new Error("Pack paths are outside this project.");
         const inputs = this.resolvePackPaths(projectRoot, request.pack, request.output);
-        const issues = await new CertificationPackVerifier().verify(out.resolvedPath, {sourceBundleDir: source.resolvedPath, pack: inputs.pack, templateFile: inputs.output?.templateFile, signal});
+        const issues = await new CertificationPackVerifier().verify(out.resolvedPath, {sourceLibraryDir: source.resolvedPath, pack: inputs.pack, templateFile: inputs.output?.templateFile, signal});
         const cleanupFailure = issues.find(issue => issue.code === "certification-pack-verify-cleanup-failed");
         if (cleanupFailure) throw new Error(cleanupFailure.message);
         if (signal?.aborted) throw new CertificationPackBuildCancelledError();
@@ -90,13 +90,13 @@ export class StudioCertificationService {
     // The exact preflight CertificationPackBuilder itself runs (and aborts the whole build on)
     // before ever sampling a round -- exposed as its own step so the user can check a candidate source
     // bundle before committing to Build, without triggering a build attempt.
-    public async validateSourceBundle(projectRoot: string, bundleDir: string, options?: AbortSignal | StudioCertificationExecutionOptions): Promise<StudioCertificationSourceValidateView> {
+    public async validateSourceBundle(projectRoot: string, libraryDir: string, options?: AbortSignal | StudioCertificationExecutionOptions): Promise<StudioCertificationSourceValidateView> {
         const {signal, onProgress} = executionOptions(options);
         onProgress?.("Resolving evidence", "validation stages", 0, 2, "Resolving the requested certification pack.");
         if (signal?.aborted) {
             return {status: "load-error", error: "Certification source validation was cancelled before it started."};
         }
-        const resolved = resolveProjectDirectory(projectRoot, bundleDir, this.realpath);
+        const resolved = resolveProjectDirectory(projectRoot, libraryDir, this.realpath);
         if (resolved.status === "error") {
             return {status: "load-error", error: resolved.message};
         }
@@ -114,13 +114,13 @@ export class StudioCertificationService {
                 warnings: issues.filter((issue) => issue.severity !== "error"),
             };
         } catch (error) {
-            return {status: "load-error", error: `Could not deep-validate bundle "${bundleDir}": ${error instanceof Error ? error.message : String(error)}`};
+            return {status: "load-error", error: `Could not deep-validate bundle "${libraryDir}": ${error instanceof Error ? error.message : String(error)}`};
         }
     }
 
     public async build(
         projectRoot: string,
-        bundleDir: string,
+        libraryDir: string,
         modes: readonly ValidatedCertificationBuildModeInput[],
         outDir: string,
         options?: AbortSignal | StudioCertificationExecutionOptions,
@@ -128,7 +128,7 @@ export class StudioCertificationService {
         const {signal, onProgress, pack, output} = executionOptions(options);
         const sampleCount = modes.reduce((total, mode) => total + mode.sampleCount, 0);
         onProgress?.("Resolving inputs", "build stages", 0, 3, "Resolving the audit source and staging destination.");
-        const resolvedBundle = resolveProjectDirectory(projectRoot, bundleDir, this.realpath);
+        const resolvedBundle = resolveProjectDirectory(projectRoot, libraryDir, this.realpath);
         if (resolvedBundle.status === "error") {
             return {status: "load-error", error: resolvedBundle.message};
         }
@@ -168,7 +168,7 @@ export class StudioCertificationService {
             }
             return {
                 status: "load-error",
-                error: `Could not build a certification/evidence bundle from "${bundleDir}": ${error instanceof Error ? error.message : String(error)}`,
+                error: `Could not build a certification/evidence bundle from "${libraryDir}": ${error instanceof Error ? error.message : String(error)}`,
             };
         }
     }

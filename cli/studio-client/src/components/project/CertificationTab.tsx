@@ -66,7 +66,7 @@ const CERTIFICATION_STORAGE_PREFIX = "pokie-studio:certification:";
 
 type PackFields = {modelSource: string; reportFiles: string; replayFiles: string; templateFile: string; sourceRevision: string; candidateRevision: string; formats: string};
 const EMPTY_DOSSIER: PackFields = {modelSource: "", reportFiles: "", replayFiles: "", templateFile: "", sourceRevision: "", candidateRevision: "", formats: ""};
-type PersistedCertificationFields = {bundleDir: string; outDir: string; modes: ModeFields[]; packFields?: PackFields};
+type PersistedCertificationFields = {libraryDir: string; outDir: string; modes: ModeFields[]; packFields?: PackFields};
 
 function certificationStorageKey(projectRoot: string | undefined): string {
     return `${CERTIFICATION_STORAGE_PREFIX}${projectRoot ?? "no-project"}`;
@@ -91,10 +91,10 @@ function loadPersistedCertificationFields(projectRoot: string | undefined): Pers
             return undefined;
         }
         const parsed = JSON.parse(raw) as Partial<PersistedCertificationFields>;
-        if (typeof parsed.bundleDir !== "string" || typeof parsed.outDir !== "string" || !Array.isArray(parsed.modes) || !parsed.modes.every(isPersistedModeFields)) {
+        if (typeof parsed.libraryDir !== "string" || typeof parsed.outDir !== "string" || !Array.isArray(parsed.modes) || !parsed.modes.every(isPersistedModeFields)) {
             return undefined;
         }
-        return {bundleDir: parsed.bundleDir, outDir: parsed.outDir, modes: parsed.modes, packFields: parsed.packFields && Object.keys(EMPTY_DOSSIER).every(key => typeof Reflect.get(parsed.packFields!, key) === "string") ? parsed.packFields : undefined};
+        return {libraryDir: parsed.libraryDir, outDir: parsed.outDir, modes: parsed.modes, packFields: parsed.packFields && Object.keys(EMPTY_DOSSIER).every(key => typeof Reflect.get(parsed.packFields!, key) === "string") ? parsed.packFields : undefined};
     } catch {
         return undefined;
     }
@@ -172,7 +172,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
     const [persistedFields] = useState(() => loadPersistedCertificationFields(projectRoot));
 
     // ---- Select/configure ----
-    const [bundleDir, setBundleDir] = useState(() => persistedFields?.bundleDir ?? "");
+    const [libraryDir, setBundleDir] = useState(() => persistedFields?.libraryDir ?? "");
     const [outDir, setOutDir] = useState(() => persistedFields?.outDir ?? "certification");
     const [modes, setModes] = useState<ModeFields[]>(() => persistedFields?.modes ?? [EMPTY_MODE]);
     const [packFields, setPackFields] = useState<PackFields>(() => persistedFields?.packFields ?? EMPTY_DOSSIER);
@@ -187,7 +187,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
     function changePackField(key: keyof PackFields, value: string): void {
         const next = {...packFields, [key]: value};
         setPackFields(next);
-        savePersistedCertificationFields(projectRoot, {bundleDir, outDir, modes, packFields: next});
+        savePersistedCertificationFields(projectRoot, {libraryDir, outDir, modes, packFields: next});
         invalidateBuild();
     }
     async function downloadPack(file: string): Promise<void> {
@@ -213,7 +213,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
         const recoveredModes = Array.isArray(recoveryRequest.modes) && recoveryRequest.modes.every(isPersistedModeFields)
             ? recoveryRequest.modes
             : undefined;
-        if (typeof recoveryRequest.bundleDir === "string") setBundleDir(recoveryRequest.bundleDir);
+        if (typeof recoveryRequest.libraryDir === "string") setBundleDir(recoveryRequest.libraryDir);
         if (typeof recoveryRequest.outDir === "string") setOutDir(recoveryRequest.outDir);
         if (recoveredModes !== undefined) setModes(recoveredModes);
         const recoveredPack = recoveryRequest.pack as Record<string, unknown> | undefined;
@@ -224,8 +224,8 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
         if (typeof recoveredOutput?.templateFile === "string") fields.templateFile = recoveredOutput.templateFile;
         if (Array.isArray(recoveredOutput?.formats)) fields.formats = recoveredOutput.formats.join(", ");
         setPackFields(fields);
-        if (typeof recoveryRequest.bundleDir === "string" && typeof recoveryRequest.outDir === "string" && recoveredModes !== undefined) {
-            savePersistedCertificationFields(projectRoot, {bundleDir: recoveryRequest.bundleDir, outDir: recoveryRequest.outDir, modes: recoveredModes, packFields: fields});
+        if (typeof recoveryRequest.libraryDir === "string" && typeof recoveryRequest.outDir === "string" && recoveredModes !== undefined) {
+            savePersistedCertificationFields(projectRoot, {libraryDir: recoveryRequest.libraryDir, outDir: recoveryRequest.outDir, modes: recoveredModes, packFields: fields});
         }
     }, [projectRoot, recoveryRequest]);
 
@@ -256,7 +256,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
     }, []);
     // Same "outdated" distinction as validateOutdated above, for a completed Build silently invalidated by
     // a later build-configuration edit -- modes, output directory and pack trusted sources only touch
-    // Build; bundleDir also invalidates Validate. Cleared the instant a
+    // Build; libraryDir also invalidates Validate. Cleared the instant a
     // fresh Build run starts. Rendered on Select/configure (where modes live) rather than duplicating the
     // validateOutdated banner's own "rerun Validate" guidance whenever both are true at once.
     const [buildOutdated, setBuildOutdated] = useState(false);
@@ -283,7 +283,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
 
     function handleBundleDirChange(value: string): void {
         setBundleDir(value);
-        savePersistedCertificationFields(projectRoot, {bundleDir: value, outDir, modes, packFields});
+        savePersistedCertificationFields(projectRoot, {libraryDir: value, outDir, modes, packFields});
         if (validateView.status !== "idle") {
             invalidateValidate();
         }
@@ -291,7 +291,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
 
     function handleModesChange(next: ModeFields[]): void {
         setModes(next);
-        savePersistedCertificationFields(projectRoot, {bundleDir, outDir, modes: next, packFields});
+        savePersistedCertificationFields(projectRoot, {libraryDir, outDir, modes: next, packFields});
         if (buildView.status !== "idle") {
             invalidateBuild();
         }
@@ -299,7 +299,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
 
     function handleOutDirChange(value: string): void {
         setOutDir(value);
-        savePersistedCertificationFields(projectRoot, {bundleDir, outDir: value, modes, packFields});
+        savePersistedCertificationFields(projectRoot, {libraryDir, outDir: value, modes, packFields});
         if (buildView.status !== "idle") {
             invalidateBuild();
         }
@@ -310,7 +310,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
     // a user who wants a clean slate rather than editing every field back by hand. Sets all three fields
     // directly (rather than composing the individual handle*Change functions, each of which persists
     // using its *sibling* fields' current closure value) so the save this triggers can't briefly
-    // resurrect a stale bundleDir/outDir/modes combination between two of those calls. Cascades the same
+    // resurrect a stale libraryDir/outDir/modes combination between two of those calls. Cascades the same
     // way a manual edit would: invalidating Validate/Build exactly as typing over the fields does.
     function clearSavedValues(): void {
         clearPersistedCertificationFields(projectRoot);
@@ -349,14 +349,14 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
     }, [fetchImpl, projectRoot]);
 
     function runValidate(): void {
-        if (bundleDir.trim().length === 0 || !validateGuard.begin()) {
+        if (libraryDir.trim().length === 0 || !validateGuard.begin()) {
             return;
         }
         const requestId = ++validateRequestIdRef.current;
         invalidateBuild();
         setValidateOutdated(false);
         setValidateView({status: "loading"});
-        validateCertificationSourceBundle(fetchImpl, bundleDir.trim())
+        validateCertificationSourceBundle(fetchImpl, libraryDir.trim())
             .then((result) => {
                 if (requestId !== validateRequestIdRef.current) {
                     return;
@@ -376,13 +376,13 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
     function runBuild(): void {
         const modeInputs = toModeInputs(modes);
         const hasIncompleteMode = modes.some((mode) => classifyModeRow(mode) === "incomplete");
-        if (modeInputs.length === 0 || hasIncompleteMode || bundleDir.trim().length === 0 || outDir.trim().length === 0 || !buildGuard.begin()) {
+        if (modeInputs.length === 0 || hasIncompleteMode || libraryDir.trim().length === 0 || outDir.trim().length === 0 || !buildGuard.begin()) {
             return;
         }
         const requestId = ++buildRequestIdRef.current;
         setBuildOutdated(false);
         setBuildView({status: "loading"});
-        buildCertificationPack(fetchImpl, bundleDir.trim(), modeInputs, outDir.trim(), Object.values(packFields).some(value => value.trim()) ? packConfiguration() : undefined)
+        buildCertificationPack(fetchImpl, libraryDir.trim(), modeInputs, outDir.trim(), Object.values(packFields).some(value => value.trim()) ? packConfiguration() : undefined)
             .then((result) => {
                 if (requestId !== buildRequestIdRef.current) {
                     return;
@@ -400,7 +400,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
     }
 
     const hasIncompleteModeRow = modes.some((mode) => classifyModeRow(mode) === "incomplete");
-    const validateReachable = bundleDir.trim().length > 0;
+    const validateReachable = libraryDir.trim().length > 0;
     const validateOutcome = validateView.status === "ok" ? describeCertificationOutcome(validateView) : undefined;
     const buildReachable = validateOutcome !== undefined && validateOutcome !== "invalid";
     const buildResult = buildView.status === "ok" ? buildView : undefined;
@@ -466,8 +466,8 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
     // directory already points (typed value, else the detected default, else the bare convention path),
     // so the copied command always writes to the exact place Validate/Build will look.
     let generateOutcomeLibraryOutDir = DETECTED_BUNDLE_RELATIVE_PATH;
-    if (bundleDir.trim().length > 0) {
-        generateOutcomeLibraryOutDir = bundleDir.trim();
+    if (libraryDir.trim().length > 0) {
+        generateOutcomeLibraryOutDir = libraryDir.trim();
     } else if (detectedBundle.status === "found") {
         generateOutcomeLibraryOutDir = detectedBundle.path;
     }
@@ -475,7 +475,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
     // Studio owns creation and inspection, while independent verification remains the canonical CLI
     // verifier. The handoff is tied to the actual source/output of this successful build; source
     // validation alone never claims to verify an already-written evidence directory.
-    const certificationVerifyCommand = `pokie certification verify ${outDir.trim()} --source ${bundleDir.trim()}${Object.values(packFields).some(value => value.trim()) ? " --trusted-sources sources.json" : ""}${packFields.templateFile.trim() ? ` --template ${packFields.templateFile.trim()}` : ""}`;
+    const certificationVerifyCommand = `pokie certification verify ${outDir.trim()} --source ${libraryDir.trim()}${Object.values(packFields).some(value => value.trim()) ? " --trusted-sources sources.json" : ""}${packFields.templateFile.trim() ? ` --template ${packFields.templateFile.trim()}` : ""}`;
 
     function renderValidateStep(): ReactNode {
         if (!validateReachable) {
@@ -646,7 +646,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                         browseId="certification-bundle-dir"
                         relevantDirectory={projectRoot}
                         autoDestinationPath={detectedBundle.status === "found" ? detectedBundle.path : undefined}
-                        value={bundleDir}
+                        value={libraryDir}
                         onChange={(event) => handleBundleDirChange(event.currentTarget.value)}
                         onPathSelected={handleBundleDirChange}
                         mb="sm"
@@ -660,7 +660,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                                 variant="subtle"
                                 size="xs"
                                 onClick={() => handleBundleDirChange(detectedBundle.path)}
-                                disabled={bundleDir.trim() === detectedBundle.path}
+                                disabled={libraryDir.trim() === detectedBundle.path}
                             >
                                 Use detected
                             </Button>
@@ -676,7 +676,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                             POKIE Studio never fabricates outcome data itself -- run this from a terminal once you
                             have a config.json listing each mode&apos;s real outcome source (a WeightedOutcomeLibrary
                             JSON file, or a streaming JSONL file of outcomes for a mode too large to hold in memory;
-                            see docs/outcome-library-bundle.md for the exact format), then point the field above at
+                            see docs/outcome-library-folder.md for the exact format), then point the field above at
                             the directory it writes.
                         </Text>
                         <CodeBlock>{generateOutcomeLibraryCommand}</CodeBlock>

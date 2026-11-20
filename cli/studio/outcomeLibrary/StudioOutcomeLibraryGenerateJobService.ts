@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import {randomUUID} from "crypto";
 import type {ExactEnumerationCheckpoint} from "@fromstan/pokie";
-import {createUnresolvedRuntimePlan} from "../artifacts/createExternalArtifactConversionPlan.js";
+import {createUnresolvedRuntimePlan} from "../artifacts/createExternalFormatConversionPlan.js";
 import type {StudioOutcomeLibraryGenerateResultView} from "./StudioOutcomeLibraryGenerateResultView.js";
 import {
     StudioOutcomeLibraryGenerateService,
@@ -374,7 +374,7 @@ export class StudioOutcomeLibraryGenerateJobService {
         if (result.status === "ok") {
             this.jobService?.complete(record.id, {
                 summary: "Outcome Library generation completed.",
-                // bundleDir is intentionally project-relative because it is
+                // libraryDir is intentionally project-relative because it is
                 // part of the selector/configuration contract. Durable host
                 // actions instead retain the server-resolved published path:
                 // a Studio process cwd is not the owning project directory.

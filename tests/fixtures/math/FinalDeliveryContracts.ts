@@ -53,7 +53,7 @@ export async function verifyFinalDelivery(api: Api, makeGame: MakeGame, database
         model.reelStrips = [["S"], ["S"], ["S"]];
         model.mechanics = {freeGames: {scatterSymbol: "S", awardsByCount: grant === undefined ? {2: 0} : {3: grant}}};
         const node = makeGame(model).createSession({seed: "0"}) as API.VideoSlotWithFreeGamesSession;
-        const artifact = await api.createBlueprintWasmArtifact(model);
+        const artifact = await api.createBlueprintWasmBuild(model);
         const runtime = await api.instantiatePokieWasm(artifact.bytes, artifact.manifest, new api.SeededPokieWasmHost("0"));
         try {
             const wasm = runtime.createSession("0");

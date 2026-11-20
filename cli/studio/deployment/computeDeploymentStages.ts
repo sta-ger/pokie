@@ -1,4 +1,4 @@
-import type {ExternalDeploymentResult, ValidationIssue} from "@fromstan/pokie";
+import type {ExternalExportResult, ValidationIssue} from "@fromstan/pokie";
 import type {StudioDeploymentStageSummary} from "./StudioDeploymentStageSummary.js";
 
 function hasError(issues: readonly ValidationIssue[]): boolean {
@@ -13,10 +13,10 @@ function stageStatus(skippedBecauseEarlierStageFailed: boolean, thisStageFailed:
 }
 
 // The one place StudioDeploymentRunView.stages is computed — server-side, from the exact
-// ExternalDeploymentResult ExternalDeploymentService.deploy() returned, never inferred by a client from
+// ExternalExportResult ExternalExportService.deploy() returned, never inferred by a client from
 // which DTO fields happen to be present. This exists specifically because "is `generation` present"
-// is *not* a safe proxy for "did the generation stage fail": ExternalDeploymentService treats a
-// generator's return value as untrusted and runs StandardExternalArtifactValidator against it before
+// is *not* a safe proxy for "did the generation stage fail": ExternalExportService treats a
+// generator's return value as untrusted and runs StandardExternalFileValidator against it before
 // `generation` is ever populated (see that class's own doc comment) — when that structural check
 // itself fails, `generation` stays `undefined` even though the generator was actually invoked
 // successfully, and the real diagnostics explaining what went wrong live in `artifactIssues`, not in
@@ -29,10 +29,10 @@ function stageStatus(skippedBecauseEarlierStageFailed: boolean, thisStageFailed:
 //     one) once it's already known to have returned a well-formed result — never merely because
 //     `generation` is absent for some other stage's reason.
 //   - "artifactValidation" owns *every* issue in `artifactIssues`, regardless of whether it came from
-//     StandardExternalArtifactValidator's structural check (generation still undefined),
-//     target.artifactValidator, or an extra validator — exactly matching where ExternalDeploymentService
+//     StandardExternalFileValidator's structural check (generation still undefined),
+//     target.artifactValidator, or an extra validator — exactly matching where ExternalExportService
 //     itself put those diagnostics.
-export function computeDeploymentStages(result: ExternalDeploymentResult, publish: boolean): StudioDeploymentStageSummary[] {
+export function computeDeploymentStages(result: ExternalExportResult, publish: boolean): StudioDeploymentStageSummary[] {
     const descriptorFailed = hasError(result.descriptorIssues);
     const compatibilityFailed = hasError(result.compatibilityIssues);
     const projectionFailed = hasError(result.projectionIssues);

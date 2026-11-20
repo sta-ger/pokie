@@ -5,7 +5,7 @@ import {artifactAnalyticsObservation} from "../../../src/simulation/artifactAnal
 import {
     SimulationAccumulator,
     describeOutcomeSourceSeedPolicy,
-    describeUnavailableArtifactOperation,
+    describeUnavailableBuildOperation,
     readCanonicalWasmDeclaration,
     isWasmComponentFile,
     loadPokieWasmFileRuntime,
@@ -13,9 +13,9 @@ import {
     isSimulationReportSet,
     SimulationReportSet,
     OUTCOME_SOURCE_SIMULATE_OPERATION,
-    OutcomeLibraryBundleOutcomeSource,
-    OutcomeLibraryBundleReader,
-    OutcomeLibraryBundleReading,
+    OutcomeLibraryFolderOutcomeSource,
+    OutcomeLibraryFolderReader,
+    OutcomeLibraryFolderReading,
     ParallelSimulationRunner,
     ParallelSimulationRunOptions,
     PreGeneratedRoundReplayDescriptor,
@@ -91,7 +91,7 @@ export class StudioSimulationService {
     ) => ParallelSimulationRunner;
     // Reads a resolved "outcomeLibrary"/"stakeAdapter" project's own bundle manifest -- see start()'s
     // own `outcomeSourceProject` parameter for why this service never resolves a project's type itself.
-    private readonly outcomeLibraryReader: OutcomeLibraryBundleReading;
+    private readonly outcomeLibraryReader: OutcomeLibraryFolderReading;
     // A parallel simulation's worker processes can only load a package path, not reuse this
     // process's loadGame callback. Resolve a Blueprint before constructing the runner so both the
     // in-process and worker-thread paths receive the current materialized runtime rather than the
@@ -119,7 +119,7 @@ export class StudioSimulationService {
             rounds: number,
             options: ParallelSimulationRunOptions,
         ) => ParallelSimulationRunner = (packageRoot, rounds, options) => new ParallelSimulationRunner(packageRoot, rounds, options),
-        outcomeLibraryReader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
+        outcomeLibraryReader: OutcomeLibraryFolderReading = new OutcomeLibraryFolderReader(),
         resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
         onCompleted: (record: StudioSimulationJobRecord) => void = () => undefined,
         pokieVersion: string | undefined = undefined,
@@ -549,7 +549,7 @@ export class StudioSimulationService {
     }
 
     private async runOutcomeSourceSampling(record: StudioSimulationJobRecord, project: PokieProject): Promise<void> {
-        const diagnostic = describeUnavailableArtifactOperation(project, OUTCOME_SOURCE_SIMULATE_OPERATION);
+        const diagnostic = describeUnavailableBuildOperation(project, OUTCOME_SOURCE_SIMULATE_OPERATION);
         if (diagnostic !== undefined) {
             this.fail(record, new Error(diagnostic.message));
             return;
@@ -577,7 +577,7 @@ export class StudioSimulationService {
         }
         this.markRunning(record);
 
-        const outcomeSource = new OutcomeLibraryBundleOutcomeSource(project.rootPath, modeName);
+        const outcomeSource = new OutcomeLibraryFolderOutcomeSource(project.rootPath, modeName);
         const randomSource: WeightedOutcomeRandomSource = new SecureWeightedOutcomeRandomSource();
         const accumulator = new SimulationAccumulator();
         let lastReplay: PreGeneratedRoundReplayDescriptor | undefined;

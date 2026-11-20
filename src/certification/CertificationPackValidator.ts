@@ -19,10 +19,10 @@ import {isModeEntryShape, isManifestShape, isNonEmptyString, isSampleRecordShape
 import {sha256OfBytes} from "./internal/sha256OfBytes.js";
 
 // Validates a candidate certification/evidence bundle directory *by itself* — never throws (top-level
-// catch-all "certification-pack-bundle-malformed"), mirroring OutcomeLibraryBundleValidator's own
+// catch-all "certification-pack-bundle-malformed"), mirroring OutcomeLibraryFolderValidator's own
 // never-throw contract, except explicit cancellation. Reads manifest.json plus every mode's own samples_<modeName>.jsonl, recomputing:
 // - the whole manifest's own evidenceContentHash (covers schemaVersion/pokieVersion/game/configHash/
-//   artifactPokieVersion/sourceBundleManifestHash/every mode's own metrics+samplesHash/deep-validation issues in
+//   artifactPokieVersion/sourceLibraryManifestHash/every mode's own metrics+samplesHash/deep-validation issues in
 //   one unified check — see computeCertificationPackContentHash);
 // - each mode's own samplesHash, over the exact bytes of its samples file (never a second, differently-derived
 //   hash);
@@ -133,7 +133,7 @@ export class CertificationPackValidator implements CertificationPackValidating {
                 issues.push({
                     code: "certification-pack-bundle-content-hash-mismatch",
                     severity: "error",
-                    message: `"${manifestPath}" does not hash to its own recorded evidenceContentHash — some field of the manifest (game/configHash/artifactPokieVersion/sourceBundleManifestHash/a mode's own metrics or samplesHash/deep-validation issues) was changed since this evidence was built.`,
+                    message: `"${manifestPath}" does not hash to its own recorded evidenceContentHash — some field of the manifest (game/configHash/artifactPokieVersion/sourceLibraryManifestHash/a mode's own metrics or samplesHash/deep-validation issues) was changed since this evidence was built.`,
                 });
             }
         } catch (error) {

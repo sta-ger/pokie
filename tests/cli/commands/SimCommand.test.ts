@@ -5,7 +5,7 @@ import {
     GameSessionHandling,
     loadPokieGame,
     MAX_SIMULATION_WORKERS,
-    OutcomeLibraryBundleWriter,
+    OutcomeLibraryFolderWriter,
     OutcomeSourceSimulationResult,
     PokieGame,
     PokieGameManifest,
@@ -27,7 +27,7 @@ import os from "os";
 import path from "path";
 import {SimCommand} from "../../../cli/commands/SimCommand.js";
 import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
-import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
+import {buildOutcomeLibraryFolderModeInput} from "../../weightedoutcome/folder/OutcomeLibraryFolderTestFixtures.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
 let restoreRuntimeEnvironment: () => void;
@@ -1402,19 +1402,19 @@ describe("SimCommand outcome-source routing", () => {
 });
 
 // Real, non-stubbed end-to-end coverage: a real, on-disk outcome-library bundle (built by
-// OutcomeLibraryBundleWriter, not mocked), resolved and simulated through the same
+// OutcomeLibraryFolderWriter, not mocked), resolved and simulated through the same
 // ProjectTargetResolver/simulateOutcomeSourceProject path the unit tests above stub out.
 describe("SimCommand outcome-source routing (integration, real outcome-library bundle)", () => {
-    let bundleDir: string;
+    let libraryDir: string;
 
     beforeEach(async () => {
-        bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-sim-outcomesource-test-"));
-        fs.rmdirSync(bundleDir);
-        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
+        libraryDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-sim-outcomesource-test-"));
+        fs.rmdirSync(libraryDir);
+        await new OutcomeLibraryFolderWriter("1.3.0").writeToDirectory([buildOutcomeLibraryFolderModeInput("base", "base-lib")], libraryDir);
     });
 
     afterEach(() => {
-        fs.rmSync(bundleDir, {recursive: true, force: true});
+        fs.rmSync(libraryDir, {recursive: true, force: true});
     });
 
     it("simulates a real bundle through the real outcome-source selector path, never loading a game", async () => {
@@ -1422,7 +1422,7 @@ describe("SimCommand outcome-source routing (integration, real outcome-library b
         const command = new SimCommand(loadGame, undefined, undefined, undefined, undefined, undefined, new ProjectTargetResolver());
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run([bundleDir, "--rounds", "200", "--seed", "sim-seed", "--mode", "base", "--format", "json"]);
+        await command.run([libraryDir, "--rounds", "200", "--seed", "sim-seed", "--mode", "base", "--format", "json"]);
 
         expect(loadGame).not.toHaveBeenCalled();
         const report = JSON.parse(logSpy.mock.calls[0][0]) as {libraryId: string; workerSeedStrategy: string; statistics: {rounds: number; rtp: number; totalBet: number}};

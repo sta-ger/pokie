@@ -15,7 +15,7 @@ import type {VideoSlotWinCalculator} from "../../session/videoslot/wincalculator
 import type {SessionFeatureAnalyticsBeforePlay} from "../../simulation/SessionFeatureAnalyticsObserver.js";
 import {ValueWinComponent} from "../../session/videoslot/winevaluation/ValueWinComponent.js";
 import {WinningValue} from "../../session/videoslot/WinningValue.js";
-import {validateArtifactCoordinates} from "../../artifact/validateArtifactCoordinates.js";
+import {validateRoundRecordCoordinates} from "../../artifact/validateRoundRecordCoordinates.js";
 import {buildRoundStepRecord} from "../../artifact/buildRoundStepRecord.js";
 import {deriveStandardFeatureEvents} from "../../artifact/buildRoundRecordFromSession.js";
 import {SymbolsCombinationsAnalyzer} from "../../session/videoslot/combinations/SymbolsCombinationsAnalyzer.js";
@@ -212,7 +212,7 @@ function validateRetainedWins(session: VideoSlotSessionHandling, blueprint: Game
     calculator: VideoSlotWinCalculator, bounded: BoundedMechanicObservation | undefined, before?: SessionFeatureAnalyticsBeforePlay): {ways: number[]; clusters: number[]} {
     const amounts = {ways: [] as number[], clusters: [] as number[]};
     for (const [index, step] of steps.entries()) {
-        validateArtifactCoordinates(step);
+        validateRoundRecordCoordinates(step);
         const combination = new SymbolsCombination().fromMatrix((step.generatedScreen ?? step.screen) as string[][]);
         calculator.calculateWin(session.getBet(), step.geometry ? combination.withCoordinates(step.geometry) : combination);
         let result = calculator.getWinEvaluationResult();

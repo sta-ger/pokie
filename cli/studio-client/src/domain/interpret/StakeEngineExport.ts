@@ -24,18 +24,18 @@ export function isBlankStakeEngineExportLibrarySelector(selector: OutcomeLibrary
     if (selector.kind === "json") {
         return selector.path.trim().length === 0;
     }
-    if (selector.kind === "bundle") {
-        return selector.bundleDir.trim().length === 0 || selector.modeName.trim().length === 0;
+    if (selector.kind === "folder") {
+        return selector.libraryDir.trim().length === 0 || selector.modeName.trim().length === 0;
     }
     return selector.stakeDir.trim().length === 0 || selector.modeName.trim().length === 0;
 }
 
 // Whether a row's own librarySelector is safe to silently replace when its modeName changes -- a blank
-// selector obviously is, and so is a "bundle" one (its own `modeName` field must always match the row's,
+// selector obviously is, and so is a "folder" one (its own `modeName` field must always match the row's,
 // so it's already tied to the mode it was discovered for). A manually-chosen "json"/"stakeengine" selector
 // is never auto-replaced this way.
 export function isAutoDiscoverableStakeEngineExportLibrarySelector(selector: OutcomeLibrarySelector): boolean {
-    return selector.kind === "bundle" || isBlankStakeEngineExportLibrarySelector(selector);
+    return selector.kind === "folder" || isBlankStakeEngineExportLibrarySelector(selector);
 }
 
 // The Outcome Libraries registry's own compatibility classification for exactly the bundle a row's own
@@ -45,10 +45,10 @@ function registryBuildStatusForStakeEngineExportSelector(
     selector: OutcomeLibrarySelector,
     registry: StudioOutcomeLibraryRegistryView,
 ): "compatible" | "stale" | "wrong" | undefined {
-    if (registry.status !== "ok" || registry.buildStatus === "missing" || selector.kind !== "bundle") {
+    if (registry.status !== "ok" || registry.buildStatus === "missing" || selector.kind !== "folder") {
         return undefined;
     }
-    return registry.modes.find((mode) => mode.modeName === modeName && mode.bundleDir === selector.bundleDir)?.buildStatus;
+    return registry.modes.find((mode) => mode.modeName === modeName && mode.libraryDir === selector.libraryDir)?.buildStatus;
 }
 
 // The latest registry-known library compatible with the current build for a given mode name, ready to
@@ -59,7 +59,7 @@ export function discoverStakeEngineExportModeLibrarySelector(modeName: string, r
         return undefined;
     }
     const entry = registry.modes.find((mode) => mode.modeName === modeName && mode.buildStatus === "compatible");
-    return entry === undefined ? undefined : {kind: "bundle", bundleDir: entry.bundleDir, modeName: entry.modeName};
+    return entry === undefined ? undefined : {kind: "folder", libraryDir: entry.libraryDir, modeName: entry.modeName};
 }
 
 // Every status a Configure row's own source can be in, in the language its own status badge shows:

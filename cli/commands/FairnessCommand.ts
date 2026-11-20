@@ -12,8 +12,8 @@ import {
     FairnessRoundProofVerifying,
     FairnessServerSeedCommitment,
     FairnessServerSeedCommitmentInput,
-    OutcomeLibraryBundleReader,
-    OutcomeLibraryBundleReading,
+    OutcomeLibraryFolderReader,
+    OutcomeLibraryFolderReading,
     ValidationIssue,
 } from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
@@ -33,18 +33,18 @@ const USAGE =
     "   or: pokie fairness commit <serverSeedCommitment.json> --client-seed <seed> --nonce <n> --source <folder> --mode <modeName> [--out <file>] [--overwrite]\n" +
     "   or: pokie fairness reveal <commitment.json> --server-seed <serverSeed.txt> --source <folder> [--out <file>] [--overwrite]";
 
-type VerifyOptions = {proofPath: string; commitmentPath: string; sourceBundleDir: string};
+type VerifyOptions = {proofPath: string; commitmentPath: string; sourceLibraryDir: string};
 type SeedCommitOptions = {serverSeedPath: string; out?: string; overwrite: boolean};
 type CommitOptions = {
     serverSeedCommitmentPath: string;
     clientSeed: string;
     nonce: number;
-    sourceBundleDir: string;
+    sourceLibraryDir: string;
     modeName: string;
     out?: string;
     overwrite: boolean;
 };
-type RevealOptions = {commitmentPath: string; serverSeedPath: string; sourceBundleDir: string; out?: string; overwrite: boolean};
+type RevealOptions = {commitmentPath: string; serverSeedPath: string; sourceLibraryDir: string; out?: string; overwrite: boolean};
 
 // The one place --nonce's usage message is composed, shared by the custom Commander option parser (invoked
 // whenever a value token, even an empty string, follows --nonce) and the optionMissingArgument fallback for
@@ -69,14 +69,14 @@ function nonceUsageMessage(displayValue: string): string {
 // Never introduces a second calculation path: "seed-commit"/"commit" call straight through to
 // computeFairnessServerSeedCommitment/computeFairnessCommitment (the one place either artifact is built, and the
 // one place their own input validation lives), "commit" derives libraryId/libraryHash from the live bundle via
-// OutcomeLibraryBundleReading.readModeIndex — the same reader FairnessRoundProofBuilder itself uses — rather than
+// OutcomeLibraryFolderReading.readModeIndex — the same reader FairnessRoundProofBuilder itself uses — rather than
 // ever accepting a caller-supplied hash as an alternative source of truth, and "reveal" calls straight through to
 // FairnessRoundProofBuilding.build (the one place a FairnessRoundProof is built, already validating the given
 // commitment and cross-checking the revealed serverSeed against it).
 export class FairnessCommand implements CliCommandHandling {
     private readonly verifier: FairnessRoundProofVerifying;
     private readonly loadJson: (filePath: string) => unknown;
-    private readonly reader: OutcomeLibraryBundleReading;
+    private readonly reader: OutcomeLibraryFolderReading;
     private readonly proofBuilder: FairnessRoundProofBuilding;
     private readonly computeServerSeedCommitment: (input: FairnessServerSeedCommitmentInput) => FairnessServerSeedCommitment;
     private readonly computeCommitment: (input: FairnessCommitmentInput) => FairnessCommitment;
@@ -87,7 +87,7 @@ export class FairnessCommand implements CliCommandHandling {
     constructor(
         verifier: FairnessRoundProofVerifying = new FairnessRoundProofVerifier(),
         loadJson: (filePath: string) => unknown = (filePath) => JSON.parse(fs.readFileSync(filePath, "utf-8")),
-        reader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
+        reader: OutcomeLibraryFolderReading = new OutcomeLibraryFolderReader(),
         proofBuilder: FairnessRoundProofBuilding = new FairnessRoundProofBuilder(),
         computeServerSeedCommitment: (input: FairnessServerSeedCommitmentInput) => FairnessServerSeedCommitment = computeFairnessServerSeedCommitment,
         computeCommitment: (input: FairnessCommitmentInput) => FairnessCommitment = computeFairnessCommitment,
@@ -278,7 +278,7 @@ export class FairnessCommand implements CliCommandHandling {
                         serverSeedCommitmentPath,
                         clientSeed: options.clientSeed,
                         nonce: options.nonce,
-                        sourceBundleDir: options.source,
+                        sourceLibraryDir: options.source,
                         modeName: options.mode,
                         out: options.out,
                         overwrite: options.overwrite ?? false,
@@ -311,7 +311,7 @@ export class FairnessCommand implements CliCommandHandling {
                 exitCodeRef.value = await this.runReveal({
                     commitmentPath,
                     serverSeedPath: options.serverSeed,
-                    sourceBundleDir: options.source,
+                    sourceLibraryDir: options.source,
                     out: options.out,
                     overwrite: options.overwrite ?? false,
                 });
@@ -337,7 +337,7 @@ export class FairnessCommand implements CliCommandHandling {
                 if (options.source === undefined) {
                     throw new Error(`--source <folder> is required. ${VERIFY_USAGE}`);
                 }
-                exitCodeRef.value = await this.runVerify({proofPath, commitmentPath: options.commitment, sourceBundleDir: options.source});
+                exitCodeRef.value = await this.runVerify({proofPath, commitmentPath: options.commitment, sourceLibraryDir: options.source});
             });
 
         return parent;
@@ -357,12 +357,12 @@ export class FairnessCommand implements CliCommandHandling {
         let libraryId: string;
         let libraryHash: string;
         try {
-            const index = await this.reader.readModeIndex(options.sourceBundleDir, options.modeName);
+            const index = await this.reader.readModeIndex(options.sourceLibraryDir, options.modeName);
             libraryId = index.libraryId;
             libraryHash = index.libraryHash;
         } catch (error) {
             throw new Error(
-                `could not read mode "${options.modeName}"'s own index in "${options.sourceBundleDir}": ${
+                `could not read mode "${options.modeName}"'s own index in "${options.sourceLibraryDir}": ${
                     error instanceof Error ? error.message : String(error)
                 }.`,
             );
@@ -384,7 +384,7 @@ export class FairnessCommand implements CliCommandHandling {
         const commitment = this.loadJson(options.commitmentPath) as FairnessCommitment;
         const serverSeed = this.readServerSeedFile(options.serverSeedPath);
 
-        const proof = await this.proofBuilder.build(commitment, serverSeed, options.sourceBundleDir);
+        const proof = await this.proofBuilder.build(commitment, serverSeed, options.sourceLibraryDir);
 
         return this.emit(proof, "Round proof", options.out, options.overwrite);
     }
@@ -392,7 +392,7 @@ export class FairnessCommand implements CliCommandHandling {
     private async runVerify(options: VerifyOptions): Promise<number> {
         const proofCandidate = this.loadJson(options.proofPath);
         const commitmentCandidate = this.loadJson(options.commitmentPath);
-        const issues = await this.verifier.verify(proofCandidate, {commitment: commitmentCandidate, sourceBundleDir: options.sourceBundleDir});
+        const issues = await this.verifier.verify(proofCandidate, {commitment: commitmentCandidate, sourceLibraryDir: options.sourceLibraryDir});
         const errors = issues.filter((issue) => issue.severity === "error");
         const rest = issues.filter((issue) => issue.severity !== "error");
 

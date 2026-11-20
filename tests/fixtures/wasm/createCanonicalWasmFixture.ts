@@ -1,7 +1,7 @@
-import {compileCanonicalWasmArtifact} from "../../../src/wasm/DeclarativeWasmModel.js";
+import {compileCanonicalWasmBuild} from "../../../src/wasm/DeclarativeWasmModel.js";
 import crypto from "crypto";
 import type {PokieWasmComponentManifest} from "../../../src/project/wasm/PokieWasmComponentManifest.js";
-import {compileSharedSlotArtifact, stableSlotMathJson} from "../../../src/wasm/math/SharedSlotMath.js";
+import {compileSharedSlotBuild, stableSlotMathJson} from "../../../src/wasm/math/SharedSlotMath.js";
 import {resolveSharedSlotMathModel} from "../../../src/generated/resolveSharedSlotMathModel.js";
 import type {GameBlueprint} from "../../../src/generated/GameBlueprint.js";
 
@@ -37,7 +37,7 @@ export function createCanonicalWasmFixture(options: CanonicalWasmFixtureOptions 
     const configurationHash = sha256(new TextEncoder().encode(stableSlotMathJson(model)));
     const descriptor = {schemaVersion: "1.0.0", component, serialization, host, capabilities,
         artifact: {format: "pokie.wasm.v1" as const, abiVersion: "3.0.0", adapter: "@fromstan/pokie/wasm" as const, configurationHash}};
-    const bytes = options.blueprint ? compileCanonicalWasmArtifact(model, descriptor) : compileSharedSlotArtifact(model, descriptor);
+    const bytes = options.blueprint ? compileCanonicalWasmBuild(model, descriptor) : compileSharedSlotBuild(model, descriptor);
     if (options.trapping) {
         // A valid but incompatible executable, with an internally recomputed outer hash.
         const code = binarySections(bytes).find(section => section.id === 10)!;

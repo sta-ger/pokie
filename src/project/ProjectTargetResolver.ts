@@ -16,9 +16,9 @@ import {TsPackageProjectTargetAdapter} from "./TsPackageProjectTargetAdapter.js"
 import {WasmProjectTargetAdapter, wasmComponentManifestSidecarPath} from "./WasmProjectTargetAdapter.js";
 import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js";
 import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
-import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
+import {OutcomeLibraryFolderReader} from "../weightedoutcome/folder/OutcomeLibraryFolderReader.js";
 import {loadPokieGame, releasePokieGame} from "../gamepackage/loadPokieGame.js";
-import {computeArtifactInputBindingHash, computeProjectInputBindingHash, type ArtifactConfigurationProvenance} from "./ArtifactConversionPlanner.js";
+import {computeBuildInputHash, computeProjectInputBindingHash, type OutputConfigurationOrigin} from "./FormatConversionPlanner.js";
 import {recognizeParWorkbookFile} from "./internal/looksLikeParWorkbookFile.js";
 import {describeWasmSidecarFailure} from "./WasmProductContract.js";
 
@@ -181,7 +181,7 @@ export class ProjectTargetResolver implements ProjectResolving {
     // Recognition proves an on-disk shape; this second, read-only extraction records the immutable facts
     // a conversion planner needs for reuse decisions.  A malformed optional provenance payload never makes a
     // project unrecognizable, but it also never becomes evidence that a generated output is reusable.
-    private async configurationProvenance(type: PokieProject["type"], rootPath: string): Promise<ArtifactConfigurationProvenance | undefined> {
+    private async configurationProvenance(type: PokieProject["type"], rootPath: string): Promise<OutputConfigurationOrigin | undefined> {
         try {
             if (type === "blueprint") {
                 const blueprint = loadGameBlueprint(rootPath) as {manifest: {id: string; version: string}};
@@ -194,10 +194,10 @@ export class ProjectTargetResolver implements ProjectResolving {
                 };
             }
             if (type === "outcomeLibrary") {
-                const manifest = await new OutcomeLibraryBundleReader().readManifest(rootPath);
+                const manifest = await new OutcomeLibraryFolderReader().readManifest(rootPath);
                 return {
                     configurationHash: manifest.configHash,
-                    inputBindingHash: computeArtifactInputBindingHash([rootPath]),
+                    inputBindingHash: computeBuildInputHash([rootPath]),
                     pokieVersion: manifest.artifactPokieVersion,
                     gameId: manifest.game.id,
                     gameVersion: manifest.game.version,
@@ -222,7 +222,7 @@ export class ProjectTargetResolver implements ProjectResolving {
             }
             if (type === "stakeAdapter") return {inputBindingHash: computeProjectInputBindingHash({type, rootPath})};
             if (type === "parWorkbook") {
-                const inputBindingHash = computeArtifactInputBindingHash([rootPath]);
+                const inputBindingHash = computeBuildInputHash([rootPath]);
                 return {configurationHash: inputBindingHash, inputBindingHash};
             }
         } catch {

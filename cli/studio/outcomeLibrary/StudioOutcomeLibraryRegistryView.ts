@@ -8,9 +8,9 @@ export type StudioOutcomeLibraryRegistryModeEntry = {
     // to, persisted across Studio server restarts (see StudioOutcomeLibraryGenerateService's own doc
     // comment on discoverable bundle dirs). Two different modes can legitimately point at two different
     // directories.
-    readonly bundleDir: string;
+    readonly libraryDir: string;
     // This mode's own compatibility against the currently loaded build -- evaluated against *its own*
-    // source bundle's manifest, since modes discovered from different bundleDirs can each carry a
+    // source bundle's manifest, since modes discovered from different libraryDirs can each carry a
     // different game id/version/pokie release. Same meaning as the top-level buildStatus below.
     readonly buildStatus: "compatible" | "stale" | "wrong";
     readonly outcomeCount: number;
@@ -18,7 +18,7 @@ export type StudioOutcomeLibraryRegistryModeEntry = {
     readonly rtp: number;
     readonly hash: string;
     // Only present for a mode this same package's own generate() step produced (see
-    // OutcomeLibraryBundleModeInput.generator's own doc comment) -- absent for a mode a caller built from
+    // OutcomeLibraryFolderModeInput.generator's own doc comment) -- absent for a mode a caller built from
     // some other outcome source (a hand-authored WeightedOutcomeLibrary JSON file, a streamed JSONL file).
     readonly strategy?: OutcomeLibraryGenerationStrategy;
     readonly generatedAt?: string;
@@ -36,10 +36,10 @@ export type StudioOutcomeLibraryRegistryModeEntry = {
 export type StudioOutcomeLibraryRegistryView =
     // No bundle exists at the conventional location at all -- nothing has ever been generated for this
     // build. The Registry's own "Build" action (not "Rebuild") targets this case.
-    | {readonly status: "ok"; readonly bundleDir: string; readonly buildStatus: "missing"}
+    | {readonly status: "ok"; readonly libraryDir: string; readonly buildStatus: "missing"}
     | {
           readonly status: "ok";
-          readonly bundleDir: string;
+          readonly libraryDir: string;
           // "compatible": the bundle's own game id/version and the pokie release that computed its
           // outcomes both still match the currently loaded build exactly.
           // "stale": same game id, but a different game version or a different pokie release computed the

@@ -1,9 +1,9 @@
-import {buildSourceOutcomeLibraryBundle} from "../../certification/CertificationPackTestFixtures.js";
+import {buildSourceOutcomeLibraryFolder} from "../../certification/CertificationPackTestFixtures.js";
 import {aggregate, featureAnalyticsReport} from "../../v2/fixtures/FeatureAnalyticsFixture.js";
 import {withRareStakeDirectory, expectRareMetrics} from "../../stakeengine/standalone/StakeProbabilityTestFixtures.js";
 import {
     CertificationPackBuilder,
-    OutcomeLibraryBundleWriter,
+    OutcomeLibraryFolderWriter,
     OutcomeSourceProjectAnalyzing,
     OutcomeSourceProjectReport,
     loadPokieGame,
@@ -25,7 +25,7 @@ import zlib from "zlib";
 import {ReportCommand} from "../../../cli/commands/ReportCommand.js";
 import {SimCommand} from "../../../cli/commands/SimCommand.js";
 import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../../v2/fixtures/PackageExtractionFixture.js";
-import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
+import {buildOutcomeLibraryFolderModeInput} from "../../weightedoutcome/folder/OutcomeLibraryFolderTestFixtures.js";
 
 const report: SimulationReport = {
     game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
@@ -140,7 +140,7 @@ describe("ReportCommand", () => {
             const source = path.join(root, "source"),
                 out = path.join(root, "pack"),
                 output = path.join(root, "assessment.pdf");
-            await buildSourceOutcomeLibraryBundle(source);
+            await buildSourceOutcomeLibraryFolder(source);
             const built = await new CertificationPackBuilder("1.3.0").buildFromBundle(source, [{modeName: "base", seed: "s", sampleCount: 2}], out);
             expect(built.manifest).toBeDefined();
             const command = new ReportCommand();
@@ -630,7 +630,7 @@ describe("ReportCommand outcome-source project routing", () => {
         const report: OutcomeSourceProjectReport = {
             rootPath: "/libraries/broken",
             descriptor: {kind: "native", streaming: true, limitations: ["never re-derives the game model that produced these outcomes"]},
-            issues: [{code: "outcome-library-bundle-manifest-invalid-json", severity: "error", message: "manifest.json is not valid JSON."}],
+            issues: [{code: "outcome-library-folder-manifest-invalid-json", severity: "error", message: "manifest.json is not valid JSON."}],
             modes: [],
         };
         const resolveProject = stubProjectResolver(outcomeLibraryProject);
@@ -642,7 +642,7 @@ describe("ReportCommand outcome-source project routing", () => {
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).toContain("## Warnings");
-        expect(printed).toContain("outcome-library-bundle-manifest-invalid-json");
+        expect(printed).toContain("outcome-library-folder-manifest-invalid-json");
         expect(printed).not.toContain("Exact analysis");
 
         logSpy.mockRestore();
@@ -696,23 +696,23 @@ describe("ReportCommand outcome-source project routing", () => {
 // bundle (written by "pokie build <config.json> --target outcomeLibrary", not mocked) resolves and renders it through the same
 // OutcomeSourceProjectAnalyzer/canonical-reader path the unit tests above stub out.
 describe("ReportCommand (integration, real outcome-library bundle)", () => {
-    let bundleDir: string;
+    let libraryDir: string;
 
     beforeEach(async () => {
-        bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-report-outcome-source-test-"));
-        fs.rmdirSync(bundleDir);
-        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
+        libraryDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-report-outcome-source-test-"));
+        fs.rmdirSync(libraryDir);
+        await new OutcomeLibraryFolderWriter("1.3.0").writeToDirectory([buildOutcomeLibraryFolderModeInput("base", "base-lib")], libraryDir);
     });
 
     afterEach(() => {
-        fs.rmSync(bundleDir, {recursive: true, force: true});
+        fs.rmSync(libraryDir, {recursive: true, force: true});
     });
 
     it("renders a real bundle's exact analysis instead of an error, without ever being told to run \"pokie sim\"", async () => {
         const command = new ReportCommand(undefined, undefined, undefined, new ProjectTargetResolver());
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run([bundleDir]);
+        await command.run([libraryDir]);
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).toContain("# Outcome Source Report");
@@ -723,11 +723,11 @@ describe("ReportCommand (integration, real outcome-library bundle)", () => {
     });
 
     it("writes public outcome-library limitations without implementation error class names", async () => {
-        const reportFile = path.join(bundleDir, "outcome-report.json");
+        const reportFile = path.join(libraryDir, "outcome-report.json");
         const command = new ReportCommand(undefined, undefined, undefined, new ProjectTargetResolver());
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run([bundleDir, "--format", "json", "--out", reportFile]);
+        await command.run([libraryDir, "--format", "json", "--out", reportFile]);
 
         const report = JSON.parse(fs.readFileSync(reportFile, "utf-8")) as OutcomeSourceProjectReport;
         expect(report.descriptor.limitations.join("\n")).toContain("reports that the source content changed");

@@ -8,7 +8,7 @@ import type {WeightedOutcomeLibraryAnalysis} from "../weightedoutcome/WeightedOu
 export const CERTIFICATION_PACK_MANIFEST_SCHEMA_VERSION = 2;
 
 // One mode's certification evidence: the same libraryHash/outcomeCount/totalWeight/analysis an
-// OutcomeLibraryBundleManifestModeEntry already carries — read straight off the source bundle's own manifest.json
+// OutcomeLibraryFolderManifestModeEntry already carries — read straight off the source bundle's own manifest.json
 // and embedded verbatim, never recomputed — plus this mode's own sampled-draws provenance.
 export type CertificationPackModeEntry = {
     readonly modeName: string;
@@ -22,7 +22,7 @@ export type CertificationPackModeEntry = {
     readonly sampleSeed: string;
     readonly sampleCount: number;
     readonly samplesFile: string; // "samples_<modeName>.jsonl"
-    readonly samplesHash: string; // sha256:<hex> of the exact bytes of samplesFile, the same "hash the exact bytes" convention as OutcomeLibraryBundleIndexEntry.recordHash
+    readonly samplesHash: string; // sha256:<hex> of the exact bytes of samplesFile, the same "hash the exact bytes" convention as OutcomeLibraryFolderIndexEntry.recordHash
 };
 
 // The source outcome-library bundle's own deep validation ({deep: true}), run once at build time and embedded
@@ -35,10 +35,10 @@ export type CertificationPackDeepValidation = {
 };
 
 // POKIE's own provenance for a "pokie certification build" run — same "who/what version/when + files
-// inventory" convention as OutcomeLibraryBundleManifest/StakeEngineManifest, deliberately built *on top of* an
+// inventory" convention as OutcomeLibraryFolderManifest/StakeEngineManifest, deliberately built *on top of* an
 // existing Outcome Library Bundle rather than introducing any new outcome-selection or metrics-calculation
 // logic: every hash/metric here is either read verbatim off the source bundle's own manifest.json, or produced
-// by drawing samples through OutcomeLibraryBundleReading.drawOutcome (the same weighted-draw algorithm the
+// by drawing samples through OutcomeLibraryFolderReading.drawOutcome (the same weighted-draw algorithm the
 // pre-generated runtime itself uses).
 export type CertificationPackManifest = {
     readonly pack: CertificationPack;
@@ -53,18 +53,18 @@ export type CertificationPackManifest = {
     // Where the source Outcome Library Bundle was read from at *build* time — purely informational (a
     // directory can move, and this field is only ever as trustworthy as whoever last wrote this manifest.json).
     // CertificationPackVerifying.verify NEVER reads this field and never falls back to it: a caller
-    // must always give an explicit CertificationPackVerifyOptions.sourceBundleDir (or "--source <folder>"
+    // must always give an explicit CertificationPackVerifyOptions.sourceLibraryDir (or "--source <folder>"
     // on the CLI), or verification reports a diagnostic and reads nothing outside certDir.
-    readonly sourceBundleDir: string;
+    readonly sourceLibraryDir: string;
     // sha256 of the source bundle's own manifest.json, canonicalized the same way computeWeightedOutcomeLibraryHash
     // hashes a library — lets a verifier confirm the exact source-bundle-manifest state this evidence was built
     // against, independent of any single mode's own libraryHash.
-    readonly sourceBundleManifestHash: string;
+    readonly sourceLibraryManifestHash: string;
     readonly modes: readonly CertificationPackModeEntry[];
     readonly deepValidation: CertificationPackDeepValidation;
     readonly files: readonly string[];
     // computeCertificationPackContentHash(this manifest) — a deterministic identity over every field above
-    // except "generatedAt"/"sourceBundleDir" (and "deepValidation.ranAt", a timestamp for the same reason):
+    // except "generatedAt"/"sourceLibraryDir" (and "deepValidation.ranAt", a timestamp for the same reason):
     // the same source-bundle snapshot sampled with the same modes/seeds/sampleCounts always produces the same
     // evidenceContentHash, regardless of when or where it was (re)built. Recomputed and compared by
     // CertificationPackValidator as a single, unified self-consistency check covering every other

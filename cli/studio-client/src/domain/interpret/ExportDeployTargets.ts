@@ -49,11 +49,11 @@ export type ExportDeployTargetCard = {
     readonly supported: boolean;
     readonly locality: "local" | "remote";
     readonly compatibility: string;
-    // The registered ExternalDeploymentTarget this card describes -- present only for "remoteDeployment"
+    // The registered ExternalExportTarget this card describes -- present only for "remoteDeployment"
     // cards backed by a real registered target (never the placeholder), so ExportDeployTab can run
     // deployment.run(publish, card.deploymentTarget) directly against it.
     readonly deploymentTarget?: StudioDeploymentTargetSummary;
-    // The ArtifactBuilderRegistry target this card describes -- present only for "buildArtifact" cards, so
+    // The BuildOutputBuilderRegistry target this card describes -- present only for "buildArtifact" cards, so
     // ExportDeployTab can run buildArtifact(fetchImpl, card.artifactTarget) directly against it.
     readonly artifactTarget?: StudioArtifactTargetType;
     /** Exact server-selected conversion; browser presentation never infers an edge. */
@@ -62,9 +62,9 @@ export type ExportDeployTargetCard = {
     readonly transaction?: typeof OUTCOME_LIBRARY_TRANSACTION;
 };
 
-// Short, presentation-only prose per ArtifactBuilderRegistry target -- mirrors the exact same
+// Short, presentation-only prose per BuildOutputBuilderRegistry target -- mirrors the exact same
 // tsPackage/outcomeLibrary/stakeAdapter/parWorkbook vocabulary and semantics
-// ArtifactBuilderRegistry.describe() itself already reports (see ArtifactBuilderRegistry.ts's own
+// BuildOutputBuilderRegistry.describe() itself already reports (see BuildOutputBuilderRegistry.ts's own
 // UNSUPPORTED_NOTES), restated here only as a label/one-line purpose for this card -- never a second,
 // independently-decided description of what building a target does or doesn't do.
 const ARTIFACT_TARGET_CARD_INFO: Readonly<
@@ -116,7 +116,7 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
     },
 };
 
-// Builds one card per ArtifactBuilderRegistry target. `supported` is resolved server-side by
+// Builds one card per BuildOutputBuilderRegistry target. `supported` is resolved server-side by
 // StudioArtifactBuildService.listTargets (the same registry.supportsConversionFrom() check "pokie build"
 // runs). Unsupported cards remain visible and explain why this project cannot build them, rather than
 // making an unavailable output look as though Studio forgot to offer it.
@@ -143,7 +143,7 @@ export function describeArtifactBuildTargetCards(targets: readonly StudioArtifac
                 kind: "buildArtifact",
                 id: `artifact-${entry.target}`,
                 label: info.label,
-                adapter: 'ArtifactBuilderRegistry ("pokie build")',
+                adapter: 'BuildOutputBuilderRegistry ("pokie build")',
                 version: "--",
                 purpose: info.purpose,
                 destination: info.destination,
@@ -214,7 +214,7 @@ function describeExternalAdapterTargetCard(target: StudioDeploymentTargetSummary
         supported: true,
         locality: "remote",
         compatibility:
-            "Checked by ExternalDeploymentCompatibilityValidator before any output is generated -- an incompatible mode is rejected up front, never partially deployed.",
+            "Checked by ExternalExportCompatibilityValidator before any output is generated -- an incompatible mode is rejected up front, never partially deployed.",
         deploymentTarget: target,
     };
 }
@@ -239,7 +239,7 @@ const REMOTE_DEPLOYMENT_PLACEHOLDER_CARD: ExportDeployTargetCard = {
     unavailableReasons: ["No configured remote destination is available yet. Generate a compatible outcome library in Build/Export so it is ready to check when a destination is registered."],
     supported: false,
     locality: "remote",
-    compatibility: "Once registered, goes through the same ExternalDeploymentCompatibilityValidator interface every other target already does.",
+    compatibility: "Once registered, goes through the same ExternalExportCompatibilityValidator interface every other target already does.",
 };
 
 // Builds the shell's own card list from live server data.  These cards describe

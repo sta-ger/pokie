@@ -1,12 +1,12 @@
 import {weightedBlueprint} from "../../v2/fixtures/WeightedWholeSequenceGame.js";
-import {OutcomeLibraryBundleModeIndex, OutcomeLibraryBundleWriter, PokieGamePackageValidating, PokieGamePackageValidationReport, PokieGamePackageValidator, resolvePokieGameDependencyRoots} from "@fromstan/pokie";
+import {OutcomeLibraryFolderModeIndex, OutcomeLibraryFolderWriter, PokieGamePackageValidating, PokieGamePackageValidationReport, PokieGamePackageValidator, resolvePokieGameDependencyRoots} from "@fromstan/pokie";
 import {createPackageExtractionTestEnvironment} from "../../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {ValidateCommand} from "../../../cli/commands/ValidateCommand.js";
 import {createStarterGameBlueprint} from "../../../cli/build/createStarterGameBlueprint.js";
-import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
+import {buildOutcomeLibraryFolderModeInput} from "../../weightedoutcome/folder/OutcomeLibraryFolderTestFixtures.js";
 
 let restoreTemporaryDirectory: () => void;
 beforeAll(() => {
@@ -45,13 +45,13 @@ const invalidReport: PokieGamePackageValidationReport = {
 
 const WASM_BINARY = Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
 
-async function writeOutcomeLibraryBundle(bundleDir: string): Promise<void> {
-    await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "validate-test-library")], bundleDir);
+async function writeOutcomeLibraryFolder(libraryDir: string): Promise<void> {
+    await new OutcomeLibraryFolderWriter("1.3.0").writeToDirectory([buildOutcomeLibraryFolderModeInput("base", "validate-test-library")], libraryDir);
 }
 
-function corruptOutcomeContentsWithoutChangingByteLayout(bundleDir: string): void {
-    const index = JSON.parse(fs.readFileSync(path.join(bundleDir, "index_base.json"), "utf-8")) as OutcomeLibraryBundleModeIndex;
-    const outcomesPath = path.join(bundleDir, "outcomes_base.jsonl");
+function corruptOutcomeContentsWithoutChangingByteLayout(libraryDir: string): void {
+    const index = JSON.parse(fs.readFileSync(path.join(libraryDir, "index_base.json"), "utf-8")) as OutcomeLibraryFolderModeIndex;
+    const outcomesPath = path.join(libraryDir, "outcomes_base.jsonl");
     const bytes = fs.readFileSync(outcomesPath);
     for (const entry of index.entries) {
         bytes.fill("x".charCodeAt(0), entry.byteOffset, entry.byteOffset + entry.byteLength);
@@ -273,11 +273,11 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
     });
 
     it("validates malformed outcome-library bundles deeply and reports the requested deep check in JSON", async () => {
-        const bundleDir = path.join(outDir, "outcomes");
-        fs.mkdirSync(bundleDir);
-        fs.writeFileSync(path.join(bundleDir, "manifest.json"), "{ bad JSON");
+        const libraryDir = path.join(outDir, "outcomes");
+        fs.mkdirSync(libraryDir);
+        fs.writeFileSync(path.join(libraryDir, "manifest.json"), "{ bad JSON");
 
-        const exitCode = await new ValidateCommand().run([bundleDir, "--deep", "--format", "json"]);
+        const exitCode = await new ValidateCommand().run([libraryDir, "--deep", "--format", "json"]);
 
         expect(exitCode).toBe(1);
         const json = (console.log as jest.Mock).mock.calls.map((call) => call[0]).find((line) => line.startsWith("{"));
@@ -291,7 +291,7 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
         expect(report).toMatchObject({schemaVersion: 1, deep: true, project: {kind: "outcome-library"}});
         expect(report.issues).toHaveLength(1);
         expect(report.errors[0]).toMatchObject({
-            code: "outcome-library-bundle-manifest-invalid-json",
+            code: "outcome-library-folder-manifest-invalid-json",
             path: "manifest.json",
             message: 'The outcome-library artifact at "manifest.json" is not valid JSON.',
             suggestion: "Repair manifest.json to match the outcome-library bundle format, then run validate again.",
@@ -299,11 +299,11 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
     });
 
     it("sanitizes malformed outcome index diagnostics at the CLI boundary", async () => {
-        const bundleDir = path.join(outDir, "malformed-index");
-        await writeOutcomeLibraryBundle(bundleDir);
-        fs.writeFileSync(path.join(bundleDir, "index_base.json"), "{ not JSON");
+        const libraryDir = path.join(outDir, "malformed-index");
+        await writeOutcomeLibraryFolder(libraryDir);
+        fs.writeFileSync(path.join(libraryDir, "index_base.json"), "{ not JSON");
 
-        const exitCode = await new ValidateCommand().run([bundleDir, "--format", "json"]);
+        const exitCode = await new ValidateCommand().run([libraryDir, "--format", "json"]);
 
         expect(exitCode).toBe(1);
         const report = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {
@@ -315,7 +315,7 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
         expect(report.errors).toEqual(
             expect.arrayContaining([
                 {
-                    code: "outcome-library-bundle-mode-index-invalid-json",
+                    code: "outcome-library-folder-mode-index-invalid-json",
                     severity: "error",
                     path: "index_base.json",
                     message: 'The outcome-library artifact at "index_base.json" is not valid JSON.',
@@ -327,32 +327,32 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
     });
 
     it("reports a valid outcome library consistently in shallow and deep CLI validation", async () => {
-        const bundleDir = path.join(outDir, "valid-outcomes");
-        await writeOutcomeLibraryBundle(bundleDir);
+        const libraryDir = path.join(outDir, "valid-outcomes");
+        await writeOutcomeLibraryFolder(libraryDir);
         const command = new ValidateCommand();
 
-        expect(await command.run([bundleDir, "--format", "json"])).toBe(2);
+        expect(await command.run([libraryDir, "--format", "json"])).toBe(2);
         const shallow = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {schemaVersion: number; deep: boolean; valid: boolean; project: {kind: string}; errors: unknown[]; issues: unknown[]};
         expect(shallow).toMatchObject({schemaVersion: 1, deep: false, valid: true, project: {kind: "outcome-library"}, errors: [], issues: []});
 
         (console.log as jest.Mock).mockClear();
-        expect(await command.run([bundleDir, "--deep", "--format", "json"])).toBe(2);
+        expect(await command.run([libraryDir, "--deep", "--format", "json"])).toBe(2);
         const deep = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {schemaVersion: number; deep: boolean; valid: boolean; project: {kind: string}; errors: unknown[]; issues: unknown[]};
         expect(deep).toMatchObject({schemaVersion: 1, deep: true, valid: true, project: {kind: "outcome-library"}, errors: [], issues: []});
     });
 
     it("keeps byte-layout-only outcome corruption valid in shallow mode and safely reports it in deep mode", async () => {
-        const bundleDir = path.join(outDir, "deep-corruption");
-        await writeOutcomeLibraryBundle(bundleDir);
-        corruptOutcomeContentsWithoutChangingByteLayout(bundleDir);
+        const libraryDir = path.join(outDir, "deep-corruption");
+        await writeOutcomeLibraryFolder(libraryDir);
+        corruptOutcomeContentsWithoutChangingByteLayout(libraryDir);
         const command = new ValidateCommand();
 
-        expect(await command.run([bundleDir, "--format", "json"])).toBe(2);
+        expect(await command.run([libraryDir, "--format", "json"])).toBe(2);
         const shallow = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {schemaVersion: number; deep: boolean; valid: boolean; errors: unknown[]};
         expect(shallow).toMatchObject({schemaVersion: 1, deep: false, valid: true, errors: []});
 
         (console.log as jest.Mock).mockClear();
-        expect(await command.run([bundleDir, "--deep", "--format", "json"])).toBe(1);
+        expect(await command.run([libraryDir, "--deep", "--format", "json"])).toBe(1);
         const deep = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {
             schemaVersion: number;
             deep: boolean;
@@ -363,7 +363,7 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
         expect(deep.errors).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({
-                    code: "outcome-library-bundle-outcomes-line-invalid-json",
+                    code: "outcome-library-folder-outcomes-line-invalid-json",
                     path: "outcomes_base.jsonl",
                     suggestion: "Repair outcomes_base.jsonl to match the outcome-library bundle format, then run validate again.",
                 }),
@@ -466,10 +466,10 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
     });
 
     it("routes a directory without package.json through outcome-library validation", async () => {
-        const bundleDir = path.join(outDir, "missing-manifest");
-        fs.mkdirSync(bundleDir);
+        const libraryDir = path.join(outDir, "missing-manifest");
+        fs.mkdirSync(libraryDir);
 
-        expect(await new ValidateCommand().run([bundleDir, "--format", "json"])).toBe(1);
+        expect(await new ValidateCommand().run([libraryDir, "--format", "json"])).toBe(1);
         const report = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {
             schemaVersion: number;
             deep: boolean;
@@ -482,11 +482,11 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
             schemaVersion: 1,
             deep: false,
             valid: false,
-            project: {kind: "outcome-library", path: bundleDir},
+            project: {kind: "outcome-library", path: libraryDir},
             issues: expect.any(Array),
         });
         expect(report.errors).toContainEqual({
-            code: "outcome-library-bundle-manifest-missing",
+            code: "outcome-library-folder-manifest-missing",
             severity: "error",
             path: "manifest.json",
             message: 'The outcome-library artifact at "manifest.json" is missing.',

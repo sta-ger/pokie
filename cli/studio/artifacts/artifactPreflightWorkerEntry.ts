@@ -1,11 +1,11 @@
 import {parentPort, workerData} from "worker_threads";
 import {StudioArtifactBuildService} from "./StudioArtifactBuildService.js";
-import {PackageBlueprintExtraction, type ArtifactTargetType} from "@fromstan/pokie";
+import {PackageBlueprintExtraction, type OutputFormat} from "@fromstan/pokie";
 
 // An asynchronous descriptor may have no active I/O handle. Keep ownership until the
 // parent receives its terminal message or explicitly terminates this worker.
 parentPort!.ref();
-const request = workerData as {pokieVersion: string; runtimePackageRoot: string; projectRoot: string; target?: ArtifactTargetType | "packageModel"; outDir?: string};
+const request = workerData as {pokieVersion: string; runtimePackageRoot: string; projectRoot: string; target?: OutputFormat | "packageModel"; outDir?: string};
 const service = new StudioArtifactBuildService(request.pokieVersion, undefined, undefined, undefined, undefined, request.runtimePackageRoot);
 let operation: Promise<unknown>;
 if (request.target === "packageModel") operation = new PackageBlueprintExtraction().extract(request.projectRoot);

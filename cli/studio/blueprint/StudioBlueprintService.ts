@@ -1,16 +1,16 @@
 import {projectRevision} from "../../../src/optimization/internal/optimizationData.js";
 import {AdvancedModelSourceValidator} from "../../../src/validation/AdvancedModelSourceValidator.js";
 import {
-    ArtifactConversionPlanner,
-    ArtifactBuilderRegistry,
-    ArtifactBuildConflictError,
-    assertPreparedArtifactDestinationAvailable,
+    FormatConversionPlanner,
+    BuildOutputBuilderRegistry,
+    BuildConflictError,
+    assertPreparedOutputDestinationAvailable,
     BLUEPRINT_BUILD_CAPABILITY,
     buildGameBuildInfo,
     buildGameModelProjection,
     computeGameBlueprintHash,
     computeBlueprintHash,
-    computeArtifactInputBindingHash,
+    computeBuildInputHash,
     GameBlueprint,
     GameBlueprintValidating,
     GameBlueprintValidator,
@@ -211,8 +211,8 @@ export class StudioBlueprintService {
     // it copied until registration settles, so a failed registration removes
     // only this operation's artwork rather than a pre-existing assets folder.
     private readonly managedSaveArtifacts = new Map<string, {readonly artworkPaths: readonly string[]; readonly directoryCreated: boolean}>();
-    private readonly planner = new ArtifactConversionPlanner();
-    private readonly artifactRegistry: ArtifactBuilderRegistry;
+    private readonly planner = new FormatConversionPlanner();
+    private readonly artifactRegistry: BuildOutputBuilderRegistry;
 
     constructor(
         pokieVersion: string,
@@ -257,7 +257,7 @@ export class StudioBlueprintService {
         this.randomBlueprintGenerator = randomBlueprintGenerator;
         this.variantRandomBlueprintGenerator = variantRandomBlueprintGenerator;
         this.pathResolver = pathResolver;
-        this.artifactRegistry = new ArtifactBuilderRegistry(pokieVersion);
+        this.artifactRegistry = new BuildOutputBuilderRegistry(pokieVersion);
     }
 
     // Drives the Blueprint Editor's "Generate random" New-flow option via the exact same
@@ -772,11 +772,11 @@ export class StudioBlueprintService {
                 currentSource: () => this.blueprintSourceIdentity(blueprint, sourcePath),
                 currentDestination: () => resolved,
                 // Use the same source-alias and occupied-output boundary as
-                // ArtifactBuilderRegistry.  It intentionally runs inside the
+                // BuildOutputBuilderRegistry.  It intentionally runs inside the
                 // prepared operation, after source/destination rebinding and
                 // before the writer can allocate a workbook.
                 assertDestinationAvailable: () =>
-                    assertPreparedArtifactDestinationAvailable(source.canonicalLocation, resolved, "file"),
+                    assertPreparedOutputDestinationAvailable(source.canonicalLocation, resolved, "file"),
                 // The format writer validates its generated-reel details as
                 // it publishes, but the stable Blueprint validation belongs
                 // in the operation's read phase so destination policy is
@@ -817,7 +817,7 @@ export class StudioBlueprintService {
         } catch (error) {
             const message = terminalFailure ?? error;
             const rendered = message instanceof Error ? message.message : String(message);
-            return message instanceof ArtifactBuildConflictError
+            return message instanceof BuildConflictError
                 ? {status: "conflict", path: resolved, error: rendered}
                 : {status: "error", error: rendered};
         }
@@ -979,7 +979,7 @@ export class StudioBlueprintService {
             return {status: "error", error: error instanceof Error ? error.message : String(error)};
         }
         try {
-            assertPreparedArtifactDestinationAvailable(this.studioRoot, destination, "directory");
+            assertPreparedOutputDestinationAvailable(this.studioRoot, destination, "directory");
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             return {status: "error", error: (/source itself|inside source/).test(message)
@@ -1001,7 +1001,7 @@ export class StudioBlueprintService {
                 // prepared publication policy, including realpath-based
                 // source/self/descendant checks for symlink aliases.
                 assertDestinationAvailable: () =>
-                    assertPreparedArtifactDestinationAvailable(source.canonicalLocation, destination, "directory"),
+                    assertPreparedOutputDestinationAvailable(source.canonicalLocation, destination, "directory"),
                 // validate() above has established the immutable draft's
                 // structural read result.  Keep the actual generator in the
                 // publication phase so the prepared operation applies its
@@ -1124,7 +1124,7 @@ export class StudioBlueprintService {
     private preparedParImportPath(sourceWorkbookPath: string): string {
         // Do not use the workbook's basename as an identifier: two distinct
         // workbooks with the same name must never share trust state.
-        const binding = computeArtifactInputBindingHash([path.resolve(sourceWorkbookPath)]).replace(/^sha256:/, "");
+        const binding = computeBuildInputHash([path.resolve(sourceWorkbookPath)]).replace(/^sha256:/, "");
         return path.join(this.studioRoot, "prepared-par-imports", `${binding}.json`);
     }
 
@@ -1135,7 +1135,7 @@ export class StudioBlueprintService {
         writeJsonAtomically(recordPath, {
             schemaVersion: 1,
             sourceWorkbookPath: resolved,
-            sourceBindingHash: computeArtifactInputBindingHash([resolved]),
+            sourceBindingHash: computeBuildInputHash([resolved]),
             conversionEvidence: evidence,
         });
         this.preparedParImports.set(resolved, evidence);
@@ -1144,7 +1144,7 @@ export class StudioBlueprintService {
     private loadPreparedParImport(sourceWorkbookPath: string): StudioParSheetConversionEvidence | undefined {
         const resolved = path.resolve(sourceWorkbookPath);
         const cached = this.preparedParImports.get(resolved);
-        const binding = computeArtifactInputBindingHash([resolved]);
+        const binding = computeBuildInputHash([resolved]);
         if (cached !== undefined) {
             // The durable file below is still read on a restart, but keeping a
             // cache avoids parsing it for the normal Apply -> Save path.

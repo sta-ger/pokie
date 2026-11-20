@@ -2,21 +2,21 @@ import {Command} from "commander";
 import fs from "fs";
 import path from "path";
 import {
-    ArtifactBuilderRegistry,
-    ArtifactConversionPlanner,
-    computeArtifactInputBindingHash,
+    BuildOutputBuilderRegistry,
+    FormatConversionPlanner,
+    computeBuildInputHash,
     ExactEnumerationCheckpoint,
     ExactEnumerationRecoveryAuthority,
     issueExactEnumerationRecoveryAuthority,
     GenerateExactWeightedOutcomeLibraryResult,
     OutcomeLibraryGenerationRequest,
     ResolvedOutcomeLibraryGenerationRequest,
-    OutcomeLibraryBundleModeInput,
-    OutcomeLibraryBundleValidating,
-    OutcomeLibraryBundleValidator,
-    OutcomeLibraryBundleWriter,
-    OutcomeLibraryBundleWriting,
-    OutcomeLibraryBundleWriteValidator,
+    OutcomeLibraryFolderModeInput,
+    OutcomeLibraryFolderValidating,
+    OutcomeLibraryFolderValidator,
+    OutcomeLibraryFolderWriter,
+    OutcomeLibraryFolderWriting,
+    OutcomeLibraryFolderWriteValidator,
     OutcomeSpaceEstimate,
     PokieGame,
     ProjectTargetResolver,
@@ -46,9 +46,9 @@ import {streamJsonlOutcomes} from "./internal/streamJsonlOutcomes.js";
 const USAGE =
     "Usage: pokie outcomelibrary generate <packageRoot> [options]\n" +
     "   or: pokie outcomelibrary build <config.json> [--out <dir>]\n" +
-    "   or: pokie outcomelibrary validate <bundleDir> [--deep]";
+    "   or: pokie outcomelibrary validate <libraryDir> [--deep]";
 const BUILD_USAGE = "Usage: pokie outcomelibrary build <config.json> [--out <dir>]";
-const VALIDATE_USAGE = "Usage: pokie outcomelibrary validate <bundleDir> [--deep]";
+const VALIDATE_USAGE = "Usage: pokie outcomelibrary validate <libraryDir> [--deep]";
 const GENERATE_USAGE =
     "Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] [--stake <number>] " +
     "[--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
@@ -66,7 +66,7 @@ const CONFIG_HINT =
     'not wrapped in a library object) for a mode too large to hold in memory at once — {"modeName": "bonus", ' +
     '"outcomesPath": "./outcomes-bonus.jsonl", "libraryId": "bonus-lib"} ("libraryId" is required for this form, ' +
     'since there\'s no wrapping library object to read it from; "schemaVersion" is optional). Exactly one of ' +
-    '"libraryPath"/"outcomesPath" is required per mode — see docs/outcome-library-bundle.md for the format.';
+    '"libraryPath"/"outcomesPath" is required per mode — see docs/outcome-library-folder.md for the format.';
 
 // A raw reel-stop combination count/checkpoint sample size routinely exceeds Number.MAX_SAFE_INTEGER, so
 // these two Commander option parsers (--max-outcome-space-size/--sample-size) accept a decimal string and
@@ -151,8 +151,8 @@ type SerializedCheckpoint = {
 // generateExactWeightedOutcomeLibrary) -- "build"/"validate" only ever operate on an already-computed
 // WeightedOutcomeLibrary/bundle, never load or execute a PokieGame.
 export class OutcomeLibraryCommand implements CliCommandHandling {
-    private readonly writer: OutcomeLibraryBundleWriting;
-    private readonly validator: OutcomeLibraryBundleValidating;
+    private readonly writer: OutcomeLibraryFolderWriting;
+    private readonly validator: OutcomeLibraryFolderValidating;
     private readonly loadJson: (filePath: string) => unknown;
     private readonly streamOutcomes: (filePath: string) => AsyncGenerator<WeightedOutcomeInput>;
     private readonly pokieVersion: string;
@@ -166,12 +166,12 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     private readonly fileExists: (filePath: string) => boolean;
     private readonly removeFile: (filePath: string) => void;
     private readonly process: NodeJS.Process;
-    private readonly planner = new ArtifactConversionPlanner();
+    private readonly planner = new FormatConversionPlanner();
 
     constructor(
         pokieVersion: string,
-        writer: OutcomeLibraryBundleWriting = new OutcomeLibraryBundleWriter(pokieVersion),
-        validator: OutcomeLibraryBundleValidating = new OutcomeLibraryBundleValidator(),
+        writer: OutcomeLibraryFolderWriting = new OutcomeLibraryFolderWriter(pokieVersion),
+        validator: OutcomeLibraryFolderValidating = new OutcomeLibraryFolderValidator(),
         loadJson: (filePath: string) => unknown = (filePath) => JSON.parse(fs.readFileSync(filePath, "utf-8")),
         streamOutcomes: (filePath: string) => AsyncGenerator<WeightedOutcomeInput> = streamJsonlOutcomes,
         loadGame: (packageRoot: string) => Promise<PokieGame> = loadPokieGame,
@@ -206,7 +206,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         return (
             "Generate an outcome library from a built package's runtime, build an outcome-library folder from " +
             'JSON files, or validate one ("pokie outcomelibrary generate <packageRoot>" / ' +
-            '"pokie outcomelibrary build <config.json>" / "pokie outcomelibrary validate <bundleDir>").'
+            '"pokie outcomelibrary build <config.json>" / "pokie outcomelibrary validate <libraryDir>").'
         );
     }
 
@@ -230,7 +230,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     public async validateBuildSource(configPath: string): Promise<void> {
         const descriptor = this.loadDescriptor(configPath);
         const configDir = path.dirname(configPath);
-        const modes: OutcomeLibraryBundleModeInput[] = [];
+        const modes: OutcomeLibraryFolderModeInput[] = [];
         const provenances: BundleModeProvenance[] = [];
         const issues: ValidationIssue[] = [];
         const libraryValidator = new WeightedOutcomeLibraryValidator();
@@ -256,7 +256,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 provenances.push(this.provenanceOf(entry.modeName, library));
             }
         }
-        issues.push(...new OutcomeLibraryBundleWriteValidator().validate(modes));
+        issues.push(...new OutcomeLibraryFolderWriteValidator().validate(modes));
         issues.push(...this.validateCrossModeProvenance(provenances));
         const errors = issues.filter((issue) => issue.severity === "error");
         if (errors.length > 0) {
@@ -362,7 +362,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             const weight = typeof outcome === "object" && outcome !== null ? (outcome as {weight?: unknown}).weight : undefined;
             if (typeof weight !== "number" || !Number.isSafeInteger(weight) || weight <= 0) {
                 issues.push({
-                    code: "outcome-library-bundle-write-weight-invalid",
+                    code: "outcome-library-folder-write-weight-invalid",
                     severity: "error",
                     message: `mode "${modeName}": every outcome weight must be a positive safe integer.`,
                     details: {modeName},
@@ -373,7 +373,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         }
         if (issues.length === 0 && !Number.isSafeInteger(totalWeight)) {
             issues.push({
-                code: "outcome-library-bundle-write-total-weight-overflow",
+                code: "outcome-library-folder-write-total-weight-overflow",
                 severity: "error",
                 message: `mode "${modeName}": the total outcome weight must be a safe integer.`,
                 details: {modeName},
@@ -404,7 +404,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             current.configHash !== first.configHash ||
             current.pokieVersion !== first.pokieVersion
                 ? [{
-                    code: "outcome-library-bundle-cross-mode-provenance-mismatch",
+                    code: "outcome-library-folder-cross-mode-provenance-mismatch",
                     severity: "error" as const,
                     message: `mode "${current.modeName}" has different provenance (game id/version, configHash, or pokieVersion) than the bundle's other modes.`,
                     details: {modeName: current.modeName},
@@ -424,7 +424,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         parent
             .command("build")
             .description("Build an outcome-library folder from WeightedOutcomeLibrary JSON/JSONL files.")
-            .argument("<config.json>", "lists one outcome source per mode -- see docs/outcome-library-bundle.md")
+            .argument("<config.json>", "lists one outcome source per mode -- see docs/outcome-library-folder.md")
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
             .option("--out <dir>", "output directory (default: an \"outcomelibrary\" sibling of <config.json>)")
             .action(async (configPath: string, excess: string[], options: {out?: string}) => {
@@ -438,14 +438,14 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         parent
             .command("validate")
             .description("Validate an outcome-library persistence bundle.")
-            .argument("<bundleDir>", "an existing outcome-library bundle directory built by \"pokie outcomelibrary build\"")
+            .argument("<libraryDir>", "an existing outcome-library bundle directory built by \"pokie outcomelibrary build\"")
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
             .option("--deep", "also validate every outcome's own weight and round-record shape, not just the folder index")
-            .action(async (bundleDir: string, excess: string[], options: {deep?: boolean}) => {
+            .action(async (libraryDir: string, excess: string[], options: {deep?: boolean}) => {
                 if (excess.length > 0) {
                     throw new Error(`Unknown option "${excess[0]}". ${VALIDATE_USAGE}`);
                 }
-                exitCodeRef.value = await this.executeValidate(bundleDir, options.deep ?? false);
+                exitCodeRef.value = await this.executeValidate(libraryDir, options.deep ?? false);
             });
 
         parent
@@ -650,7 +650,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         // it can run before npm install. The package and its executable dependencies
         // remain bound; node_modules caches are not product inputs and are skipped by
         // the shared binding hash itself.
-        const sourceBindingHash = () => computeArtifactInputBindingHash(sourcePaths);
+        const sourceBindingHash = () => computeBuildInputHash(sourcePaths);
         const currentSource = () => ({
             kind: "tsPackage" as const,
             canonicalLocation: path.resolve(packageRoot),
@@ -1104,7 +1104,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     public prepareDescriptorBuildOperation(configPath: string, outDir: string, signal?: AbortSignal) {
         const currentSource = () => this.buildDescriptorSource(configPath);
         const assertDestinationAvailable = () => {
-            const destination = new ArtifactBuilderRegistry(this.pokieVersion).checkDestination("outcomeLibrary", outDir, configPath);
+            const destination = new BuildOutputBuilderRegistry(this.pokieVersion).checkDestination("outcomeLibrary", outDir, configPath);
             if (!destination.available) throw new Error(destination.message);
         };
         return {plan: this.planner.planIdentity(currentSource(), "outcomeLibrary", {destinationPath: outDir}), validate: () => this.validateBuildSource(configPath), execution: {
@@ -1112,7 +1112,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             read: () => {
                 const descriptor = this.loadDescriptor(configPath);
                 const configDir = path.dirname(configPath);
-                const modes: OutcomeLibraryBundleModeInput[] = descriptor.modes.map((entry) => entry.libraryPath !== undefined
+                const modes: OutcomeLibraryFolderModeInput[] = descriptor.modes.map((entry) => entry.libraryPath !== undefined
                     ? (() => {
                         const library = this.loadJson(path.resolve(configDir, entry.libraryPath!)) as WeightedOutcomeLibrary;
                         return {modeName: entry.modeName, libraryId: library.libraryId, schemaVersion: library.schemaVersion, outcomes: library.outcomes};
@@ -1138,7 +1138,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         }};
     }
 
-    private buildDescriptorSource(configPath: string): import("@fromstan/pokie").ArtifactIdentity {
+    private buildDescriptorSource(configPath: string): import("@fromstan/pokie").OutputIdentity {
         const canonicalLocation = path.resolve(configPath);
         const descriptor = this.loadDescriptor(canonicalLocation);
         const referencedInputs = descriptor.modes.map((entry) => path.resolve(
@@ -1149,7 +1149,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             canonicalLocation,
             recognitionProvenance: "verified CLI Outcome Library build descriptor",
             capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
-            configurationProvenance: {configurationHash: computeArtifactInputBindingHash([canonicalLocation, ...referencedInputs])},
+            configurationProvenance: {configurationHash: computeBuildInputHash([canonicalLocation, ...referencedInputs])},
         };
     }
 
@@ -1161,18 +1161,18 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         return outcomes;
     }
 
-    private async executeValidate(bundleDir: string, deep: boolean): Promise<number> {
-        const issues = await this.validator.validate(bundleDir, {deep});
+    private async executeValidate(libraryDir: string, deep: boolean): Promise<number> {
+        const issues = await this.validator.validate(libraryDir, {deep});
         const errors = issues.filter((issue) => issue.severity === "error");
         const rest = issues.filter((issue) => issue.severity !== "error");
 
         if (errors.length > 0) {
-            console.error(`"${bundleDir}" is not a valid outcome library bundle (${errors.length} error(s)):`);
+            console.error(`"${libraryDir}" is not a valid outcome library bundle (${errors.length} error(s)):`);
             this.printIssues(errors);
             return 1;
         }
 
-        console.log(`"${bundleDir}" is a valid outcome library bundle${deep ? " (deep check)" : ""}.`);
+        console.log(`"${libraryDir}" is a valid outcome library bundle${deep ? " (deep check)" : ""}.`);
         for (const issue of rest) {
             console.log(`  ${issue.severity}  ${issue.code}: ${issue.message}`);
         }

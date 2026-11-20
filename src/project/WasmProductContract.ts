@@ -73,7 +73,7 @@ function readVerifiedCanonicalFile(targetPath: string): PokieWasmComponentManife
     if (manifest.serialization.state !== (canonical.model.features ? "pokie.state.v4" : "pokie.state.v3")) throw new Error("WASM model and state schema are incompatible.");
     return manifest;
 }
-export function hasDeclaredCanonicalWasmArtifact(targetPath: string): boolean {
+export function hasDeclaredCanonicalWasmBuild(targetPath: string): boolean {
     try {
         readVerifiedCanonicalFile(targetPath);
         return true;

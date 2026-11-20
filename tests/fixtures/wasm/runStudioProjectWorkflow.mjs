@@ -9,7 +9,7 @@ import {spawnSync} from "node:child_process";
 assert(process.argv[2], "Supply the prepared candidate package root; this runner never builds or installs it.");
 const candidate = path.resolve(process.argv[2]);
 assert(fs.existsSync(path.join(candidate, "dist/cli/pokie.js")), "The candidate must contain its built public CLI.");
-const {GamePackageGenerator, loadPokieGameRuntime, WasmArtifactBuilder, PROJECT_TYPE_CAPABILITIES} = await import(pathToFileURL(path.join(candidate, "dist/esm/index.js")).href);
+const {GamePackageGenerator, loadPokieGameRuntime, WasmOutputBuilder, PROJECT_TYPE_CAPABILITIES} = await import(pathToFileURL(path.join(candidate, "dist/esm/index.js")).href);
 const temporaryRoot = fileURLToPath(new URL("../../../node_modules/.cache/pokie-tmp/", import.meta.url));
 fs.mkdirSync(temporaryRoot, {recursive: true});
 const directory = fs.mkdtempSync(path.join(temporaryRoot, "v2c22-installed-workflow-"));
@@ -29,7 +29,7 @@ try {
     const source = path.join(directory, "parity.blueprint.json");
     const artifact = path.join(directory, "parity.wasm");
     fs.writeFileSync(source, JSON.stringify(blueprint));
-    await new WasmArtifactBuilder("1.3.0").build({type: "blueprint", rootPath: source, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: " installed workflow"}, artifact);
+    await new WasmOutputBuilder("1.3.0").build({type: "blueprint", rootPath: source, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: " installed workflow"}, artifact);
     const session = loaded.game.createSession({seed: "0"});
     const expected = blueprint.availableBets.map(bet => {
         session.setBet(bet);

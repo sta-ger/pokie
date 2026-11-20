@@ -3,11 +3,11 @@ import {Command} from "commander";
 import fs from "fs";
 import path from "path";
 import {
-    ArtifactBuilderRegistry,
-    ArtifactConversionPlanner,
-    computeArtifactInputBindingHash,
-    ArtifactImportOutputPlan,
-    loadWeightedOutcomeLibraryFromBundle,
+    BuildOutputBuilderRegistry,
+    FormatConversionPlanner,
+    computeBuildInputHash,
+    ImportOutputPlan,
+    loadWeightedOutcomeLibraryFromFolder,
     StakeEngineBundleStreamingExporter,
     StakeEngineBundleStreamingExporting,
     StakeEngineExporter,
@@ -57,9 +57,9 @@ const DIFF_USAGE = "Usage: pokie stakeengine diff <leftStakeDir> <rightStakeDir>
 const CONFIG_HINT =
     '<config.json> lists one WeightedOutcomeLibrary source per Stake mode, either a plain JSON file — ' +
     '{"modes": [{"modeName": "base", "cost": 1, "libraryPath": "./libraries/base.json"}, ...]} — or a canonical ' +
-    'outcome-library bundle (see docs/outcome-library-bundle.md) — {"modeName": "base", "cost": 1, "bundleDir": ' +
-    '"./bundle", "bundleModeName": "base"} ("bundleModeName" defaults to "modeName" when omitted); exactly one ' +
-    "of \"libraryPath\"/\"bundleDir\" is required per mode — see docs/stake-engine-export.md for the format.";
+    'outcome-library bundle (see docs/outcome-library-folder.md) — {"modeName": "base", "cost": 1, "libraryDir": ' +
+    '"./bundle", "libraryModeName": "base"} ("libraryModeName" defaults to "modeName" when omitted); exactly one ' +
+    "of \"libraryPath\"/\"libraryDir\" is required per mode — see docs/stake-engine-export.md for the format.";
 const STAKE_DIR_HINT =
     '<stakeDir> must be a directory produced by "pokie stakeengine export" (index.json, per-mode lookup ' +
     "CSV/books, and its own pokie-manifest.json). Reconstruction does not accept a compatible foreign directory " +
@@ -101,8 +101,8 @@ type ExportDescriptorModeEntry = {
     modeName: string;
     cost: number;
     libraryPath?: string;
-    bundleDir?: string;
-    bundleModeName?: string;
+    libraryDir?: string;
+    libraryModeName?: string;
     generator?: OutcomeLibraryGeneratorDiagnostics;
 };
 type ExportDescriptor = {modes: ExportDescriptorModeEntry[]; sourceProvenance?: StakeEngineImportSourceProvenance};
@@ -149,7 +149,7 @@ export class StakeEngineCommand implements CliCommandHandling {
     private readonly importer: StakeEngineImporting;
     private readonly loadJson: (filePath: string) => unknown;
     private readonly importWriter: StakeEngineImportWriting;
-    private readonly loadLibraryFromBundle: (bundleDir: string, modeName: string) => Promise<WeightedOutcomeLibrary>;
+    private readonly loadLibraryFromBundle: (libraryDir: string, modeName: string) => Promise<WeightedOutcomeLibrary>;
     private readonly bundleStreamingExporter: StakeEngineBundleStreamingExporting;
     private readonly outcomeSourceReader: StakeEngineOutcomeSourceReading;
     private readonly standaloneAnalyzer: StakeEngineStandaloneAnalyzer;
@@ -158,7 +158,7 @@ export class StakeEngineCommand implements CliCommandHandling {
     private readonly writeNewDiffFile: (file: string, contents: string) => void;
     private readonly resolveProject: ProjectResolving;
     private readonly registerImport: StakeImportRegistering | undefined;
-    private readonly planner = new ArtifactConversionPlanner();
+    private readonly planner = new FormatConversionPlanner();
 
     constructor(
         pokieVersion: string,
@@ -166,8 +166,8 @@ export class StakeEngineCommand implements CliCommandHandling {
         importer: StakeEngineImporting = new StakeEngineImporter(),
         loadJson: (filePath: string) => unknown = (filePath) => JSON.parse(fs.readFileSync(filePath, "utf-8")),
         importWriter: StakeEngineImportWriting = new StakeEngineImportWriter(pokieVersion),
-        loadLibraryFromBundle: (bundleDir: string, modeName: string) => Promise<WeightedOutcomeLibrary> = (bundleDir, modeName) =>
-            loadWeightedOutcomeLibraryFromBundle(bundleDir, modeName),
+        loadLibraryFromBundle: (libraryDir: string, modeName: string) => Promise<WeightedOutcomeLibrary> = (libraryDir, modeName) =>
+            loadWeightedOutcomeLibraryFromFolder(libraryDir, modeName),
         bundleStreamingExporter: StakeEngineBundleStreamingExporting = new StakeEngineBundleStreamingExporter(pokieVersion),
         outcomeSourceReader: StakeEngineOutcomeSourceReading = new StakeEngineOutcomeSourceReader(),
         standaloneAnalyzer: StakeEngineStandaloneAnalyzer = new StakeEngineStandaloneAnalyzer(),
@@ -212,7 +212,7 @@ export class StakeEngineCommand implements CliCommandHandling {
     /** Executes the exact generic-import operation prepared by ImportCommand. */
     public runPreparedImport(
         source: PokieProject,
-        plan: ArtifactImportOutputPlan,
+        plan: ImportOutputPlan,
         stakeDir: string,
         outDir: string,
         format: ImportFormat = "summary",
@@ -234,7 +234,7 @@ export class StakeEngineCommand implements CliCommandHandling {
                 library:
                     entry.libraryPath !== undefined
                         ? (this.loadJsonChecked(path.resolve(configDir, entry.libraryPath), `mode "${entry.modeName}"'s outcome library`) as WeightedOutcomeLibrary)
-                        : await this.loadLibraryFromBundle(path.resolve(configDir, entry.bundleDir as string), entry.bundleModeName ?? entry.modeName),
+                        : await this.loadLibraryFromBundle(path.resolve(configDir, entry.libraryDir as string), entry.libraryModeName ?? entry.modeName),
                 ...(entry.generator === undefined ? {} : {generator: entry.generator}),
                 ...(descriptor.sourceProvenance === undefined ? {} : {sourceProvenance: descriptor.sourceProvenance}),
             })),
@@ -469,14 +469,14 @@ export class StakeEngineCommand implements CliCommandHandling {
             read: async () => {
                 const descriptor = this.loadDescriptor(configPath);
                 const configDir = path.dirname(configPath);
-                const allBundleSourced = descriptor.modes.every((entry) => entry.bundleDir !== undefined);
+                const allBundleSourced = descriptor.modes.every((entry) => entry.libraryDir !== undefined);
                 const modes = allBundleSourced ? undefined : await Promise.all(
                     descriptor.modes.map(async (entry): Promise<StakeEngineExportModeInput> => ({
                         modeName: entry.modeName,
                         cost: entry.cost,
                         library: entry.libraryPath !== undefined
                             ? (this.loadJsonChecked(path.resolve(configDir, entry.libraryPath), `mode "${entry.modeName}"'s outcome library`) as WeightedOutcomeLibrary)
-                            : await this.loadLibraryFromBundle(path.resolve(configDir, entry.bundleDir as string), entry.bundleModeName ?? entry.modeName),
+                            : await this.loadLibraryFromBundle(path.resolve(configDir, entry.libraryDir as string), entry.libraryModeName ?? entry.modeName),
                         ...(entry.generator === undefined ? {} : {generator: entry.generator}),
                         ...(descriptor.sourceProvenance === undefined ? {} : {sourceProvenance: descriptor.sourceProvenance}),
                     })),
@@ -485,7 +485,7 @@ export class StakeEngineCommand implements CliCommandHandling {
             },
             canPublish: () => true,
             assertDestinationAvailable: () => {
-                const destination = new ArtifactBuilderRegistry().checkDestination("stakeAdapter", outDir, configPath);
+                const destination = new BuildOutputBuilderRegistry().checkDestination("stakeAdapter", outDir, configPath);
                 if (!destination.available) throw new Error(destination.message);
             },
             publish: (read) => read.allBundleSourced
@@ -493,8 +493,8 @@ export class StakeEngineCommand implements CliCommandHandling {
                     read.descriptor.modes.map((entry) => ({
                         modeName: entry.modeName,
                         cost: entry.cost,
-                        bundleDir: path.resolve(read.configDir, entry.bundleDir as string),
-                        bundleModeName: entry.bundleModeName ?? entry.modeName,
+                        libraryDir: path.resolve(read.configDir, entry.libraryDir as string),
+                        libraryModeName: entry.libraryModeName ?? entry.modeName,
                         ...(entry.generator === undefined ? {} : {generator: entry.generator}),
                         ...(read.descriptor.sourceProvenance === undefined ? {} : {sourceProvenance: read.descriptor.sourceProvenance}),
                     })),
@@ -509,18 +509,18 @@ export class StakeEngineCommand implements CliCommandHandling {
         }};
     }
 
-    private exportDescriptorSource(configPath: string): import("@fromstan/pokie").ArtifactIdentity {
+    private exportDescriptorSource(configPath: string): import("@fromstan/pokie").OutputIdentity {
         const canonicalLocation = path.resolve(configPath);
         const descriptor = this.loadDescriptor(canonicalLocation);
         const referencedInputs = descriptor.modes.map((entry) => path.resolve(
-            path.dirname(canonicalLocation), entry.libraryPath ?? entry.bundleDir!,
+            path.dirname(canonicalLocation), entry.libraryPath ?? entry.libraryDir!,
         ));
         return {
             kind: "outcomeLibrary",
             canonicalLocation,
             recognitionProvenance: "verified CLI Stake export descriptor",
             capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
-            configurationProvenance: {configurationHash: computeArtifactInputBindingHash([canonicalLocation, ...referencedInputs])},
+            configurationProvenance: {configurationHash: computeBuildInputHash([canonicalLocation, ...referencedInputs])},
         };
     }
 
@@ -532,7 +532,7 @@ export class StakeEngineCommand implements CliCommandHandling {
     // mode no longer present in this import never leaves its old library file behind.
     private async runImport(
         options: ImportOptions,
-        prepared?: {readonly source: PokieProject; readonly plan: ArtifactImportOutputPlan},
+        prepared?: {readonly source: PokieProject; readonly plan: ImportOutputPlan},
     ): Promise<number> {
         if (prepared === undefined) {
             // The namespaced import is not a lower-level escape hatch.  It
@@ -546,7 +546,7 @@ export class StakeEngineCommand implements CliCommandHandling {
         }
         const cancellation = createCliImportCancellation();
         const assertDestinationAvailable = () => {
-            const destination = new ArtifactBuilderRegistry().checkDestination(prepared.plan.output.kind === "stakeAdapter" ? "stakeAdapter" : "outcomeLibrary", options.outDir, prepared.source.rootPath);
+            const destination = new BuildOutputBuilderRegistry().checkDestination(prepared.plan.output.kind === "stakeAdapter" ? "stakeAdapter" : "outcomeLibrary", options.outDir, prepared.source.rootPath);
             if (!destination.available) throw new Error(destination.message ?? `The import destination "${options.outDir}" is unavailable.`);
         };
         const execution = await this.planner.executeImportOutputPlan(prepared.plan, prepared.source, options.outDir, {
@@ -928,18 +928,18 @@ export class StakeEngineCommand implements CliCommandHandling {
             if (typeof entry !== "object" || entry === null) {
                 throw new Error(`"${configPath}": modes[${position}] must be an object. ${CONFIG_HINT}`);
             }
-            const e = entry as {modeName?: unknown; cost?: unknown; libraryPath?: unknown; bundleDir?: unknown; bundleModeName?: unknown; generator?: unknown};
+            const e = entry as {modeName?: unknown; cost?: unknown; libraryPath?: unknown; libraryDir?: unknown; libraryModeName?: unknown; generator?: unknown};
             if (typeof e.modeName !== "string" || typeof e.cost !== "number") {
                 throw new Error(`"${configPath}": modes[${position}] must have a string "modeName" and a number "cost". ${CONFIG_HINT}`);
             }
 
             const hasLibraryPath = typeof e.libraryPath === "string";
-            const hasBundleDir = typeof e.bundleDir === "string";
+            const hasBundleDir = typeof e.libraryDir === "string";
             if (hasLibraryPath === hasBundleDir) {
-                throw new Error(`"${configPath}": modes[${position}] must specify exactly one of "libraryPath" or "bundleDir". ${CONFIG_HINT}`);
+                throw new Error(`"${configPath}": modes[${position}] must specify exactly one of "libraryPath" or "libraryDir". ${CONFIG_HINT}`);
             }
-            if (hasBundleDir && e.bundleModeName !== undefined && typeof e.bundleModeName !== "string") {
-                throw new Error(`"${configPath}": modes[${position}]'s "bundleModeName" must be a string when present. ${CONFIG_HINT}`);
+            if (hasBundleDir && e.libraryModeName !== undefined && typeof e.libraryModeName !== "string") {
+                throw new Error(`"${configPath}": modes[${position}]'s "libraryModeName" must be a string when present. ${CONFIG_HINT}`);
             }
             if (e.generator !== undefined && !isOutcomeLibraryGeneratorDiagnostics(e.generator)) {
                 throw new Error(
@@ -955,8 +955,8 @@ export class StakeEngineCommand implements CliCommandHandling {
                 ...(hasLibraryPath
                     ? {libraryPath: e.libraryPath as string}
                     : {
-                        bundleDir: e.bundleDir as string,
-                        bundleModeName: e.bundleModeName as string | undefined,
+                        libraryDir: e.libraryDir as string,
+                        libraryModeName: e.libraryModeName as string | undefined,
                     }),
                 ...(e.generator === undefined ? {} : {generator: e.generator}),
             };

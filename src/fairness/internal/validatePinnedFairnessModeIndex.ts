@@ -1,6 +1,6 @@
 import {isPositiveSafeInteger} from "../../pregenerated/internal/isPositiveSafeInteger.js";
 import {compareIds} from "../../weightedoutcome/internal/compareIds.js";
-import {OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION, type OutcomeLibraryBundleIndexEntry, type OutcomeLibraryBundleModeIndex} from "../../weightedoutcome/bundle/OutcomeLibraryBundleModeIndex.js";
+import {OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION, type OutcomeLibraryFolderIndexEntry, type OutcomeLibraryFolderModeIndex} from "../../weightedoutcome/folder/OutcomeLibraryFolderModeIndex.js";
 import {WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION} from "../../weightedoutcome/WeightedOutcomeLibrary.js";
 import {FairnessModeIndexInvalidError} from "./FairnessModeIndexInvalidError.js";
 
@@ -21,17 +21,17 @@ function isValidSha256Hash(value: unknown): value is string {
     return typeof value === "string" && SHA256_HASH_PATTERN.test(value);
 }
 
-// Validates a pinned OutcomeLibraryBundleModeIndex — already read off disk, already the ONE snapshot
+// Validates a pinned OutcomeLibraryFolderModeIndex — already read off disk, already the ONE snapshot
 // drawPinnedFairnessOutcome will select/read against — before it's ever trusted for selection or a byte-range
-// read. OutcomeLibraryBundleReader.readModeIndex itself does no runtime shape validation at all (a raw
+// read. OutcomeLibraryFolderReader.readModeIndex itself does no runtime shape validation at all (a raw
 // JSON.parse + type-cast: whatever bytes happen to be at index_<modeName>.json are trusted as-is), so an
 // untrusted, malformed, or hand-tampered index would otherwise be trusted blindly by a live draw — a materially
-// different risk than OutcomeLibraryBundleValidator's own thorough checks, which only ever run as an opt-in,
+// different risk than OutcomeLibraryFolderValidator's own thorough checks, which only ever run as an opt-in,
 // offline audit of a bundle someone already chose to inspect.
 //
 // Throws FairnessModeIndexInvalidError — a single, fail-fast diagnostic, not a ValidationIssue[] collector, since
 // this runs on every live draw rather than as a standalone "validate a whole directory" tool (see
-// OutcomeLibraryBundleValidator for that) — on the first violation found:
+// OutcomeLibraryFolderValidator for that) — on the first violation found:
 // - a closed shape (an extra, unexpected top-level field is exactly as invalid as a missing one);
 // - the current schemaVersion/librarySchemaVersion (an index from an unsupported/future bundle format is
 //   refused rather than guessed at);
@@ -45,20 +45,20 @@ function isValidSha256Hash(value: unknown): value is string {
 // - every entry's own closed shape ({id, weight, byteOffset, byteLength, recordHash} exactly — an unknown,
 //   smuggled-in field on one entry is exactly as invalid as a missing one), uniqueness, and canonical
 //   (sorted-by-id) order, and that outcomeCount/totalWeight actually match the entries themselves — the same
-//   invariants OutcomeLibraryBundleValidator.validateEntries enforces for a standalone bundle audit, reapplied
+//   invariants OutcomeLibraryFolderValidator.validateEntries enforces for a standalone bundle audit, reapplied
 //   here since a live draw can never assume an index it just read is trustworthy without checking;
 // - a canonical byte layout across all entries — the first entry's byteOffset is exactly 0, and every later
 //   entry's byteOffset is exactly the previous entry's own byteOffset + byteLength + 1 (the "+1" accounts for
 //   the trailing "\n" every record is written with — see streamModeOutcomesToTempFile's own "offset +=
 //   lineBuffer.byteLength + 1"), so ranges can never overlap or leave a gap; byteOffset + byteLength is also
 //   checked to never overflow a safe integer. Mirrors (a cheaper, no-file-I/O subset of)
-//   OutcomeLibraryBundleValidator.validateByteLayout's own contiguity check — this one only ever checks the
+//   OutcomeLibraryFolderValidator.validateByteLayout's own contiguity check — this one only ever checks the
 //   index's own internal arithmetic, never the outcomes file's actual on-disk size, since the one entry a live
 //   draw actually reads is independently byte-verified anyway (readAndVerifyOutcomeAtByteRange, called right
 //   after this function returns).
-export function validatePinnedFairnessModeIndex(index: unknown, expectedModeName: string): OutcomeLibraryBundleModeIndex {
+export function validatePinnedFairnessModeIndex(index: unknown, expectedModeName: string): OutcomeLibraryFolderModeIndex {
     if (typeof index !== "object" || index === null || Object.keys(index).some((key) => !MODE_INDEX_KEYS.has(key))) {
-        throw new FairnessModeIndexInvalidError(`mode "${expectedModeName}"'s own index does not match the expected OutcomeLibraryBundleModeIndex shape.`);
+        throw new FairnessModeIndexInvalidError(`mode "${expectedModeName}"'s own index does not match the expected OutcomeLibraryFolderModeIndex shape.`);
     }
     const candidate = index as Record<string, unknown>;
 
@@ -109,7 +109,7 @@ export function validatePinnedFairnessModeIndex(index: unknown, expectedModeName
                 `mode "${expectedModeName}"'s own index entry at position ${position} does not match the expected closed shape {id, weight, byteOffset, byteLength, recordHash}.`,
             );
         }
-        const entry = rawEntry as Partial<OutcomeLibraryBundleIndexEntry>;
+        const entry = rawEntry as Partial<OutcomeLibraryFolderIndexEntry>;
         if (
             !isNonEmptyString(entry.id) ||
             !isPositiveSafeInteger(entry.weight) ||
@@ -162,5 +162,5 @@ export function validatePinnedFairnessModeIndex(index: unknown, expectedModeName
         );
     }
 
-    return index as OutcomeLibraryBundleModeIndex;
+    return index as OutcomeLibraryFolderModeIndex;
 }

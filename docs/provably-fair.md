@@ -8,11 +8,11 @@
 `FairnessRoundProof` published *after*, independently verifiable by anyone with the source folder and the
 original commitment, without running any game/win calculation.
 
-Like every other exporter/folder format in this codebase (`OutcomeLibraryBundleWriter`, `CertificationPackBuilder`),
+Like every other exporter/folder format in this codebase (`OutcomeLibraryFolderWriter`, `CertificationPackBuilder`),
 it never introduces a second calculation path: the deterministic draw a `FairnessRoundProof` records is produced
 via one pinned snapshot of a mode's own index (`selectIndexEntryByCumulativeWeight` +
-`readAndVerifyOutcomeAtByteRange`, never `OutcomeLibraryBundleReading.drawOutcome` itself — see "Pinned-snapshot
-drawing" below), the exact same algorithms `OutcomeLibraryBundleReader` and `CertificationPackBuilder`
+`readAndVerifyOutcomeAtByteRange`, never `OutcomeLibraryFolderReading.drawOutcome` itself — see "Pinned-snapshot
+drawing" below), the exact same algorithms `OutcomeLibraryFolderReader` and `CertificationPackBuilder`
 already use — only the byte stream feeding the selection (HMAC-SHA256 instead of the pre-generated runtime's
 plain SHA-256 counter stream) is new.
 
@@ -44,7 +44,7 @@ unenforced convention a single, more permissive function signature could quietly
 2. **Round commit** — once the player's `clientSeed`/`nonce` are known, the server calls
  `computeFairnessCommitment({serverSeedCommitment, clientSeed, nonce, libraryId, libraryHash, modeName})`. The
  returned `FairnessCommitment` is published to the player before the round is played.
-3. **Reveal** — once the round is settled, `FairnessRoundProofBuilder.build(commitment, serverSeed, sourceBundleDir)`
+3. **Reveal** — once the round is settled, `FairnessRoundProofBuilder.build(commitment, serverSeed, sourceLibraryDir)`
  draws the one outcome this commitment's own `clientSeed`/`nonce`/(now-revealed) `serverSeed` deterministically
  select, and returns a `FairnessRoundProof` carrying the revealed `serverSeed`, the drawn
  `outcomeId`/`weight`/`recordHash`, the mode index's own `indexHash`, and a `commitmentHash` link this exact
@@ -90,7 +90,7 @@ type FairnessRoundProof = {
  indexHash: string; // computeFairnessIndexHash of the mode index this outcome was drawn from
  outcomeId: string;
  weight: number;
- recordHash: string; // the drawn outcome's own OutcomeLibraryBundleIndexEntry.recordHash
+ recordHash: string; // the drawn outcome's own OutcomeLibraryFolderIndexEntry.recordHash
  commitmentHash: string; // computeFairnessCommitmentHash of the exact FairnessCommitment this round was built from
  revealedAt: string;
 };
@@ -121,7 +121,7 @@ codebase shares.
 ## Drawing from a fixed copy
 
 Both `FairnessRoundProofBuilder` and `FairnessRoundProofVerifier` draw through the same internal
-`drawPinnedFairnessOutcome` helper — never `OutcomeLibraryBundleReading.drawOutcome` itself, which re-reads a
+`drawPinnedFairnessOutcome` helper — never `OutcomeLibraryFolderReading.drawOutcome` itself, which re-reads a
 fresh index on every call and could therefore observe a genuinely different index between selecting an entry and
 reading it. `modeName` (and, through it, the index/outcomes file this eventually reads) is never trusted blindly:
 it comes straight off an untrusted `FairnessCommitment`/`FairnessRoundProof`, and every step below is guarded
@@ -132,10 +132,10 @@ accordingly.
  in practice this is a redundant, defense-in-depth check — but it's what makes `drawPinnedFairnessOutcome`
  itself provably safe regardless of what validated it first.
 1. a mode's own index is read exactly **once** and validated via an internal `validatePinnedFairnessModeIndex`
- check — never trusted blindly: `OutcomeLibraryBundleReader.readModeIndex` itself does no runtime shape
+ check — never trusted blindly: `OutcomeLibraryFolderReader.readModeIndex` itself does no runtime shape
  checking at all (a raw `JSON.parse` + type-cast), so a malformed or hand-tampered `index_<modeName>.json`
  would otherwise be trusted as-is. This check mirrors the relevant parts of
- [`OutcomeLibraryBundleValidator`](outcome-library-folder.md)'s own per-mode checks — closed shape at both the
+ [`OutcomeLibraryFolderValidator`](outcome-library-folder.md)'s own per-mode checks — closed shape at both the
  index and the per-entry level (every entry must be *exactly* `{id, weight, byteOffset, byteLength,
  recordHash}`, no more, no fewer), current schema/library-schema versions, `index.modeName` matching the mode
  actually requested, `index.outcomesFile` matching `outcomes_<modeName>.jsonl` **exactly** (not just "a
@@ -146,12 +146,12 @@ accordingly.
  `offset += lineBuffer.byteLength + 1`), so ranges can never overlap or leave a gap, and `byteOffset +
  byteLength` is checked to never overflow a safe integer either — then the validated index is held in memory;
 2. a winning entry is selected against that captured index via `selectIndexEntryByCumulativeWeight` (the exact
- cumulative-weight walk `OutcomeLibraryBundleReader.drawOutcome` uses internally);
+ cumulative-weight walk `OutcomeLibraryFolderReader.drawOutcome` uses internally);
 3. that exact entry's own byte range is read and verified via `readAndVerifyOutcomeAtByteRange`, against a path
  resolved via `resolveSafeStakeEngineFilePath` — **never a plain `path.join` of `index.outcomesFile`**. Step 1
  already pins `outcomesFile` to one exact, self-constructed filename, but resolving it through the same
  safe-path helper every other folder-reading class in this codebase uses is a second, independent guard against
- ever opening a path outside `sourceBundleDir`;
+ ever opening a path outside `sourceLibraryDir`;
 4. the mode's own index is read a **second** time and re-hashed (`computeFairnessIndexHash` — the whole object,
  not just `libraryHash`, which a hand-tampered index could leave stale while its entries were rewritten
  underneath it) — any difference from the first hash throws/reports folder drift, and nothing is
@@ -184,7 +184,7 @@ const commitment = computeFairnessCommitment({
 });
 // commitment is published to the player now — before the round is played.
 
-const proof = await new FairnessRoundProofBuilder().build(commitment, serverSeed, "./bundle");
+const proof = await new FairnessRoundProofBuilder().build(commitment, serverSeed, "./library");
 // proof is published to the player after the round settles.
 ```
 
@@ -229,7 +229,7 @@ silently drift from what this validator actually enforces. Never throws.
 `FairnessCommitmentValidating.validate(candidate)` checks a commitment **by itself** — closed shape (an extra,
 unexpected field is exactly as invalid as a missing one), current schema/algorithm versions, valid `sha256:<hex>`
 hashes, non-empty `clientSeed`/`libraryId`, a `modeName` matching this folder format's own rule
-(`[A-Za-z0-9_-]+` — the same rule `OutcomeLibraryBundleValidator`/`CertificationPackValidator` enforce;
+(`[A-Za-z0-9_-]+` — the same rule `OutcomeLibraryFolderValidator`/`CertificationPackValidator` enforce;
 `modeName` ends up embedded in a filename the moment a draw is attempted, so anything else is rejected here,
 before it ever could be), a non-negative safe `nonce`, and a strictly canonical ISO timestamp. Used both by
 `FairnessRoundProofBuilder` (always, before building) and `FairnessRoundProofVerifying` (always, before trusting
@@ -259,18 +259,18 @@ or the original commitment.
 `FairnessRoundProofVerifying.verify(candidate, options)` composes the proof validator above (a structurally
 broken or seed-invalid proof can't be meaningfully cross-checked against anything, so verification short-circuits
 on those codes) with two cross-checks: against the original commitment, and against the *live* source Outcome
-Library Bundle.
+Library Folder.
 
 **`options.commitment` is required** — without it, full verification is impossible: a proof's own internal
 consistency alone can never prove it was genuinely bound to a previously-issued commitment rather than built
 around a fresh, self-consistent, but entirely unrelated `serverSeed`/`clientSeed`/`nonce`. Checked before
-`sourceBundleDir`, and before anything reads a folder at all.
+`sourceLibraryDir`, and before anything reads a folder at all.
 
-**`options.sourceBundleDir` is required** to cross-check against a live folder at all. Without it (but with a
+**`options.sourceLibraryDir` is required** to cross-check against a live folder at all. Without it (but with a
 valid commitment), `verify()` runs the structural + commitment checks and reads no folder.
 
 ```
-pokie fairness verify proof.json --commitment commitment.json --source bundle
+pokie fairness verify proof.json --commitment commitment.json --source library folder
 ```
 
 | Code | Meaning |
@@ -279,16 +279,16 @@ pokie fairness verify proof.json --commitment commitment.json --source bundle
 | `fairness-verify-commitment-invalid` | the given commitment does not itself validate (see Commitment validation above) |
 | `fairness-verify-commitment-hash-mismatch` | this proof's own `commitmentHash` doesn't match the given commitment — it was not built from this exact commitment |
 | `fairness-verify-commitment-mismatch` | one or more of `algorithmVersion`/`serverSeedHash`/`clientSeed`/`nonce`/`libraryId`/`libraryHash`/`modeName` differ between the proof and the given commitment |
-| `fairness-verify-source-bundle-dir-required` | no `sourceBundleDir` was given |
-| `fairness-verify-source-bundle-unreadable` | the source folder's own mode index couldn't be read at `sourceBundleDir` |
-| `fairness-verify-bundle-drift` | the mode's own index changed between the pinned draw's first read and its post-draw re-verification |
+| `fairness-verify-source-library-dir-required` | no `sourceLibraryDir` was given |
+| `fairness-verify-source-library-unreadable` | the source folder's own mode index couldn't be read at `sourceLibraryDir` |
+| `fairness-verify-folder-drift` | the mode's own index changed between the pinned draw's first read and its post-draw re-verification |
 | `fairness-verify-mode-index-invalid` | the live mode's own index doesn't validate on its own (closed shape, schema/library-schema version, expected `modeName`, exact `outcomes_<modeName>.jsonl`, positive safe counts/weights, entries) |
 | `fairness-verify-library-mismatch` | the live mode's own `libraryId`/`libraryHash` no longer matches this proof's own recorded values |
 | `fairness-verify-index-hash-mismatch` | the live mode's own index no longer hashes to this proof's own recorded `indexHash` |
 | `fairness-verify-outcome-missing` | the proof's own `outcomeId` is no longer present in the live folder's mode |
 | `fairness-verify-outcome-record-mismatch` | the live index's own entry for `outcomeId` no longer matches this proof's own recorded `weight`/`recordHash` — a substituted outcome |
 | `fairness-verify-selection-mismatch` | redrawing this proof's own `serverSeed`/`clientSeed`/`nonce` against the live folder deterministically selects a **different** outcome id — a forged or substituted proof |
-| `fairness-verify-source-bundle-outcome-invariant` | the pinned draw's own selection/byte-range read failed against the live folder |
+| `fairness-verify-source-library-outcome-invariant` | the pinned draw's own selection/byte-range read failed against the live folder |
 | `fairness-verify-malformed` | an unexpected error occurred while verifying |
 
 ### Three independent checks, not one
@@ -315,22 +315,22 @@ The full commit-reveal-verify flow, end to end:
 
 ```
 pokie fairness seed-commit serverSeed.txt --out seed-commitment.json
-pokie fairness commit seed-commitment.json --client-seed player-seed --nonce 0 --source ../bundle --mode <modeName> --out commitment.json
-pokie fairness reveal commitment.json --server-seed serverSeed.txt --source ../bundle --out proof.json
-pokie fairness verify proof.json --commitment commitment.json --source ../bundle
+pokie fairness commit seed-commitment.json --client-seed player-seed --nonce 0 --source ../library --mode <modeName> --out commitment.json
+pokie fairness reveal commitment.json --server-seed serverSeed.txt --source ../library --out proof.json
+pokie fairness verify proof.json --commitment commitment.json --source ../library
 ```
 
 `seed-commit`/`commit`/`reveal` call straight through to `computeFairnessServerSeedCommitment`/
 `computeFairnessCommitment`/`FairnessRoundProofBuilder.build` — no second calculation path lives in the CLI
 itself. `commit` never accepts a `--library-hash`/`--library-id` flag as an alternative source of truth: both are
-always read off `--source <folder>`'s own live mode index via the same `OutcomeLibraryBundleReading` reader
+always read off `--source <folder>`'s own live mode index via the same `OutcomeLibraryFolderReading` reader
 `FairnessRoundProofBuilder`/`Verifier` use internally. Every artifact-writing subcommand shares one
 overwrite-safety convention: `--out <file>` refuses to replace an existing file unless `--overwrite` is also
 given (the same explicit-override discipline `StudioBlueprintService.save()`'s own `overwrite` flag already
 enforces), and always prints the JSON to stdout regardless of whether `--out` was given.
 
 `--commitment <commitment.json>` and `--source <folder>` are both required for `verify` — the CLI never falls
-back to a value embedded in the proof itself (a `FairnessRoundProof` carries no bundle location or original
+back to a value embedded in the proof itself (a `FairnessRoundProof` carries no folder location or original
 commitment of its own, by design).
 
 See [CLI](cli.md#pokie-fairness-seed-commit-serverseedtxt---out-file---overwrite) for full option details on
@@ -341,9 +341,9 @@ every subcommand.
 ```ts
 import {computeFairnessCommitment, computeFairnessServerSeedCommitment, FairnessRoundProofBuilder, FairnessRoundProofVerifier} from "@fromstan/pokie";
 
-const proof = await new FairnessRoundProofBuilder().build(commitment, serverSeed, "./bundle");
-const issues = await new FairnessRoundProofVerifier().verify(proof, {commitment, sourceBundleDir: "./bundle"});
-// issues is [] when the proof is genuine, bound to the given commitment, and the bundle hasn't drifted.
+const proof = await new FairnessRoundProofBuilder().build(commitment, serverSeed, "./library");
+const issues = await new FairnessRoundProofVerifier().verify(proof, {commitment, sourceLibraryDir: "./library"});
+// issues is [] when the proof is genuine, bound to the given commitment, and the folder hasn't drifted.
 ```
 
 

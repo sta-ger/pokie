@@ -7,11 +7,11 @@ content to an *external* target — a specific external format or RGS/aggregator
 itself needing to know anything about that target's own wire format. It's the same relationship
 [Stake Engine Export](stake-engine-export.md) has to the real Stake math-sdk format, generalized: instead of one
 fixed exporter for one fixed format, this SDK is a set of interfaces a target author implements once, plus a
-shared `ExternalDeploymentTargetRegistry`, `ExternalDeploymentCompatibilityValidator`, and `ExternalDeploymentService`
+shared `ExternalExportTargetRegistry`, `ExternalExportCompatibilityValidator`, and `ExternalExportService`
 orchestrator.
 
 **Scope:** this package ships the interfaces, the registry, the validators, the orchestrator, and one simple,
-fully working local-filesystem example target (`createLocalJsonExternalDeploymentTarget`) used to exercise the
+fully working local-filesystem example target (`createLocalJsonExternalExportTarget`) used to exercise the
 SDK end to end. It does **not** ship — and will not accept — a concrete integration for any specific private
 RGS/aggregator; wiring a real target's own wire format/transport is left to whoever owns that integration, by
 implementing the interfaces below directly.
@@ -19,16 +19,16 @@ implementing the interfaces below directly.
 **Studio UI:** [`pokie.`](cli.md#pokie)'s Project Dashboard has a Build/Export tab whose "Remote
 deployment" card is built directly on top of this SDK — list registered targets, pick modes/libraries, preview
 (compatibility check + generation + validation, no writes) or deploy, and inspect every stage's own diagnostics
-and a generated file's raw content before publishing. It calls `ExternalDeploymentService.deploy()` exactly
+and a generated file's raw content before publishing. It calls `ExternalExportService.deploy()` exactly
 as described below; it never projects, generates, or validates anything itself.
 
-## The pipeline — `ExternalDeploymentService`
+## The pipeline — `ExternalExportService`
 
 ```
-descriptor validation ExternalDeploymentTargetDescriptorValidator (always) + extra (additive)
+descriptor validation ExternalExportTargetDescriptorValidator (always) + extra (additive)
  │ (no error-severity issues)
  ▼
-compatibility validation ExternalDeploymentCompatibilityValidator (always) + extra (additive) — before
+compatibility validation ExternalExportCompatibilityValidator (always) + extra (additive) — before
  │ (no error-severity issues) any file exists
  ▼
 projection target.roundProjector.project(outcome.artifact) for every outcome —
@@ -37,8 +37,8 @@ projection target.roundProjector.project(outcome.artifact) for every outcome —
 generation target.artifactGenerator.generate(projectedModes) — fully in-memory,
  │ (return value treated as `unknown`) already-projected input only
  ▼
-shape validation StandardExternalArtifactValidator, against the — is this even a well-formed
- │ (no error-severity issues) still-untrusted raw ExternalArtifactGenerationResult?
+shape validation StandardExternalFileValidator, against the — is this even a well-formed
+ │ (no error-severity issues) still-untrusted raw ExternalFileGenerationResult?
  ▼ generator return value
 output validation target.artifactValidator (additive)
  + extra (additive) — only once shape validation passed
@@ -50,11 +50,11 @@ diagnostic (optional) target.diagnostic?.diagnose()
 delivery (optional) target.runtimeAdapter?.deliver(result)
 ```
 
-`ExternalDeploymentService.deploy(target, modes)` runs every stage above, in that fixed order, and stops at the
+`ExternalExportService.deploy(target, modes)` runs every stage above, in that fixed order, and stops at the
 first stage that reports an error-severity issue — every stage after that is simply never run (its field on the
-returned `ExternalDeploymentResult` is `undefined`, not an empty placeholder). This is the recommended single
+returned `ExternalExportResult` is `undefined`, not an empty placeholder). This is the recommended single
 entry point: calling the individual collaborators (registry, validators, generator, diagnostic, runtime connector)
-directly is still possible for finer-grained control, but `ExternalDeploymentService` is what guarantees the
+directly is still possible for finer-grained control, but `ExternalExportService` is what guarantees the
 invariants below actually hold, rather than leaving it to every caller to reimplement correctly:
 
 - **The three built-in validators (descriptor/compatibility/artifact) always run, in full, and cannot be
@@ -72,8 +72,8 @@ invariants below actually hold, rather than leaving it to every caller to reimpl
  stage's own issues — exactly as if the collaborator had reported the problem the normal way — rather than
  propagating out of `deploy()` and rejecting the whole call. Every stage after the one that threw is still
  simply never run.
-- **A generator's return value is treated as an untrusted `unknown` value, never the `ExternalArtifactGenerationResult`
- its own TypeScript type declares.** `StandardExternalArtifactValidator` always runs against it first — before
+- **A generator's return value is treated as an untrusted `unknown` value, never the `ExternalFileGenerationResult`
+ its own TypeScript type declares.** `StandardExternalFileValidator` always runs against it first — before
  anything reads `.issues`/`.artifacts` off it. If that fails (the value isn't even an object, `artifacts`/
  `issues` aren't arrays, a file's own `relativePath`/`content` is the wrong type,...), it's never exposed
  as `result.generation` — that field simply stays `undefined`, the same as if generation had never been
@@ -83,37 +83,37 @@ invariants below actually hold, rather than leaving it to every caller to reimpl
  that failure was a normally-reported issue or a caught exception.
 
 ```ts
-import {ExternalDeploymentService} from "@fromstan/pokie";
+import {ExternalExportService} from "@fromstan/pokie";
 
-const result = await new ExternalDeploymentService().deploy(target, modes);
+const result = await new ExternalExportService().deploy(target, modes);
 
 if (result.descriptorIssues.some((i) => i.severity === "error")) { /* nothing else ran at all */ }
 if (result.compatibilityIssues.some((i) => i.severity === "error")) { /* projection/generation never ran */ }
 if (result.projectionIssues.some((i) => i.severity === "error")) { /* target.artifactGenerator was never called */ }
 if (result.generation === undefined) { /* projection failed, or the generator's return value failed shape validation */ }
 if (result.artifactIssues.some((i) => i.severity === "error")) { /* target.runtimeAdapter was never called */ }
-result.diagnostic; // ExternalDeploymentDiagnosticReport | undefined
-result.delivery; // ExternalDeploymentDeliveryResult | undefined
+result.diagnostic; // ExternalExportDiagnosticReport | undefined
+result.delivery; // ExternalExportDeliveryResult | undefined
 ```
 
 ## The interfaces
 
 | Interface | Kind | Role |
 |---|---|---|
-| `ExternalDeploymentTarget<T>` | interface | Groups one target's identity (`id`/`version`), declared interface (`requirements`/`capabilities`), and collaborators (`roundProjector`/`artifactGenerator`, plus optional `artifactValidator`/`runtimeAdapter`/`diagnostic`). Usually built as a plain object literal from a factory function — see `createLocalJsonExternalDeploymentTarget`. |
-| `ExternalDeploymentTargetRegistry<T>` | class | A stateful catalog of targets, keyed by `id`. Runs `ExternalDeploymentTargetDescriptorValidator` and refuses a malformed target (`ExternalDeploymentInvalidTargetError`) or a duplicate/case-colliding id (`ExternalDeploymentDuplicateTargetError`). Freezes a successfully registered target (and its `capabilities`/`requirements`) so its identity can never drift after the fact. |
-| `ExternalDeploymentTargetDescriptorValidator<T>` | class | Checks a target's own descriptor is well-formed — independent of any content — non-empty `id`/`version`, well-shaped `requirements`, a unique `capabilities` list, and every required/optional collaborator implementing its own interface's method. Run by both the registry and `ExternalDeploymentService` (always, in full — see above). |
-| `ExternalDeploymentCompatibilityValidator<T>` | class | Checks one target's `requirements`/`capabilities` against a specific deployment's content, before view/generation. Always runs via `ExternalDeploymentService`. |
-| `ExternalRoundProjector<T>` | interface | One target's own `RoundRecord<T>` → `JsonObject` view. Called only by `ExternalDeploymentService`, once per outcome, never by the generator. |
-| `ExternalArtifactGenerator` | interface | One target's own already-projected content → files/payloads generation step. Fully in-memory and synchronous — no disk/network I/O. Deliberately *not* generic over `T` and takes `ExternalDeploymentProjectedModeInput[]` — plain JSON, never a `RoundRecord<T>` or a projector. |
-| `ExternalArtifactValidator` | interface | Validates an already-generated `ExternalArtifactGenerationResult`'s own structure. `StandardExternalArtifactValidator` is the SDK's generic, format-agnostic default, and always runs via `ExternalDeploymentService`. |
-| `ExternalDeploymentDiagnostic` | interface | Optional self-check of a target's own operational readiness (e.g. "is the output directory writable"), independent of any specific content. |
-| `ExternalDeploymentRuntimeAdapter` | interface | Optional transport interface: how an already-generated, already-validated result actually reaches the target (local disk, HTTP push, a queue,...). Deliberately separate from `ExternalArtifactGenerator` so the same generator is reusable across targets that differ only in how they publish. |
-| `ExternalDeploymentService<T>` | class | The single-call orchestrator described above. |
+| `ExternalExportTarget<T>` | interface | Groups one target's identity (`id`/`version`), declared interface (`requirements`/`capabilities`), and collaborators (`roundProjector`/`artifactGenerator`, plus optional `artifactValidator`/`runtimeAdapter`/`diagnostic`). Usually built as a plain object literal from a factory function — see `createLocalJsonExternalExportTarget`. |
+| `ExternalExportTargetRegistry<T>` | class | A stateful catalog of targets, keyed by `id`. Runs `ExternalExportTargetDescriptorValidator` and refuses a malformed target (`ExternalExportInvalidTargetError`) or a duplicate/case-colliding id (`ExternalExportDuplicateTargetError`). Freezes a successfully registered target (and its `capabilities`/`requirements`) so its identity can never drift after the fact. |
+| `ExternalExportTargetDescriptorValidator<T>` | class | Checks a target's own descriptor is well-formed — independent of any content — non-empty `id`/`version`, well-shaped `requirements`, a unique `capabilities` list, and every required/optional collaborator implementing its own interface's method. Run by both the registry and `ExternalExportService` (always, in full — see above). |
+| `ExternalExportCompatibilityValidator<T>` | class | Checks one target's `requirements`/`capabilities` against a specific deployment's content, before view/generation. Always runs via `ExternalExportService`. |
+| `ExternalRoundProjector<T>` | interface | One target's own `RoundRecord<T>` → `JsonObject` view. Called only by `ExternalExportService`, once per outcome, never by the generator. |
+| `ExternalFileGenerator` | interface | One target's own already-projected content → files/payloads generation step. Fully in-memory and synchronous — no disk/network I/O. Deliberately *not* generic over `T` and takes `ExternalExportProjectedModeInput[]` — plain JSON, never a `RoundRecord<T>` or a projector. |
+| `ExternalFileValidator` | interface | Validates an already-generated `ExternalFileGenerationResult`'s own structure. `StandardExternalFileValidator` is the SDK's generic, format-agnostic default, and always runs via `ExternalExportService`. |
+| `ExternalExportDiagnostic` | interface | Optional self-check of a target's own operational readiness (e.g. "is the output directory writable"), independent of any specific content. |
+| `ExternalExportRuntimeConnector` | interface | Optional transport interface: how an already-generated, already-validated result actually reaches the target (local disk, HTTP push, a queue,...). Deliberately separate from `ExternalFileGenerator` so the same generator is reusable across targets that differ only in how they publish. |
+| `ExternalExportService<T>` | class | The single-call orchestrator described above. |
 
 ## Target descriptor validation
 
-`ExternalDeploymentTargetDescriptorValidator` checks a target's own shape, regardless of any content:
+`ExternalExportTargetDescriptorValidator` checks a target's own shape, regardless of any content:
 
 | Code | Meaning |
 |---|---|
@@ -132,13 +132,13 @@ result.delivery; // ExternalDeploymentDeliveryResult | undefined
 | `external-deployment-target-diagnostic-invalid` | `diagnostic` is present but has no `diagnose` method |
 | `external-deployment-target-runtime-adapter-invalid` | `runtimeAdapter` is present but has no `deliver` method |
 
-`ExternalDeploymentTargetRegistry.register()` throws `ExternalDeploymentInvalidTargetError` (never registering
-the target) when any of these come back error-severity; `ExternalDeploymentService.deploy()` surfaces the same
+`ExternalExportTargetRegistry.register()` throws `ExternalExportInvalidTargetError` (never registering
+the target) when any of these come back error-severity; `ExternalExportService.deploy()` surfaces the same
 issues as `result.descriptorIssues` and stops before compatibility validation ever runs.
 
 ## Requirements and supported actions
 
-`ExternalDeploymentRequirements` (declared by a target, checked against content):
+`ExternalExportRequirements` (declared by a target, checked against content):
 
 | Field | Meaning |
 |---|---|
@@ -146,15 +146,15 @@ issues as `result.descriptorIssues` and stops before compatibility validation ev
 | `symbolAlphabet?` | `"numeric"` requires every screen/step symbol (`T` in `RoundRecord<T>`) across every deployed outcome to be a `number`. `"any"` (default) places no constraint. |
 | `requiresHomogeneousProvenance?` | When true (the default), every mode in one deployment must share the same game id/version, `configHash`, and `pokieVersion` — the same cross-mode check `StakeEngineExportValidator` runs. |
 
-`ExternalDeploymentCapability` is an open string (mirrors `RoundRecord`'s own `betMode` convention — see that
+`ExternalExportCapability` is an open string (mirrors `RoundRecord`'s own `betMode` convention — see that
 type's own doc comment) rather than a closed union, so a target can declare its own vocabulary beyond what this
-SDK checks. Three well-known ids are understood by `ExternalDeploymentCompatibilityValidator` itself:
+SDK checks. Three well-known ids are understood by `ExternalExportCompatibilityValidator` itself:
 
 | Constant | Checked when... |
 |---|---|
 | `ROUND_ARTIFACT_FEATURE_EVENTS_CAPABILITY` | any deployed `RoundRecord`/`RoundStepRecord` has non-empty `featureEvents` |
 | `ROUND_ARTIFACT_DEBUG_METADATA_CAPABILITY` | any deployed `RoundRecord`/`RoundStepRecord` has a `debug` field |
-| `MULTI_MODE_DEPLOYMENT_CAPABILITY` | more than one `ExternalDeploymentModeInput` is given in one deployment |
+| `MULTI_MODE_DEPLOYMENT_CAPABILITY` | more than one `ExternalExportModeInput` is given in one deployment |
 
 A target that doesn't declare one of these gets an error-severity `ValidationIssue` if the deployed content
 actually uses the corresponding feature — rejected before view/generation, not silently dropped or left
@@ -182,27 +182,27 @@ prefixed onto `message` and added to `details.modeName` — the same "additive, 
 
 ## View building — the service's own job, never the generator's
 
-`ExternalDeploymentService` is the *only* thing that ever calls `target.roundProjector.project(...)` — once per
-outcome, across every mode — turning each `ExternalDeploymentModeInput<T>` (a raw `WeightedOutcomeLibrary<T>`)
-into an `ExternalDeploymentProjectedModeInput` (plain, already-projected JSON):
+`ExternalExportService` is the *only* thing that ever calls `target.roundProjector.project(...)` — once per
+outcome, across every mode — turning each `ExternalExportModeInput<T>` (a raw `WeightedOutcomeLibrary<T>`)
+into an `ExternalExportProjectedModeInput` (plain, already-projected JSON):
 
 ```ts
-type ExternalDeploymentProjectedOutcome = {
+type ExternalExportProjectedOutcome = {
  readonly id: string;
  readonly weight: number;
  readonly projected: JsonObject; // target.roundProjector.project(outcome.artifact)
 };
 
-type ExternalDeploymentProjectedModeInput = {
+type ExternalExportProjectedModeInput = {
  readonly modeName: string;
  readonly libraryId: string;
  readonly libraryHash: string; // computeWeightedOutcomeLibraryHash(mode.library), computed once here
- readonly outcomes: readonly ExternalDeploymentProjectedOutcome[];
+ readonly outcomes: readonly ExternalExportProjectedOutcome[];
 };
 ```
 
 `target.artifactGenerator.generate(projectedModes)` receives only this — never the original library, a
-`RoundRecord`, or the projector itself. That's not just documentation: `ExternalArtifactGenerator` isn't even
+`RoundRecord`, or the projector itself. That's not just documentation: `ExternalFileGenerator` isn't even
 generic over `T`, so nothing in its own type signature could reference a `RoundRecord<T>` even if an
 implementation tried to reach for one.
 
@@ -216,15 +216,15 @@ Projection issues are collected across every outcome in every mode before stoppi
 surfaces every problem, not just the first) — but `generation` is only ever attempted once no view issue
 is error-severity.
 
-## Output validation (`StandardExternalArtifactValidator`)
+## Output validation (`StandardExternalFileValidator`)
 
 Runs first, immediately after `generate()` returns — against the generator's raw, still-`unknown` return value,
-before `ExternalDeploymentService` trusts it as an `ExternalArtifactGenerationResult` at all. Never throws — even
+before `ExternalExportService` trusts it as an `ExternalFileGenerationResult` at all. Never throws — even
 a value that doesn't remotely match the expected shape (`undefined`, `null`, a bare string, not an object,
 `artifacts`/`issues` not arrays, an artifact entry that's `null` or has a non-string `relativePath`/non-string-
 non-`Buffer` `content`) comes back as a structured issue, never an exception. If it reports any error-severity
 issue, `deploy()` stops right there: `result.generation` stays `undefined` (the malformed value is never exposed
-as a typed "generation"), `result.artifactIssues` is exactly `StandardExternalArtifactValidator`'s own issues,
+as a typed "generation"), `result.artifactIssues` is exactly `StandardExternalFileValidator`'s own issues,
 and neither `target.artifactValidator`, the extra file validator, `target.diagnostic`, nor
 `target.runtimeAdapter` is ever called. Only once it passes cleanly does `target.artifactValidator`/the extra
 artifact validator run at all, against the now-trusted `generation`:
@@ -242,15 +242,15 @@ artifact validator run at all, against the now-trusted `generation`:
 | `external-artifact-json-invalid` | a `.json`-named artifact's content doesn't parse |
 
 A target with further format-specific invariants (e.g. "every path listed in the index file must exist in the
-artifact set") should implement its own `ExternalArtifactValidator` for those — never as a *replacement* for
-`StandardExternalArtifactValidator`, only ever alongside it (and `ExternalDeploymentService` enforces that:
-`StandardExternalArtifactValidator` is not a constructor parameter, so there's no way to swap it out even by
+artifact set") should implement its own `ExternalFileValidator` for those — never as a *replacement* for
+`StandardExternalFileValidator`, only ever alongside it (and `ExternalExportService` enforces that:
+`StandardExternalFileValidator` is not a constructor parameter, so there's no way to swap it out even by
 accident).
 
 ## Extra validators — additive only
 
-`ExternalDeploymentService`'s constructor accepts one *extra* validator per stage —
-`new ExternalDeploymentService(extraDescriptorValidator?, extraCompatibilityValidator?, extraArtifactValidator?)`
+`ExternalExportService`'s constructor accepts one *extra* validator per stage —
+`new ExternalExportService(extraDescriptorValidator?, extraCompatibilityValidator?, extraArtifactValidator?)`
 — each layered strictly on top of the corresponding built-in validator, never in place of it. There is no
 constructor parameter that replaces a built-in validator; a permissive extra validator (one that always returns
 `[]`) can add nothing and take nothing away — the built-in one's own issues are always present regardless. A
@@ -260,12 +260,12 @@ propagating out of `deploy()`.
 
 The extra descriptor/compatibility validators always run alongside their built-in, whether or not the built-in
 itself found a problem — both contribute to the same combined issue list. The extra *artifact* validator is
-different: like `target.artifactValidator`, it only ever runs once `StandardExternalArtifactValidator` has
+different: like `target.artifactValidator`, it only ever runs once `StandardExternalFileValidator` has
 already passed cleanly (see above) — there's nothing well-formed to hand it before that.
 
 ## The local example target
 
-`createLocalJsonExternalDeploymentTarget({id?, version?, outDir})` builds a fully working target that writes one
+`createLocalJsonExternalExportTarget({id?, version?, outDir})` builds a fully working target that writes one
 pretty-printed JSON file per outcome (via the standard `PokieJsonRoundRecordProjector`, reused rather than
 re-implemented — see `LocalJsonExternalRoundProjector`), plus a top-level `index.json`. It declares every
 supported action this SDK currently knows about, since its own JSON view has no reason to reject any of them — a
@@ -296,15 +296,15 @@ lowercase hex characters, so it can never itself be `".."` or contain a path sep
 ```
 
 ```ts
-import {ExternalDeploymentService, ExternalDeploymentTargetRegistry, createLocalJsonExternalDeploymentTarget} from "@fromstan/pokie";
+import {ExternalExportService, ExternalExportTargetRegistry, createLocalJsonExternalExportTarget} from "@fromstan/pokie";
 
-const target = createLocalJsonExternalDeploymentTarget({outDir: "./out/local-example"});
+const target = createLocalJsonExternalExportTarget({outDir: "./out/local-example"});
 
-const registry = new ExternalDeploymentTargetRegistry();
+const registry = new ExternalExportTargetRegistry();
 registry.register(target); // throws if the descriptor is malformed or the id collides
 
 const modes = [{modeName: "base", library /* a WeightedOutcomeLibrary */}];
-const result = await new ExternalDeploymentService().deploy(target, modes);
+const result = await new ExternalExportService().deploy(target, modes);
 
 if (result.delivery?.delivered) {
  console.log(`wrote ${result.generation?.artifacts.length} files under./out/local-example`);
@@ -313,7 +313,7 @@ if (result.delivery?.delivered) {
 
 ### Atomic delivery
 
-`LocalFileExternalDeploymentRuntimeAdapter` delivers via `atomicallyWriteExternalDeploymentArtifactsToDirectory`
+`LocalFileExternalExportRuntimeConnector` delivers via `atomicallyWriteExternalExportFilesToDirectory`
 — the whole artifact set is built into a fresh temporary sibling directory first, and only swapped into `outDir`
 (a directory rename) once every file has been written successfully. That gives the same guarantees
 `StakeEngineExporter`'s own directory publish does (see [Stake Engine Export](stake-engine-export.md#rebuild-safety--the-programmatic-writer-replaces-the-whole-directory)):
@@ -322,7 +322,7 @@ left behind; a failure during the swap itself either leaves `outDir` untouched o
 it was; only removing the now-superseded stale backup after a successful publish is treated as cosmetic (a
 warning-severity `ValidationIssue` in `delivery.issues`, never a thrown error).
 
-`writeExternalDeploymentArtifactsToDirectory(artifacts, outDir)` — the non-atomic, one-file-at-a-time primitive
+`writeExternalExportFilesToDirectory(artifacts, outDir)` — the non-atomic, one-file-at-a-time primitive
 both the atomic helper and any other target-specific transport can build on — is exported directly too. Every
 `relativePath` is checked to stay inside `outDir` in both helpers; one that escapes via `".."` or is absolute
 throws rather than writing outside it.
@@ -331,25 +331,25 @@ throws rather than writing outside it.
 
 1. Implement `ExternalRoundProjector<T>` for your format's own round shape (or reuse `PokieJsonRoundRecordProjector`
  directly, the way the local example does, if canonical JSON is close enough). This is the only piece of the
- SDK that ever sees a `RoundRecord<T>` — `ExternalDeploymentService` calls it for you.
-2. Implement `ExternalArtifactGenerator`, consuming `ExternalDeploymentProjectedModeInput[]` — already-projected
+ SDK that ever sees a `RoundRecord<T>` — `ExternalExportService` calls it for you.
+2. Implement `ExternalFileGenerator`, consuming `ExternalExportProjectedModeInput[]` — already-projected
  plain JSON, nothing generic over `T`. Never derive a file/path name directly from caller-supplied data (a
  `modeName`, an outcome `id`) — encode it deterministically first, the way
- `LocalJsonExternalArtifactGenerator` does, and keep the original value recoverable as data instead.
+ `LocalJsonExternalFileGenerator` does, and keep the original value recoverable as data instead.
 3. Declare `requirements`/`capabilities` honestly — only the supported actions your format actually supports, only
  the requirements your format actually needs.
-4. Optionally implement `ExternalArtifactValidator` for format-specific output checks beyond
- `StandardExternalArtifactValidator`'s generic ones (additive only — `ExternalDeploymentService` always runs
- `StandardExternalArtifactValidator` regardless), and `ExternalDeploymentRuntimeAdapter`/
- `ExternalDeploymentDiagnostic` for your own transport.
-5. Assemble the pieces into an `ExternalDeploymentTarget<T>` (a plain object literal is enough — see
- `createLocalJsonExternalDeploymentTarget`) and register it with an `ExternalDeploymentTargetRegistry`. Once
+4. Optionally implement `ExternalFileValidator` for format-specific output checks beyond
+ `StandardExternalFileValidator`'s generic ones (additive only — `ExternalExportService` always runs
+ `StandardExternalFileValidator` regardless), and `ExternalExportRuntimeConnector`/
+ `ExternalExportDiagnostic` for your own transport.
+5. Assemble the pieces into an `ExternalExportTarget<T>` (a plain object literal is enough — see
+ `createLocalJsonExternalExportTarget`) and register it with an `ExternalExportTargetRegistry`. Once
  registered, the target is frozen — its `id`, `capabilities`, and `requirements` can no longer be reassigned.
-6. Deploy through `ExternalDeploymentService` rather than calling the individual collaborators by hand, so the
+6. Deploy through `ExternalExportService` rather than calling the individual collaborators by hand, so the
  ordering/short-circuiting guarantees above always hold. Pass an *extra* validator to the constructor for a
  further, project-specific check — never to replace a built-in one, since that isn't possible.
 
-## Why Stake Engine Export isn't an `ExternalDeploymentTarget`
+## Why Stake Engine Export isn't an `ExternalExportTarget`
 
 [Stake Engine Export](stake-engine-export.md) is conceptually the one thing this SDK generalizes — a
 target/format-specific "deploy content to an external consumer" pipeline — yet it's wired around this
@@ -358,12 +358,12 @@ not an oversight**, for two independent reasons:
 
 1. **`ExternalRoundProjector<T>` has no channel for a mode's own `cost`.** `project(artifact: RoundRecord<T>): JsonObject`
  takes only the artifact — nothing else reaches a projector, by design (see that interface's own doc
- comment: `ExternalDeploymentService` is the only caller, once per outcome, and a generator downstream
+ comment: `ExternalExportService` is the only caller, once per outcome, and a generator downstream
  never gets to reach for anything beyond the projector's return value). Stake's own event/payout
  view is not that simple: `StakeEngineRoundEventsProjecting.project(artifact, context: {cost})`
  requires the *mode's own* `cost` to convert every amount into Stake's integer unit convention
  (`ratio * cost * 100`, see [Stake unit conversion](stake-engine-export.md#stake-unit-conversion--explicit-never-rounded)).
- This isn't an accidental gap — `ExternalDeploymentModeInput`'s own doc comment already documents the
+ This isn't an accidental gap — `ExternalExportModeInput`'s own doc comment already documents the
  exclusion deliberately: it's "the same shape `StakeEngineExportModeInput` uses, minus Stake's own `cost`
  field, which is specific to Stake's unit conversion and has no general meaning across arbitrary external
  targets." Adding a `cost`-shaped context to the generic projector/mode-input interfaces just to fit one
@@ -371,23 +371,23 @@ not an oversight**, for two independent reasons:
 2. **A real Stake export's atomicity spans modes with *different* costs.** A base game (`cost: 1`) and a
  bonus-buy mode (`cost: 100`) are routinely published together as one directory (see
  [Rebuild safety](stake-engine-export.md#rebuild-safety--the-programmatic-writer-replaces-the-whole-directory)).
- `ExternalDeploymentTarget` is a fixed descriptor per `deploy()` call — there's no per-mode slot for a
+ `ExternalExportTarget` is a fixed descriptor per `deploy()` call — there's no per-mode slot for a
  varying `cost`, and even a target that closed over one fixed `cost` at construction time could only ever
  support single-cost deployments. Splitting a real Stake export into one `deploy()` call per cost bucket
  would fragment exactly the atomicity guarantee `StakeEngineExporter` exists to provide: a reader could
  then observe a directory with the base mode already live and the bonus mode still missing, which never
  happens today.
 
-Together, these rule out both "make Stake Engine implement `ExternalDeploymentTarget` as-is" (the projector
+Together, these rule out both "make Stake Engine implement `ExternalExportTarget` as-is" (the projector
 signature can't carry what Stake needs) and "extend the SDK's interfaces to fit Stake" (that would either
 leak a Stake-specific concept into a supposedly generic interface, or still not solve the multi-cost
 atomicity problem). A target that worked around this — say, by only ever handling one mode/cost at a time,
 or by silently reprojecting through a lossy generic path — would produce non-standard, possibly-wrong Stake
-output for any real multi-mode game while *appearing* to satisfy the `ExternalDeploymentTarget` interface.
+output for any real multi-mode game while *appearing* to satisfy the `ExternalExportTarget` interface.
 That's a worse outcome than not integrating at all.
 
 **The two subsystems are deliberately kept as separate, sibling exporters.** They share the same upstream input (`WeightedOutcomeLibrary<T>`/`RoundRecord<T>`) and the same cross-mode homogeneous-provenance
-check (`ExternalDeploymentRequirements.requiresHomogeneousProvenance`'s own doc comment already calls out
+check (`ExternalExportRequirements.requiresHomogeneousProvenance`'s own doc comment already calls out
 that it mirrors `StakeEngineExportValidator`'s check), and both publish via the same atomic
 temp-directory-then-rename-swap strategy — but neither is built on top of the other, and that's expected to
 stay true. If Stake Engine's own math-sdk format ever changes to admit a single per-outcome cost embedded in

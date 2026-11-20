@@ -103,7 +103,7 @@ async function main() {
         fs.writeFileSync(source, JSON.stringify(invalid));
         const sourceBytes = fs.readFileSync(source);
         const project = {type: 'blueprint', rootPath: source, capabilities: pokie.PROJECT_TYPE_CAPABILITIES.blueprint, provenance: 'native validation regression'};
-        const builder = new pokie.WasmArtifactBuilder('1.3.0');
+        const builder = new pokie.WasmOutputBuilder('1.3.0');
         const model = pokie.resolveSharedSlotMathModel(invalid);
         for (const exports of [pokie, esm, browser, portable]) assert.throws(() => exports.assertPlayableSharedSlotMathModel(model), diagnostic);
         assert.throws(() => pokie.resolveCanonicalWasmGameModel(invalid), new RegExp(code));
@@ -134,7 +134,7 @@ async function main() {
             serialization: {session: 'pokie.session.v2', play: 'pokie.play.v2', state: 'pokie.state.v3'}, host: {rng: 'pokie.rng.v2', services: []},
             capabilities: ['runtime.play', 'runtime.serialize', 'runtime.replay'],
             artifact: {format: 'pokie.wasm.v1', abiVersion: '3.0.0', adapter: '@fromstan/pokie/wasm', configurationHash}};
-        const binary = pokie.compileSharedSlotArtifact(model, descriptor);
+        const binary = pokie.compileSharedSlotBuild(model, descriptor);
         const sidecar = {...descriptor, artifact: {...descriptor.artifact, bytes: binary.length, sha256: hash(binary)}};
         assert.equal(WebAssembly.validate(binary), true);
         let draws = 0; const host = {nextRandom() {draws++; return 0.5;}};
@@ -198,7 +198,7 @@ async function main() {
         fs.writeFileSync(source, JSON.stringify(model));
         const generated = new pokie.GamePackageGenerator('1.3.0').generate(model, folder);
         const project = {type: 'blueprint', rootPath: source, capabilities: pokie.PROJECT_TYPE_CAPABILITIES.blueprint, provenance: 'native acceptance'};
-        await new pokie.WasmArtifactBuilder('1.3.0').build(project, artifact);
+        await new pokie.WasmOutputBuilder('1.3.0').build(project, artifact);
         const bytes = new Uint8Array(fs.readFileSync(artifact));
         const manifest = JSON.parse(fs.readFileSync(`${artifact}.pokie-wasm.json`, 'utf8'));
         assert.equal(hash(bytes), manifest.artifact.sha256);

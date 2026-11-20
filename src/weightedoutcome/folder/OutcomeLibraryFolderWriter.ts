@@ -1,0 +1,438 @@
+import crypto from "crypto";
+import fs from "fs";
+import path from "path";
+import {capturePublishDirectoryOwnership, preflightAtomicDirectoryPublication, publishDirectoryAtomically, removePublishedDirectoryIfOwned, withPublishedDirectoryOwnership} from "../../stakeengine/internal/publishDirectoryAtomically.js";
+import type {ValidationIssue} from "../../validation/ValidationIssue.js";
+import {WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION} from "../WeightedOutcomeLibrary.js";
+import {computeOnlineWeightedOutcomeLibraryAnalysis} from "./internal/computeOnlineWeightedOutcomeLibraryAnalysis.js";
+import {streamModeOutcomesToTempFile} from "./internal/streamModeOutcomesToTempFile.js";
+import {OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION, type OutcomeLibraryFolderManifest, type OutcomeLibraryFolderManifestModeEntry} from "./OutcomeLibraryFolderManifest.js";
+import {OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION, type OutcomeLibraryFolderModeIndex} from "./OutcomeLibraryFolderModeIndex.js";
+import type {OutcomeLibraryFolderModeInput} from "./OutcomeLibraryFolderModeInput.js";
+import type {OutcomeLibraryFolderWriteResult} from "./OutcomeLibraryFolderWriteResult.js";
+import type {OutcomeLibraryFolderWriteValidating} from "./OutcomeLibraryFolderWriteValidating.js";
+import {OutcomeLibraryFolderWriteValidator} from "./OutcomeLibraryFolderWriteValidator.js";
+import {assertSafeToReplaceOutcomeLibraryFolderDirectory} from "./internal/assertSafeToReplaceOutcomeLibraryFolderDirectory.js";
+import {
+    OutcomeLibraryFolderWriteCancelledError,
+    OutcomeLibraryFolderDestinationClaimedError,
+    type OutcomeLibraryFolderWriteOptions,
+    type OutcomeLibraryFolderWriting,
+} from "./OutcomeLibraryFolderWriting.js";
+
+// A single mode's provenance, read off its own first outcome — used to check every mode written into one
+// bundle shares the same underlying game/config/pokieVersion (betMode/stake are expected to differ per mode).
+// Mirrors StakeEngineExportValidator's own ModeProvenanceKey exactly. Only known once a mode's stream has
+// actually started producing outcomes, so (unlike mode-name validation) this can't be checked upfront.
+type ModeProvenanceKey = {
+    readonly gameId: string;
+    readonly gameVersion: string;
+    readonly configHash: string | undefined;
+    readonly pokieVersion: string;
+};
+
+function provenanceKeyOf(firstOutcome: {readonly artifact: {readonly origin: {readonly game: {readonly id: string; readonly version: string}; readonly configHash?: string; readonly pokieVersion: string}}}): ModeProvenanceKey {
+    return {
+        gameId: firstOutcome.artifact.origin.game.id,
+        gameVersion: firstOutcome.artifact.origin.game.version,
+        configHash: firstOutcome.artifact.origin.configHash,
+        pokieVersion: firstOutcome.artifact.origin.pokieVersion,
+    };
+}
+
+// Persists one or more streaming outcome sources (one per mode) as the canonical POKIE outcome-library bundle:
+// a small manifest.json, one small index_<modeName>.json per mode, and one streaming outcomes_<modeName>.jsonl
+// per mode. This is the ONE writer both the pre-generated runtime and the Stake Engine exporter's own loaded
+// data ultimately trace back to (see loadWeightedOutcomeLibraryFromFolder) — never a second calculation path:
+// every hash/metric/outcome written here is derived directly from the outcomes the caller streams in, by the
+// same logic (see streamModeOutcomesToTempFile/computeOnlineWeightedOutcomeLibraryAnalysis) used everywhere a
+// WeightedOutcomeLibrary is built/analyzed elsewhere in this codebase.
+//
+// End-to-end streaming: each mode's "outcomes" (an Iterable or AsyncIterable — see OutcomeLibraryFolderModeInput)
+// is consumed exactly once, one outcome at a time, validated and written to disk as it arrives — this class
+// never builds an in-memory array of a mode's outcomes, however many there are. Because publishDirectoryAtomically
+// (the atomic swap this writer shares with StakeEngineImportWriter) needs a *synchronous* callback to populate
+// its own temp directory, the actual (necessarily async) streaming work happens first, into a separate staging
+// directory this class manages itself; publishing then becomes a purely synchronous rename of each already-
+// written file from staging into publishDirectoryAtomically's own temp dir — so the atomic-publish contract
+// itself is reused unmodified, never touched or forked. The staging directory is removed (best-effort) whether
+// the write succeeds or fails — on success it's already empty (every file was renamed out of it); on failure,
+// whatever was staged is simply discarded and an existing outDir is left completely untouched, the same
+// no-partial-bundle guarantee as before.
+//
+// This is genuinely "async" (unlike StakeEngineExporter/the previous version of this class) rather than "returns
+// a Promise but every step is synchronous fs work" — consuming an arbitrary caller-supplied AsyncIterable is real
+// asynchronous work, not just an interface-consistency wrapper.
+export class OutcomeLibraryFolderWriter<T extends string | number = string> implements OutcomeLibraryFolderWriting<T> {
+    private readonly pokieVersion: string;
+    private readonly validator: OutcomeLibraryFolderWriteValidating<T>;
+    private readonly now: () => Date;
+    private readonly writeFile: (filePath: string, contents: string) => void;
+    private readonly nativeFileWriting: boolean;
+    private readonly renameDirectory: (from: string, to: string) => void;
+    private readonly removeDirectory: (dirPath: string) => void;
+
+    constructor(
+        pokieVersion: string,
+        validator?: OutcomeLibraryFolderWriteValidating<T>,
+        now?: () => Date,
+        writeFile?: (filePath: string, contents: string) => void,
+        renameDirectory?: (from: string, to: string) => void,
+        removeDirectory?: (dirPath: string) => void,
+    ) {
+        this.pokieVersion = pokieVersion;
+        this.validator = validator ?? new OutcomeLibraryFolderWriteValidator<T>();
+        this.now = now ?? (() => new Date());
+        this.writeFile = writeFile ?? ((filePath, contents) => fs.writeFileSync(filePath, contents, "utf-8"));
+        this.nativeFileWriting = writeFile === undefined;
+        this.renameDirectory = renameDirectory ?? ((from, to) => fs.renameSync(from, to));
+        this.removeDirectory = removeDirectory ?? ((dirPath) => fs.rmSync(dirPath, {recursive: true, force: true}));
+    }
+
+    public async writeToDirectory(
+        modes: readonly OutcomeLibraryFolderModeInput<T>[],
+        outDir: string,
+        options?: OutcomeLibraryFolderWriteOptions,
+    ): Promise<OutcomeLibraryFolderWriteResult> {
+        assertNotCancelled(options);
+        const upfrontIssues = this.validator.validate(modes);
+        const supplementalFiles = validateSupplementalFiles(options?.supplementalFiles, modes, upfrontIssues);
+        if (upfrontIssues.some((issue) => issue.severity === "error")) {
+            return {outDir, files: [], manifest: undefined, issues: upfrontIssues};
+        }
+        assertSafeToReplaceOutcomeLibraryFolderDirectory(outDir, options?.allowExistingEmptyDestination);
+        const destinationOwnership = options?.expectedDestinationOwnership ?? capturePublishDirectoryOwnership(outDir);
+        // A mode's `outcomes` may be a huge lazy generator. Prove the real `mv` primitive against
+        // this destination filesystem before consuming even its first item, not after generation has
+        // filled a staging directory and publication is the only work left.
+        preflightAtomicDirectoryPublication(outDir, destinationOwnership.destinationIdentity === undefined);
+
+        const stagingDir = `${outDir}.staging-${crypto.randomBytes(6).toString("hex")}`;
+        fs.mkdirSync(stagingDir, {recursive: true});
+        try {
+            const issues: ValidationIssue[] = [...upfrontIssues];
+            const manifestEntries: OutcomeLibraryFolderManifestModeEntry[] = [];
+            let firstMode: {readonly provenanceKey: ModeProvenanceKey; readonly firstOutcome: unknown} | undefined;
+            let gameManifest: OutcomeLibraryFolderManifest["game"] | undefined;
+            let configHash: string | undefined;
+            let artifactPokieVersion: string | undefined;
+            let completed = BigInt(0);
+            type StagedMode = {
+                readonly mode: OutcomeLibraryFolderModeInput<T>;
+                readonly schemaVersion: number;
+                readonly outcomesFile: string;
+                readonly outcomesPath: string;
+                readonly built: NonNullable<Awaited<ReturnType<typeof streamModeOutcomesToTempFile<T>>>["built"]>;
+            };
+            const stagedModes: StagedMode[] = [];
+            let announcedWriting = false;
+
+            for (const mode of modes) {
+                assertNotCancelled(options);
+                const schemaVersion = mode.schemaVersion ?? WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION;
+                if (schemaVersion !== WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION) {
+                    issues.push({
+                        code: "outcome-library-folder-write-schema-version-invalid",
+                        severity: "error",
+                        message: `mode "${mode.modeName}": schemaVersion must be the current supported version (${WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION}), got ${String(schemaVersion)}.`,
+                        details: {modeName: mode.modeName},
+                    });
+                    continue;
+                }
+
+                const outcomesFile = `outcomes_${mode.modeName}.jsonl`;
+                const outcomesPath = path.join(stagingDir, outcomesFile);
+                const stagedEntriesPath = this.nativeFileWriting ? path.join(stagingDir, `.entries_${mode.modeName}.json`) : undefined;
+                const stagedAnalysisPath = this.nativeFileWriting ? path.join(stagingDir, `.analysis_${mode.modeName}.bin`) : undefined;
+                const result = await streamModeOutcomesToTempFile(
+                    mode.modeName,
+                    mode.libraryId,
+                    mode.outcomes,
+                    schemaVersion,
+                    outcomesPath,
+                    options,
+                    stagedEntriesPath,
+                    stagedAnalysisPath,
+                    completed,
+                    !announcedWriting,
+                );
+                issues.push(...result.issues);
+                if (result.built === undefined) {
+                    continue;
+                }
+                completed += BigInt(result.built.outcomeCount);
+                announcedWriting = true;
+
+                const current = provenanceKeyOf(result.built.firstOutcome as never);
+                if (firstMode === undefined) {
+                    firstMode = {provenanceKey: current, firstOutcome: result.built.firstOutcome};
+                    gameManifest = (result.built.firstOutcome as {artifact: {origin: {game: OutcomeLibraryFolderManifest["game"]}}}).artifact.origin.game;
+                    configHash = (result.built.firstOutcome as {artifact: {origin: {configHash?: string}}}).artifact.origin.configHash;
+                    artifactPokieVersion = current.pokieVersion;
+                } else if (
+                    current.gameId !== firstMode.provenanceKey.gameId ||
+                    current.gameVersion !== firstMode.provenanceKey.gameVersion ||
+                    current.configHash !== firstMode.provenanceKey.configHash ||
+                    current.pokieVersion !== firstMode.provenanceKey.pokieVersion
+                ) {
+                    issues.push({
+                        code: "outcome-library-folder-cross-mode-provenance-mismatch",
+                        severity: "error",
+                        message: `mode "${mode.modeName}" has different provenance (game id/version, configHash, or pokieVersion) than the bundle's other modes.`,
+                        details: {modeName: mode.modeName},
+                    });
+                    continue;
+                }
+
+                stagedModes.push({mode, schemaVersion, outcomesFile, outcomesPath, built: result.built});
+            }
+
+            // All outcome sources are persisted before any derived artifact is
+            // computed. This turns a multi-mode publication into one public
+            // forward-only lifecycle instead of repeating analysis/index work
+            // for every retained sibling mode.
+            options?.onLifecycleStage?.("analyzing");
+            const analyzedModes: Array<StagedMode & {readonly analysis: Awaited<ReturnType<typeof computeOnlineWeightedOutcomeLibraryAnalysis>>}> = [];
+            for (const staged of stagedModes) {
+                assertNotCancelled(options);
+                let analysis;
+                try {
+                    analysis = await computeOnlineWeightedOutcomeLibraryAnalysis(staged.outcomesPath, staged.built.totalWeight, {
+                        signal: options?.signal,
+                        throwIfAborted: () => assertNotCancelled(options),
+                        expectedOutcomeCount: BigInt(staged.built.outcomeCount),
+                        ...(staged.built.analysisPath === undefined ? {} : {stagedValuesPath: staged.built.analysisPath}),
+                        onProgress: (progress) => options?.onProgress?.({
+                            completed: progress.completed,
+                            total: progress.total,
+                            unit: progress.unit,
+                            message: `Analyzing Outcome mode ${staged.mode.modeName} (pass ${progress.pass} of 2)`,
+                        }),
+                    });
+                } finally {
+                    if (staged.built.analysisPath !== undefined) fs.rmSync(staged.built.analysisPath, {force: true});
+                }
+                analyzedModes.push({...staged, analysis});
+            }
+
+            options?.onLifecycleStage?.("building-index");
+            for (const staged of analyzedModes) {
+                assertNotCancelled(options);
+                const {mode, schemaVersion, outcomesFile, built, analysis} = staged;
+                const indexFile = `index_${mode.modeName}.json`;
+                const firstOutcome = built.firstOutcome as {artifact: {betMode: string; stake: number}};
+                const generator = mode.generator ?? mode.getGenerator?.();
+                const manifestEntry: OutcomeLibraryFolderManifestModeEntry = {
+                    modeName: mode.modeName,
+                    betMode: firstOutcome.artifact.betMode,
+                    stake: firstOutcome.artifact.stake,
+                    libraryId: mode.libraryId,
+                    libraryHash: built.libraryHash,
+                    outcomeCount: built.outcomeCount,
+                    totalWeight: built.totalWeight,
+                    analysis,
+                    indexFile,
+                    outcomesFile,
+                    ...(generator === undefined ? {} : {generator}),
+                };
+                manifestEntries.push(manifestEntry);
+
+                const indexPath = path.join(stagingDir, indexFile);
+                if (built.entriesPath !== undefined) {
+                    await this.writeNativeIndex(indexPath, {
+                        schemaVersion: OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION,
+                        modeName: mode.modeName,
+                        libraryId: mode.libraryId,
+                        librarySchemaVersion: schemaVersion,
+                        libraryHash: built.libraryHash,
+                        outcomeCount: built.outcomeCount,
+                        totalWeight: built.totalWeight,
+                        outcomesFile,
+                    }, built.entriesPath, options);
+                    fs.rmSync(built.entriesPath, {force: true});
+                } else {
+                    const index: OutcomeLibraryFolderModeIndex = {
+                        schemaVersion: OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION,
+                        modeName: mode.modeName,
+                        libraryId: mode.libraryId,
+                        librarySchemaVersion: schemaVersion,
+                        libraryHash: built.libraryHash,
+                        outcomeCount: built.outcomeCount,
+                        totalWeight: built.totalWeight,
+                        outcomesFile,
+                        entries: built.entries ?? [],
+                    };
+                    this.writeFile(indexPath, `${JSON.stringify(index, null, 4)}\n`);
+                }
+            }
+
+            assertNotCancelled(options);
+            options?.onLifecycleStage?.("validation");
+            if (issues.some((issue) => issue.severity === "error") || gameManifest === undefined || artifactPokieVersion === undefined) {
+                return {outDir, files: [], manifest: undefined, issues};
+            }
+
+            const orderedManifestEntries = orderManifestEntries(manifestEntries, options?.manifestModeOrder);
+            const relativeFiles = [...orderedManifestEntries.flatMap((entry) => [entry.indexFile, entry.outcomesFile]), "manifest.json"];
+            const manifest: OutcomeLibraryFolderManifest = {
+                schemaVersion: OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION,
+                generatedBy: options?.generatedBy ?? "pokie outcomelibrary build",
+                pokieVersion: this.pokieVersion,
+                generatedAt: this.now().toISOString(),
+                game: gameManifest,
+                ...(configHash !== undefined ? {configHash} : {}),
+                artifactPokieVersion,
+                modes: orderedManifestEntries,
+                files: relativeFiles,
+            };
+            assertNotCancelled(options);
+            this.writeFile(path.join(stagingDir, "manifest.json"), `${JSON.stringify(manifest, null, 4)}\n`);
+            for (const file of supplementalFiles) {
+                this.writeFile(path.join(stagingDir, file.fileName), file.contents);
+            }
+
+            const filesToPublish = [...relativeFiles, ...supplementalFiles.map((file) => file.fileName)];
+
+            // This is intentionally the last awaitable boundary before the
+            // atomic publisher takes ownership of its temp directory and
+            // swaps it into place.  A destination can be claimed while an
+            // async outcome stream is being staged, so an earlier preflight
+            // alone must never authorize this replacement.
+            await options?.assertDestinationAvailable?.();
+            assertNotCancelled(options);
+            options?.onLifecycleStage?.("publication");
+            const {cleanupWarning, publication} = publishDirectoryAtomically({
+                outDir,
+                ownership: destinationOwnership,
+                renameDirectory: this.renameDirectory,
+                removeDirectory: this.removeDirectory,
+                destinationClaimedError: (message) => new OutcomeLibraryFolderDestinationClaimedError(message),
+                writeFilesIntoTempDir: (tempDir) => {
+                    let publishedFiles = BigInt(0);
+                    for (const file of filesToPublish) {
+                        assertNotCancelled(options);
+                        this.renameDirectory(path.join(stagingDir, file), path.join(tempDir, file));
+                        publishedFiles++;
+                        options?.onProgress?.({phase: "Publishing Outcome files", completed: publishedFiles, total: BigInt(filesToPublish.length), unit: "bundle files", message: `Publishing Outcome file ${file}`});
+                        // A progress listener is allowed to abort the work it is observing.  This check
+                        // must be after the callback as well as before the next file: the last callback
+                        // is immediately followed by the atomic swap below.
+                        assertNotCancelled(options);
+                    }
+                },
+            });
+
+            // Keep the direct-writer contract true even if a custom atomic publisher grows a callback
+            // boundary of its own: never report a completed bundle after its signal was cancelled.
+            try {
+                assertNotCancelled(options);
+            } catch (error) {
+                // Keep the direct-writer cancellation contract aligned with
+                // the identity-aware lifecycle callers.  If another actor
+                // has claimed this pathname, their output is left intact.
+                removePublishedDirectoryIfOwned(publication);
+                throw error;
+            }
+            const finalIssues =
+                cleanupWarning !== undefined
+                    ? [...issues, {code: "outcome-library-folder-write-stale-cleanup-failed", severity: "warning" as const, message: cleanupWarning, details: {outDir}}]
+                    : issues;
+
+            return withPublishedDirectoryOwnership({outDir, files: filesToPublish, manifest, issues: finalIssues}, publication);
+        } finally {
+            try {
+                this.removeDirectory(stagingDir);
+            } catch {
+                // best-effort only — the staging directory is purely internal scratch space, never part of the
+                // published result either way.
+            }
+        }
+    }
+
+    /** Writes the potentially large entries array without ever parsing it back into JS. */
+    private async writeNativeIndex(
+        indexPath: string,
+        header: Omit<OutcomeLibraryFolderModeIndex, "entries">,
+        entriesPath: string,
+        options?: OutcomeLibraryFolderWriteOptions,
+    ): Promise<void> {
+        const destination = fs.openSync(indexPath, "w");
+        const source = fs.openSync(entriesPath, "r");
+        try {
+            const headerJson = JSON.stringify(header);
+            fs.writeSync(destination, `${headerJson.slice(0, -1)},"entries":[`);
+            const buffer = Buffer.allocUnsafe(64 * 1024);
+            const totalBytes = BigInt(fs.fstatSync(source).size);
+            let copied = BigInt(0);
+            let bytesRead = fs.readSync(source, buffer, 0, buffer.length, null);
+            while (bytesRead > 0) {
+                assertNotCancelled(options);
+                fs.writeSync(destination, buffer, 0, bytesRead);
+                copied += BigInt(bytesRead);
+                options?.onProgress?.({phase: `Building Outcome Library index ${header.modeName}`, completed: copied, total: totalBytes, unit: "bytes", message: "Building Outcome Library index"});
+                bytesRead = fs.readSync(source, buffer, 0, buffer.length, null);
+                // Native index copying is synchronous I/O, so yield between
+                // bounded chunks before another cancellation check.
+                await new Promise<void>((resolve) => {
+                    setImmediate(resolve);
+                });
+                // A final chunk can complete the copy.  Honor cancellation
+                // before either finishing the JSON object or publishing it.
+                assertNotCancelled(options);
+            }
+            assertNotCancelled(options);
+            fs.writeSync(destination, "]}\n");
+        } finally {
+            fs.closeSync(source);
+            fs.closeSync(destination);
+        }
+    }
+}
+
+function validateSupplementalFiles<T extends string | number>(
+    supplementalFiles: OutcomeLibraryFolderWriteOptions["supplementalFiles"],
+    modes: readonly OutcomeLibraryFolderModeInput<T>[],
+    issues: ValidationIssue[],
+): readonly {readonly fileName: string; readonly contents: string}[] {
+    const files = supplementalFiles ?? [];
+    const reservedNames = new Set(["manifest.json", ...modes.flatMap((mode) => [`index_${mode.modeName}.json`, `outcomes_${mode.modeName}.jsonl`])].map((name) => name.toLowerCase()));
+    const seen = new Set<string>();
+
+    for (const file of files) {
+        const normalizedName = typeof file?.fileName === "string" ? file.fileName : "";
+        const key = normalizedName.toLowerCase();
+        if (
+            path.basename(normalizedName) !== normalizedName ||
+            normalizedName === "." ||
+            normalizedName === ".." ||
+            normalizedName.includes("/") ||
+            normalizedName.includes("\\") ||
+            normalizedName.length === 0 ||
+            reservedNames.has(key) ||
+            seen.has(key) ||
+            typeof file?.contents !== "string"
+        ) {
+            issues.push({
+                code: "outcome-library-folder-write-supplemental-file-invalid",
+                severity: "error",
+                message: `Supplemental file ${JSON.stringify(normalizedName)} must be a unique safe filename that does not overlap a canonical bundle file, with string contents.`,
+            });
+            continue;
+        }
+        seen.add(key);
+    }
+    return files as readonly {readonly fileName: string; readonly contents: string}[];
+}
+
+function assertNotCancelled(options: OutcomeLibraryFolderWriteOptions | undefined): void {
+    if (options?.signal?.aborted) throw new OutcomeLibraryFolderWriteCancelledError();
+}
+
+function orderManifestEntries(
+    entries: readonly OutcomeLibraryFolderManifestModeEntry[],
+    requestedOrder: readonly string[] | undefined,
+): readonly OutcomeLibraryFolderManifestModeEntry[] {
+    if (requestedOrder === undefined) return entries;
+    const rank = new Map(requestedOrder.map((modeName, index) => [modeName, index]));
+    return [...entries].sort((left, right) => (rank.get(left.modeName) ?? Number.MAX_SAFE_INTEGER) - (rank.get(right.modeName) ?? Number.MAX_SAFE_INTEGER));
+}

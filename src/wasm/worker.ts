@@ -1,5 +1,5 @@
 import {optimizeBrowserBlueprint} from "../optimization/BrowserBlueprintOptimization.js";
-import {createBlueprintWasmArtifact} from "./createBlueprintWasmArtifact.js";
+import {createBlueprintWasmBuild} from "./createBlueprintWasmBuild.js";
 import {collectPokieWasmSimulation} from "./PokieWasmCommands.js";
 import {collectPokieWasmReplay, validatePokieWasmReplayInitialCredits, type PokieWasmReplayOptions} from "./PokieWasmReplay.js";
 import {instantiatePokieWasm, SeededPokieWasmHost} from "./PokieWasmRuntime.js";
@@ -105,7 +105,7 @@ export class PokieWasmWorkerProtocol {
                 });
                 try {
                     // Reserve ownership before source compilation yields to another request.
-                    if (request.type === "optimize" && (await createBlueprintWasmArtifact(request.blueprint)).manifest.artifact?.sha256 !== runtime.manifest.artifact?.sha256) throw new Error("Optimization source differs from instantiated artifact.");
+                    if (request.type === "optimize" && (await createBlueprintWasmBuild(request.blueprint)).manifest.artifact?.sha256 !== runtime.manifest.artifact?.sha256) throw new Error("Optimization source differs from instantiated artifact.");
                     if (generation !== this.generation || runtime !== this.runtime || controller.signal.aborted || this.operation !== controller) throw new Error("The WASM Worker operation was cancelled or replaced during source binding.");
                     runtimeOperationInvoked = true;
                     let result: unknown;

@@ -15,7 +15,7 @@ import type {WeightedOutcomeRandomSource} from "../../pregenerated/WeightedOutco
 //
 // nextInt() draws unbiased integers from that stream via the same rejection-sampling core (drawUnbiasedInt)
 // every other WeightedOutcomeRandomSource in this codebase shares, so this plugs straight into
-// WeightedOutcomeSelector/OutcomeLibraryBundleReading.drawOutcome unmodified — never a second, differently-
+// WeightedOutcomeSelector/OutcomeLibraryFolderReading.drawOutcome unmodified — never a second, differently-
 // derived selection algorithm for a fairness proof's own draw.
 export class HmacFairnessRandomSource implements WeightedOutcomeRandomSource {
     private readonly serverSeed: string;

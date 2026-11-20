@@ -1,0 +1,99 @@
+import fs from "fs";
+import os from "os";
+import path from "path";
+import {
+    OutcomeLibraryFolderReader,
+    OutcomeLibraryFolderWriter,
+    SeededWeightedOutcomeRandomSource,
+    WeightedOutcomeLibrary,
+    WeightedOutcomeSelector,
+    computeWeightedOutcomeLibraryHash,
+} from "@fromstan/pokie";
+import {buildOutcomeLibraryFolderModeInput, buildOutcomeLibraryFolderTestLibrary} from "./OutcomeLibraryFolderTestFixtures.js";
+
+describe("OutcomeLibraryFolderReader", () => {
+    let outDir: string;
+    let library: WeightedOutcomeLibrary<string>;
+
+    beforeEach(async () => {
+        outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-outcomelibrary-reader-test-"));
+        fs.rmdirSync(outDir);
+        library = buildOutcomeLibraryFolderTestLibrary("base-lib");
+        const modes = [buildOutcomeLibraryFolderModeInput("base", "base-lib")];
+        await new OutcomeLibraryFolderWriter("1.3.0").writeToDirectory(modes, outDir);
+    });
+
+    afterEach(() => {
+        fs.rmSync(outDir, {recursive: true, force: true});
+    });
+
+    it("readManifest/readModeIndex reproduce what the writer wrote", async () => {
+        const reader = new OutcomeLibraryFolderReader();
+
+        const manifest = await reader.readManifest(outDir);
+        const index = await reader.readModeIndex(outDir, "base");
+
+        expect(manifest.modes[0].modeName).toBe("base");
+        expect(index.modeName).toBe("base");
+        expect(index.libraryHash).toBe(manifest.modes[0].libraryHash);
+    });
+
+    it("iterateModeOutcomes streams every outcome, in canonical id order, without ever holding more than one at a time", async () => {
+        const reader = new OutcomeLibraryFolderReader();
+        const seen: string[] = [];
+
+        for await (const outcome of reader.iterateModeOutcomes(outDir, "base")) {
+            seen.push(outcome.id);
+        }
+
+        expect(seen).toEqual(library.outcomes.map((outcome) => outcome.id));
+    });
+
+    it("refuses a retained stream whose JSONL record was changed without updating its original index/hash", async () => {
+        const outcomesPath = path.join(outDir, "outcomes_base.jsonl");
+        // Same-width mutation: byte offsets still look plausible, so merely
+        // rebuilding a new bundle would silently bless changed math unless the
+        // reader checks the index record hash and library hash as it streams.
+        fs.writeFileSync(outcomesPath, fs.readFileSync(outcomesPath, "utf8").replace('"weight":500', '"weight":900'));
+        const reader = new OutcomeLibraryFolderReader();
+
+        await expect(async () => {
+            for await (const outcome of reader.iterateModeOutcomes(outDir, "base")) {
+                expect(outcome).toBeDefined();
+            }
+        }).rejects.toThrow(/original index entry/);
+    });
+
+    it("readOutcomeById returns the exact outcome for every real id, and undefined for an unknown one", async () => {
+        const reader = new OutcomeLibraryFolderReader();
+
+        for (const outcome of library.outcomes) {
+            const found = await reader.readOutcomeById(outDir, "base", outcome.id);
+            expect(found?.id).toBe(outcome.id);
+            expect(found?.weight).toBe(outcome.weight);
+            expect(found?.artifact.roundId).toBe(outcome.artifact.roundId);
+        }
+
+        expect(await reader.readOutcomeById(outDir, "base", "not-a-real-id")).toBeUndefined();
+    });
+
+    it("readLibrary reconstructs a WeightedOutcomeLibrary whose hash matches the original exactly", async () => {
+        const reader = new OutcomeLibraryFolderReader();
+
+        const rebuilt = await reader.readLibrary(outDir, "base");
+
+        expect(computeWeightedOutcomeLibraryHash(rebuilt)).toBe(computeWeightedOutcomeLibraryHash(library));
+        expect(rebuilt).toEqual(library);
+    });
+
+    it("drawOutcome never diverges from WeightedOutcomeSelector.select given the same seeded draws", async () => {
+        const reader = new OutcomeLibraryFolderReader();
+        const selector = new WeightedOutcomeSelector();
+
+        for (let seed = 0; seed < 50; seed++) {
+            const drawn = await reader.drawOutcome(outDir, "base", new SeededWeightedOutcomeRandomSource(`seed-${seed}`));
+            const selected = selector.select(library, new SeededWeightedOutcomeRandomSource(`seed-${seed}`));
+            expect(drawn.id).toBe(selected.id);
+        }
+    });
+});

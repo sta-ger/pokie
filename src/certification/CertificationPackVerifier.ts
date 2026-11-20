@@ -9,12 +9,12 @@ import {SeededWeightedOutcomeRandomSource} from "../pregenerated/SeededWeightedO
 import type {WeightedOutcomeRandomSource} from "../pregenerated/WeightedOutcomeRandomSource.js";
 import {resolveSafeCertificationPackFilePath} from "./internal/resolveSafeCertificationPackFilePath.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
-import type {OutcomeLibraryBundleManifest} from "../weightedoutcome/bundle/OutcomeLibraryBundleManifest.js";
-import type {OutcomeLibraryBundleModeIndex} from "../weightedoutcome/bundle/OutcomeLibraryBundleModeIndex.js";
-import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
-import type {OutcomeLibraryBundleReading} from "../weightedoutcome/bundle/OutcomeLibraryBundleReading.js";
-import {OutcomeLibraryBundleValidator} from "../weightedoutcome/bundle/OutcomeLibraryBundleValidator.js";
-import type {OutcomeLibraryBundleValidating} from "../weightedoutcome/bundle/OutcomeLibraryBundleValidating.js";
+import type {OutcomeLibraryFolderManifest} from "../weightedoutcome/folder/OutcomeLibraryFolderManifest.js";
+import type {OutcomeLibraryFolderModeIndex} from "../weightedoutcome/folder/OutcomeLibraryFolderModeIndex.js";
+import {OutcomeLibraryFolderReader} from "../weightedoutcome/folder/OutcomeLibraryFolderReader.js";
+import type {OutcomeLibraryFolderReading} from "../weightedoutcome/folder/OutcomeLibraryFolderReading.js";
+import {OutcomeLibraryFolderValidator} from "../weightedoutcome/folder/OutcomeLibraryFolderValidator.js";
+import type {OutcomeLibraryFolderValidating} from "../weightedoutcome/folder/OutcomeLibraryFolderValidating.js";
 import type {CertificationPackManifest, CertificationPackModeEntry} from "./CertificationPackManifest.js";
 import {CertificationPackValidator} from "./CertificationPackValidator.js";
 import type {CertificationPackValidating} from "./CertificationPackValidating.js";
@@ -44,12 +44,12 @@ function canonicalJsonEqual(a: unknown, b: unknown): boolean {
 }
 
 // Verifies a certification/evidence bundle against the live source Outcome Library Bundle it was built from.
-// Requires an explicit options.sourceBundleDir — the manifest's own recorded sourceBundleDir is purely
+// Requires an explicit options.sourceLibraryDir — the manifest's own recorded sourceLibraryDir is purely
 // informational (a hand-crafted or tampered manifest could point it anywhere) and is NEVER read or trusted
 // here; without it, verify() returns a diagnostic and reads nothing beyond certDir's own structural self-
 // consistency check. Never throws — every fallible step (re-reading manifest.json, reading a samples file,
 // parsing a sample line, reading the live bundle) is individually guarded, and a top-level try/catch is the
-// final safety net — and never reads a path outside certDir/sourceBundleDir: every filename this class reads
+// final safety net — and never reads a path outside certDir/sourceLibraryDir: every filename this class reads
 // off manifest data (a mode's own samplesFile) is resolved through resolveSafeStakeEngineFilePath first, the
 // same guard CertificationPackValidator itself uses, independently re-checked here rather than
 // assumed from the validator's own earlier pass (a re-read of the same file could in principle observe
@@ -61,25 +61,25 @@ function canonicalJsonEqual(a: unknown, b: unknown): boolean {
 // calculation:
 // - the evidence bundle's own manifest fields (game/configHash/artifactPokieVersion, and the whole source
 //   bundle manifest's own recomputed hash);
-// - the source bundle's own on-disk files, via a shallow OutcomeLibraryBundleValidating pass;
+// - the source bundle's own on-disk files, via a shallow OutcomeLibraryFolderValidating pass;
 // - each mode's own metrics (libraryHash/outcomeCount/totalWeight/analysis), read straight off the live
 //   manifest and compared field-by-field;
 // - each sampled outcome, two ways: its own recordHash compared directly against the live mode index's own
 //   entry (cheap, index-only — no byte-range read), and the *sequence itself* reproduced by redrawing this
-//   mode's own recorded seed against the live bundle via OutcomeLibraryBundleReading.drawOutcome (the same
+//   mode's own recorded seed against the live bundle via OutcomeLibraryFolderReading.drawOutcome (the same
 //   weighted-draw algorithm the sample was originally drawn with) and comparing the outcome id picked at each
 //   position — this is what catches a sample record substituted with a different, individually-valid, still-
 //   existing outcome id, which a per-id existence/hash check alone could never catch.
 export class CertificationPackVerifier implements CertificationPackVerifying {
     private readonly validator: CertificationPackValidating;
-    private readonly sourceValidator: OutcomeLibraryBundleValidating;
-    private readonly reader: OutcomeLibraryBundleReading;
+    private readonly sourceValidator: OutcomeLibraryFolderValidating;
+    private readonly reader: OutcomeLibraryFolderReading;
     private readonly randomSourceFactory: (seed: string) => WeightedOutcomeRandomSource;
 
     constructor(
         validator: CertificationPackValidating = new CertificationPackValidator(),
-        sourceValidator: OutcomeLibraryBundleValidating = new OutcomeLibraryBundleValidator(),
-        reader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
+        sourceValidator: OutcomeLibraryFolderValidating = new OutcomeLibraryFolderValidator(),
+        reader: OutcomeLibraryFolderReading = new OutcomeLibraryFolderReader(),
         randomSourceFactory: (seed: string) => WeightedOutcomeRandomSource = (seed) => new SeededWeightedOutcomeRandomSource(seed),
     ) {
         this.validator = validator;
@@ -112,25 +112,25 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
             return structuralIssues;
         }
 
-        // manifest.sourceBundleDir is informational only (see its own doc comment) and is NEVER read or
-        // trusted here — a caller must always give an explicit sourceBundleDir. Checked before anything else
+        // manifest.sourceLibraryDir is informational only (see its own doc comment) and is NEVER read or
+        // trusted here — a caller must always give an explicit sourceLibraryDir. Checked before anything else
         // below touches a path outside certDir (including re-parsing manifest.json, which is only ever needed
         // for the live cross-check that follows), so a caller who omits it gets a diagnostic without this class
         // ever reading anything beyond certDir's own structural self-consistency check above.
-        if (options?.sourceBundleDir === undefined) {
+        if (options?.sourceLibraryDir === undefined) {
             return [
                 ...structuralIssues,
                 {
                     code: "certification-pack-verify-source-bundle-dir-required",
                     severity: "error",
                     message:
-                        "no sourceBundleDir was given. This evidence bundle's own manifest.sourceBundleDir is " +
+                        "no sourceLibraryDir was given. This evidence bundle's own manifest.sourceLibraryDir is " +
                         "informational only and is never trusted for verification — pass an explicit " +
-                        '{sourceBundleDir} (or "--source <folder>" on the CLI) to cross-check against the live source folder.',
+                        '{sourceLibraryDir} (or "--source <folder>" on the CLI) to cross-check against the live source folder.',
                 },
             ];
         }
-        const sourceBundleDir = options.sourceBundleDir;
+        const sourceLibraryDir = options.sourceLibraryDir;
 
         let manifest: CertificationPackManifest;
         try {
@@ -159,21 +159,21 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
 
         const issues: ValidationIssue[] = [...structuralIssues];
 
-        if (!resolveSafeCertificationPackFilePath(sourceBundleDir, "manifest.json")) return [...issues, {code: "certification-pack-source-unsafe", severity: "error", message: "Explicit source manifest is missing or symlinked."}];
-        let sourceManifest: OutcomeLibraryBundleManifest;
+        if (!resolveSafeCertificationPackFilePath(sourceLibraryDir, "manifest.json")) return [...issues, {code: "certification-pack-source-unsafe", severity: "error", message: "Explicit source manifest is missing or symlinked."}];
+        let sourceManifest: OutcomeLibraryFolderManifest;
         try {
-            sourceManifest = await this.reader.readManifest(sourceBundleDir);
+            sourceManifest = await this.reader.readManifest(sourceLibraryDir);
         } catch (error) {
             issues.push({
                 code: "certification-pack-verify-source-bundle-unreadable",
                 severity: "error",
-                message: `could not read "${sourceBundleDir}"'s own manifest.json: ${error instanceof Error ? error.message : String(error)}.`,
+                message: `could not read "${sourceLibraryDir}"'s own manifest.json: ${error instanceof Error ? error.message : String(error)}.`,
             });
             return issues;
         }
 
         checkCancellation(options.signal);
-        if (sourceManifest.files.some(file => !resolveSafeCertificationPackFilePath(sourceBundleDir, file))) return [...issues, {code: "certification-pack-source-unsafe", severity: "error", message: "Source inventory contains a missing, symlinked or escaping file."}];
+        if (sourceManifest.files.some(file => !resolveSafeCertificationPackFilePath(sourceLibraryDir, file))) return [...issues, {code: "certification-pack-source-unsafe", severity: "error", message: "Source inventory contains a missing, symlinked or escaping file."}];
         try {
             if (manifest.presentation.templateArtifactHash !== null) {
                 if (!options.templateFile) throw new Error("Explicit templateFile authority is required for a custom template; pass --template <json>.");
@@ -182,7 +182,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
             } else if (manifest.presentation.templateHash !== packHash(DEFAULT_CERTIFICATION_PACK_TEMPLATE)) throw new Error("Unselected custom template has no explicit artifact authority.");
             if (manifest.pack.rules.status === "available" && !options.pack?.modelSource) throw new Error("Explicit pack modelSource authority is required; retained model locations are never followed.");
             if ((options.pack?.reportFiles?.length ?? 0) !== manifest.pack.statistics.estimates.length || (options.pack?.replayFiles?.length ?? 0) !== manifest.pack.reproduction.recordings.length) throw new Error("Explicit reportFiles/replayFiles trusted sources must cover every attached item.");
-            const actual = await acquireCertificationPack(sourceManifest, packHash(sourceManifest), options.pack, options.signal, sourceBundleDir);
+            const actual = await acquireCertificationPack(sourceManifest, packHash(sourceManifest), options.pack, options.signal, sourceLibraryDir);
             if (packHash(actual) !== packHash(manifest.pack)) throw new Error("Pack model/report/replay/revision evidence differs from selected authority or runtime reproduction.");
         } catch (error) {
             if (error instanceof Error && (/cleanup failed/).test(error.message)) throw error;
@@ -193,16 +193,16 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
 
         // Detects tampering/corruption of the source bundle's own on-disk files ("library files" drift) — a
         // shallow check by default, the same "never defeat the whole point of a streaming bundle" discipline
-        // OutcomeLibraryBundleValidating itself follows; each sampled outcome below is still independently
+        // OutcomeLibraryFolderValidating itself follows; each sampled outcome below is still independently
         // deep-checked, just for exactly the records this evidence actually cites.
-        issues.push(...(await this.sourceValidator.validate(sourceBundleDir, {signal: options.signal})));
+        issues.push(...(await this.sourceValidator.validate(sourceLibraryDir, {signal: options.signal})));
 
         checkCancellation(options.signal);
-        if (sha256OfBytes(JSON.stringify(toCanonicalJson(sourceManifest))) !== manifest.sourceBundleManifestHash) {
+        if (sha256OfBytes(JSON.stringify(toCanonicalJson(sourceManifest))) !== manifest.sourceLibraryManifestHash) {
             issues.push({
                 code: "certification-pack-verify-source-bundle-manifest-changed",
                 severity: "error",
-                message: `"${sourceBundleDir}"'s own manifest.json no longer hashes to what this evidence bundle recorded at build time.`,
+                message: `"${sourceLibraryDir}"'s own manifest.json no longer hashes to what this evidence bundle recorded at build time.`,
             });
         }
 
@@ -215,7 +215,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
             issues.push({
                 code: "certification-pack-verify-manifest-provenance-mismatch",
                 severity: "error",
-                message: `this evidence bundle's own game/configHash/artifactPokieVersion no longer matches "${sourceBundleDir}"'s own manifest.json.`,
+                message: `this evidence bundle's own game/configHash/artifactPokieVersion no longer matches "${sourceLibraryDir}"'s own manifest.json.`,
             });
         }
 
@@ -228,7 +228,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
                 });
                 continue;
             }
-            await this.verifyModeAgainstLiveBundle(certDir, sourceBundleDir, sourceManifest, rawModeEntry, issues, options.signal);
+            await this.verifyModeAgainstLiveBundle(certDir, sourceLibraryDir, sourceManifest, rawModeEntry, issues, options.signal);
         }
 
         return issues;
@@ -236,8 +236,8 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
 
     private async verifyModeAgainstLiveBundle(
         certDir: string,
-        sourceBundleDir: string,
-        sourceManifest: OutcomeLibraryBundleManifest,
+        sourceLibraryDir: string,
+        sourceManifest: OutcomeLibraryFolderManifest,
         modeEntry: CertificationPackModeEntry,
         issues: ValidationIssue[],
         signal?: AbortSignal,
@@ -248,7 +248,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
             issues.push({
                 code: "certification-pack-verify-source-mode-missing",
                 severity: "error",
-                message: `mode "${modeEntry.modeName}" is no longer present in "${sourceBundleDir}"'s own manifest.json.`,
+                message: `mode "${modeEntry.modeName}" is no longer present in "${sourceLibraryDir}"'s own manifest.json.`,
                 details: {modeName: modeEntry.modeName},
             });
             return;
@@ -263,7 +263,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
             issues.push({
                 code: "certification-pack-verify-manifest-mode-mismatch",
                 severity: "error",
-                message: `mode "${modeEntry.modeName}": libraryId/betMode/stake/libraryHash no longer match "${sourceBundleDir}"'s own manifest.json.`,
+                message: `mode "${modeEntry.modeName}": libraryId/betMode/stake/libraryHash no longer match "${sourceLibraryDir}"'s own manifest.json.`,
                 details: {modeName: modeEntry.modeName},
             });
         }
@@ -276,7 +276,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
             issues.push({
                 code: "certification-pack-verify-metrics-mismatch",
                 severity: "error",
-                message: `mode "${modeEntry.modeName}": outcomeCount/totalWeight/analysis no longer match "${sourceBundleDir}"'s own manifest.json.`,
+                message: `mode "${modeEntry.modeName}": outcomeCount/totalWeight/analysis no longer match "${sourceLibraryDir}"'s own manifest.json.`,
                 details: {modeName: modeEntry.modeName},
             });
         }
@@ -294,14 +294,14 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
 
         const records = this.readSampleRecordsSafely(safeSamplesPath, modeEntry, issues);
 
-        let liveIndex: OutcomeLibraryBundleModeIndex;
+        let liveIndex: OutcomeLibraryFolderModeIndex;
         try {
-            liveIndex = await this.reader.readModeIndex(sourceBundleDir, modeEntry.modeName);
+            liveIndex = await this.reader.readModeIndex(sourceLibraryDir, modeEntry.modeName);
         } catch (error) {
             issues.push({
                 code: "certification-pack-verify-source-mode-index-unreadable",
                 severity: "error",
-                message: `mode "${modeEntry.modeName}": could not read its own index in "${sourceBundleDir}": ${error instanceof Error ? error.message : String(error)}.`,
+                message: `mode "${modeEntry.modeName}": could not read its own index in "${sourceLibraryDir}": ${error instanceof Error ? error.message : String(error)}.`,
                 details: {modeName: modeEntry.modeName},
             });
             return;
@@ -315,7 +315,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
                 issues.push({
                     code: "certification-pack-verify-sample-outcome-missing",
                     severity: "error",
-                    message: `mode "${modeEntry.modeName}": outcome "${record.outcomeId}" is no longer present in "${sourceBundleDir}".`,
+                    message: `mode "${modeEntry.modeName}": outcome "${record.outcomeId}" is no longer present in "${sourceLibraryDir}".`,
                     details: {modeName: modeEntry.modeName, outcomeId: record.outcomeId},
                 });
                 continue;
@@ -324,14 +324,14 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
                 issues.push({
                     code: "certification-pack-verify-sample-record-hash-mismatch",
                     severity: "error",
-                    message: `mode "${modeEntry.modeName}": outcome "${record.outcomeId}" no longer hashes to this evidence bundle's own recorded recordHash in "${sourceBundleDir}".`,
+                    message: `mode "${modeEntry.modeName}": outcome "${record.outcomeId}" no longer hashes to this evidence bundle's own recorded recordHash in "${sourceLibraryDir}".`,
                     details: {modeName: modeEntry.modeName, outcomeId: record.outcomeId},
                 });
             }
         }
 
         checkCancellation(signal);
-        await this.verifySampleSequence(sourceBundleDir, modeEntry, records, issues, signal);
+        await this.verifySampleSequence(sourceLibraryDir, modeEntry, records, issues, signal);
     }
 
     // Reads and parses "samplesPath" defensively: a missing file, a line that isn't valid JSON, or a line that
@@ -383,14 +383,14 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
 
     // Reproduces the exact deterministic draw sequence this mode's own recorded seed produces against the
     // *live* bundle — one SeededWeightedOutcomeRandomSource for the whole mode, drawn from sequentially via
-    // OutcomeLibraryBundleReading.drawOutcome (never a second, differently-derived selection algorithm) — and
+    // OutcomeLibraryFolderReading.drawOutcome (never a second, differently-derived selection algorithm) — and
     // compares the outcome id it selects at each position against what this evidence bundle actually recorded
     // there. This is what catches a sample record substituted with a different, individually valid, still-
     // existing outcome id: a per-id existence/recordHash check alone (see the caller) can never catch that,
     // since a swapped-in id can be perfectly genuine and untampered — it's simply not the one this seed would
     // have drawn at that position.
     private async verifySampleSequence(
-        sourceBundleDir: string,
+        sourceLibraryDir: string,
         modeEntry: CertificationPackModeEntry,
         records: readonly SafeSampleRecord[],
         issues: ValidationIssue[],
@@ -406,7 +406,7 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
             checkCancellation(signal);
             let expectedOutcomeId: string;
             try {
-                expectedOutcomeId = (await this.reader.drawOutcome(sourceBundleDir, modeEntry.modeName, randomSource)).id;
+                expectedOutcomeId = (await this.reader.drawOutcome(sourceLibraryDir, modeEntry.modeName, randomSource)).id;
             } catch (error) {
                 checkCancellation(signal);
                 issues.push({

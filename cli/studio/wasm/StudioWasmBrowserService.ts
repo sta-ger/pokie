@@ -3,7 +3,7 @@ import fs from "fs";
 import {ProjectTargetResolver} from "../../../src/project/ProjectTargetResolver.js";
 import {readWasmComponentManifest} from "../../../src/project/readWasmComponentManifest.js";
 import {readIntegrityBoundCanonicalPokieWasmArtifact} from "../../../src/wasm/PokieWasmCanonicalModule.js";
-import type {PokieWasmBrowserArtifact} from "../../../src/wasm/loadPokieWasmBrowserArtifact.js";
+import type {PokieWasmBrowserBuild} from "../../../src/wasm/loadPokieWasmBrowserBuild.js";
 import type {PokieWasmWorkerProgress} from "../../../src/wasm/PokieWasmWorkerClient.js";
 import {POKIE_WASM_RUNTIME_VERSION, type PokieWasmRound} from "../../../src/wasm/PokieWasmRuntimeApi.js";
 import type {PokieWasmReplayObservation} from "../../../src/wasm/PokieWasmReplay.js";
@@ -24,8 +24,8 @@ import type {StudioRuntimeSessionView} from "../runtime/StudioRuntimeSessionView
 import type {StudioRoundRecorder} from "../runtime/StudioRoundRecorder.js";
 import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";
 
-type Lease = {job: StudioJobView; owner: string; artifact: PokieWasmBrowserArtifact; context: StudioContext; timer: ReturnType<typeof setTimeout>; prefix?: SimulationStatistics; completed: number; settle: () => void; drained: Promise<void>; publication?: Promise<Reply>};
-type SessionLease = {id: string; owner: string; artifact: PokieWasmBrowserArtifact; context: StudioContext; cancelled: boolean; timer: ReturnType<typeof setTimeout>; settle: () => void; drained: Promise<void>};
+type Lease = {job: StudioJobView; owner: string; artifact: PokieWasmBrowserBuild; context: StudioContext; timer: ReturnType<typeof setTimeout>; prefix?: SimulationStatistics; completed: number; settle: () => void; drained: Promise<void>; publication?: Promise<Reply>};
+type SessionLease = {id: string; owner: string; artifact: PokieWasmBrowserBuild; context: StudioContext; cancelled: boolean; timer: ReturnType<typeof setTimeout>; settle: () => void; drained: Promise<void>};
 type Reply = {status: number; body: unknown};
 const recovery = {action: "retry" as const, reason: "The browser Worker was interrupted. No execution survives a reload; retry explicitly with the captured inputs."};
 
@@ -49,7 +49,7 @@ export class StudioWasmBrowserService {
         this.leaseMs = leaseMs;
     }
 
-    public async artifact(context: StudioContext): Promise<PokieWasmBrowserArtifact> {
+    public async artifact(context: StudioContext): Promise<PokieWasmBrowserBuild> {
         if (!this.accepting) throw new Error("Studio is shutting down. Release the WASM browser session and restart before retrying.");
         if (context.mode !== "project") throw new Error("Open a WASM Project before executing it.");
         const project = await new ProjectTargetResolver().resolve(context.projectRoot);
@@ -234,7 +234,7 @@ export class StudioWasmBrowserService {
         // does not authorize a live session in a replacement Project or artifact.
         const historical = () => ({status: 200, body: {...this.jobs.get(job.projectId, job.id), browserSessionActive: false}});
         if (job.operation !== "browser-play" || value.cleanup !== true || !isCurrent()) return historical();
-        let artifact: PokieWasmBrowserArtifact;
+        let artifact: PokieWasmBrowserBuild;
         try {
             artifact = await this.artifact(context);
         } catch {
@@ -257,7 +257,7 @@ export class StudioWasmBrowserService {
         return {status: 200, body: {...retained, browserSessionActive: true}};
     }
 
-    private attachSession(job: StudioJobView, owner: string, artifact: PokieWasmBrowserArtifact, context: StudioContext): void {
+    private attachSession(job: StudioJobView, owner: string, artifact: PokieWasmBrowserBuild, context: StudioContext): void {
         const id = job.request.sessionId as string ?? job.id;
         const existing = this.sessions.get(id);
         if (existing) {

@@ -8,8 +8,8 @@ import type {WeightedOutcomeRandomSource} from "../pregenerated/WeightedOutcomeR
 import {PreGeneratedRoundResultProjector} from "../pregenerated/PreGeneratedRoundResultProjector.js";
 import {ReplayRecorder} from "../replay/ReplayRecorder.js";
 import type {PreGeneratedReplayRecording} from "../replay/ReplayRecording.js";
-import {OutcomeLibraryBundleOutcomeSource} from "../weightedoutcome/bundle/OutcomeLibraryBundleOutcomeSource.js";
-import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
+import {OutcomeLibraryFolderOutcomeSource} from "../weightedoutcome/folder/OutcomeLibraryFolderOutcomeSource.js";
+import {OutcomeLibraryFolderReader} from "../weightedoutcome/folder/OutcomeLibraryFolderReader.js";
 import type {PokieProject} from "../project/PokieProject.js";
 import {sampleOutcomeSourceProject, OutcomeSourceSampleResult} from "../project/sampleOutcomeSourceProject.js";
 import type {PokieDevServerAddress} from "./PokieDevServerAddress.js";
@@ -41,7 +41,7 @@ type PublicReplayIdentity = PreGeneratedRoundReplayDescriptor;
 
 // A native Outcome Library is a complete source of rounds, but it is not a loadable PokieGame. This
 // server therefore implements the same Player-facing /sessions contract as PokieDevServer directly on
-// PreGeneratedSpinCommandHandler and OutcomeLibraryBundleOutcomeSource. The latter reads the bundle's
+// PreGeneratedSpinCommandHandler and OutcomeLibraryFolderOutcomeSource. The latter reads the bundle's
 // index and exact selected outcome record; it never invokes loadPokieGame or regenerates model math.
 //
 // /outcome-source/sample remains available as the explicitly stateless inspection endpoint. Normal
@@ -53,7 +53,7 @@ export class OutcomeSourceDevServer implements PokieDevServerHandling {
     private readonly host: string;
     private readonly port: number;
     private readonly sample: SampleFn;
-    private readonly reader = new OutcomeLibraryBundleReader();
+    private readonly reader = new OutcomeLibraryFolderReader();
     private readonly sessionRepository: PreGeneratedSessionRepository;
     private readonly wallet: TransactionalWalletPort;
     private readonly spinHandler: PreGeneratedSpinCommandHandler;
@@ -83,7 +83,7 @@ export class OutcomeSourceDevServer implements PokieDevServerHandling {
         const configuredWallet = options.wallet ?? new InMemoryWallet();
         this.wallet = isTransactionalWalletPort(configuredWallet) ? configuredWallet : new TransactionalWalletAdapter(configuredWallet);
         this.spinHandler = new PreGeneratedSpinCommandHandler(
-            new OutcomeLibraryBundleOutcomeSource(project.rootPath, modeName),
+            new OutcomeLibraryFolderOutcomeSource(project.rootPath, modeName),
             this.wallet,
             this.sessionRepository,
             options.preGeneratedIdempotencyRepository ?? new InMemoryIdempotencyRepository<PreGeneratedSpinCommandResult>(),

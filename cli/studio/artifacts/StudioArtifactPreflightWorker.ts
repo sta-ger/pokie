@@ -2,7 +2,7 @@ import {Worker} from "worker_threads";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import type {ArtifactTargetType, PackageBlueprintExtractionResult} from "@fromstan/pokie";
+import type {OutputFormat, PackageBlueprintExtractionResult} from "@fromstan/pokie";
 import {StudioArtifactPreflightCleanupError, type StudioArtifactPreflighting, type StudioPreparedArtifactPreview} from "./StudioArtifactPreflighting.js";
 import type {StudioArtifactTargetView} from "./StudioArtifactTargetView.js";
 import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";
@@ -14,7 +14,7 @@ import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIden
  */
 export class StudioArtifactPreflightWorker implements StudioArtifactPreflighting {
     private tail: Promise<unknown> = Promise.resolve();
-    private readonly requests = new Map<AbortController, {projectRoot: string; target?: ArtifactTargetType | "packageModel"; promise: Promise<unknown>}>();
+    private readonly requests = new Map<AbortController, {projectRoot: string; target?: OutputFormat | "packageModel"; promise: Promise<unknown>}>();
     private cleanupFailure?: StudioArtifactPreflightCleanupError;
     private accepting = true;
     private readonly workerEntry: string;
@@ -35,7 +35,7 @@ export class StudioArtifactPreflightWorker implements StudioArtifactPreflighting
         return this.run(projectRoot, undefined, undefined, signal);
     }
 
-    public preparePreview(projectRoot: string, target: ArtifactTargetType, outDir?: string, signal?: AbortSignal): Promise<StudioPreparedArtifactPreview> {
+    public preparePreview(projectRoot: string, target: OutputFormat, outDir?: string, signal?: AbortSignal): Promise<StudioPreparedArtifactPreview> {
         return this.run(projectRoot, target, outDir, signal);
     }
 
@@ -59,7 +59,7 @@ export class StudioArtifactPreflightWorker implements StudioArtifactPreflighting
         if (this.cleanupFailure !== undefined) throw this.cleanupFailure;
     }
 
-    private run<T>(projectRoot: string, target?: ArtifactTargetType | "packageModel", outDir?: string, signal?: AbortSignal): Promise<T> {
+    private run<T>(projectRoot: string, target?: OutputFormat | "packageModel", outDir?: string, signal?: AbortSignal): Promise<T> {
         if (!this.accepting) return Promise.reject(new Error("Studio build check is stopping."));
         const identity = canonicalStudioProjectIdentity(projectRoot);
         for (const [owner, request] of this.requests) {

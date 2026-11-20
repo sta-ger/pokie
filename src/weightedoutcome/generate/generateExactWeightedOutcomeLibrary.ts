@@ -99,7 +99,7 @@ export type GenerateExactWeightedOutcomeLibraryOptions = {
     // Opt in only for callers that require the executable session itself to enact the requested mode.
     // The long-standing CLI/Studio generator also supports recording a caller-selected declarative mode on
     // packages whose exact session predates the runtime bet-mode decorator, so it intentionally leaves this
-    // false. ArtifactBuilderRegistry sets it true for canonical Project -> Outcome/Stake conversion.
+    // false. BuildOutputBuilderRegistry sets it true for canonical Project -> Outcome/Stake conversion.
     readonly selectBetMode?: boolean;
     readonly stake?: number;
     /**
@@ -743,7 +743,7 @@ export function createStreamingExactWeightedOutcomes(
 // "bounded memory" actually means here) and hands it to buildWeightedOutcomeLibrary, so a caller who wants a
 // full, already-validated WeightedOutcomeLibrary in memory never has to wire the collection loop themselves.
 // A caller building a canonical outcome-library bundle instead should use streamExactWeightedOutcomes
-// directly as an OutcomeLibraryBundleModeInput's own "outcomes" -- both are the exact same underlying
+// directly as an OutcomeLibraryFolderModeInput's own "outcomes" -- both are the exact same underlying
 // generation, never two calculation paths.
 export async function generateExactWeightedOutcomeLibrary(
     options: GenerateExactWeightedOutcomeLibraryOptions,

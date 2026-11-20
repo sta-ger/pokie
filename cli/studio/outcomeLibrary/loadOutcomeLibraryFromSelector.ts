@@ -1,4 +1,4 @@
-import type {OutcomeLibraryBundleReading, StakeEngineImporting, ValidationIssue, WeightedOutcomeLibrary} from "@fromstan/pokie";
+import type {OutcomeLibraryFolderReading, StakeEngineImporting, ValidationIssue, WeightedOutcomeLibrary} from "@fromstan/pokie";
 import {loadWeightedOutcomeLibraryFromProjectFile} from "../deployment/loadWeightedOutcomeLibraryFromProjectFile.js";
 import {resolveProjectDirectory} from "./resolveProjectDirectory.js";
 import type {OutcomeLibrarySelector} from "./OutcomeLibrarySelector.js";
@@ -7,7 +7,7 @@ export type LoadedOutcomeLibrary =
     | {
           readonly status: "ok";
           readonly library: WeightedOutcomeLibrary<string>;
-          readonly source: "json" | "bundle" | "stakeengine";
+          readonly source: "json" | "folder" | "stakeengine";
           readonly envelope?: {readonly game: {id: string; name: string; version: string}; readonly configHash?: string; readonly pokieVersion: string};
           readonly importIssues: readonly ValidationIssue[];
       }
@@ -15,14 +15,14 @@ export type LoadedOutcomeLibrary =
 
 // The one place an OutcomeLibrarySelector is actually resolved down to a genuine WeightedOutcomeLibrary --
 // shared by StudioDeploymentService (each deployment mode's own library) and StudioStakeEngineExportService
-// (each export mode's own library), so a "json"/"bundle"/"stakeengine" source is only ever read one way,
+// (each export mode's own library), so a "json"/"folder"/"stakeengine" source is only ever read one way,
 // not several slowly-diverging copies of the same three branches. Never validates the result's own shape
 // as a genuine WeightedOutcomeLibrary -- that's each caller's own job (see StudioDeploymentService's own
-// reliance on ExternalDeploymentService's pipeline for that check).
+// reliance on ExternalExportService's pipeline for that check).
 export async function loadOutcomeLibraryFromSelector(
     projectRoot: string,
     selector: OutcomeLibrarySelector,
-    bundleReader: OutcomeLibraryBundleReading<string>,
+    bundleReader: OutcomeLibraryFolderReading<string>,
     stakeEngineImporter: StakeEngineImporting<string>,
     readFile: (resolvedPath: string) => string,
     realpath: (resolvedPath: string) => string,
@@ -35,8 +35,8 @@ export async function loadOutcomeLibraryFromSelector(
         return {status: "ok", library: loaded.library, source: "json", importIssues: []};
     }
 
-    if (selector.kind === "bundle") {
-        const resolved = resolveProjectDirectory(projectRoot, selector.bundleDir, realpath);
+    if (selector.kind === "folder") {
+        const resolved = resolveProjectDirectory(projectRoot, selector.libraryDir, realpath);
         if (resolved.status === "error") {
             return {status: "load-error", error: resolved.message};
         }
@@ -46,14 +46,14 @@ export async function loadOutcomeLibraryFromSelector(
             return {
                 status: "ok",
                 library,
-                source: "bundle",
+                source: "folder",
                 envelope: {game: manifest.game, configHash: manifest.configHash, pokieVersion: manifest.artifactPokieVersion},
                 importIssues: [],
             };
         } catch (error) {
             return {
                 status: "load-error",
-                error: `Could not read bundle "${selector.bundleDir}" mode "${selector.modeName}": ${error instanceof Error ? error.message : String(error)}`,
+                error: `Could not read bundle "${selector.libraryDir}" mode "${selector.modeName}": ${error instanceof Error ? error.message : String(error)}`,
             };
         }
     }

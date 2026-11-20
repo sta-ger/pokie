@@ -1,7 +1,7 @@
 import type {RoundRecord} from "../artifact/RoundRecord.js";
 
 // One deterministically-sampled round, drawn from a source Outcome Library Bundle's mode via
-// OutcomeLibraryBundleReading.drawOutcome (the same weighted-draw algorithm the pre-generated runtime uses,
+// OutcomeLibraryFolderReading.drawOutcome (the same weighted-draw algorithm the pre-generated runtime uses,
 // seeded with SeededWeightedOutcomeRandomSource) — never a second selection algorithm. Embeds the outcome's
 // full RoundRecord verbatim (not recomputed) so this evidence bundle stays self-contained and independently
 // auditable without needing the — potentially much larger — source bundle at hand.
@@ -13,7 +13,7 @@ export type CertificationPackSampleRecord<T extends string | number = string> = 
     readonly seed: string;
     readonly outcomeId: string;
     readonly weight: number;
-    // The source bundle's own OutcomeLibraryBundleIndexEntry.recordHash for this exact outcome, reused as-is —
+    // The source bundle's own OutcomeLibraryFolderIndexEntry.recordHash for this exact outcome, reused as-is —
     // never a second, differently-derived record hash.
     readonly recordHash: string;
     // computeRoundRecordHash(artifact), reused as-is — the same content hash every other RoundRecord

@@ -5,7 +5,7 @@ import {POKIE_WASM_ADAPTER, type PokieWasmComponentManifest} from "./PokieWasmCo
 // An PokieWasmComponentManifest's own static type guarantees nothing about a value that actually arrives at
 // runtime -- always deserialized from a sidecar JSON file (see WasmProjectTargetAdapter) -- so every field is
 // read through this loosened view, the same runtime-guard idiom RoundRecordValidator/
-// ExternalDeploymentTargetDescriptorValidator use for the identical reason.
+// ExternalExportTargetDescriptorValidator use for the identical reason.
 type Loose<X> = {[K in keyof X]?: unknown};
 
 function isNonEmptyString(value: unknown): value is string {
@@ -19,8 +19,8 @@ function isNonEmptyStringArray(value: unknown): value is readonly string[] {
 // Validates a PokieWasmComponentManifest's own shape only -- independent of whether it's actually compatible
 // with this POKIE build's own contract version (see assessWasmComponentCompatibility for that, separate,
 // step) -- the same "shape vs. compatibility are two different questions" split
-// ExternalDeploymentTargetDescriptorValidator/ExternalDeploymentCompatibilityValidator draw for
-// ExternalDeploymentTarget. Never throws.
+// ExternalExportTargetDescriptorValidator/ExternalExportCompatibilityValidator draw for
+// ExternalExportTarget. Never throws.
 export class PokieWasmComponentManifestValidator {
     public validate(manifest: unknown): ValidationIssue[] {
         try {

@@ -1,4 +1,4 @@
-import type {ArtifactConversionPlan, StakeEngineManifest, ValidationIssue} from "@fromstan/pokie";
+import type {FormatConversionPlan, StakeEngineManifest, ValidationIssue} from "@fromstan/pokie";
 
 // POST /api/project/stakeengine/export's own DTO — mirrors the planner's no-overwrite destination
 // contract exactly. A conflict is terminal for this prepared plan; callers must choose a new output
@@ -10,10 +10,10 @@ export type StudioStakeEngineExportView =
           readonly files: readonly string[];
           readonly manifest: StakeEngineManifest;
           readonly warnings: readonly ValidationIssue[];
-          readonly plan: ArtifactConversionPlan;
+          readonly plan: FormatConversionPlan;
       }
-    | {readonly status: "conflict"; readonly outDir: string; readonly overwritable: boolean; readonly error: string; readonly plan: ArtifactConversionPlan}
-    | {readonly status: "unavailable"; readonly error: string; readonly plan: ArtifactConversionPlan}
-    | {readonly status: "invalid"; readonly errors: readonly ValidationIssue[]; readonly warnings: readonly ValidationIssue[]; readonly plan: ArtifactConversionPlan}
-    | {readonly status: "cancelled"; readonly message: string; readonly plan: ArtifactConversionPlan}
-    | {readonly status: "load-error"; readonly error: string; readonly plan: ArtifactConversionPlan};
+    | {readonly status: "conflict"; readonly outDir: string; readonly overwritable: boolean; readonly error: string; readonly plan: FormatConversionPlan}
+    | {readonly status: "unavailable"; readonly error: string; readonly plan: FormatConversionPlan}
+    | {readonly status: "invalid"; readonly errors: readonly ValidationIssue[]; readonly warnings: readonly ValidationIssue[]; readonly plan: FormatConversionPlan}
+    | {readonly status: "cancelled"; readonly message: string; readonly plan: FormatConversionPlan}
+    | {readonly status: "load-error"; readonly error: string; readonly plan: FormatConversionPlan};

@@ -33,13 +33,13 @@ const OUTCOME_BANNER: Record<FairnessOutcome, {color: string; icon: ReactNode; t
     invalid: {color: "red", icon: <IconAlertTriangle size={16} />, title: "Did not verify"},
 };
 
-type ConfigureFields = {bundleDir: string; modeName: string; serverSeed: string; clientSeed: string; nonce: number};
+type ConfigureFields = {libraryDir: string; modeName: string; serverSeed: string; clientSeed: string; nonce: number};
 
-const EMPTY_CONFIGURE: ConfigureFields = {bundleDir: "", modeName: "", serverSeed: "", clientSeed: "", nonce: 0};
+const EMPTY_CONFIGURE: ConfigureFields = {libraryDir: "", modeName: "", serverSeed: "", clientSeed: "", nonce: 0};
 
 function isConfigureValid(fields: ConfigureFields): boolean {
     return (
-        fields.bundleDir.trim().length > 0 &&
+        fields.libraryDir.trim().length > 0 &&
         fields.modeName.trim().length > 0 &&
         fields.serverSeed.trim().length > 0 &&
         fields.clientSeed.trim().length > 0
@@ -142,7 +142,7 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
                 configureGuard.end();
                 setConfigureView(describeFairnessConfigureResult(result));
                 if (result.status === "ok") {
-                    setVerifyBundleDir(fields.bundleDir.trim());
+                    setVerifyBundleDir(fields.libraryDir.trim());
                 }
             })
             .catch((error: unknown) => {
@@ -167,7 +167,7 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
         // the one already committed to, surfacing as a spurious serverSeed-hash mismatch on reveal for
         // any seed with meaningful leading/trailing whitespace (the same "never silently reshape a
         // secret" discipline normalizeServerSeedFileContents.ts documents for the CLI's own seed files).
-        generateFairnessProof(fetchImpl, fields.bundleDir.trim(), commitment, fields.serverSeed)
+        generateFairnessProof(fetchImpl, fields.libraryDir.trim(), commitment, fields.serverSeed)
             .then((result) => {
                 if (requestId !== generateRequestIdRef.current) {
                     return;
@@ -285,9 +285,9 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
                         browseTitle="Browse for a source outcome-library bundle directory"
                         browseId="provably-fair-configure-bundle-dir"
                         relevantDirectory={projectRoot}
-                        value={fields.bundleDir}
-                        onChange={(event) => handleFieldsChange({...fields, bundleDir: event.currentTarget.value})}
-                        onPathSelected={(bundleDir) => handleFieldsChange({...fields, bundleDir})}
+                        value={fields.libraryDir}
+                        onChange={(event) => handleFieldsChange({...fields, libraryDir: event.currentTarget.value})}
+                        onPathSelected={(libraryDir) => handleFieldsChange({...fields, libraryDir})}
                         mb="sm"
                     />
                     <TextInput

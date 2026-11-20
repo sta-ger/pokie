@@ -9,7 +9,7 @@ import {projectVisiblePayline, projectVisiblePositions} from "../session/videosl
 import type {RoundRecord} from "./RoundRecord.js";
 import type {RoundRecordWin} from "./RoundRecordWin.js";
 import type {RoundStepRecord} from "./RoundStepRecord.js";
-import {validateArtifactCoordinates} from "./validateArtifactCoordinates.js";
+import {validateRoundRecordCoordinates} from "./validateRoundRecordCoordinates.js";
 
 export type PublicRoundRecord<T extends string | number = string> = Pick<RoundRecord<T>, "roundId" | "stake" | "betMode" | "totalWin" | "payoutMultiplier" | "screen" | "sequenceSelections" | "featureEvents"> & {
     readonly steps: readonly PublicRoundStep<T>[];
@@ -33,7 +33,7 @@ export class PublicRoundRecordProjector<T extends string | number = string> impl
 }
 
 export function projectPublicRoundStep<T extends string | number>(step: RoundStepRecord<T>): PublicRoundStep<T> {
-    validateArtifactCoordinates(step);
+    validateRoundRecordCoordinates(step);
     const projection = step.geometry ? new ScreenProjection(step.geometry) : undefined;
     const wins = step.wins.map(win => {
         const metadata = Object.fromEntries(Object.entries(win.metadata).filter(([key]) => ["definition", "symbolsPositions", "wildSymbolsPositions", "lineId", "count", "pattern", "poolId", "stakeEngineImportSynthetic"].includes(key)));

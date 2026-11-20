@@ -1,7 +1,7 @@
 import {deepFreeze} from "../internal/deepFreeze.js";
 import type {WeightedOutcomeRandomSource} from "../pregenerated/WeightedOutcomeRandomSource.js";
-import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
-import type {OutcomeLibraryBundleReading} from "../weightedoutcome/bundle/OutcomeLibraryBundleReading.js";
+import {OutcomeLibraryFolderReader} from "../weightedoutcome/folder/OutcomeLibraryFolderReader.js";
+import type {OutcomeLibraryFolderReading} from "../weightedoutcome/folder/OutcomeLibraryFolderReading.js";
 import {computeFairnessCommitmentHash} from "./computeFairnessCommitmentHash.js";
 import type {FairnessCommitment} from "./FairnessCommitment.js";
 import {FairnessCommitmentValidator} from "./FairnessCommitmentValidator.js";
@@ -32,12 +32,12 @@ import {sha256OfBytes} from "./internal/sha256OfBytes.js";
 // add more of its own.
 export class FairnessRoundProofBuilder implements FairnessRoundProofBuilding {
     private readonly mandatoryCommitmentValidator: FairnessCommitmentValidating = new FairnessCommitmentValidator();
-    private readonly reader: OutcomeLibraryBundleReading;
+    private readonly reader: OutcomeLibraryFolderReading;
     private readonly randomSourceFactory: (serverSeed: string, clientSeed: string, nonce: number) => WeightedOutcomeRandomSource;
     private readonly additionalCommitmentValidator: FairnessCommitmentValidating | undefined;
 
     constructor(
-        reader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
+        reader: OutcomeLibraryFolderReading = new OutcomeLibraryFolderReader(),
         randomSourceFactory: (
             serverSeed: string,
             clientSeed: string,
@@ -50,7 +50,7 @@ export class FairnessRoundProofBuilder implements FairnessRoundProofBuilding {
         this.additionalCommitmentValidator = additionalCommitmentValidator;
     }
 
-    public async build(commitment: FairnessCommitment, serverSeed: string, sourceBundleDir: string): Promise<FairnessRoundProof> {
+    public async build(commitment: FairnessCommitment, serverSeed: string, sourceLibraryDir: string): Promise<FairnessRoundProof> {
         const commitmentIssues = [...this.mandatoryCommitmentValidator.validate(commitment), ...(this.additionalCommitmentValidator?.validate(commitment) ?? [])];
         if (commitmentIssues.some((issue) => issue.severity === "error")) {
             throw new FairnessRoundProofBuildError(
@@ -70,7 +70,7 @@ export class FairnessRoundProofBuilder implements FairnessRoundProofBuilding {
         const randomSource = this.randomSourceFactory(serverSeed, commitment.clientSeed, commitment.nonce);
         let draw;
         try {
-            draw = await drawPinnedFairnessOutcome(this.reader, sourceBundleDir, commitment.modeName, randomSource);
+            draw = await drawPinnedFairnessOutcome(this.reader, sourceLibraryDir, commitment.modeName, randomSource);
         } catch (error) {
             if (error instanceof FairnessBundleDriftError) {
                 throw new FairnessRoundProofBuildError("fairness-round-proof-bundle-drift", error.message);
@@ -84,7 +84,7 @@ export class FairnessRoundProofBuilder implements FairnessRoundProofBuilding {
         if (draw.index.libraryId !== commitment.libraryId || draw.index.libraryHash !== commitment.libraryHash) {
             throw new FairnessRoundProofBuildError(
                 "fairness-round-proof-library-mismatch",
-                `mode "${commitment.modeName}" in "${sourceBundleDir}" has libraryId/libraryHash "${draw.index.libraryId}"/"${draw.index.libraryHash}", not this commitment's own recorded "${commitment.libraryId}"/"${commitment.libraryHash}".`,
+                `mode "${commitment.modeName}" in "${sourceLibraryDir}" has libraryId/libraryHash "${draw.index.libraryId}"/"${draw.index.libraryHash}", not this commitment's own recorded "${commitment.libraryId}"/"${commitment.libraryHash}".`,
             );
         }
 

@@ -23,7 +23,7 @@ export type PreGeneratedRoundBuildOptions<T extends string | number = string> = 
 
 // The one place a PreGeneratedRoundResult is assembled — always from a PreGeneratedOutcomeSelection already
 // produced by a PreGeneratedOutcomeSourcing implementation (InMemoryPreGeneratedOutcomeSource,
-// OutcomeLibraryBundleOutcomeSource, or reproduced by PreGeneratedRoundReplayer), never a second calculation
+// OutcomeLibraryFolderOutcomeSource, or reproduced by PreGeneratedRoundReplayer), never a second calculation
 // path. `selection.outcome.artifact` is referenced directly (already deeply frozen/immutable by
 // buildRoundRecord/buildWeightedOutcomeLibrary), never copied or mutated.
 //

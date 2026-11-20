@@ -1,4 +1,4 @@
-import {assertCanonicalWasmGameModel, compileCanonicalWasmArtifact, type CanonicalWasmGameModel} from "./DeclarativeWasmModel.js";
+import {assertCanonicalWasmGameModel, compileCanonicalWasmBuild, type CanonicalWasmGameModel} from "./DeclarativeWasmModel.js";
 import {assessWasmComponentCompatibility} from "../project/wasm/assessWasmComponentCompatibility.js";
 import {satisfiesMinimumSemverLite} from "../project/wasm/internal/compareSemverLite.js";
 import {POKIE_WASM_ABI_VERSION, POKIE_WASM_ADAPTER, type PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
@@ -269,7 +269,7 @@ export function readCanonicalPokieWasmModule(bytes: BufferSource): CanonicalPoki
     // Canonical ABI 3 is a closed lowering, not a claim made by arbitrary code.
     // Re-emission binds all executable sections, memory limits/data and exports to
     // this exact model and descriptor, including internally rehashed artifacts.
-    const expected = compileCanonicalWasmArtifact(model, descriptor);
+    const expected = compileCanonicalWasmBuild(model, descriptor);
     if (binary.length !== expected.length || !binary.every((byte, i) => byte === expected[i])) {
         throw new Error("POKIE WASM executable does not match its supported shared math lowering/model identity.");
     }

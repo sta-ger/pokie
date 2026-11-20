@@ -1,16 +1,16 @@
 import {
-    ArtifactBuilderRegistry,
-    ArtifactConversionPlanner,
-    type ArtifactConversionExecution,
-    type ArtifactConversionExecutionResult,
+    BuildOutputBuilderRegistry,
+    FormatConversionPlanner,
+    type FormatConversionExecution,
+    type FormatConversionExecutionResult,
     type ValidationIssue,
-    ArtifactBuildConflictError,
-    type ArtifactBuildOptions,
-    type ArtifactConversionPlan,
-    ArtifactTargetType,
+    BuildConflictError,
+    type BuildOutputOptions,
+    type FormatConversionPlan,
+    OutputFormat,
     ADVERTISED_ARTIFACT_BUILD_TARGETS,
     computeGameBlueprintHash,
-    describeArtifactConversionPlanDiagnostic,
+    describeFormatConversionPlanDiagnostic,
     buildGameBuildInfo,
     GameBlueprint,
     GameBlueprintValidating,
@@ -32,9 +32,9 @@ import {ParCommand} from "./ParCommand.js";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
-// The complete product matrix: every ArtifactTargetType is selectable through
+// The complete product matrix: every OutputFormat is selectable through
 // one registry.  WASM is deliberately not a second build command.
-const TARGET_TYPES: readonly ArtifactTargetType[] = ADVERTISED_ARTIFACT_BUILD_TARGETS;
+const TARGET_TYPES: readonly OutputFormat[] = ADVERTISED_ARTIFACT_BUILD_TARGETS;
 
 const USAGE = "Usage: pokie build <project> --target <format> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]";
 const TARGET_HINT = `--target must be one of: ${TARGET_TYPES.join(", ")}.`;
@@ -47,7 +47,7 @@ const PROJECT_HINT =
 const PAR_WORKBOOK_DEFAULT_EXTENSION = ".xlsx";
 const WASM_DEFAULT_EXTENSION = ".wasm";
 
-type BuildOptions = {target?: ArtifactTargetType; out?: string; dryRun?: boolean; exact?: boolean; sample?: bigint; seed?: string};
+type BuildOptions = {target?: OutputFormat; out?: string; dryRun?: boolean; exact?: boolean; sample?: bigint; seed?: string};
 
 function parsePositiveBigIntOption(value: string, flag: string): bigint {
     if (!(/^[0-9]+$/).test(value) || BigInt(value) <= BigInt(0)) {
@@ -61,7 +61,7 @@ export class BuildCommand implements CliCommandHandling {
     private readonly loadBlueprint: (filePath: string) => unknown;
     private readonly validator: GameBlueprintValidating;
     private readonly resolveProject: ProjectResolving;
-    private readonly registry: ArtifactBuilderRegistry;
+    private readonly registry: BuildOutputBuilderRegistry;
     private readonly stakeProjection: StakeProjectionExportService;
 
     constructor(
@@ -69,7 +69,7 @@ export class BuildCommand implements CliCommandHandling {
         loadBlueprint?: (filePath: string) => unknown,
         validator?: GameBlueprintValidating,
         resolveProject?: ProjectResolving,
-        registry?: ArtifactBuilderRegistry,
+        registry?: BuildOutputBuilderRegistry,
         managedOutcomeProjects?: ManagedOutcomeProjectServicing,
         pokiePackageRoot?: string,
     ) {
@@ -78,7 +78,7 @@ export class BuildCommand implements CliCommandHandling {
         this.loadBlueprint = loadBlueprint ?? loadGameBlueprint;
         this.validator = validator ?? new GameBlueprintValidator();
         this.resolveProject = projectResolver;
-        this.registry = registry ?? new ArtifactBuilderRegistry(pokieVersion, undefined, managedOutcomeProjects ?? new ManagedOutcomeProjectService(projectResolver));
+        this.registry = registry ?? new BuildOutputBuilderRegistry(pokieVersion, undefined, managedOutcomeProjects ?? new ManagedOutcomeProjectService(projectResolver));
         this.stakeProjection = new StakeProjectionExportService(this.registry);
         if (pokiePackageRoot !== undefined) this.registry.withRuntimePackageRoot(pokiePackageRoot);
     }
@@ -137,10 +137,10 @@ export class BuildCommand implements CliCommandHandling {
                 "--target <format>",
                 TARGET_HINT,
                 (value: string) => {
-                    if (!TARGET_TYPES.includes(value as ArtifactTargetType)) {
+                    if (!TARGET_TYPES.includes(value as OutputFormat)) {
                         throw new Error(`Unknown --target "${value}". ${TARGET_HINT}`);
                     }
-                    return value as ArtifactTargetType;
+                    return value as OutputFormat;
                 },
             )
             .option("--out <path>", "where to write the build output (default: a <target>-named sibling of <project>)")
@@ -192,7 +192,7 @@ export class BuildCommand implements CliCommandHandling {
                 : await this.registry.preparePlan(project, target, {destinationPath: out, outcomeLibraryGeneration: generation, signal: lifecycle.signal});
             if (conversionPlan.status === "unavailable") {
                 if (conversionPlan.packageExtraction) this.printExtraction(conversionPlan.packageExtraction);
-                const compatibility = describeArtifactConversionPlanDiagnostic(conversionPlan);
+                const compatibility = describeFormatConversionPlanDiagnostic(conversionPlan);
                 throw new Error(`${conversionPlan.diagnostic!.message} Next: ${conversionPlan.diagnostic!.recovery}${compatibility === undefined ? "" : `\n${compatibility}`}`);
             }
             if (conversionPlan.status === "conflict") {
@@ -221,7 +221,7 @@ export class BuildCommand implements CliCommandHandling {
 
     // Descriptor readers remain format adapters. Build owns the prepared planner operation,
     // including dry-run source/destination validation and the same SIGINT lifecycle as projects.
-    private async buildDescriptor(source: string, target: ArtifactTargetType, destination: string, dryRun: boolean): Promise<number> {
+    private async buildDescriptor(source: string, target: OutputFormat, destination: string, dryRun: boolean): Promise<number> {
         let result: {readonly published: boolean; readonly issues: readonly ValidationIssue[]};
         try {
             result = await this.runWithArtifactLifecycle(async ({signal}) => {
@@ -263,10 +263,10 @@ export class BuildCommand implements CliCommandHandling {
     }
 
     private async executeDescriptorOperation<ReadResult, PublishedResult>(
-        prepared: {readonly plan: ArtifactConversionPlan; readonly validate: () => Promise<void> | void; readonly execution: ArtifactConversionExecution<ReadResult, PublishedResult>},
+        prepared: {readonly plan: FormatConversionPlan; readonly validate: () => Promise<void> | void; readonly execution: FormatConversionExecution<ReadResult, PublishedResult>},
         dryRun: boolean,
-    ): Promise<ArtifactConversionExecutionResult<ReadResult, PublishedResult> | undefined> {
-        const planner = new ArtifactConversionPlanner();
+    ): Promise<FormatConversionExecutionResult<ReadResult, PublishedResult> | undefined> {
+        const planner = new FormatConversionPlanner();
         if (!dryRun) {
             return planner.executeConversionPlan(prepared.plan, prepared.execution);
         }
@@ -290,7 +290,7 @@ export class BuildCommand implements CliCommandHandling {
     // name a directory. Never collides with `rootPath` itself: a sibling name always differs from the resolved
     // project's own basename, so the existing conflict protections (assertArtifactDestinationAvailable) are
     // the only thing standing between this default and an existing, unrelated file/directory of the same name.
-    private resolveDestination(rootPath: string, target: ArtifactTargetType): string {
+    private resolveDestination(rootPath: string, target: OutputFormat): string {
         let siblingName: string = target;
         if (target === "parWorkbook") siblingName = `${target}${PAR_WORKBOOK_DEFAULT_EXTENSION}`;
         if (target === "wasm") siblingName = `game${WASM_DEFAULT_EXTENSION}`;
@@ -299,11 +299,11 @@ export class BuildCommand implements CliCommandHandling {
     }
 
     // The rich, well-known "pokie build" path: a GameBlueprint source built into a runnable tsPackage. The
-    // actual build always goes straight through ArtifactBuilderRegistry: TsPackageArtifactBuilder owns the
+    // actual build always goes straight through BuildOutputBuilderRegistry: TsPackageOutputBuilder owns the
     // load -> validate -> materialize reels -> generate sequence, so the CLI must not run a second, subtly
     // different copy before calling the registry. Dry runs are intentionally read-only previews and therefore
     // retain their own validation/materialization probe without producing an artifact.
-    private async buildTsPackageFromBlueprint(project: PokieProject, out: string, dryRun: boolean, plan: ArtifactConversionPlan): Promise<number> {
+    private async buildTsPackageFromBlueprint(project: PokieProject, out: string, dryRun: boolean, plan: FormatConversionPlan): Promise<number> {
         if (dryRun) {
             const blueprint = this.loadBlueprint(project.rootPath);
             const issues = this.validator.validate(blueprint);
@@ -354,7 +354,7 @@ export class BuildCommand implements CliCommandHandling {
                 console.error(`\n${PROJECT_HINT}`);
                 return 1;
             }
-            if (error instanceof ArtifactBuildConflictError) {
+            if (error instanceof BuildConflictError) {
                 throw new Error(describeDestinationConflict("tsPackage", error.message));
             }
             throw error;
@@ -389,12 +389,12 @@ export class BuildCommand implements CliCommandHandling {
     // managed lifecycle exception: the requested destination is generated, verified, registered and reopened as
     // the canonical Outcome Project before this method reports it; Blueprint -> Stake then reuses that record.
     private async buildArtifact(
-        target: ArtifactTargetType,
+        target: OutputFormat,
         project: PokieProject,
         out: string,
         dryRun: boolean,
-        generation: ArtifactBuildOptions["outcomeLibraryGeneration"],
-        plan: ArtifactConversionPlan,
+        generation: BuildOutputOptions["outcomeLibraryGeneration"],
+        plan: FormatConversionPlan,
     ): Promise<number> {
         if (dryRun) {
             console.log(`Dry run -- would build "${target}" from "${project.rootPath}" (${project.provenance}) to "${out}". No files written.`);
@@ -408,7 +408,7 @@ export class BuildCommand implements CliCommandHandling {
                 ? this.stakeProjection.execute(project, out, plan, {...lifecycle, ...(generation !== undefined ? {outcomeLibraryGeneration: generation} : {})})
                 : this.registry.executePlan(plan, project, out, {...lifecycle, ...(generation !== undefined ? {outcomeLibraryGeneration: generation} : {})}));
         } catch (error) {
-            if (error instanceof ArtifactBuildConflictError) {
+            if (error instanceof BuildConflictError) {
                 throw new Error(describeDestinationConflict(target, error.message));
             }
             throw error;
@@ -439,7 +439,7 @@ export class BuildCommand implements CliCommandHandling {
 
     // This is intentionally checked before resolving/loading a project: malformed sampled invocations are
     // argv errors, and a valid direct sample is threaded into the one registry-owned generation lifecycle.
-    private outcomeLibraryGeneration(options: BuildOptions): ArtifactBuildOptions["outcomeLibraryGeneration"] {
+    private outcomeLibraryGeneration(options: BuildOptions): BuildOutputOptions["outcomeLibraryGeneration"] {
         const hasGenerationOption = options.exact || options.sample !== undefined || options.seed !== undefined;
         if (!hasGenerationOption) return undefined;
         if (options.target !== "outcomeLibrary") {
@@ -462,7 +462,7 @@ export class BuildCommand implements CliCommandHandling {
     // instead of merely terminating the process after a final directory swap.  Progress is intentionally
     // throttled by message: outcome streaming may report every record, while the terminal only needs a
     // truthful phase/count update.
-    private async runWithArtifactLifecycle<T>(run: (options: ArtifactBuildOptions) => Promise<T>): Promise<T> {
+    private async runWithArtifactLifecycle<T>(run: (options: BuildOutputOptions) => Promise<T>): Promise<T> {
         const controller = new AbortController();
         let lastMessage: string | undefined;
         const cancel = (): void => {
@@ -502,7 +502,7 @@ export class BuildCommand implements CliCommandHandling {
 
     // Previews what "pokie build" would generate without touching the filesystem: same validation, same
     // blueprintHash computation (buildGameBuildInfo is a pure function -- no file I/O), just no
-    // ArtifactBuilderRegistry.build() call. `destination` is still the exact --out (explicit or resolved
+    // BuildOutputBuilderRegistry.build() call. `destination` is still the exact --out (explicit or resolved
     // default) a real build would use -- printed here so a dry run previews the same resolved destination a
     // real build would write to, even though nothing is created at it.
     private printDryRunSummary(blueprint: GameBlueprint, sourcePath: string, destination: string): void {
@@ -526,13 +526,13 @@ export class BuildCommand implements CliCommandHandling {
     // summary, but expose the selected executable steps, reuse choice and
     // irreversible boundary instead of making a user infer them from target
     // names or a command-specific branch.
-    private printParConversion(report: NonNullable<import("@fromstan/pokie").ArtifactBuildResult["parConversion"]>): void {
+    private printParConversion(report: NonNullable<import("@fromstan/pokie").BuildOutputResult["parConversion"]>): void {
         console.log(`  PAR lossless eligible ${report.losslessEligible}`);
         for (const issue of report.issues) console.log(`  ${issue.severity} ${issue.code}: ${issue.message}`);
         for (const fact of report.facts) console.log(`  ${fact.kind} ${fact.code}: ${fact.message}`);
     }
 
-    private printPlanSummary(plan: ArtifactConversionPlan): void {
+    private printPlanSummary(plan: FormatConversionPlan): void {
         if (plan.parConversion) this.printParConversion(plan.parConversion);
         console.log("Conversion plan:");
         console.log(`  steps            ${plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "no executable steps"}`);
@@ -569,6 +569,6 @@ function isReelStripGenerationFailure(error: unknown): error is Error {
     return error instanceof Error && error.message.includes("could not generate its reel strips:");
 }
 
-function describeDestinationConflict(target: ArtifactTargetType, detail: string): string {
+function describeDestinationConflict(target: OutputFormat, detail: string): string {
     return `Cannot build target "${target}" because its destination is unavailable. ${detail} Next: choose a different --out path or remove the existing destination, then retry.`;
 }

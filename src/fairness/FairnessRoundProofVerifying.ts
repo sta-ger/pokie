@@ -9,11 +9,11 @@ import type {ValidationIssue} from "../validation/ValidationIssue.js";
 // copies of the fields a commitment would pin, but copies alone can't prove they match anything that was ever
 // actually committed to.
 //
-// "sourceBundleDir" is where the live source Outcome Library Bundle actually is — also required for a bundle
+// "sourceLibraryDir" is where the live source Outcome Library Bundle actually is — also required for a bundle
 // cross-check; without it, verify() runs only the commitment cross-check above and reads no bundle at all.
 export type FairnessVerifyOptions = {
     readonly commitment?: unknown;
-    readonly sourceBundleDir?: string;
+    readonly sourceLibraryDir?: string;
 };
 
 // Cross-checks a candidate FairnessRoundProof two ways: against its own claimed FairnessCommitment, and against
@@ -32,7 +32,7 @@ export type FairnessVerifyOptions = {
 //   substituted-but-individually-valid, still-existing outcome id);
 // - the deterministic selection itself — reproducing the exact HMAC-SHA256 byte stream this proof's own
 //   revealed serverSeed/clientSeed/nonce produce and redrawing against one pinned snapshot of the live bundle
-//   (see drawPinnedFairnessOutcome — never OutcomeLibraryBundleReading.drawOutcome directly, and never a second,
+//   (see drawPinnedFairnessOutcome — never OutcomeLibraryFolderReading.drawOutcome directly, and never a second,
 //   differently-derived selection algorithm) to confirm it independently selects this exact outcome.
 // No game/win calculation is ever involved: only id/weight/recordHash and the byte-range integrity the pinned
 // draw already verifies on its own single read.

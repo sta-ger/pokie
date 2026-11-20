@@ -53,7 +53,7 @@ pokie report assessment/manifest.json --format html --template presentation.json
 
 The trusted-sources file contains the **pack object**, with explicit relocated model, report and replay
 paths and the same revision labels. Its paths are relative to that file. Verification never follows
-`manifest.sourceBundleDir`, any saved model location, or attachment locations. Supply every attached
+`manifest.sourceLibraryDir`, any saved model location, or attachment locations. Supply every attached
 report and replay, in order. Copies can move to a fresh runtime: no saved session, optimization receipt
 or original workspace is required. The fresh runtime must provide the same POKIE runtime and
 dependencies and unchanged authored source bytes. Changing package bytes (even a comment), evidence,
@@ -63,11 +63,11 @@ Library use exposes the same interfaces:
 
 ```ts
 const result = await new CertificationPackBuilder("2.0.0").buildFromBundle(
- sourceBundleDir, modes, newOrEmptyDirectory,
+ sourceLibraryDir, modes, newOrEmptyDirectory,
  {pack: {modelSource, reportFiles, replayFiles}, output: {formats: ["html", "pdf"]}, signal},
 );
 const issues = await new CertificationPackVerifier().verify(result.outDir, {
- sourceBundleDir: relocatedSource, pack: relocatedSources, templateFile, signal,
+ sourceLibraryDir: relocatedSource, pack: relocatedSources, templateFile, signal,
 });
 const bytes = await new CertificationPackRenderer().render(result.manifest!, "pdf", undefined, signal);
 ```
@@ -109,7 +109,7 @@ hashes and rehashed model/report/replay substitutions reject. Hash integrity doe
 or authenticity.
 
 `evidenceContentHash` hashes every semantic manifest field, including pack attachments and template
-semantic/raw-byte identities, except `generatedAt`, `sourceBundleDir` and `deepValidation.ranAt`. Those
+semantic/raw-byte identities, except `generatedAt`, `sourceLibraryDir` and `deepValidation.ranAt`. Those
 location and time fields can differ on rebuild. Supplied raw reports remain exact files: a newly timed
 simulation file has a different raw identity even when its mathematics match. Reproduction ignores
 timing and command location when comparing simulation mathematics. Rendered files are bound by exact,
@@ -180,7 +180,7 @@ failed builds produce no downloadable successful pack. Simulation report downloa
 JSON/Markdown/HTML interfaces.
 
 SDK and fairness evidence is currently explicitly **unavailable** in this pack. No profile is inferred
-from a bundle or game name. Existing [SDK diagnostics](external-connector-sdk.md) establish local target
+from a folder or game name. Existing [SDK diagnostics](external-connector-sdk.md) establish local target
 compatibility, never provider acceptance; existing [HMAC fairness proofs](provably-fair.md) establish
 only their versioned reproducible outcome-selection checks, never precommit timing or general game
 fairness. These separate interfaces must not be presented as certification trusted source.

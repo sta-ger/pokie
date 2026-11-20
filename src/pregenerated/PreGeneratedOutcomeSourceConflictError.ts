@@ -9,7 +9,7 @@
 // idempotency cache is ever consulted and before any wallet transaction — and turns it into a "conflict"
 // PreGeneratedSpinCommandResult, the same graceful, nothing-to-compensate outcome a session-identity mismatch
 // already gets. Any PreGeneratedOutcomeSourcing implementation, not just the ones this package ships
-// (OutcomeLibraryBundleOutcomeSource translates a byte-range hash/id/weight mismatch into this), may throw it.
+// (OutcomeLibraryFolderOutcomeSource translates a byte-range hash/id/weight mismatch into this), may throw it.
 export class PreGeneratedOutcomeSourceConflictError extends Error {
     constructor(message: string) {
         super(message);

@@ -2,20 +2,20 @@ import {
     computeFairnessCommitment,
     computeFairnessServerSeedCommitment,
     FairnessCommitment,
-    OutcomeLibraryBundleReader,
-    OutcomeLibraryBundleWriteResult,
-    OutcomeLibraryBundleWriter,
+    OutcomeLibraryFolderReader,
+    OutcomeLibraryFolderWriteResult,
+    OutcomeLibraryFolderWriter,
 } from "@fromstan/pokie";
-import {buildOutcomeLibraryBundleModeInput} from "../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
+import {buildOutcomeLibraryFolderModeInput} from "../weightedoutcome/folder/OutcomeLibraryFolderTestFixtures.js";
 
 export const FAIRNESS_TEST_POKIE_VERSION = "1.3.0";
 
-// Builds a real, on-disk Outcome Library Bundle (via the production OutcomeLibraryBundleWriter, never a
+// Builds a real, on-disk Outcome Library Bundle (via the production OutcomeLibraryFolderWriter, never a
 // hand-crafted fixture) for the fairness slice's own tests to draw against — same "no second calculation path"
 // discipline CertificationPackTestFixtures already follows for its own tests.
-export function buildFairnessSourceBundle(outDir: string, modeNames: readonly string[] = ["base"]): Promise<OutcomeLibraryBundleWriteResult> {
-    const writer = new OutcomeLibraryBundleWriter(FAIRNESS_TEST_POKIE_VERSION);
-    const modes = modeNames.map((modeName) => buildOutcomeLibraryBundleModeInput(modeName, `${modeName}-lib`));
+export function buildFairnessSourceBundle(outDir: string, modeNames: readonly string[] = ["base"]): Promise<OutcomeLibraryFolderWriteResult> {
+    const writer = new OutcomeLibraryFolderWriter(FAIRNESS_TEST_POKIE_VERSION);
+    const modes = modeNames.map((modeName) => buildOutcomeLibraryFolderModeInput(modeName, `${modeName}-lib`));
     return writer.writeToDirectory(modes, outDir);
 }
 
@@ -24,11 +24,11 @@ export function buildFairnessSourceBundle(outDir: string, modeNames: readonly st
 // hand-crafted commitment — so every fairness test builds on top of the same commit step the production code
 // itself goes through.
 export async function issueFairnessCommitmentFor(
-    bundleDir: string,
+    libraryDir: string,
     modeName: string,
     options: {serverSeed: string; clientSeed?: string; nonce?: number},
 ): Promise<FairnessCommitment> {
-    const index = await new OutcomeLibraryBundleReader().readModeIndex(bundleDir, modeName);
+    const index = await new OutcomeLibraryFolderReader().readModeIndex(libraryDir, modeName);
     const serverSeedCommitment = computeFairnessServerSeedCommitment({serverSeed: options.serverSeed});
     return computeFairnessCommitment({
         serverSeedCommitment,

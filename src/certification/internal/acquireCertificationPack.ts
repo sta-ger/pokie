@@ -14,7 +14,7 @@ import {toCanonicalJson} from "../../json/toCanonicalJson.js";
 import {AuditRoundReplay, validateAuditRoundRecording} from "../../replay/AuditRoundReplay.js";
 import type {SimulationReport} from "../../reporting/SimulationReport.js";
 import {validateSimulationReportExtensions, validateSimulationStatisticsForReport} from "../../reporting/validateSimulationReportExtensions.js";
-import type {OutcomeLibraryBundleManifest} from "../../weightedoutcome/bundle/OutcomeLibraryBundleManifest.js";
+import type {OutcomeLibraryFolderManifest} from "../../weightedoutcome/folder/OutcomeLibraryFolderManifest.js";
 import {CERTIFICATION_METRIC_SEMANTICS, CERTIFICATION_PREPARATION_NOTICE, type CertificationPack, type CertificationPackInputs} from "../CertificationPack.js";
 import {CertificationPackBuildCancelledError} from "../CertificationPackBuildOptions.js";
 import {sha256OfBytes} from "./sha256OfBytes.js";
@@ -50,7 +50,7 @@ export function stableDefinition(snapshot: MathDefinitionSnapshot): MathDefiniti
     return result;
 }
 
-export function validatePackReport(value: unknown, modelHash: string | null, source: OutcomeLibraryBundleManifest): asserts value is SimulationReport {
+export function validatePackReport(value: unknown, modelHash: string | null, source: OutcomeLibraryFolderManifest): asserts value is SimulationReport {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Expected a canonical simulation report.");
     const report = value as SimulationReport;
     if (report.schemaVersion !== 1) throw new Error("Unsupported or legacy report version; regenerate a canonical v1 report from the selected runtime.");
@@ -78,7 +78,7 @@ function readJson(file: string): {hash: string; raw: string; value: unknown} {
     return {hash: sha256OfBytes(bytes), raw: bytes.toString("utf8"), value: parseCertificationJson(bytes.toString("utf8"))};
 }
 
-export async function acquireCertificationPack(source: OutcomeLibraryBundleManifest, sourceBundleManifestHash: string, providedInputs: CertificationPackInputs | undefined, signal?: AbortSignal, sourceBundleDir?: string): Promise<CertificationPack> {
+export async function acquireCertificationPack(source: OutcomeLibraryFolderManifest, sourceLibraryManifestHash: string, providedInputs: CertificationPackInputs | undefined, signal?: AbortSignal, sourceLibraryDir?: string): Promise<CertificationPack> {
     const inputs = providedInputs ?? {};
     const check = (): void => {
         if (signal?.aborted) throw new CertificationPackBuildCancelledError();
@@ -110,8 +110,8 @@ export async function acquireCertificationPack(source: OutcomeLibraryBundleManif
             let reproduced: SimulationReport;
             let seedStrategy: string;
             if (report.reproducibility.libraryHash !== undefined) {
-                if (!sourceBundleDir || report.workers !== 1 || !report.betMode) throw new Error("Outcome-source report reproduction requires the explicit source bundle, mode and single-process sampler.");
-                const result = await simulateOutcomeSourceProject({type: "outcomeLibrary", rootPath: sourceBundleDir, capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary, provenance: "explicit pack authority"}, report.betMode, report.requestedRounds, new SeededWeightedOutcomeRandomSource(report.seed), report.seed, {signal});
+                if (!sourceLibraryDir || report.workers !== 1 || !report.betMode) throw new Error("Outcome-source report reproduction requires the explicit source bundle, mode and single-process sampler.");
+                const result = await simulateOutcomeSourceProject({type: "outcomeLibrary", rootPath: sourceLibraryDir, capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary, provenance: "explicit pack authority"}, report.betMode, report.requestedRounds, new SeededWeightedOutcomeRandomSource(report.seed), report.seed, {signal});
                 check();
                 if (!result.supported) throw new Error(result.diagnostic.message);
                 reproduced = projectOutcomeSourceSimulationReport(result.report);
@@ -163,11 +163,11 @@ export async function acquireCertificationPack(source: OutcomeLibraryBundleManif
         if (definition) coverage = definition.support === "complete" ? "complete" : "partial";
         return {
             schemaVersion: 1,
-            identity: {runtimeVersion: "pokie.session-runtime.v1", modelHash, modelArtifactHash, sourceBundleManifestHash, sourceBundleManifest: source, sourceRevision: inputs.sourceRevision ?? null, candidateRevision: inputs.candidateRevision ?? null},
+            identity: {runtimeVersion: "pokie.session-runtime.v1", modelHash, modelArtifactHash, sourceLibraryManifestHash, sourceLibraryManifest: source, sourceRevision: inputs.sourceRevision ?? null, candidateRevision: inputs.candidateRevision ?? null},
             rules: {status: definition ? "available" : "unavailable", definition},
             statistics: {exact: "source-mode-distributions", semantics: CERTIFICATION_METRIC_SEMANTICS, estimates, unavailable: estimates.length ? estimates.flatMap((attachment, index) => ["rtpConfidenceInterval95", "convergence", "analytics", "stopReason"].filter(key => Reflect.get(attachment.value, key) === undefined).map(key => `Report ${index}: ${key} unavailable`)) : ["Sampled simulation, CI, convergence and feature statistics unavailable; exact outcome distributions have no sampling CI."]},
             validation: {source: "deep-at-build; shallow-and-sampled-at-verification", model: definition ? "advanced-declared-model" : "unavailable", assumptions: ["Declared model validation does not prove custom executable fidelity.", "Source outcome validation is exhaustive at build; verification rechecks structure and selected outcomes, not every outcome."]},
-            reproduction: {selection: "seeded-native-weighted-outcome", runtime: recordings.length ? "audit-round-v1" : "unavailable", recordings, commands: ["pokie certification build SOURCE CONFIG.json --out NEW_PACK", "pokie certification verify DOSSIER --source SOURCE --trusted-sources SOURCES.json", "pokie report PACK/manifest.json --format pdf --out pack.pdf"], variableMetadata: ["generatedAt", "sourceBundleDir", "deepValidation.ranAt", "simulation durationMs/spinsPerSecond and command paths are observational; attached raw report hashes remain exact"]},
+            reproduction: {selection: "seeded-native-weighted-outcome", runtime: recordings.length ? "audit-round-v1" : "unavailable", recordings, commands: ["pokie certification build SOURCE CONFIG.json --out NEW_PACK", "pokie certification verify DOSSIER --source SOURCE --trusted-sources SOURCES.json", "pokie report PACK/manifest.json --format pdf --out pack.pdf"], variableMetadata: ["generatedAt", "sourceLibraryDir", "deepValidation.ranAt", "simulation durationMs/spinsPerSecond and command paths are observational; attached raw report hashes remain exact"]},
             support: {notice: CERTIFICATION_PREPARATION_NOTICE, coverage, limitations: [...(definition?.limits ?? []), "Local PDF uses selectable standard-font text with lossless [U+XXXX] notation for non-ASCII characters; JSON/HTML retain Unicode glyphs.", ...(!definition ? ["Readable originating model unavailable; outcome-only evidence cannot establish model rules or executable fidelity."] : []), ...(recordings.length ? ["Runtime replay covers only attached captures; partial captures remain partial."] : ["Executable state/command replay unavailable; outcome selection is not runtime replay."]), "SDK evidence unavailable: local compatibility is not provider acceptance.", "Fairness evidence unavailable: deterministic/HMAC verification cannot prove precommit timing or general game fairness."], sdk: "unavailable", fairness: "unavailable", yaml: "unimplemented; optional, non-mandatory"},
         };
     } finally {

@@ -1,11 +1,11 @@
-import type {ArtifactConversionPlan, ArtifactTargetType, PackageBlueprintExtractionResult, PokieProject, PreparedStakeProjectionOperation} from "@fromstan/pokie";
+import type {FormatConversionPlan, OutputFormat, PackageBlueprintExtractionResult, PokieProject, PreparedStakeProjectionOperation} from "@fromstan/pokie";
 import type {StudioArtifactPreviewView} from "./StudioArtifactPreviewView.js";
 import type {StudioArtifactTargetView} from "./StudioArtifactTargetView.js";
 
 export type StudioPreparedArtifactPreview = {
     readonly view: StudioArtifactPreviewView;
     readonly stakeOperation?: PreparedStakeProjectionOperation;
-    readonly extraction?: {readonly project: PokieProject; readonly destination: string; readonly plan: ArtifactConversionPlan};
+    readonly extraction?: {readonly project: PokieProject; readonly destination: string; readonly plan: FormatConversionPlan};
 };
 
 /** Cancellation cannot acknowledge resources whose cleanup did not finish. */
@@ -20,7 +20,7 @@ export class StudioArtifactPreflightCleanupError extends Error {
 export interface StudioArtifactPreflighting {
     extractPackage(projectRoot: string, signal?: AbortSignal): Promise<PackageBlueprintExtractionResult>;
     listTargets(projectRoot: string, signal?: AbortSignal): Promise<readonly StudioArtifactTargetView[]>;
-    preparePreview(projectRoot: string, target: ArtifactTargetType, outDir?: string, signal?: AbortSignal): Promise<StudioPreparedArtifactPreview>;
+    preparePreview(projectRoot: string, target: OutputFormat, outDir?: string, signal?: AbortSignal): Promise<StudioPreparedArtifactPreview>;
     cancelForProject(projectRoot: string): Promise<void>;
     cancelAll(): Promise<void>;
 }

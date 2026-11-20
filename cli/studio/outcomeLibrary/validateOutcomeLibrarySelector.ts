@@ -3,7 +3,7 @@ import type {OutcomeLibrarySelector} from "./OutcomeLibrarySelector.js";
 export type OutcomeLibrarySelectorInput = {
     kind?: unknown;
     path?: unknown;
-    bundleDir?: unknown;
+    libraryDir?: unknown;
     modeName?: unknown;
     stakeDir?: unknown;
 };
@@ -24,14 +24,14 @@ export function validateOutcomeLibrarySelector(input: OutcomeLibrarySelectorInpu
         }
         return {kind: "json", path: input.path};
     }
-    if (input.kind === "bundle") {
-        if (!isNonEmptyString(input.bundleDir)) {
-            throw new Error(`"${field}.bundleDir" must be a non-empty string.`);
+    if (input.kind === "folder") {
+        if (!isNonEmptyString(input.libraryDir)) {
+            throw new Error(`"${field}.libraryDir" must be a non-empty string.`);
         }
         if (!isNonEmptyString(input.modeName)) {
             throw new Error(`"${field}.modeName" must be a non-empty string.`);
         }
-        return {kind: "bundle", bundleDir: input.bundleDir, modeName: input.modeName};
+        return {kind: "folder", libraryDir: input.libraryDir, modeName: input.modeName};
     }
     if (input.kind === "stakeengine") {
         if (!isNonEmptyString(input.stakeDir)) {
@@ -42,5 +42,5 @@ export function validateOutcomeLibrarySelector(input: OutcomeLibrarySelectorInpu
         }
         return {kind: "stakeengine", stakeDir: input.stakeDir, modeName: input.modeName};
     }
-    throw new Error(`"${field}.kind" must be one of "json", "bundle", "stakeengine".`);
+    throw new Error(`"${field}.kind" must be one of "json", "folder", "stakeengine".`);
 }

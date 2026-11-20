@@ -1,11 +1,11 @@
 import {PokieWasmWorkerClient, type PokieWasmWorkerPort, type PokieWasmWorkerProgress} from "../../../../src/wasm/PokieWasmWorkerClient.js";
-import {validatePokieWasmBrowserArtifact, type PokieWasmBrowserArtifact} from "../../../../src/wasm/loadPokieWasmBrowserArtifact.js";
+import {validatePokieWasmBrowserBuild, type PokieWasmBrowserBuild} from "../../../../src/wasm/loadPokieWasmBrowserBuild.js";
 import type {PokieWasmFeatureSessionState, PokieWasmSessionState} from "../../../../src/wasm/PokieWasmRuntimeApi.js";
 import type {StudioJobView} from "../api/types.js";
 import type {FetchLike} from "../api/apiClient.js";
 
-type Execution = {generation: number; publishing?: boolean; client: PokieWasmWorkerClient; artifact: PokieWasmBrowserArtifact; id: string; request: Record<string, unknown>; cancelled: boolean; progress?: PokieWasmWorkerProgress; timer?: ReturnType<typeof setTimeout>};
-type Session = {client: PokieWasmWorkerClient; artifact: PokieWasmBrowserArtifact; seed: string; id: string; view: Record<string, unknown>; lastRequest?: string; lastBinding?: string; lastResult?: unknown};
+type Execution = {generation: number; publishing?: boolean; client: PokieWasmWorkerClient; artifact: PokieWasmBrowserBuild; id: string; request: Record<string, unknown>; cancelled: boolean; progress?: PokieWasmWorkerProgress; timer?: ReturnType<typeof setTimeout>};
+type Session = {client: PokieWasmWorkerClient; artifact: PokieWasmBrowserBuild; seed: string; id: string; view: Record<string, unknown>; lastRequest?: string; lastBinding?: string; lastResult?: unknown};
 
 type Publication = {url: string; binding: string; execution: Execution; view: Record<string, unknown>; output: unknown; fresh: boolean; old?: Session; failure?: {message: string; continuation: {roundId: string; cursor: number}; requestId?: string}};
 class PlayFailure extends Error {
@@ -115,14 +115,14 @@ export class BrowserWasmStudioApi implements BrowserWasmStudioApiHandling {
         this.releaseSession();
         for (const execution of this.executions.values()) this.cancel(execution);
     }
-    private async artifact(): Promise<PokieWasmBrowserArtifact> {
+    private async artifact(): Promise<PokieWasmBrowserBuild> {
         const project = this.project;
         const generation = this.generation;
         if (!project || this.disposed) throw new Error("Open the WASM Project before executing it.");
         const result = await this.network("/api/project/wasm/artifact", {cache: "no-store"});
         const body = await result.json();
         if (!result.ok) throw new Error(record(body) && typeof body.error === "string" ? body.error : "Cannot load the WASM build and companion file. Rebuild and reopen the Project.");
-        const artifact = await validatePokieWasmBrowserArtifact(body as PokieWasmBrowserArtifact, project);
+        const artifact = await validatePokieWasmBrowserBuild(body as PokieWasmBrowserBuild, project);
         if (project !== this.project || generation !== this.generation || this.disposed) throw new Error("The WASM Project was replaced while loading.");
         return artifact;
     }
@@ -131,10 +131,10 @@ export class BrowserWasmStudioApi implements BrowserWasmStudioApiHandling {
         const generation = this.generation;
         const result = await this.network("/api/project/wasm/jobs", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({owner: this.owner, projectRoot: artifact.projectRoot, generation: artifact.generation, artifactIdentity: artifact.manifest.artifact!.sha256, operation, request})});
         if (!result.ok) return result;
-        const body = await result.json() as {job: StudioJobView; artifact: PokieWasmBrowserArtifact; request: Record<string, unknown>};
+        const body = await result.json() as {job: StudioJobView; artifact: PokieWasmBrowserBuild; request: Record<string, unknown>};
         let client: PokieWasmWorkerClient | undefined;
         try {
-            await validatePokieWasmBrowserArtifact(body.artifact, artifact.projectRoot, artifact.manifest.artifact!.sha256);
+            await validatePokieWasmBrowserBuild(body.artifact, artifact.projectRoot, artifact.manifest.artifact!.sha256);
             if (generation !== this.generation || this.disposed || body.artifact.generation !== artifact.generation) throw new Error("WASM Project changed during admission.");
             client = operation === "browser-play" && request.action === "spin" ? this.session?.client : undefined;
             client ??= new PokieWasmWorkerClient(this.createWorker, {project: artifact.projectRoot, generation: artifact.generation, artifact: artifact.manifest.artifact!.sha256, job: body.job.id});

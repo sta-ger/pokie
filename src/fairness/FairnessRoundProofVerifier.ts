@@ -1,9 +1,9 @@
 import type {WeightedOutcomeRandomSource} from "../pregenerated/WeightedOutcomeRandomSource.js";
 import {WeightedOutcomeSelectionError} from "../pregenerated/WeightedOutcomeSelectionError.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
-import {OutcomeLibraryBundleInvariantError} from "../weightedoutcome/bundle/OutcomeLibraryBundleInvariantError.js";
-import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
-import type {OutcomeLibraryBundleReading} from "../weightedoutcome/bundle/OutcomeLibraryBundleReading.js";
+import {OutcomeLibraryFolderInvariantError} from "../weightedoutcome/folder/OutcomeLibraryFolderInvariantError.js";
+import {OutcomeLibraryFolderReader} from "../weightedoutcome/folder/OutcomeLibraryFolderReader.js";
+import type {OutcomeLibraryFolderReading} from "../weightedoutcome/folder/OutcomeLibraryFolderReading.js";
 import {computeFairnessCommitmentHash} from "./computeFairnessCommitmentHash.js";
 import type {FairnessCommitment} from "./FairnessCommitment.js";
 import {FairnessCommitmentValidator} from "./FairnessCommitmentValidator.js";
@@ -38,13 +38,13 @@ const COMMITMENT_FIELDS = ["algorithmVersion", "serverSeedHash", "clientSeed", "
 export class FairnessRoundProofVerifier implements FairnessRoundProofVerifying {
     private readonly mandatoryProofValidator: FairnessRoundProofValidating = new FairnessRoundProofValidator();
     private readonly mandatoryCommitmentValidator: FairnessCommitmentValidating = new FairnessCommitmentValidator();
-    private readonly reader: OutcomeLibraryBundleReading;
+    private readonly reader: OutcomeLibraryFolderReading;
     private readonly randomSourceFactory: (serverSeed: string, clientSeed: string, nonce: number) => WeightedOutcomeRandomSource;
     private readonly additionalProofValidator: FairnessRoundProofValidating | undefined;
     private readonly additionalCommitmentValidator: FairnessCommitmentValidating | undefined;
 
     constructor(
-        reader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
+        reader: OutcomeLibraryFolderReading = new OutcomeLibraryFolderReader(),
         randomSourceFactory: (
             serverSeed: string,
             clientSeed: string,
@@ -86,7 +86,7 @@ export class FairnessRoundProofVerifier implements FairnessRoundProofVerifying {
 
         // Without a commitment, full verification is impossible: a proof's own internal consistency alone can
         // never prove it was genuinely bound to a previously-issued commitment rather than built around a fresh,
-        // self-consistent, but entirely unrelated serverSeed/clientSeed/nonce. Checked before sourceBundleDir —
+        // self-consistent, but entirely unrelated serverSeed/clientSeed/nonce. Checked before sourceLibraryDir —
         // and before anything below ever reads a bundle — so a caller who omits it gets a diagnostic without
         // this class touching a bundle at all.
         if (options?.commitment === undefined) {
@@ -143,28 +143,28 @@ export class FairnessRoundProofVerifier implements FairnessRoundProofVerifying {
             });
         }
 
-        if (options.sourceBundleDir === undefined) {
+        if (options.sourceLibraryDir === undefined) {
             return [
                 ...issues,
                 {
                     code: "fairness-verify-source-bundle-dir-required",
                     severity: "error",
                     message:
-                        "no sourceBundleDir was given — pass an explicit {sourceBundleDir} " +
+                        "no sourceLibraryDir was given — pass an explicit {sourceLibraryDir} " +
                         '(or "--source <folder>" on the CLI) to cross-check against the live source folder.',
                 },
             ];
         }
-        const sourceBundleDir = options.sourceBundleDir;
+        const sourceLibraryDir = options.sourceLibraryDir;
 
         // Reproduces the exact deterministic draw this proof's own revealed serverSeed/clientSeed/nonce produce,
         // against one pinned snapshot of the *live* bundle (see drawPinnedFairnessOutcome — never
-        // OutcomeLibraryBundleReading.drawOutcome, which would re-read a fresh index on every call). This is
+        // OutcomeLibraryFolderReading.drawOutcome, which would re-read a fresh index on every call). This is
         // what catches an outcome substituted with a different, individually valid, still-existing outcome id:
         // the per-id checks below can't tell that apart from a genuine draw, since a swapped-in id can be
         // perfectly untampered on its own — it's simply not the one this seed would actually have drawn.
         const randomSource = this.randomSourceFactory(proof.serverSeed, proof.clientSeed, proof.nonce);
-        const draw = await this.tryDraw(sourceBundleDir, proof.modeName, randomSource, issues);
+        const draw = await this.tryDraw(sourceLibraryDir, proof.modeName, randomSource, issues);
         if (draw === undefined) {
             return issues;
         }
@@ -173,7 +173,7 @@ export class FairnessRoundProofVerifier implements FairnessRoundProofVerifying {
             issues.push({
                 code: "fairness-verify-library-mismatch",
                 severity: "error",
-                message: `mode "${proof.modeName}" in "${sourceBundleDir}" no longer has this proof's own recorded libraryId/libraryHash — the source bundle has drifted since this round was played.`,
+                message: `mode "${proof.modeName}" in "${sourceLibraryDir}" no longer has this proof's own recorded libraryId/libraryHash — the source bundle has drifted since this round was played.`,
             });
         }
 
@@ -181,7 +181,7 @@ export class FairnessRoundProofVerifier implements FairnessRoundProofVerifying {
             issues.push({
                 code: "fairness-verify-index-hash-mismatch",
                 severity: "error",
-                message: `mode "${proof.modeName}"'s own index in "${sourceBundleDir}" no longer hashes to this proof's own recorded indexHash — the source bundle has drifted since this round was played.`,
+                message: `mode "${proof.modeName}"'s own index in "${sourceLibraryDir}" no longer hashes to this proof's own recorded indexHash — the source bundle has drifted since this round was played.`,
             });
         }
 
@@ -190,13 +190,13 @@ export class FairnessRoundProofVerifier implements FairnessRoundProofVerifying {
             issues.push({
                 code: "fairness-verify-outcome-missing",
                 severity: "error",
-                message: `outcome "${proof.outcomeId}" is no longer present in mode "${proof.modeName}" of "${sourceBundleDir}".`,
+                message: `outcome "${proof.outcomeId}" is no longer present in mode "${proof.modeName}" of "${sourceLibraryDir}".`,
             });
         } else if (liveEntry.weight !== proof.weight || liveEntry.recordHash !== proof.recordHash) {
             issues.push({
                 code: "fairness-verify-outcome-record-mismatch",
                 severity: "error",
-                message: `outcome "${proof.outcomeId}" no longer hashes to this proof's own recorded weight/recordHash in "${sourceBundleDir}" — a substituted outcome.`,
+                message: `outcome "${proof.outcomeId}" no longer hashes to this proof's own recorded weight/recordHash in "${sourceLibraryDir}" — a substituted outcome.`,
             });
         }
 
@@ -204,7 +204,7 @@ export class FairnessRoundProofVerifier implements FairnessRoundProofVerifying {
             issues.push({
                 code: "fairness-verify-selection-mismatch",
                 severity: "error",
-                message: `redrawing this proof's own serverSeed/clientSeed/nonce against "${sourceBundleDir}" deterministically selects outcome "${draw.outcome.id}", not this proof's own recorded "${proof.outcomeId}".`,
+                message: `redrawing this proof's own serverSeed/clientSeed/nonce against "${sourceLibraryDir}" deterministically selects outcome "${draw.outcome.id}", not this proof's own recorded "${proof.outcomeId}".`,
             });
         }
 
@@ -215,24 +215,24 @@ export class FairnessRoundProofVerifier implements FairnessRoundProofVerifying {
     // deserves: bundle drift (the pinned snapshot itself was caught changing mid-draw), an untrustworthy mode
     // index (FairnessModeIndexInvalidError — a malformed/hand-tampered index_<modeName>.json, or a modeName that
     // never should have reached a file read at all), a broken selection/byte-range invariant
-    // (OutcomeLibraryBundleInvariantError/WeightedOutcomeSelectionError — the live bundle's own index/outcomes
+    // (OutcomeLibraryFolderInvariantError/WeightedOutcomeSelectionError — the live bundle's own index/outcomes
     // file have drifted out of sync, or an empty/invalid library), or the index simply being unreadable in the
     // first place (a missing bundle/mode, any other I/O failure). Returns undefined — after already pushing the
     // one issue that applies — rather than throwing, so the caller can return early without its own try/catch.
     private async tryDraw(
-        sourceBundleDir: string,
+        sourceLibraryDir: string,
         modeName: string,
         randomSource: WeightedOutcomeRandomSource,
         issues: ValidationIssue[],
     ): Promise<PinnedFairnessDraw | undefined> {
         try {
-            return await drawPinnedFairnessOutcome(this.reader, sourceBundleDir, modeName, randomSource);
+            return await drawPinnedFairnessOutcome(this.reader, sourceLibraryDir, modeName, randomSource);
         } catch (error) {
             if (error instanceof FairnessBundleDriftError) {
                 issues.push({code: "fairness-verify-bundle-drift", severity: "error", message: error.message});
             } else if (error instanceof FairnessModeIndexInvalidError) {
                 issues.push({code: "fairness-verify-mode-index-invalid", severity: "error", message: error.message});
-            } else if (error instanceof OutcomeLibraryBundleInvariantError || error instanceof WeightedOutcomeSelectionError) {
+            } else if (error instanceof OutcomeLibraryFolderInvariantError || error instanceof WeightedOutcomeSelectionError) {
                 issues.push({
                     code: "fairness-verify-source-bundle-outcome-invariant",
                     severity: "error",
@@ -242,7 +242,7 @@ export class FairnessRoundProofVerifier implements FairnessRoundProofVerifying {
                 issues.push({
                     code: "fairness-verify-source-bundle-unreadable",
                     severity: "error",
-                    message: `could not read mode "${modeName}"'s own index in "${sourceBundleDir}": ${error instanceof Error ? error.message : String(error)}.`,
+                    message: `could not read mode "${modeName}"'s own index in "${sourceLibraryDir}": ${error instanceof Error ? error.message : String(error)}.`,
                 });
             }
             return undefined;

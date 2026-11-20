@@ -4,11 +4,11 @@ import type {WeightedOutcomeRandomSource} from "./WeightedOutcomeRandomSource.js
 // What PreGeneratedSpinCommandHandler actually needs to serve a round — a single atomic weighted draw — without
 // ever being tied to a full WeightedOutcomeLibrary sitting in memory. WeightedOutcomeSelecting.select(library,
 // randomSource) requires the whole library up front; this interface exists specifically so a bundle-backed
-// source (see OutcomeLibraryBundleOutcomeSource) can serve draws directly off disk, one index read at a time,
+// source (see OutcomeLibraryFolderOutcomeSource) can serve draws directly off disk, one index read at a time,
 // without ever materializing every outcome.
 //
 // Two implementations: InMemoryPreGeneratedOutcomeSource (wraps an already-built WeightedOutcomeLibrary, reusing
-// WeightedOutcomeSelector) and OutcomeLibraryBundleOutcomeSource (reads a canonical outcome-library bundle's own
+// WeightedOutcomeSelector) and OutcomeLibraryFolderOutcomeSource (reads a canonical outcome-library bundle's own
 // small index, never calling readLibrary()) — both return exactly the same shape, so
 // PreGeneratedSpinCommandHandler never has to special-case which kind of source it was given.
 export interface PreGeneratedOutcomeSourcing<T extends string | number = string> {

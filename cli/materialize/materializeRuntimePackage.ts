@@ -2,7 +2,7 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import {
-    ArtifactConversionPlanner,
+    FormatConversionPlanner,
     describeUnsupportedProjectOperation,
     PokieOperation,
     PokieProject,
@@ -207,7 +207,7 @@ export function createMaterializingRuntimePackageResolver(
         // Runtime preparation is planner-owned.  It may borrow a package,
         // materialize a Blueprint cache, or import PAR into a private stage;
         // none of those asks the user to publish a durable package first.
-        const runtimePlan = new ArtifactConversionPlanner().planRuntime(project);
+        const runtimePlan = new FormatConversionPlanner().planRuntime(project);
         if (project.type === "tsPackage") {
             assertRuntimePreparationNotCancelled(options.signal);
             return {runtimePath: project.rootPath, release: noRelease};

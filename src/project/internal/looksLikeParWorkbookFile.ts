@@ -11,7 +11,7 @@ export type ParWorkbookRecognition =
 // deliberately not the structural validation ParSheetImporter.importFromFile itself performs against an
 // already-recognized workbook: just enough of it (every one of REQUIRED_SHEETS present by name) to tell
 // "this .xlsx is a PAR sheet workbook" apart from an unrelated spreadsheet someone happens to point the
-// resolver at, the same "recognize, don't validate" split isOutcomeLibraryBundleDirectory/
+// resolver at, the same "recognize, don't validate" split isOutcomeLibraryFolderDirectory/
 // isPokieTsPackageDirectory draw for their own project types. Returns false for a file the XLSX reader can't read at
 // all (not a real workbook — e.g. a corrupt or non-xlsx file wearing a ".xlsx" extension) just as readily as
 // for a workbook missing one of the required sheets; either way this is a graceful non-match, not an error.

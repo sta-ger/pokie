@@ -495,7 +495,7 @@ Options:
  Never an output directory (that's `--out`, below) — omitting it, or passing an unrecognized value, throws listing
  the full accepted vocabulary. `--target` must also be buildable from `<project>`'s own resolved type — building a
  unsupported source/target pair, for instance, throws naming which source types that target actually
- supports (`ArtifactBuilderRegistry.describe(target)`, also available
+ supports (`BuildOutputBuilderRegistry.describe(target)`, also available
  programmatically, reports the same thing without resolving a project first).
 - `--exact` — only for `--target outcomeLibrary`; forces full exact enumeration instead of the managed
  capped-sampling default for a large Blueprint/package source.
@@ -622,7 +622,7 @@ re-export unchanged" round trip each format's own import/export commands already
 these targets, since nothing is generated, only copied.
 
 ```
-pokie build ./my-outcome-bundle --target outcomeLibrary --out ./my-outcome-bundle-copy
+pokie build ./my-outcome-library --target outcomeLibrary --out ./my-outcome-library-copy
 pokie build ./my-stake-export --target stakeAdapter --out ./my-stake-export-copy
 pokie build ./my-par-sheet.xlsx --target parWorkbook --out ./my-par-sheet-copy.xlsx
 ```
@@ -949,7 +949,7 @@ in-place merge/rebuild, and no recognition of "this directory is safe to overwri
 run produced it": a built output carries no metadata of its own for a later build to recognize itself by (see
 above). Building again — after editing the blueprint, picking up a newer `pokie` version, or republishing to the
 same place a second time — means removing the destination (or its contents) first, or pointing `--out` at a
-different, empty destination. Every target enforces this the same way (`ArtifactBuildConflictError`), not a
+different, empty destination. Every target enforces this the same way (`BuildConflictError`), not a
 per-target-different overwrite policy.
 
 `parWorkbook` and `wasm` are file destinations: their target file must be missing, rather than an empty
@@ -1265,7 +1265,7 @@ Use the inline `reelStripGeneration` example above to try this against.
 `pokie build` names the output a project receives. Every build accepts the same preview flag:
 
 ```
-pokie build outcomelibrary-config.json --target outcomeLibrary --out bundle --dry-run
+pokie build outcomelibrary-config.json --target outcomeLibrary --out library --dry-run
 pokie build stake-config.json --target stakeAdapter --out stakeengine --dry-run
 pokie build game.blueprint.json --target parWorkbook --out game.par.xlsx --dry-run
 ```
@@ -1281,7 +1281,7 @@ standard Node heap; inspect `manifest.json` to see the recorded strategy and see
 
 Standalone descriptors use the same command and prepared planner operation. Outcome descriptors
 support `libraryPath` or streamed `outcomesPath` with `libraryId`; Stake descriptors support `libraryPath` or
-`bundleDir`/`bundleModeName`, including imported `config.json` with generator metadata and source origin.
+`libraryDir`/`libraryModeName`, including imported `config.json` with generator metadata and source origin.
 Relative paths resolve against the descriptor directory. Project recognition errors propagate before descriptor
 fallback; generation flags (`--exact`, seeded `--sample`) require a recognized generation source.
 Defaults follow `build`: a sibling `outcomeLibrary` or `stakeAdapter` directory, or `parWorkbook.xlsx` file.
@@ -1313,14 +1313,14 @@ pokie build stake-config.json --target stakeAdapter --out stakeengine [--dry-run
 `libraryPath` entries resolve relative to `<config.json>`'s own directory.
 
 A mode entry can load from a [Outcome Library Folder](outcome-library-folder.md) instead — replace
-`libraryPath` with `bundleDir` (and optionally `bundleModeName`, which defaults to `modeName`):
+`libraryPath` with `libraryDir` (and optionally `libraryModeName`, which defaults to `modeName`):
 
 ```json
-{"modeName": "bonus", "cost": 100, "bundleDir": "./bundle", "bundleModeName": "bonus"}
+{"modeName": "bonus", "cost": 100, "libraryDir": "./library", "libraryModeName": "bonus"}
 ```
 
-Exactly one of `libraryPath`/`bundleDir` is required per mode. When **every** mode in the config uses
-`bundleDir`, the export streams each mode's outcomes directly from its bundle — never creating a
+Exactly one of `libraryPath`/`libraryDir` is required per mode. When **every** mode in the config uses
+`libraryDir`, the export streams each mode's outcomes directly from its folder — never creating a
 `WeightedOutcomeLibrary`, never calling `readLibrary()`. Mixing even one `libraryPath` mode into the same export
 falls back to the existing (non-streaming) path; both produce byte-identical output.
 
@@ -1434,11 +1434,11 @@ convention rather than the usual plain 0/1:
 Builds a [Outcome Library Folder](outcome-library-folder.md) — a directory with a small manifest, a
 small per-mode index, and one streaming JSONL outcomes file per mode — streaming each mode's outcomes straight to
 disk one at a time, never creating a full `WeightedOutcomeLibrary` in memory to do it. This is the one
-bundle format both the pre-generated runtime and `pokie build <config.json> --target stakeAdapter` (via a mode's
-`bundleDir`/`bundleModeName`) load from.
+folder format both the pre-generated runtime and `pokie build <config.json> --target stakeAdapter` (via a mode's
+`libraryDir`/`libraryModeName`) load from.
 
 ```
-pokie build outcomelibrary-config.json --target outcomeLibrary --out bundle [--dry-run]
+pokie build outcomelibrary-config.json --target outcomeLibrary --out library [--dry-run]
 ```
 
 `<config.json>` lists one outcome source per mode, either a plain `WeightedOutcomeLibrary` JSON file (fully
@@ -1481,11 +1481,11 @@ Operates directly on a resolved outcome-source project — an Outcome Library Fo
 game-model calculation.
 
 ```
-pokie report bundle
-pokie sample bundle --mode <modeName>
-pokie sample bundle --mode <modeName> --seed demo-seed
-pokie diff bundle-v1 bundle-v2
-pokie diff bundle stake-export --format json --out diff.json
+pokie report library
+pokie sample library --mode <modeName>
+pokie sample library --mode <modeName> --seed demo-seed
+pokie diff library-v1 library-v2
+pokie diff library stake-export --format json --out diff.json
 ```
 
 `report` prints the source's own kind/streaming/limitations plus, for a structurally valid source, an exact
@@ -1494,12 +1494,12 @@ outcome from a native outcome library's own mode through the same selector/sessi
 pre-generated play already use (`WeightedOutcomeSelector` over the mode's own index). With `--seed <string>`, it
 selects derived round 1 (`derived-round-seed-v1`) and prints the standard JSON `ReplayDescriptor`, including its
 complete `outcomeSource` provenance (seed, round, mode, game/library identity and result). Replay it
-with `pokie replay <bundle> --seed <seed> --round 1 --mode <mode>`. Without `--seed`, `sample` uses a
+with `pokie replay <folder> --seed <seed> --round 1 --mode <mode>`. Without `--seed`, `sample` uses a
 cryptographically secure source and prints a human-readable selection only; it does **not** emit portable replay
 provenance. A
 Stake Engine export has no such draw interface, so `sample` against one reports the same missing-supported action
 diagnostic every other unsupported project operation does, rather than attempting to run it. `diff` compares
-two resolved outcome sources' own exact analyses mode-by-mode over the core metrics both a native bundle and a
+two resolved outcome sources' own exact analyses mode-by-mode over the core metrics both a native folder and a
 Stake Engine export already share (rtp, hit frequency, zero-win frequency, variance, standard deviation, max
 win probability) — either side may be either kind, since diffing never draws/samples anything and both kinds
 already expose a reader's own exact analysis.
@@ -1555,7 +1555,7 @@ pokie certification verify certification --source ../library
 Options:
 
 - `--source <folder>` — **required.** Where the live source outcome library folder actually is. The pack's own
-  recorded `manifest.sourceBundleDir` is informational only and is never used as a fallback — omitting
+  recorded `manifest.sourceLibraryDir` is informational only and is never used as a fallback — omitting
   `--source` fails with a usage error, and running `verify` without it programmatically reports a diagnostic
   instead of reading anything outside `<certDir>`.
 - `--trusted-sources <json>` — optional explicit model, report, replay and revision sources for a relocated
@@ -1598,12 +1598,12 @@ would be invalid.
 
 The second step: once the player's `clientSeed`/`nonce` are known, builds the `FairnessCommitment` (the "round
 commitment") published before the round is played. `libraryId`/`libraryHash` are never taken from a CLI flag —
-they're always read straight off the live source bundle's own mode index (`OutcomeLibraryBundleReading.readModeIndex`,
+they're always read straight off the live source library folder's own mode index (`OutcomeLibraryFolderReading.readModeIndex`,
 the same reader `FairnessRoundProofBuilder`/`Verifier` themselves use), so a commitment can only ever pin the
 `libraryId`/`libraryHash` a real folder actually has, never one a caller merely claims.
 
 ```
-pokie fairness commit seed-commitment.json --client-seed player-seed --nonce 0 --source ../bundle --mode <modeName> --out commitment.json
+pokie fairness commit seed-commitment.json --client-seed player-seed --nonce 0 --source ../library --mode <modeName> --out commitment.json
 ```
 
 Options:
@@ -1626,13 +1626,13 @@ invalid.
 ## `pokie fairness reveal <commitment.json> --server-seed <serverSeed.txt> --source <folder> [--out <file>] [--overwrite]`
 
 The reveal step: once the round settles, reads the revealed `serverSeed` from a plain text file and calls
-`FairnessRoundProofBuilder.build(commitment, serverSeed, sourceBundleDir)` to draw the one outcome this
+`FairnessRoundProofBuilder.build(commitment, serverSeed, sourceLibraryDir)` to draw the one outcome this
 commitment's own `clientSeed`/`nonce`/(now-revealed) `serverSeed` deterministically select, producing the
 `FairnessRoundProof` published to the player after the round. Unlike the two commitments above, the proof *does*
 carry the revealed `serverSeed` — that's the point of a reveal — so redacting it would defeat the command.
 
 ```
-pokie fairness reveal commitment.json --server-seed serverSeed.txt --source ../bundle --out proof.json
+pokie fairness reveal commitment.json --server-seed serverSeed.txt --source ../library --out proof.json
 ```
 
 Options:
@@ -1658,13 +1658,13 @@ is `algorithmVersion` supported, does the revealed `serverSeed` actually hash to
 that exact commitment — `commitmentHash` plus an exact field-by-field match of
 `algorithmVersion`/`serverSeedHash`/`clientSeed`/`nonce`/`libraryId`/`libraryHash`/`modeName` — never just a
 proof's own, unverifiable copies of those fields), and finally against the *live* source Outcome Library Folder
-it claims to have been drawn from — the pinned `libraryHash`/index hash (bundle drift), the drawn outcome's own
+it claims to have been drawn from — the pinned `libraryHash`/index hash (folder drift), the drawn outcome's own
 recorded `weight`/`recordHash` (a substituted outcome), and a full reproduction of the deterministic HMAC-SHA256
 draw itself, against one fixed snapshot of the live folder (a forged proof). No game/win calculation is ever
 involved. See [Provably Fair](provably-fair.md#verification) for the full code table.
 
 ```
-pokie fairness verify proof.json --commitment commitment.json --source ../bundle
+pokie fairness verify proof.json --commitment commitment.json --source ../library
 ```
 
 Options:
@@ -1675,7 +1675,7 @@ Options:
  verification is impossible and the command fails with a usage error (or, programmatically, a
  `fairness-verify-commitment-required` diagnostic without reading anything).
 - `--source <folder>` — **required.** Where the live source Outcome Library Folder actually is. A
- `FairnessRoundProof` carries no bundle location of its own — omitting `--source` fails with a usage error, and
+ `FairnessRoundProof` carries no folder location of its own — omitting `--source` fails with a usage error, and
  running `verify` without it programmatically reports a diagnostic instead of reading anything.
 
 Exit code is non-zero if any issue is `error`-severity; warnings/info are printed either way.
@@ -2117,7 +2117,7 @@ Failure modes:
 ## `pokie diff <leftProjectOrReportJson> <rightProjectOrReportJson>`
 
 Compares two JSON reports produced by [`pokie sim --out`](#pokie-sim-packageroot), or two resolved Outcome
-Library bundles and/or Stake Engine exports. Simulation reports show sampled runtime metrics and feature/category
+Library folders and/or Stake Engine exports. Simulation reports show sampled runtime metrics and feature/category
 breakdowns; outcome sources show their exact per-mode analyses. A simulation report and an outcome
 source cannot be mixed because they do not share one meaningful metric interface.
 
@@ -2137,7 +2137,7 @@ Options:
 - `--format json` — print the JSON diff to stdout instead of the default human-readable summary.
 - `--out <file>` — also write the JSON diff to a new `<file>`. Independent of `--format`: the summary/JSON is always
  printed to the console; `--out` additionally saves the JSON diff to disk. It refuses an existing destination or
- either input path. When an input is an Outcome Library bundle or Stake Engine export, it also refuses destinations
+ either input path. When an input is an Outcome library folder or Stake Engine export, it also refuses destinations
  inside that source directory (including symlink aliases), so choose a new unused path (or inspect and remove an old
  diff artifact yourself) before retrying.
 
@@ -2284,8 +2284,8 @@ const setDiff = setDiffer.diff(leftSet, rightSet); // leftSet/rightSet: Simulati
 
 ### Diffing outcome library folders and Stake Engine exports
 
-When both paths resolve to an Outcome Library bundle or Stake Engine export, `pokie diff` uses each artifact's
-reader and exact per-mode analysis. Native bundles, Stake exports, and a native/Stake pair are all
+When both paths resolve to an Outcome library folder or Stake Engine export, `pokie diff` uses each artifact's
+reader and exact per-mode analysis. Native folders, Stake exports, and a native/Stake pair are all
 supported. Its JSON is intentionally composable with the report form: `changed`, `perMode`, and
 `onlyInLeft`/`onlyInRight` make changed metrics and added/removed modes explicit.
 
@@ -2320,7 +2320,7 @@ Failure modes:
  the same "could not read"/"not valid JSON"/"does not look like a pokie sim report" errors apply to either side.
 - Diffing a `SimulationReport` against a `SimulationReportSet` (one single-mode, one multi-mode) throws
  `Cannot diff a single-mode pokie sim report against a multi-mode report set...`.
-- Diffing a simulation report and an Outcome Library bundle or Stake Engine export explains that the command needs
+- Diffing a simulation report and an Outcome library folder or Stake Engine export explains that the command needs
  two simulation reports or two outcome sources; it never exposes resolver implementation terms.
 
 ## `pokie replay <packageRoot>`
@@ -2356,7 +2356,7 @@ Options:
 - `--format json` — accepted for symmetry with `pokie sim`/`pokie validate`; JSON is currently the only supported
  format, and is always printed to stdout regardless of this flag.
 
-When `<packageRoot>` is a native Outcome Library bundle, replay is an exact reconstruction against the currently
+When `<packageRoot>` is a native Outcome library folder, replay is an exact reconstruction against the currently
 opened library rather than best-effort package replay and requires `seed`, one-based `round`, and `mode`:
 
 ```sh
@@ -2365,14 +2365,14 @@ pokie replay./outcome-library --seed recorded-seed --round 7 --mode base --out r
 
 The returned descriptor includes `outcomeSource` with the game, library id/hash, mode, selection algorithm,
 outcome id, artifact, screen, stake and payout. Do not substitute a default mode: a missing seed or mode
-is rejected. The CLI reconstructs from the current bundle; for an exact comparison with a saved recorded round,
+is rejected. The CLI reconstructs from the current folder; for an exact comparison with a saved recorded round,
 the exported `replayOutcomeSourceProject(..., recordedDescriptor)` API requires the complete origin
 and fails closed for omissions or mismatches, telling the caller to restore the original round record or folder. Package
 replay remains best-effort; it may inspect a round with unavailable state, but must not claim an exact comparison.
 
 Seeded `pokie sample` prints a standard `ReplayDescriptor` whose `outcomeSource` is the portable
 provenance. Seeded Studio Outcome Library Play spins retain that provenance in Recent Rounds, and a seeded `pokie
-sim <bundle> --mode <mode> --seed <seed>` report exposes its last sampled round as `lastReplay`. These all use
+sim <folder> --mode <mode> --seed <seed>` report exposes its last sampled round as `lastReplay`. These all use
 `derived-round-seed-v1`: use the recorded `seed`, `round`, and `modeName` verbatim; a default mode or a raw
 seeded-stream sample is not interchangeable origin.
 
@@ -3400,7 +3400,7 @@ alongside the rest of the project's state, with no wizard-like next-step recomme
 - **Replay** — see its own section below.
 - **Build/Export** — see its own section below.
 - **Certification** and **Fairness** are thin GUI wrappers over the exact same backend building blocks their CLI
- counterparts use — [`pokie certification`](#pokie-certification-build-bundledir-configjson) and
+ counterparts use — [`pokie certification`](#pokie-certification-build-folder-configjson) and
  [`pokie fairness`](#pokie-fairness-seed-commit-serverseedtxt---out-file---overwrite) respectively — with no
  dedicated walkthrough of their own in this file yet; see each linked CLI section (or
  [`certification-pack.md`](certification-pack.md)/[`provably-fair.md`](provably-fair.md))
@@ -3588,7 +3588,7 @@ grouped by kind (`ExportDeployTargets.ts`):
  capped sampling where supported. This advanced action is optional: the Stake Engine export card plans
  compatible outcome-library reuse or generation automatically. Existing outcome artifacts instead offer
  republishing through their Build output card; they do not promise reconstruction of a game model.
-- **Build output** — runs the project through `pokie`'s own `ArtifactBuilderRegistry`, the exact same
+- **Build output** — runs the project through `pokie`'s own `BuildOutputBuilderRegistry`, the exact same
  `pokie build <project> --target <target>` conversions the CLI itself offers, including Stake Engine export
  and PAR workbook export. Current server plans determine availability; unsupported targets remain visible
  with their reasons and recovery guidance. Preview checks the actual destination before publication.
@@ -3597,9 +3597,9 @@ grouped by kind (`ExportDeployTargets.ts`):
 - **Remote deployment** — a GUI over the `pokie` package's own [External Adapter SDK](external-connector-sdk.md):
  `StudioDeploymentService` (`cli/studio/deployment/StudioDeploymentService.ts`) never projects a `RoundRecord`,
  generates an artifact, or validates compatibility/output itself; every one of those steps is delegated straight
- to `ExternalDeploymentService.deploy()`, the SDK's own single orchestrator. Studio ships no private RGS
+ to `ExternalExportService.deploy()`, the SDK's own single orchestrator. Studio ships no private RGS
  integration of its own — Publish is only ever offered once a project has registered a real
- `ExternalDeploymentTarget` (see the SDK doc above); until then, this group shows only a placeholder card
+ `ExternalExportTarget` (see the SDK doc above); until then, this group shows only a placeholder card
  explaining that nothing deployable is registered yet. Studio only owns two things on top of the SDK: which
  real, registered target(s) are available for the active project to select as cards, and turning the card's own
  form into the SDK's input shapes. Selecting a registered
@@ -3610,13 +3610,13 @@ grouped by kind (`ExportDeployTargets.ts`):
  Project Dashboard feature follows; refused with `400` if it resolves outside the project root); **Add mode**
  appends another mode row for a multi-mode deployment (only accepted by a target that declares the `multiMode`
  supported action). **Check & Preview** and **Publish** are not two different pipelines — both call the exact same
- `ExternalDeploymentService.deploy()`, against the exact same target, differing in exactly one thing: Preview
+ `ExternalExportService.deploy()`, against the exact same target, differing in exactly one thing: Preview
  strips the target's own `runtimeAdapter` first, so the SDK's own existing "only call `runtimeAdapter.deliver()`
  when the target declares one" behavior means nothing is ever written anywhere; Publish keeps it (behind a
  confirmation prompt, since it writes files). Either way, the response is rendered **stage by stage** — target
  descriptor, compatibility, round view, output generation, output validation, target diagnostic, and
  delivery — each shown as ok/error/skipped, with every stage's own `ValidationIssue`s listed underneath it; a
- stage is "skipped" exactly when `ExternalDeploymentService` itself never ran it (an earlier stage already
+ stage is "skipped" exactly when `ExternalExportService` itself never ran it (an earlier stage already
  failed), never inferred any other way by the client. **Generated artifacts** lists every file the run produced;
  clicking one shows its own textual content (already returned as part of the run's own response — no second
  request) — so a preview's own output can be read in full *before* anything is ever published.
@@ -3694,7 +3694,7 @@ client, even for a load/validation failure.
  "manifest", "reels", "rows", "symbolsCount", "blueprintHash", "expectedFiles"}`, same reasoning as
  `GET /api/project/validate`.
 - `POST /api/home/blueprints/build` — same request shape as the preview; on top of `invalid`, generates the package
- via the exact same `tsPackage` `ArtifactBuilderRegistry` conversion `pokie build <project> --target tsPackage`
+ via the exact same `tsPackage` `BuildOutputBuilderRegistry` conversion `pokie build <project> --target tsPackage`
  runs, including its missing-or-empty-directory check
  (an `outDir` resolving inside Studio's own internal directory is also refused, the same way as `save` above):
  `200 {"status": "error", "error": "..."}` or `201 {"status": "ok", "projectRoot", "manifest", "createdFiles",
@@ -3804,14 +3804,14 @@ client, even for a load/validation failure.
  switched) — never an error for "nothing to show". `409 {"error": "No active project."}` in Home mode.
 - `GET /api/project/deployment/targets` — every registered [External Adapter SDK](external-connector-sdk.md)
  target's `{id, version, requirements, capabilities}` (empty until a project registers a real
- `ExternalDeploymentTarget` — see Build/Export's own "Remote deployment" card above). `409 {"error": "No
+ `ExternalExportTarget` — see Build/Export's own "Remote deployment" card above). `409 {"error": "No
  active project."}` in Home mode.
 - `POST /api/project/deployment/runs` `{"targetId": string, "modes"?: [{"modeName": string, "librarySelector":
- {"kind": "json" | "bundle" | "stakeengine",...}}], "publish"?: boolean}` — runs
- `ExternalDeploymentService.deploy()` (the SDK's own single orchestrator) for `targetId`. Omitting `modes` asks
+ {"kind": "json" | "folder" | "stakeengine",...}}], "publish"?: boolean}` — runs
+ `ExternalExportService.deploy()` (the SDK's own single orchestrator) for `targetId`. Omitting `modes` asks
  the project planner to resolve compatible registered Outcome Libraries; supplied modes use the same
- project-contained `librarySelector` interface as Studio Stake export: `json` selects a raw library file, `bundle`
- selects a named mode from a Outcome Library bundle, and `stakeengine` selects a named mode from a Stake
+ project-contained `librarySelector` interface as Studio Stake export: `json` selects a raw library file, `folder`
+ selects a named mode from a Outcome library folder, and `stakeengine` selects a named mode from a Stake
  Engine export. `publish` defaults to `false` — a side-effect-free preview, since the target's own
  `runtimeAdapter` is stripped before `deploy()` is called; `true` keeps it, so a successful run actually
  publishes. `400 {"error": "..."}` for a structurally malformed request (`targetId`, an explicitly supplied
@@ -3819,7 +3819,7 @@ client, even for a load/validation failure.
  service then reports selector containment, mode/provenance, source-read, compatibility and target failures in
  the returned run view, with the matching repair/rebuild/reselect recovery. `404 {"error": "Unknown deployment
  target \"...\"."}` for an unknown `targetId`. Otherwise always `200` with the SDK's own
- `ExternalDeploymentResult`, mirrored field-for-field (every generated artifact's `content` decoded to a plain
+ `ExternalExportResult`, mirrored field-for-field (every generated artifact's `content` decoded to a plain
  string) — a domain-level pipeline failure (incompatible content, a failed projector, an unwritable output
  directory,...) is carried in that DTO's own stage-by-stage issue arrays, never a 4xx/5xx, the same "only a
  malformed request throws" convention every other Project Dashboard route follows. `409 {"error": "No active
@@ -3869,7 +3869,7 @@ All 22 public top-level commands this file documents (`build`/`certification`/`c
 `serve`/`sim`/`validate`) are shipped today. Package-oriented workflows use the shared
 [game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`, `PokieGameContractValidationRule`);
 the positional Studio Project, portable `run` command and WASM inspect/validate/sim/replay paths use the integrity-checked `@fromstan/pokie/wasm`
-runtime instead, while artifact/source workflows use the resolver and `ArtifactBuilderRegistry` interfaces appropriate
+runtime instead, while artifact/source workflows use the resolver and `BuildOutputBuilderRegistry` interfaces appropriate
 to their project types. [POKIE Studio](#pokie) already
 covers most of these workflows with a real GUI, not just the CLI: designing/building a game (Home's Design Game
 tab, including PAR Sheet import and reel strip generation), and, once a project is open, inspection/
@@ -4178,7 +4178,7 @@ Weights are positive UInt64 decimal integers through 18446744073709551615 and th
 aggregate may exceed UInt64 on the exact Stake payload path. `import SOURCE --out NEW`
 retains a Stake connector when native numeric Outcome Library limits would be exceeded;
 `build NEW --target stakeAdapter --out OTHER` republishes it exactly. Numeric library
-export requires safe-integer weights; native bundles also require safe totals.
+export requires safe-integer weights; native folders also require safe totals.
 Inspect/report/analyze/diff retain rare nonzero values (moments are binary64
 approximations; wide totals/bucket weights and capped decimal probability strings
 retain their separate documented domains). No UInt64 payout guarantee is implied.

@@ -4,9 +4,9 @@ import {WeightedOutcomeInput} from "@fromstan/pokie";
 
 // Streams "filePath" (one canonical-JSON `{"id": string, "weight": number, "artifact": object}` outcome per
 // line, NOT wrapped in a WeightedOutcomeLibrary object) via Node's readline over a read stream — so
-// "pokie outcomelibrary build" can feed a mode straight into OutcomeLibraryBundleWriter without ever holding
+// "pokie outcomelibrary build" can feed a mode straight into OutcomeLibraryFolderWriter without ever holding
 // more than one outcome in memory at once, the CLI counterpart to the writer's own end-to-end streaming (see
-// docs/outcome-library-bundle.md). This is deliberately a plain JSONL file of outcomes, not a JSON array inside
+// docs/outcome-library-folder.md). This is deliberately a plain JSONL file of outcomes, not a JSON array inside
 // a wrapper object: parsing a streamed top-level JSON array without ever materializing it would need a real
 // streaming JSON parser, which this project doesn't have — JSONL sidesteps that entirely, one line, one
 // JSON.parse call, at a time (the exact same technique the bundle's own outcomes files already use).

@@ -39,7 +39,7 @@ even when the user supplies no locks.
 | Blueprint | Existing authored paytable multipliers; literal strips or weighted whole-sequence reels; existing authored bets. Returns Blueprint JSON. |
 | PAR workbook | Existing paytable cells in a lossless workbook; edits the workbook in place in a detached copy, updates its origin hash, and reimports it. Ignored/defaulted/formula features fail before candidate writes. Returns XLSX. |
 | TS package | An author-declared `pokie-tuning.json` v1 interface binds a JSON parameter Blueprint, permitted paytable paths, every custom source-file hash, and executable `getConfigHash()` / exact enumeration. Copies the package and edits only parameters and their interface hash; preserves custom code bytes and evaluates the real loaded candidate. No build script is launched. Returns a loadable package. |
-| Outcome Library | `/modes/MODE/outcomes/ID/weight` numeric weights, scoped to one mode. Preserves IDs, artifacts and other modes; the native writer rebuilds indexes, hashes, totals and analysis; deep validation/readback precedes measurement. Returns a native bundle. |
+| Outcome Library | `/modes/MODE/outcomes/ID/weight` numeric weights, scoped to one mode. Preserves IDs, artifacts and other modes; the native writer rebuilds indexes, hashes, totals and analysis; deep validation/readback precedes measurement. Returns a native folder. |
 | Stake | The same weight paths, with uint64 **decimal strings**, never JavaScript numeric weights. Retains IDs, payout units, mode costs, books and events, and reads the directory with `StakeEngineOutcomeSourceReader`. Returns a native Stake directory. |
 | WASM | An explicitly bound component with a `pokie.wasm-tuning.v1` companion containing source, paths, source hash, module hash and builder version. Recompilation must reproduce the original bytes before search. Tunes literal-reel, feature-free source, rebuilds WASM and companions, and checks the executable over every stop tuple. Returns WASM. |
 
@@ -119,7 +119,7 @@ Targets and exactness:
  `logical-round`. Free-game entry enumeration supports only `paid-entry`;
  it does not prove a generating game's full feature-round target. Other
  advanced/stateful mechanics fail as unsupported. Native weights require
- `native-outcomes`: even a sampled input bundle establishes only that bundle's
+ `native-outcomes`: even a sampled input folder establishes only that folder's
  distribution, never its generating game's full-round RTP.
 
 `constraints.fixed` contains `{path,value}` entries; fixed fields cannot also be
@@ -313,7 +313,7 @@ operational cleanup failure (Studio recovery-required), never successful cancell
 snapshots are still validated during cancellation drainage; all accepted counts reach partial evidence,
 and a late release failure takes precedence over cancellation. Publication
 uses existing new/empty destination and ownership-aware rollback rules, including the evidence and
-WASM companions. Independent review, production bundle/packaging and controller gates remain separate
+WASM companions. Independent review, production folder/packaging and controller gates remain separate
 from these implementation checks.
 
 ## Reviewed authored apply
@@ -363,7 +363,7 @@ Use a fresh support check and run after cancellation, operational failure, resta
 The generic recover endpoint only resumes separately supported generation jobs. Project close/switch
 and shutdown request cancellation and drain owned optimization executions/candidates; independently
 published artifacts survive candidate cleanup. Independent browser/API/CLI verification and production
-bundle/package gates remain separate.
+folder/package gates remain separate.
 
 CLI review identity also includes a declared package's executable dependency revision. An unchanged
 parameter file or selected candidate cannot authorize application after installed code changes. Exact

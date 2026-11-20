@@ -170,7 +170,7 @@ const MODE_ENTRY_KEYS = new Set([
 // Strict per-field shape check for one manifest mode entry — every numeric field is checked against the exact
 // invariant the Outcome Library Bundle format (and RoundRecord) itself already requires: outcomeCount/
 // totalWeight/sample weight are positive safe integers (this bundle format's own weighted-draw path requires
-// exact integer weights — see OutcomeLibraryBundleReader.drawOutcome), stake is a finite number strictly greater
+// exact integer weights — see OutcomeLibraryFolderReader.drawOutcome), stake is a finite number strictly greater
 // than zero (RoundRecord's own invariant) — and no field beyond these twelve is ever accepted.
 export function isModeEntryShape(value: unknown): value is CertificationPackModeEntry {
     if (typeof value !== "object" || value === null || !hasOnlyAllowedKeys(value, MODE_ENTRY_KEYS)) {
@@ -202,8 +202,8 @@ const MANIFEST_KEYS = new Set([
     "game",
     "configHash",
     "artifactPokieVersion",
-    "sourceBundleDir",
-    "sourceBundleManifestHash",
+    "sourceLibraryDir",
+    "sourceLibraryManifestHash",
     "modes",
     "deepValidation",
     "files",
@@ -228,8 +228,8 @@ export function isManifestShape(value: unknown): value is CertificationPackManif
         isPokieGameManifestShape(manifest.game) &&
         (manifest.configHash === undefined || isNonEmptyString(manifest.configHash)) &&
         isNonEmptyString(manifest.artifactPokieVersion) &&
-        isNonEmptyString(manifest.sourceBundleDir) &&
-        isValidSha256Hash(manifest.sourceBundleManifestHash) &&
+        isNonEmptyString(manifest.sourceLibraryDir) &&
+        isValidSha256Hash(manifest.sourceLibraryManifestHash) &&
         isValidSha256Hash(manifest.evidenceContentHash) &&
         Array.isArray(manifest.modes) &&
         isDeepValidationShape(manifest.deepValidation) &&

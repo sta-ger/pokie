@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import {ArtifactBuildConflictError} from "../ArtifactBuildConflictError.js";
+import {BuildConflictError} from "../BuildConflictError.js";
 
 function resolveThroughExistingAncestor(targetPath: string): string {
     const suffix: string[] = [];
@@ -28,7 +28,7 @@ export function assertArtifactDestinationIsSafe(sourcePath: string, destinationP
     const sourceIsDirectory = fs.existsSync(sourcePath) && fs.statSync(sourcePath).isDirectory();
 
     if (source === destination || (sourceIsDirectory && isSameOrDescendant(destination, source))) {
-        throw new ArtifactBuildConflictError(
+        throw new BuildConflictError(
             `Artifact destination "${destinationPath}" is the source itself or lies inside source "${sourcePath}". Choose a separate output path.`,
         );
     }

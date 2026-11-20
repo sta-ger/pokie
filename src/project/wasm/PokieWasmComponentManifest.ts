@@ -19,8 +19,8 @@ export const POKIE_WASM_ADAPTER = "@fromstan/pokie/wasm";
 // Read alongside PokieWasmComponentManifestValidator (shape) and assessWasmComponentCompatibility
 // (schemaVersion match against POKIE_WASM_CONTRACT_VERSION) -- this type is deliberately just the data shape;
 // validation and compatibility are each their own, separately testable step, the same split
-// ExternalDeploymentTargetDescriptorValidator/ExternalDeploymentCompatibilityValidator draw for
-// ExternalDeploymentTarget.
+// ExternalExportTargetDescriptorValidator/ExternalExportCompatibilityValidator draw for
+// ExternalExportTarget.
 export type PokieWasmComponentManifest = {
     // Which version of POKIE's own WASM component contract (see POKIE_WASM_CONTRACT_VERSION) this manifest was
     // authored against -- compared major-only (see assessWasmComponentCompatibility).
@@ -28,7 +28,7 @@ export type PokieWasmComponentManifest = {
 
     // The component's own identity -- independent of "schemaVersion" above (POKIE's own contract version): a
     // component author's own id/version for their own build, surfaced for diagnostics/logging the same way
-    // ExternalDeploymentTarget.id/.version are (see that type's own doc comment).
+    // ExternalExportTarget.id/.version are (see that type's own doc comment).
     readonly component: {
         readonly id: string;
         readonly version: string;
@@ -43,7 +43,7 @@ export type PokieWasmComponentManifest = {
     // config, one played round's request/result, and its own persisted state -- e.g. "pokie.session.v1" --
     // checked against the format ids the portable runtime knows how to marshal,
     // never assumed compatible just because a component exists. POKIE places no constraint on these ids' own
-    // shape (same "open vocabulary" convention as ProjectCapability/ExternalDeploymentCapability) beyond
+    // shape (same "open vocabulary" convention as ProjectCapability/ExternalExportCapability) beyond
     // requiring all three to be present -- a component that doesn't need one of the three still has to say so
     // explicitly rather than silently omit it.
     readonly serialization: {
@@ -65,7 +65,7 @@ export type PokieWasmComponentManifest = {
     };
 
     // Open vocabulary of capability ids this component itself declares support for -- the same "capability
-    // discovery" convention ExternalDeploymentCapability/ProjectCapability already use elsewhere in this
+    // discovery" convention ExternalExportCapability/ProjectCapability already use elsewhere in this
     // package: never closed to a union, since a component author can declare their own additional capability
     // ids a generic POKIE check simply never looks at.
     readonly capabilities: readonly string[];

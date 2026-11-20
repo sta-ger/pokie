@@ -6,7 +6,7 @@ import {describeFeatureAnalytics} from "../../src/simulation/describeFeatureAnal
 import {Command} from "commander";
 import {
     BetMode,
-    describeUnavailableArtifactOperation,
+    describeUnavailableBuildOperation,
     loadPokieGame,
     MAX_SIMULATION_WORKERS,
     OutcomeSourceSimulationResult,
@@ -360,11 +360,11 @@ export class SimCommand implements CliCommandHandling {
      * this command only aggregates the same user-visible statistics as the package path.
      */
     private async executeAgainstWasmArtifact(project: PokieProject, options: SimOptions): Promise<void> {
-        const operationDiagnostic = describeUnavailableArtifactOperation(project, SIM_OPERATION);
+        const operationDiagnostic = describeUnavailableBuildOperation(project, SIM_OPERATION);
         if (operationDiagnostic !== undefined) throw new UnsupportedProjectOperationError(operationDiagnostic);
         const manifestRead = await readWasmComponentManifest(project);
         if (!manifestRead.supported || manifestRead.canonical === undefined) {
-            const diagnostic = describeUnavailableArtifactOperation(project, SIM_OPERATION);
+            const diagnostic = describeUnavailableBuildOperation(project, SIM_OPERATION);
             if (diagnostic !== undefined) throw new UnsupportedProjectOperationError(diagnostic);
             throw new Error("This WASM component is inspection-only and cannot be simulated.");
         }

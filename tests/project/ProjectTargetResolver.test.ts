@@ -97,15 +97,15 @@ describe("ProjectTargetResolver", () => {
     });
 
     it("resolves a recognized outcome-library bundle directory as an outcomeLibrary project", async () => {
-        const bundleDir = path.join(workDir, "outcome-bundle");
-        fs.mkdirSync(bundleDir, {recursive: true});
-        fs.writeFileSync(path.join(bundleDir, "manifest.json"), JSON.stringify(SAMPLE_OUTCOME_LIBRARY_MANIFEST));
+        const libraryDir = path.join(workDir, "outcome-bundle");
+        fs.mkdirSync(libraryDir, {recursive: true});
+        fs.writeFileSync(path.join(libraryDir, "manifest.json"), JSON.stringify(SAMPLE_OUTCOME_LIBRARY_MANIFEST));
 
-        const project = await resolver.resolve(bundleDir);
+        const project = await resolver.resolve(libraryDir);
 
         expect(project).toEqual({
             type: "outcomeLibrary",
-            rootPath: bundleDir,
+            rootPath: libraryDir,
             capabilities: ["outcomeLibrary.read", "outcomeLibrary.generate", "outcomeSource.read", "outcomeSource.sample", "stakeAdapter.export"],
             provenance: expect.stringContaining("manifest.json"),
         });
@@ -137,30 +137,30 @@ describe("ProjectTargetResolver", () => {
     });
 
     it("returns undefined for a directory with a manifest.json that never mentions \"schemaVersion\"", async () => {
-        const bundleDir = path.join(workDir, "unrelated-manifest");
-        fs.mkdirSync(bundleDir, {recursive: true});
-        fs.writeFileSync(path.join(bundleDir, "manifest.json"), JSON.stringify({manifestVersion: 3, name: "some-extension"}));
+        const libraryDir = path.join(workDir, "unrelated-manifest");
+        fs.mkdirSync(libraryDir, {recursive: true});
+        fs.writeFileSync(path.join(libraryDir, "manifest.json"), JSON.stringify({manifestVersion: 3, name: "some-extension"}));
 
-        expect(await resolver.resolve(bundleDir)).toBeUndefined();
+        expect(await resolver.resolve(libraryDir)).toBeUndefined();
     });
 
     it("throws ProjectTargetMalformedError for an outcome-library bundle directory whose manifest.json isn't valid JSON", async () => {
-        const bundleDir = path.join(workDir, "broken-outcome-manifest");
-        fs.mkdirSync(bundleDir, {recursive: true});
-        fs.writeFileSync(path.join(bundleDir, "manifest.json"), "{not valid json");
+        const libraryDir = path.join(workDir, "broken-outcome-manifest");
+        fs.mkdirSync(libraryDir, {recursive: true});
+        fs.writeFileSync(path.join(libraryDir, "manifest.json"), "{not valid json");
 
-        await expect(resolver.resolve(bundleDir)).rejects.toThrow(ProjectTargetMalformedError);
+        await expect(resolver.resolve(libraryDir)).rejects.toThrow(ProjectTargetMalformedError);
     });
 
     it("throws ProjectTargetMalformedError for an outcome-library bundle directory whose manifest.json declares \"schemaVersion\" but the wrong shape", async () => {
-        const bundleDir = path.join(workDir, "invalid-shape-outcome-manifest");
-        fs.mkdirSync(bundleDir, {recursive: true});
+        const libraryDir = path.join(workDir, "invalid-shape-outcome-manifest");
+        fs.mkdirSync(libraryDir, {recursive: true});
         fs.writeFileSync(
-            path.join(bundleDir, "manifest.json"),
+            path.join(libraryDir, "manifest.json"),
             JSON.stringify({...SAMPLE_OUTCOME_LIBRARY_MANIFEST, modes: "not-an-array"}),
         );
 
-        await expect(resolver.resolve(bundleDir)).rejects.toThrow(ProjectTargetMalformedError);
+        await expect(resolver.resolve(libraryDir)).rejects.toThrow(ProjectTargetMalformedError);
     });
 
     it("resolves a blueprint-shaped .json file as a blueprint project", async () => {

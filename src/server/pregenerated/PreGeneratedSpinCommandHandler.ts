@@ -26,7 +26,7 @@ import type {PreGeneratedSpinCommandResult} from "./PreGeneratedSpinCommandResul
 // optimistic-locking conflict detection) applied to a pre-enumerated outcome source instead of a live
 // GameSessionHandling. The outcome source is deliberately abstract (see PreGeneratedOutcomeSourcing) — an
 // already-built WeightedOutcomeLibrary in memory (InMemoryPreGeneratedOutcomeSource) or a canonical outcome-
-// library bundle read directly off disk (OutcomeLibraryBundleOutcomeSource), one index read per draw, never a
+// library bundle read directly off disk (OutcomeLibraryFolderOutcomeSource), one index read per draw, never a
 // full library materialized — this handler never knows or cares which.
 //
 // Every command for a given sessionId is serialized through a per-session queue (see enqueue()), same
@@ -69,7 +69,7 @@ import type {PreGeneratedSpinCommandResult} from "./PreGeneratedSpinCommandResul
 // Two more checks run in that same pre-wallet window, immediately after the draw: a PreGeneratedOutcomeSourceConflictError
 // thrown by drawOutcome() itself (a source-level conflict — e.g. a bundle whose outcomes file changed between
 // the index being read and the winning record's own byte range being read, mid-draw, within that single call —
-// see OutcomeLibraryBundleOutcomeSource) is caught and turned into "conflict" the same way; and the drawn
+// see OutcomeLibraryFolderOutcomeSource) is caught and turned into "conflict" the same way; and the drawn
 // selection is run through PreGeneratedOutcomeSelectionValidator, so a forged or malformed selection (a buggy or
 // malicious custom PreGeneratedOutcomeSourcing implementation is just as capable of producing one as a real
 // adapter drifting out of sync) is rejected before it ever reaches the wallet either.

@@ -1,6 +1,6 @@
 import {sequenceSelectionsEqual, validateSequenceSelections} from "./validateSequenceSelections.js";
 import {computeRoundRecordHash} from "./computeRoundRecordHash.js";
-import {validateArtifactCoordinates} from "./validateArtifactCoordinates.js";
+import {validateRoundRecordCoordinates} from "./validateRoundRecordCoordinates.js";
 import type {RoundStepRecord} from "./RoundStepRecord.js";
 import {InvalidJsonValueError} from "../json/InvalidJsonValueError.js";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
@@ -249,7 +249,7 @@ implements ValidationRule<RoundRecord<T>> {
             }
 
             try {
-                validateArtifactCoordinates(s as RoundStepRecord<T>);
+                validateRoundRecordCoordinates(s as RoundStepRecord<T>);
             } catch (error) {
                 issues.push({code: "round-record-coordinates-invalid", severity: "error", message: String(error)});
             }

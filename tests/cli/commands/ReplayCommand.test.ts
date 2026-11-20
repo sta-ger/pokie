@@ -4,7 +4,7 @@ import {
     GameSessionHandling,
     GamePackageGenerator,
     loadPokieGame,
-    OutcomeLibraryBundleWriter,
+    OutcomeLibraryFolderWriter,
     OutcomeSourceReplayResult,
     PokieGame,
     PokieGameManifest,
@@ -22,7 +22,7 @@ import os from "os";
 import path from "path";
 import {ReplayCommand} from "../../../cli/commands/ReplayCommand.js";
 import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
-import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
+import {buildOutcomeLibraryFolderModeInput} from "../../weightedoutcome/folder/OutcomeLibraryFolderTestFixtures.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 import {mechanicsSession, replayModesBlueprint} from "../../v2/fixtures/ExistingMechanicsGame.js";
 
@@ -725,19 +725,19 @@ describe("ReplayCommand outcome-source routing", () => {
 });
 
 // Real, non-stubbed end-to-end coverage: a real, on-disk outcome-library bundle (built by
-// OutcomeLibraryBundleWriter, not mocked), resolved and replayed through the same
+// OutcomeLibraryFolderWriter, not mocked), resolved and replayed through the same
 // ProjectTargetResolver/replayOutcomeSourceProject path the unit tests above stub out.
 describe("ReplayCommand outcome-source routing (integration, real outcome-library bundle)", () => {
-    let bundleDir: string;
+    let libraryDir: string;
 
     beforeEach(async () => {
-        bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-replay-outcomesource-test-"));
-        fs.rmdirSync(bundleDir);
-        await new OutcomeLibraryBundleWriter("2.0.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
+        libraryDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-replay-outcomesource-test-"));
+        fs.rmdirSync(libraryDir);
+        await new OutcomeLibraryFolderWriter("2.0.0").writeToDirectory([buildOutcomeLibraryFolderModeInput("base", "base-lib")], libraryDir);
     });
 
     afterEach(() => {
-        fs.rmSync(bundleDir, {recursive: true, force: true});
+        fs.rmSync(libraryDir, {recursive: true, force: true});
     });
 
     it("replays a real bundle's round through the real outcome-source selector path, never loading a game", async () => {
@@ -745,7 +745,7 @@ describe("ReplayCommand outcome-source routing (integration, real outcome-librar
         const command = new ReplayCommand(loadGame, undefined, undefined, undefined, new ProjectTargetResolver());
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run([bundleDir, "--round", "1", "--seed", "replay-seed", "--mode", "base"]);
+        await command.run([libraryDir, "--round", "1", "--seed", "replay-seed", "--mode", "base"]);
 
         expect(loadGame).not.toHaveBeenCalled();
         const descriptor = JSON.parse(logSpy.mock.calls[0][0]) as ReplayDescriptor;

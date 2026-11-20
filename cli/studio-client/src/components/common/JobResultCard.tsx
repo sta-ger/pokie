@@ -29,7 +29,7 @@ function textValue(value: unknown): string | undefined {
 }
 
 function selectorLabel(selector: RecordValue): string {
-    if (selector.kind === "bundle" && typeof selector.bundleDir === "string" && typeof selector.modeName === "string") return `Bundle ${selector.bundleDir}, mode ${selector.modeName}`;
+    if (selector.kind === "folder" && typeof selector.libraryDir === "string" && typeof selector.modeName === "string") return `Folder ${selector.libraryDir}, mode ${selector.modeName}`;
     if (selector.kind === "json" && typeof selector.path === "string") return `JSON ${selector.path}`;
     if (selector.kind === "stakeEngine" && typeof selector.stakeDir === "string" && typeof selector.modeName === "string") return `Stake Engine ${selector.stakeDir}, mode ${selector.modeName}`;
     return "Saved selector metadata is incomplete.";

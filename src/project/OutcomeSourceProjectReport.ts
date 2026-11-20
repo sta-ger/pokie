@@ -17,7 +17,7 @@ export type OutcomeSourceProjectModeAnalysis = {
 // PokieProject -- "descriptor" states this source's own kind/streaming/limitations (see
 // CanonicalOutcomeSourceDescriptor), "issues" carries every structural problem its own canonical reader found
 // (a malformed shard/source never throws its way out of this report -- see
-// OutcomeLibraryBundleValidating/StakeEngineOutcomeSourceReading), and "modes" is empty whenever "issues"
+// OutcomeLibraryFolderValidating/StakeEngineOutcomeSourceReading), and "modes" is empty whenever "issues"
 // contains an error-severity entry, since exact analysis over a structurally invalid source is meaningless.
 export type OutcomeSourceProjectReport = {
     readonly rootPath: string;

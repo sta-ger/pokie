@@ -5,7 +5,7 @@ import {AdvancedModelSourceValidator} from "../../src/validation/AdvancedModelSo
 import {compareMathDefinitions} from "../../src/diff/MathDefinitionSourceReader.js";
 import type {MathDefinitionDiff} from "../../src/diff/MathDefinitionDiff.js";
 import {
-    ArtifactConversionPlan,
+    FormatConversionPlan,
     GameBlueprint,
     GamePackageInspecting,
     GamePackageInspectionReport,
@@ -429,7 +429,7 @@ export class StudioServer implements StudioServerHandling {
                     .filter((mode) => mode.buildStatus === "compatible")
                     .map((mode) => ({
                         modeName: mode.modeName,
-                        librarySelector: {kind: "bundle" as const, bundleDir: mode.bundleDir, modeName: mode.modeName},
+                        librarySelector: {kind: "folder" as const, libraryDir: mode.libraryDir, modeName: mode.modeName},
                     }));
             },
         );
@@ -482,7 +482,7 @@ export class StudioServer implements StudioServerHandling {
                 undefined,
                 // Explicit selector requests are the advanced Outcome Library
                 // input flow. Empty project-goal requests are delegated below
-                // to the canonical ArtifactBuilderRegistry projection.
+                // to the canonical BuildOutputBuilderRegistry projection.
                 undefined,
                 this.artifactBuildService,
             );
@@ -2746,7 +2746,7 @@ export class StudioServer implements StudioServerHandling {
     }
 
     // Inspect's own "outcomeLibrary"/"stakeAdapter" counterpart -- dispatches through
-    // OutcomeSourceProjectAnalyzer to each type's own canonical reader (OutcomeLibraryBundleReading/
+    // OutcomeSourceProjectAnalyzer to each type's own canonical reader (OutcomeLibraryFolderReading/
     // StakeEngineOutcomeSourceReading, see that class's own doc comment) instead of GamePackageInspector,
     // which assumes a package.json-bearing directory neither type has.
     private async inspectOutcomeSourceProject(project: PokieProject): Promise<GamePackageInspectionReport> {
@@ -2935,10 +2935,10 @@ export class StudioServer implements StudioServerHandling {
     private deploymentPlannerTerminalView(
         resultStatus: "target-not-found" | "invalid-modes" | "load-error",
         error: string,
-        plan: ArtifactConversionPlan | undefined,
+        plan: FormatConversionPlan | undefined,
         request: {targetId: string; publish: boolean},
     ): StudioDeploymentRunView & {status: "unavailable"; error: string} {
-        const fallbackPlan: ArtifactConversionPlan = {
+        const fallbackPlan: FormatConversionPlan = {
             status: "unavailable" as const,
             source: {kind: "outcomeLibrary" as const, capabilities: []},
             target: {kind: "outcomeLibrary" as const, capabilities: []},
@@ -2957,7 +2957,7 @@ export class StudioServer implements StudioServerHandling {
         // Preserve that plan's source, target, and prospective steps, but make
         // the response's executable state and diagnostic describe the blocker
         // that actually terminated this request.
-        const terminalPlan: ArtifactConversionPlan = plan?.status === "planned"
+        const terminalPlan: FormatConversionPlan = plan?.status === "planned"
             ? {
                 ...plan,
                 status: "unavailable",
@@ -3167,7 +3167,7 @@ export class StudioServer implements StudioServerHandling {
     }
 
     // Draws exactly one outcome from the currently open "outcomeLibrary" project through
-    // sampleOutcomeSourceProject -- the same OutcomeLibraryBundleOutcomeSource selector class
+    // sampleOutcomeSourceProject -- the same OutcomeLibraryFolderOutcomeSource selector class
     // PreGeneratedSpinCommandHandler already wires in production, never loadPokieGame or a re-derived
     // game-model draw (see that function's own doc comment). This is the native "play" route for a
     // project resolved straight to "outcomeLibrary"/"stakeAdapter" (see loadProjectDashboardContext's
@@ -3346,7 +3346,7 @@ export class StudioServer implements StudioServerHandling {
         const execution = await this.executeCommonOperation(
             res,
             {
-                projectId: projectRoot, operation: "certification-validate", request: {bundleDir: validated.bundleDir},
+                projectId: projectRoot, operation: "certification-validate", request: {libraryDir: validated.libraryDir},
                 // Deep validation has one project-scoped executor slot.  The
                 // request is still retained verbatim for exact reattachment,
                 // while a different source bundle is a typed conflict before
@@ -3356,13 +3356,13 @@ export class StudioServer implements StudioServerHandling {
                 initialProgress: {stage: "Validating evidence", unit: "evidence files", current: "indeterminate", total: "indeterminate", message: "Checking certification pack files and origin."},
                 reattachedResponse: (job) => ({statusCode: 200, body: {status: "load-error", error: "Certification validation is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
             },
-            ({signal, progress}) => this.certificationService.validateSourceBundle(projectRoot, validated.bundleDir, {
+            ({signal, progress}) => this.certificationService.validateSourceBundle(projectRoot, validated.libraryDir, {
                 signal,
                 onProgress: (stage, unit, current, total, message) => progress({stage, unit, current, total, message}),
             }),
             (result, cancelled) => {
                 if (cancelled) return {status: "cancelled", result: {summary: "Certification source validation cancelled after executor cleanup."}, recovery: {action: "retry", reason: "Retry the captured validation."}};
-                if (result.status === "ok") return {status: "completed", result: {summary: "Certification source validation completed.", outputs: [{path: validated.bundleDir, label: "Validated source bundle"}], provenance: {projectRoot, bundleDir: validated.bundleDir}}};
+                if (result.status === "ok") return {status: "completed", result: {summary: "Certification source validation completed.", outputs: [{path: validated.libraryDir, label: "Validated source bundle"}], provenance: {projectRoot, libraryDir: validated.libraryDir}}};
                 return {status: "failed", error: result.error, recovery: {action: "retry", reason: "Correct the source bundle and retry validation."}};
             },
             (error, cancelled) => cancelled
@@ -3407,14 +3407,14 @@ export class StudioServer implements StudioServerHandling {
                 initialProgress: {stage: "Building evidence", unit: "evidence files", current: "indeterminate", total: "indeterminate", message: "Writing the certification pack to a staging destination."},
                 reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", errors: [], warnings: [], activeJobId: job.id, reattached: true}}),
             },
-            ({signal, progress}) => authorityFailure ? Promise.resolve({status: "load-error" as const, error: authorityFailure}) : this.certificationService.build(projectRoot, validated.bundleDir, validated.modes, validated.outDir, {
+            ({signal, progress}) => authorityFailure ? Promise.resolve({status: "load-error" as const, error: authorityFailure}) : this.certificationService.build(projectRoot, validated.libraryDir, validated.modes, validated.outDir, {
                 signal,
                 ...(validated.pack ? {pack: validated.pack} : {}), ...(validated.output ? {output: validated.output} : {}),
                 onProgress: (stage, unit, current, total, message) => progress({stage, unit, current, total, message}),
             }),
             (result, cancelled) => {
                 if (cancelled) return result.status === "load-error" && (/cleanup failed/).test(result.error) ? {status: "failed", error: result.error, recovery} : {status: "cancelled", result: {summary: "Certification evidence build cancellation settled; inspect the retained executor result for cleanup diagnostics."}, recovery};
-                if (result.status === "ok") return {status: "completed", result: {summary: `${result.manifest.pack?.support.notice ?? "Certification-ready preparation only."} Model representation: ${result.manifest.pack?.support.coverage ?? "unavailable"}.`, outputs: result.files.map((file) => ({path: file, label: "Certification evidence", downloadPath: `/api/project/certification/download?${new URLSearchParams({outDir: validated.outDir, identity: result.manifest.evidenceContentHash, file})}`})), provenance: {bundleDir: validated.bundleDir, manifest: result.manifest, artifactHashes: result.artifactHashes ?? {}}, detail: {outDir: validated.outDir, templateHash: result.manifest.presentation?.templateHash}}};
+                if (result.status === "ok") return {status: "completed", result: {summary: `${result.manifest.pack?.support.notice ?? "Certification-ready preparation only."} Model representation: ${result.manifest.pack?.support.coverage ?? "unavailable"}.`, outputs: result.files.map((file) => ({path: file, label: "Certification evidence", downloadPath: `/api/project/certification/download?${new URLSearchParams({outDir: validated.outDir, identity: result.manifest.evidenceContentHash, file})}`})), provenance: {libraryDir: validated.libraryDir, manifest: result.manifest, artifactHashes: result.artifactHashes ?? {}}, detail: {outDir: validated.outDir, templateHash: result.manifest.presentation?.templateHash}}};
                 return {status: "failed", error: result.status === "load-error" ? result.error : "Certification pack build failed.", recovery: {action: "rebuild", reason: "Correct the source folder and rebuild the certification pack."}};
             },
             (error, cancelled) => cancelled && !(error instanceof Error && (/cleanup failed/).test(error.message))
@@ -3551,7 +3551,7 @@ export class StudioServer implements StudioServerHandling {
     // POST /api/project/artifacts/preview -- the pre-build counterpart to POST /api/project/artifacts/build
     // (see StudioArtifactBuildService.preview's own doc comment): same request shape, same 400/409 status
     // conventions as the build route below, but never writes anything -- a "conflict" here is the exact same
-    // ArtifactBuildConflictError a subsequent build would hit, reported before the user ever clicks Build.
+    // BuildConflictError a subsequent build would hit, reported before the user ever clicks Build.
     private async handlePreviewArtifact(req: IncomingMessage, res: ServerResponse): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});

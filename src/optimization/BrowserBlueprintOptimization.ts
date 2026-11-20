@@ -4,7 +4,7 @@ import {checkPolicyPaths, at, put, constraintsHold, assertOnlyTuned, paytablePat
 import {preflightConstraints} from "./internal/optimizationPreflight.js";
 import {assessOptimizationSample, sampledEstimates} from "./internal/assessOptimizationSample.js";
 import {optimizationOrder} from "./internal/optimizationOrder.js";
-import {createBlueprintWasmArtifact} from "../wasm/createBlueprintWasmArtifact.js";
+import {createBlueprintWasmBuild} from "../wasm/createBlueprintWasmBuild.js";
 import {instantiatePokieWasm, SeededPokieWasmHost} from "../wasm/PokieWasmRuntime.js";
 import {collectPokieWasmSimulation} from "../wasm/PokieWasmCommands.js";
 import {sha256CanonicalWasmBytes} from "../wasm/PokieWasmCanonicalModule.js";
@@ -61,7 +61,7 @@ export async function optimizeBrowserBlueprint(
         "invalid: browser limits are 16 candidates, 8192 search/assessment samples, 2048 per candidate, four tunables and one Worker.",
     );
     if (control.signal?.aborted) throw new Error("cancelled: optimization drained");
-    await createBlueprintWasmArtifact(source);
+    await createBlueprintWasmBuild(source);
     checkPolicyPaths(source, p, paytablePaths(source));
     preflightConstraints(source, p);
     for (const field of p.tunables) if (field.values.some((v) => typeof v !== "number" || v > 100)) throw new Error("invalid: browser paytable domains require numeric values at most 100.");
@@ -79,7 +79,7 @@ export async function optimizeBrowserBlueprint(
     };
     const sample = async (model: GameBlueprint, count: number, seed: string, assessment: boolean) => {
         current();
-        const artifact = await createBlueprintWasmArtifact(model);
+        const artifact = await createBlueprintWasmBuild(model);
         const runtime = await instantiatePokieWasm(artifact.bytes, artifact.manifest, new SeededPokieWasmHost(seed));
         try {
             const [result] = await collectPokieWasmSimulation(runtime, seed, count, {

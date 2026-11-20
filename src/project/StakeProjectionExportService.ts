@@ -1,7 +1,7 @@
-import type {ArtifactBuildOptions, ArtifactBuildPreflight} from "./ArtifactBuildOptions.js";
-import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
-import {ArtifactBuilderRegistry} from "./ArtifactBuilderRegistry.js";
-import {describeArtifactConversionPlanDiagnostic, type ArtifactConversionPlan} from "./ArtifactConversionPlanner.js";
+import type {BuildOutputOptions, BuildCheck} from "./BuildOutputOptions.js";
+import type {BuildOutputResult} from "./BuildOutputResult.js";
+import {BuildOutputBuilderRegistry} from "./BuildOutputBuilderRegistry.js";
+import {describeFormatConversionPlanDiagnostic, type FormatConversionPlan} from "./FormatConversionPlanner.js";
 import type {PokieProject} from "./PokieProject.js";
 
 /**
@@ -16,14 +16,14 @@ import type {PokieProject} from "./PokieProject.js";
  * Blueprint/package provenance by passing through a project projection.
  */
 export interface StakeProjectionExportServicing {
-    prepare(source: PokieProject, destinationPath?: string, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan>;
-    validate(source: PokieProject, prepared: ArtifactConversionPlan): Promise<void>;
+    prepare(source: PokieProject, destinationPath?: string, options?: BuildOutputOptions): Promise<FormatConversionPlan>;
+    validate(source: PokieProject, prepared: FormatConversionPlan): Promise<void>;
     execute(
         source: PokieProject,
         destinationPath: string,
-        prepared: ArtifactConversionPlan,
-        options?: ArtifactBuildOptions,
-    ): Promise<ArtifactBuildResult>;
+        prepared: FormatConversionPlan,
+        options?: BuildOutputOptions,
+    ): Promise<BuildOutputResult>;
 }
 
 /**
@@ -36,13 +36,13 @@ export interface StakeProjectionExportServicing {
 export type PreparedStakeProjectionOperation = {
     readonly source: PokieProject;
     readonly destinationPath: string;
-    readonly plan: ArtifactConversionPlan;
+    readonly plan: FormatConversionPlan;
     /** Read-only user-visible preflight bound to this immutable operation. */
     readonly preflight: StakeProjectionPreflight;
-    readonly options?: Pick<ArtifactBuildOptions, "outcomeLibraryGeneration">;
+    readonly options?: Pick<BuildOutputOptions, "outcomeLibraryGeneration">;
 };
 
-export type StakeProjectionPreflight = ArtifactBuildPreflight & {
+export type StakeProjectionPreflight = BuildCheck & {
     readonly route: "reuse" | "generate" | "publish";
     readonly selectedPrerequisiteLocation?: string;
     /** Truthful explanations for metrics unavailable before generation finishes. */
@@ -50,13 +50,13 @@ export type StakeProjectionPreflight = ArtifactBuildPreflight & {
 };
 
 export class StakeProjectionExportService implements StakeProjectionExportServicing {
-    private readonly registry: ArtifactBuilderRegistry;
+    private readonly registry: BuildOutputBuilderRegistry;
 
-    public constructor(registry: ArtifactBuilderRegistry) {
+    public constructor(registry: BuildOutputBuilderRegistry) {
         this.registry = registry;
     }
 
-    public prepare(source: PokieProject, destinationPath?: string, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan> {
+    public prepare(source: PokieProject, destinationPath?: string, options?: BuildOutputOptions): Promise<FormatConversionPlan> {
         return this.registry.preparePlan(source, "stakeAdapter", {
             ...(destinationPath === undefined ? {} : {destinationPath}),
             outcomeLibraryGeneration: options?.outcomeLibraryGeneration,
@@ -66,7 +66,7 @@ export class StakeProjectionExportService implements StakeProjectionExportServic
     public async prepareOperation(
         source: PokieProject,
         destinationPath: string,
-        options?: ArtifactBuildOptions,
+        options?: BuildOutputOptions,
     ): Promise<PreparedStakeProjectionOperation> {
         const preparedOptions = options?.outcomeLibraryGeneration === undefined
             ? undefined
@@ -93,8 +93,8 @@ export class StakeProjectionExportService implements StakeProjectionExportServic
     /** Execute the immutable operation prepared for this exact destination. */
     public executeOperation(
         operation: PreparedStakeProjectionOperation,
-        options?: ArtifactBuildOptions,
-    ): Promise<ArtifactBuildResult> {
+        options?: BuildOutputOptions,
+    ): Promise<BuildOutputResult> {
         return this.execute(operation.source, operation.destinationPath, operation.plan, {
             ...operation.options,
             ...options,
@@ -105,21 +105,21 @@ export class StakeProjectionExportService implements StakeProjectionExportServic
         });
     }
 
-    public validate(source: PokieProject, prepared: ArtifactConversionPlan): Promise<void> {
+    public validate(source: PokieProject, prepared: FormatConversionPlan): Promise<void> {
         return this.registry.validate("stakeAdapter", source, prepared);
     }
 
     public execute(
         source: PokieProject,
         destinationPath: string,
-        prepared: ArtifactConversionPlan,
-        options?: ArtifactBuildOptions,
-    ): Promise<ArtifactBuildResult> {
+        prepared: FormatConversionPlan,
+        options?: BuildOutputOptions,
+    ): Promise<BuildOutputResult> {
         return this.registry.executePlan(prepared, source, destinationPath, options);
     }
 
     /** Stable terminal diagnostic for callers that render a preflight failure. */
-    public describe(prepared: ArtifactConversionPlan): string | undefined {
-        return describeArtifactConversionPlanDiagnostic(prepared) ?? prepared.diagnostic?.message;
+    public describe(prepared: FormatConversionPlan): string | undefined {
+        return describeFormatConversionPlanDiagnostic(prepared) ?? prepared.diagnostic?.message;
     }
 }

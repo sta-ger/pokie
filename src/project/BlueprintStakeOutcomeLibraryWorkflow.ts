@@ -31,8 +31,8 @@ import {VideoSlotWinCalculator} from "../session/videoslot/wincalculator/VideoSl
 import {WaysWinCalculator} from "../session/videoslot/wincalculator/WaysWinCalculator.js";
 import {ClusterWinCalculator} from "../session/videoslot/wincalculator/ClusterWinCalculator.js";
 import {SelectedEvaluatorGroupWinAggregationPolicy} from "../session/videoslot/winevaluation/SelectedEvaluatorGroupWinAggregationPolicy.js";
-import {OutcomeLibraryBundleWriter} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriter.js";
-import type {OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
+import {OutcomeLibraryFolderWriter} from "../weightedoutcome/folder/OutcomeLibraryFolderWriter.js";
+import type {OutcomeLibraryFolderWriting} from "../weightedoutcome/folder/OutcomeLibraryFolderWriting.js";
 import {removePublishedDirectoryIfOwned, type PublishedDirectoryOwnership} from "../stakeengine/internal/publishDirectoryAtomically.js";
 import {generateStreamingWeightedOutcomeLibrary} from "../weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
 import {
@@ -47,12 +47,12 @@ import {estimateExactOutcomeSpaceSize} from "../weightedoutcome/generate/estimat
 import type {PokieProject} from "./PokieProject.js";
 import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing, type OutcomeProjectCompatibility} from "./ManagedOutcomeProjectService.js";
 import {
-    assertArtifactBuildNotCancelled,
-    ArtifactBuildCancelledError,
-    reportArtifactBuildProgress,
-    type ArtifactBuildOptions,
-    type ArtifactBuildPreflight,
-} from "./ArtifactBuildOptions.js";
+    assertBuildNotCancelled,
+    BuildCancelledError,
+    reportBuildProgress,
+    type BuildOutputOptions,
+    type BuildCheck,
+} from "./BuildOutputOptions.js";
 
 // A generated round record is materially larger than the raw reel-stop tuple which produced it. The
 // generic exact-generator cap protects a sweep with tens of millions of tuples, but it cannot make a
@@ -116,14 +116,14 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
     private readonly loadBlueprint: (filePath: string) => unknown;
     private readonly loadGame: typeof loadPokieGame;
     private readonly managedOutcomeProjects: ManagedOutcomeProjectServicing;
-    private readonly writer: OutcomeLibraryBundleWriting;
+    private readonly writer: OutcomeLibraryFolderWriting;
 
     constructor(
         pokieVersion: string,
         loadBlueprint: (filePath: string) => unknown,
         loadGame: typeof loadPokieGame = loadPokieGame,
         managedOutcomeProjects: ManagedOutcomeProjectServicing = new ManagedOutcomeProjectService(),
-        writer: OutcomeLibraryBundleWriting = new OutcomeLibraryBundleWriter(pokieVersion),
+        writer: OutcomeLibraryFolderWriting = new OutcomeLibraryFolderWriter(pokieVersion),
     ) {
         this.pokieVersion = pokieVersion;
         this.loadBlueprint = loadBlueprint;
@@ -138,10 +138,10 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
     public async resolveOrGenerate(
         source: PokieProject,
         destinationPath: string | ((compatibility: OutcomeProjectCompatibility) => string),
-        options?: ArtifactBuildOptions,
+        options?: BuildOutputOptions,
         reuseCompatible = true,
     ): Promise<{readonly project: PokieProject; readonly reused: boolean}> {
-        assertArtifactBuildNotCancelled(options);
+        assertBuildNotCancelled(options);
         const prepared = await this.prepare(source, options);
         let transferred = false;
         try {
@@ -149,13 +149,13 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
             if (reuseCompatible) {
                 const compatible = await this.managedOutcomeProjects.findCompatible(source.rootPath, compatibility);
                 if (compatible !== undefined) {
-                    reportArtifactBuildProgress(options, {status: "completed"});
+                    reportBuildProgress(options, {status: "completed"});
                     return {project: compatible, reused: true};
                 }
             }
-            const bundleDir = typeof destinationPath === "string" ? destinationPath : destinationPath(compatibility);
+            const libraryDir = typeof destinationPath === "string" ? destinationPath : destinationPath(compatibility);
             transferred = true;
-            return await this.generatePrepared(source, prepared, bundleDir, options);
+            return await this.generatePrepared(source, prepared, libraryDir, options);
         } finally {
             // generatePrepared() takes terminal ownership only after the
             // transfer below. Reuse and lookup-failure paths remain here.
@@ -172,13 +172,13 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
     public async generatePrepared(
         source: PokieProject,
         prepared: Awaited<ReturnType<BlueprintStakeOutcomeLibraryWorkflow["prepare"]>>,
-        bundleDir: string,
-        options?: ArtifactBuildOptions,
+        libraryDir: string,
+        options?: BuildOutputOptions,
         allowPlannedSourceSidecar = false,
     ): Promise<{readonly project: PokieProject; readonly reused: false}> {
         const {game, configHash, generation, compatibility} = prepared;
         try {
-            assertArtifactBuildNotCancelled(options);
+            assertBuildNotCancelled(options);
             // Preparation owns the loaded configuration assertion, selected
             // strategy, publication identity and destination safety.  The managed
             // planner only translates this resolved request to its generic view.
@@ -191,12 +191,12 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                 ...(generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: generation.maxExactOutcomeSpaceSize}),
                 ...(generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: generation.compatibilityPolicyVersion}),
                 ...(generation.sampled === undefined ? {} : {sample: generation.sampled}),
-                outputDestination: bundleDir,
+                outputDestination: libraryDir,
                 outputDestinationSafety: {
                     sourcePath: source.rootPath,
                     kind: "directory",
                     requireAvailable: true,
-                    // Only ArtifactBuilderRegistry may authorize the package's
+                    // Only BuildOutputBuilderRegistry may authorize the package's
                     // canonical managed Outcome sidecar.  That exception is
                     // immutable request data, not a writer-local bypass.
                     ...(allowPlannedSourceSidecar ? {allowWithinSource: true} : {}),
@@ -215,8 +215,8 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
             const destinationWasEmpty = fs.existsSync(boundDestination) && fs.readdirSync(boundDestination).length === 0;
             const publication: {started: boolean; ownership?: PublishedDirectoryOwnership} = {started: false};
             const preflight = outcomeGenerationPreflight(preparedRequest.preflight);
-            reportArtifactBuildProgress(options, {status: "preflight", preflight});
-            assertArtifactBuildNotCancelled(options);
+            reportBuildProgress(options, {status: "preflight", preflight});
+            assertBuildNotCancelled(options);
             try {
                 await this.generateBundle(
                     source.rootPath,
@@ -230,13 +230,13 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                     generation,
                     publication,
                 );
-                assertArtifactBuildNotCancelled(options);
+                assertBuildNotCancelled(options);
                 // The prepared request owns the canonical publication identity.
                 // Do not retain the caller's unnormalised spelling for registry
                 // registration: that would make rollback and later reuse refer to
                 // a different destination than the one the writer published.
                 const project = await this.managedOutcomeProjects.registerAndOpen(source.rootPath, boundDestination, compatibility);
-                reportArtifactBuildProgress(options, {
+                reportBuildProgress(options, {
                     status: "completed",
                     preflight,
                 });
@@ -256,9 +256,9 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                     }
                 }
                 if (options?.signal?.aborted) {
-                    reportArtifactBuildProgress(options, {status: "cancelled", preflight});
-                    if (!(error instanceof ArtifactBuildCancelledError)) assertArtifactBuildNotCancelled(options);
-                } else reportArtifactBuildProgress(options, {status: "failed", preflight});
+                    reportBuildProgress(options, {status: "cancelled", preflight});
+                    if (!(error instanceof BuildCancelledError)) assertBuildNotCancelled(options);
+                } else reportBuildProgress(options, {status: "failed", preflight});
                 throw error;
             }
         } finally {
@@ -274,7 +274,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
     // planning so a preview carries the same exact/sampled compatibility key
     // that the later writer will consume.  It intentionally shares the real
     // validation/materialization path rather than guessing from CLI flags.
-    public async prepare(source: PokieProject, options?: ArtifactBuildOptions): Promise<{
+    public async prepare(source: PokieProject, options?: BuildOutputOptions): Promise<{
         readonly game: PokieGame;
         readonly configHash: string;
         readonly generation: ManagedOutcomeGeneration;
@@ -310,7 +310,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
     }
 
     /** The same no-write generation estimate used before materialisation. */
-    public async inspectGenerationPreflight(source: PokieProject, options?: ArtifactBuildOptions): Promise<ArtifactBuildPreflight> {
+    public async inspectGenerationPreflight(source: PokieProject, options?: BuildOutputOptions): Promise<BuildCheck> {
         const prepared = await this.prepare(source, options);
         try {
             const request = prepareOutcomeLibraryGeneration({
@@ -336,8 +336,8 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         destinationPath: string,
         allowExistingEmptyDestination: boolean,
         destinationSafety: OutcomeLibraryGenerationDestinationSafety | undefined,
-        options: ArtifactBuildOptions | undefined,
-        preflight: ArtifactBuildPreflight,
+        options: BuildOutputOptions | undefined,
+        preflight: BuildCheck,
         generation: ManagedOutcomeGeneration,
         publication: {started: boolean; ownership?: PublishedDirectoryOwnership},
     ): Promise<void> {
@@ -374,12 +374,12 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                 ...(destinationSafety === undefined ? {} : {outputDestinationSafety: destinationSafety}),
                 signal: options?.signal,
                 onProgress: (completed, total) => {
-                    reportArtifactBuildProgress(options, {status: "running", phase: `Generating Outcome mode ${mode.id}`, message: `Generating Outcome mode ${mode.id}`, unit: generation.generation === "sampled" ? "draws" : "raw combinations", completed, total, preflight});
+                    reportBuildProgress(options, {status: "running", phase: `Generating Outcome mode ${mode.id}`, message: `Generating Outcome mode ${mode.id}`, unit: generation.generation === "sampled" ? "draws" : "raw combinations", completed, total, preflight});
                 },
             });
             return {mode, stream};
         });
-        assertArtifactBuildNotCancelled(options);
+        assertBuildNotCancelled(options);
         // Generation can take a long time.  Re-run the immutable request's
         // original availability policy at the durable-publication boundary so
         // a file created after preflight cannot be replaced by the writer's
@@ -389,7 +389,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         if (revalidatedDestination?.path !== boundDestination) {
             throw new Error("Managed Outcome Library destination changed after preflight.");
         }
-        assertArtifactBuildNotCancelled(options);
+        assertBuildNotCancelled(options);
         const result = await this.writer.writeToDirectory(
             generated.map(({mode, stream}) => ({
                 modeName: mode.id,
@@ -411,9 +411,9 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                         throw new Error("Managed Outcome Library destination changed before publication.");
                     }
                 },
-                onLifecycleStage: (phase) => reportArtifactBuildProgress(options, {status: "running", phase, message: `Outcome Library ${phase}`}),
+                onLifecycleStage: (phase) => reportBuildProgress(options, {status: "running", phase, message: `Outcome Library ${phase}`}),
                 onProgress: (progress) => {
-                    reportArtifactBuildProgress(options, {
+                    reportBuildProgress(options, {
                         status: "running",
                         phase: progress.phase ?? progress.message,
                         unit: progress.unit,
@@ -480,7 +480,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
 function resolveManagedOutcomeGeneration(
     game: PokieGame,
     configHash: string,
-    requested: ArtifactBuildOptions["outcomeLibraryGeneration"],
+    requested: BuildOutputOptions["outcomeLibraryGeneration"],
 ): ManagedOutcomeGeneration {
     // Explicit requests still need to retain the resolved cap in their
     // managed compatibility key.  Omitting it previously made a reconstructed
@@ -518,7 +518,7 @@ function resolveManagedOutcomeGeneration(
     };
 }
 
-function outcomeGenerationPreflight(preflight: OutcomeLibraryGenerationPreflight): ArtifactBuildPreflight {
+function outcomeGenerationPreflight(preflight: OutcomeLibraryGenerationPreflight): BuildCheck {
     const estimatedItemCount = preflight.expectedRawWork;
     return {
         estimatedItemCount,

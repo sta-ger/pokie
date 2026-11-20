@@ -1,4 +1,4 @@
-import type {ArtifactConversionPlan, ValidationIssue} from "@fromstan/pokie";
+import type {FormatConversionPlan, ValidationIssue} from "@fromstan/pokie";
 
 // A per-mode provenance summary read straight off each loaded WeightedOutcomeLibrary — never recomputed
 // or Stake-specific; the same fields StakeEngineManifestModeEntry itself carries, shown *before* a real
@@ -21,8 +21,8 @@ export type StudioStakeEngineExportValidateView =
           readonly modes: readonly StudioStakeEngineExportModeSummary[];
           readonly errors: readonly ValidationIssue[];
           readonly warnings: readonly ValidationIssue[];
-          readonly plan: ArtifactConversionPlan;
+          readonly plan: FormatConversionPlan;
       }
-    | {readonly status: "conflict"; readonly error: string; readonly plan: ArtifactConversionPlan}
-    | {readonly status: "unavailable"; readonly error: string; readonly plan: ArtifactConversionPlan}
-    | {readonly status: "load-error"; readonly error: string; readonly plan: ArtifactConversionPlan};
+    | {readonly status: "conflict"; readonly error: string; readonly plan: FormatConversionPlan}
+    | {readonly status: "unavailable"; readonly error: string; readonly plan: FormatConversionPlan}
+    | {readonly status: "load-error"; readonly error: string; readonly plan: FormatConversionPlan};

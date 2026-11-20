@@ -1,4 +1,4 @@
-import type {ArtifactBuildProgress, ArtifactTargetType} from "@fromstan/pokie";
+import type {BuildProgress, OutputFormat} from "@fromstan/pokie";
 import type {StudioArtifactBuildView} from "./StudioArtifactBuildView.js";
 import type {StudioJobRecoveryView} from "../jobs/StudioJobView.js";
 
@@ -6,7 +6,7 @@ import type {StudioJobRecoveryView} from "../jobs/StudioJobView.js";
 // AbortController or a live builder; callers receive only the latest truthful lifecycle snapshot.
 export type StudioArtifactBuildJobView = {
     readonly id: string;
-    readonly target: ArtifactTargetType;
+    readonly target: OutputFormat;
     readonly status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "recovery-required";
     readonly cancellationRequested: boolean;
     readonly progress?: StudioArtifactBuildProgressView;
@@ -16,7 +16,7 @@ export type StudioArtifactBuildJobView = {
 };
 
 export type StudioArtifactBuildProgressView = {
-    readonly status: ArtifactBuildProgress["status"];
+    readonly status: BuildProgress["status"];
     readonly phase?: string;
     readonly unit?: string;
     readonly completed?: string;

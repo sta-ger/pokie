@@ -1,7 +1,7 @@
 import fs from "fs";
 import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js";
-import {resolveCanonicalWasmGameModel} from "../project/WasmArtifactBuilder.js";
-import {compileCanonicalWasmArtifact} from "../wasm/DeclarativeWasmModel.js";
+import {resolveCanonicalWasmGameModel} from "../project/WasmOutputBuilder.js";
+import {compileCanonicalWasmBuild} from "../wasm/DeclarativeWasmModel.js";
 import {readWasmComponentManifest} from "../project/readWasmComponentManifest.js";
 import {ProjectTargetResolver} from "../project/ProjectTargetResolver.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
@@ -29,7 +29,7 @@ export type CanonicalWasmTuningContract = {
 export function compileBoundTuningWasm(blueprint: GameBlueprint, manifest: PokieWasmComponentManifest): Uint8Array {
     if (!manifest.artifact) throw new Error("Missing canonical WASM provenance.");
     const {sha256: _hash, bytes: _bytes, ...artifact} = manifest.artifact;
-    return compileCanonicalWasmArtifact(resolveCanonicalWasmGameModel(blueprint), {
+    return compileCanonicalWasmBuild(resolveCanonicalWasmGameModel(blueprint), {
         schemaVersion: manifest.schemaVersion,
         component: manifest.component,
         ...(manifest.minPokieVersion === undefined ? {} : {minPokieVersion: manifest.minPokieVersion}),

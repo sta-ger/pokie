@@ -118,20 +118,20 @@ export type StudioServerOptions = {
     playService?: StudioPlayService;
     // Drives the Project Dashboard's Build/Export tab's own Remote deployment card (GET
     // /api/project/deployment/targets, POST /api/project/deployment/runs) — built directly on top of
-    // the pokie package's own External Adapter SDK (ExternalDeploymentService); no
+    // the pokie package's own External Adapter SDK (ExternalExportService); no
     // `loadGame`/`pokieVersion` needed, unlike simulationService/replayService/homeService, since it
     // never touches a game package itself.
     deploymentService?: StudioDeploymentService;
     // Drives the Project Dashboard's Build/Export tab's own Outcome libraries card (POST
     // /api/project/outcome-libraries/generate/estimate, /generate, GET /registry) -- built on the exact
     // same generateExactWeightedOutcomeLibrary/estimateExactOutcomeSpaceSize "pokie outcomelibrary
-    // generate" itself drives, plus the same OutcomeLibraryBundleWriter/Reader "build"/deep validation use.
+    // generate" itself drives, plus the same OutcomeLibraryFolderWriter/Reader "build"/deep validation use.
     // Needs `pokieVersion` (embedded in every bundle it writes/compares against), same reasoning as
     // certificationService/stakeEngineExportService.
     outcomeLibraryGenerateService?: StudioOutcomeLibraryGenerateService;
     // Drives the Project Dashboard's Certification tab (POST /api/project/certification/validate-source,
     // /build) — built directly on top of pokie's own CertificationPackBuilder/
-    // OutcomeLibraryBundleValidator; no `loadGame` needed (same reasoning as deploymentService), but
+    // OutcomeLibraryFolderValidator; no `loadGame` needed (same reasoning as deploymentService), but
     // does need `pokieVersion` (embedded in the built manifest's own `generatedBy`/`pokieVersion`
     // fields), same reasoning as homeService/blueprintService.
     certificationService?: StudioCertificationService;
@@ -147,7 +147,7 @@ export type StudioServerOptions = {
     stakeEngineExportService?: StudioStakeEngineExportService;
     // Drives the Project Dashboard's Build/Export tab's own "Build artifact" group (GET
     // /api/project/artifacts/targets, POST /api/project/artifacts/build) -- built directly on top of
-    // ArtifactBuilderRegistry, the exact same registry "pokie build <project> --target <target>" itself
+    // BuildOutputBuilderRegistry, the exact same registry "pokie build <project> --target <target>" itself
     // runs. Needs `pokieVersion` (embedded in a built tsPackage's own manifest), same reasoning as
     // blueprintService.
     artifactBuildService?: StudioArtifactBuildService;

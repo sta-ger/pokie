@@ -3,7 +3,7 @@ import type {PreGeneratedRoundReplayDescriptor} from "../pregenerated/PreGenerat
 import {ReplayRecorder} from "../replay/ReplayRecorder.js";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import type {ReplayDescriptor} from "../replay/ReplayDescriptor.js";
-import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
+import {OutcomeLibraryFolderReader} from "../weightedoutcome/folder/OutcomeLibraryFolderReader.js";
 import {computeWeightedOutcomeLibraryHash} from "../weightedoutcome/computeWeightedOutcomeLibraryHash.js";
 import {OUTCOME_SOURCE_REPLAY_OPERATION} from "./PokieOperation.js";
 import type {PokieProject} from "./PokieProject.js";
@@ -18,7 +18,7 @@ export type OutcomeSourceReplayResult =
 // PreGeneratedRoundReplayer -- the same deterministic reconstruction PokieDevServer's own pre-generated
 // session route agrees with (see PokieDevServerPreGenerated.test.ts's "agrees with PreGeneratedRoundReplayer's
 // pure reconstruction" case), never a freshly regenerated game-model replay (ReplayRecorder/loadPokieGame).
-// Loads the mode's full WeightedOutcomeLibrary (via OutcomeLibraryBundleReading.readLibrary) since
+// Loads the mode's full WeightedOutcomeLibrary (via OutcomeLibraryFolderReading.readLibrary) since
 // PreGeneratedRoundReplayer's own deterministic selection needs the whole weighted set in memory to walk, unlike
 // sampleOutcomeSourceProject's single-index-read draw. Any project lacking OUTCOME_SOURCE_SAMPLE_CAPABILITY -- a
 // "stakeAdapter" export has no draw contract, see that capability's own doc comment -- returns the ordinary
@@ -45,7 +45,7 @@ export async function replayOutcomeSourceProject(
         throw new Error(`Cannot exactly replay outcome-library round ${round}; round must be a positive integer.`);
     }
 
-    const reader = new OutcomeLibraryBundleReader();
+    const reader = new OutcomeLibraryFolderReader();
     const library = await reader.readLibrary(project.rootPath, modeName);
     const libraryHash = computeWeightedOutcomeLibraryHash(library);
     const mismatches: string[] = [];

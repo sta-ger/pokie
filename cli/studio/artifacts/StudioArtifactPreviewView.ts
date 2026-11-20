@@ -1,4 +1,4 @@
-import type {ArtifactConversionPlan, ArtifactTargetType, ProjectType} from "@fromstan/pokie";
+import type {FormatConversionPlan, OutputFormat, ProjectType} from "@fromstan/pokie";
 
 // POST /api/project/artifacts/preview's own DTO -- the pre-build counterpart to StudioArtifactBuildView
 // (see its own doc comment): the exact same registry-resolved target/destination/sourceType a subsequent
@@ -9,12 +9,12 @@ import type {ArtifactConversionPlan, ArtifactTargetType, ProjectType} from "@fro
 export type StudioArtifactPreviewView =
     | {
           readonly status: "ok";
-          readonly target: ArtifactTargetType;
+          readonly target: OutputFormat;
           readonly destination: string;
           readonly destinationKind: "file" | "directory";
           readonly plannedOutputs: readonly string[];
           readonly sourceType: ProjectType;
-          readonly plan: ArtifactConversionPlan;
+          readonly plan: FormatConversionPlan;
           /** Opaque handle for the retained Stake operation or package extraction plan. */
           readonly preparedOperationId?: string;
           /** Stake information known before publication. */
@@ -28,14 +28,14 @@ export type StudioArtifactPreviewView =
               readonly warnings: readonly string[];
           };
       }
-    | {readonly status: "unsupported"; readonly target: ArtifactTargetType; readonly message: string; readonly plan: ArtifactConversionPlan}
+    | {readonly status: "unsupported"; readonly target: OutputFormat; readonly message: string; readonly plan: FormatConversionPlan}
     | {
           readonly status: "conflict";
-          readonly target: ArtifactTargetType;
+          readonly target: OutputFormat;
           readonly destination: string;
           readonly destinationKind: "file" | "directory";
           readonly plannedOutputs: readonly string[];
           readonly message: string;
-          readonly plan: ArtifactConversionPlan;
+          readonly plan: FormatConversionPlan;
       }
-    | {readonly status: "error"; readonly message: string; readonly plan: ArtifactConversionPlan};
+    | {readonly status: "error"; readonly message: string; readonly plan: FormatConversionPlan};

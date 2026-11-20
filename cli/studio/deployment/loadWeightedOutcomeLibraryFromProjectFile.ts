@@ -25,7 +25,7 @@ export type LoadWeightedOutcomeLibraryResult =
 // for OS temp directories) can never produce a false escape report.
 //
 // Only ever parses JSON — never validates the result's own shape as a genuine WeightedOutcomeLibrary.
-// That's deliberately left to ExternalDeploymentService's own pipeline (via
+// That's deliberately left to ExternalExportService's own pipeline (via
 // WeightedOutcomeLibraryValidator, run as part of compatibility validation) once this function's
 // result is handed to it — StudioDeploymentService never re-implements that check itself.
 export function loadWeightedOutcomeLibraryFromProjectFile(

@@ -1,4 +1,4 @@
-import type {ArtifactConversionPlan, ExactEnumerationCheckpoint, OutcomeLibraryGeneratorDiagnostics, ValidationIssue} from "@fromstan/pokie";
+import type {FormatConversionPlan, ExactEnumerationCheckpoint, OutcomeLibraryGeneratorDiagnostics, ValidationIssue} from "@fromstan/pokie";
 import type {OutcomeLibrarySelector} from "./OutcomeLibrarySelector.js";
 
 // The Studio Generate step's own result: unlike "pokie outcomelibrary generate" (which only ever writes a
@@ -12,11 +12,11 @@ export type StudioOutcomeLibraryGenerateResultView =
     | {
           readonly status: "ok";
           /** The project-relative destination retained for selector/configuration workflows. */
-          readonly bundleDir: string;
+          readonly libraryDir: string;
           /**
            * The canonical, server-resolved location of the published bundle.
            * Host actions and the Outcome Library project inspector must use
-           * this rather than resolving bundleDir from the server's cwd.
+           * this rather than resolving libraryDir from the server's cwd.
            */
           readonly resolvedBundleDir: string;
           readonly files: readonly string[];
@@ -43,18 +43,18 @@ export type StudioOutcomeLibraryGenerateResultView =
           // its own parallel version of it.
           readonly selector: OutcomeLibrarySelector;
           /** The server-selected prerequisite/publication decision for this action. */
-          readonly plan: ArtifactConversionPlan;
+          readonly plan: FormatConversionPlan;
       }
-    | {readonly status: "unsupported"; readonly error: string; readonly plan: ArtifactConversionPlan}
-    | {readonly status: "conflict"; readonly error: string; readonly plan: ArtifactConversionPlan}
-    | {readonly status: "generation-error"; readonly code: string; readonly error: string; readonly plan: ArtifactConversionPlan}
+    | {readonly status: "unsupported"; readonly error: string; readonly plan: FormatConversionPlan}
+    | {readonly status: "conflict"; readonly error: string; readonly plan: FormatConversionPlan}
+    | {readonly status: "generation-error"; readonly code: string; readonly error: string; readonly plan: FormatConversionPlan}
     // A cancellation is an expected lifecycle result, not a generation error.
     // Only an exact sweep has a safe position/accumulator that may be resumed.
     // Bounded coverage can be retried with the same request, but must never
     // expose its partial sample as an ExactEnumerationCheckpoint.
-    | {readonly status: "cancelled"; readonly processedRawIndex: bigint; readonly progressTotal: bigint; readonly checkpoint?: ExactEnumerationCheckpoint; readonly recovery: string; readonly plan: ArtifactConversionPlan}
+    | {readonly status: "cancelled"; readonly processedRawIndex: bigint; readonly progressTotal: bigint; readonly checkpoint?: ExactEnumerationCheckpoint; readonly recovery: string; readonly plan: FormatConversionPlan}
     // The write itself failed validation (e.g. this mode's provenance doesn't match another mode already
     // in the bundle) -- the generated outcomes were never persisted, mirroring the writer's own "no
     // partial bundle" guarantee.
-    | {readonly status: "invalid"; readonly errors: readonly ValidationIssue[]; readonly warnings: readonly ValidationIssue[]; readonly plan: ArtifactConversionPlan}
-    | {readonly status: "load-error"; readonly error: string; readonly plan: ArtifactConversionPlan};
+    | {readonly status: "invalid"; readonly errors: readonly ValidationIssue[]; readonly warnings: readonly ValidationIssue[]; readonly plan: FormatConversionPlan}
+    | {readonly status: "load-error"; readonly error: string; readonly plan: FormatConversionPlan};

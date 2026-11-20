@@ -9,14 +9,14 @@ import {runStochasticOptimization} from "./internal/runStochasticOptimization.js
 import {SimulationCancelledError} from "../simulation/parallel/SimulationCancelledError.js";
 import {WeightedOutcomeLibraryGenerationError} from "../weightedoutcome/generate/WeightedOutcomeLibraryGenerationError.js";
 import {WeightedOutcomeLibraryGenerationCancelledError} from "../weightedoutcome/generate/WeightedOutcomeLibraryGenerationCancelledError.js";
-import {OutcomeLibraryBundleWriteCancelledError} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
+import {OutcomeLibraryFolderWriteCancelledError} from "../weightedoutcome/folder/OutcomeLibraryFolderWriting.js";
 import fs from "fs";
 import path from "path";
 import type {PokieProject} from "../project/PokieProject.js";
 import {ProjectTargetResolver} from "../project/ProjectTargetResolver.js";
 import {assertArtifactDestinationAvailable} from "../project/internal/assertArtifactDestinationAvailable.js";
 import {assertArtifactDestinationIsSafe} from "../project/internal/assertArtifactDestinationIsSafe.js";
-import {ArtifactPublicationOwnership, rollbackArtifactPublication} from "../project/ArtifactPublicationOwnership.js";
+import {OutputPublicationOwnership, rollbackArtifactPublication} from "../project/OutputPublicationOwnership.js";
 import type {
     OptimizationCandidate,
     OptimizationEvidence,
@@ -388,7 +388,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
             fs.writeFileSync(receiptFile, JSON.stringify({status: receipt.status, candidateRevision: candidate.revision, evidence: receipt.evidence}, null, 2));
             members.push([receiptFile, companion]);
         }
-        const publication = new ArtifactPublicationOwnership(true);
+        const publication = new OutputPublicationOwnership(true);
         try {
             if (options.signal?.aborted) throw new OptimizationCancelledError("Publication cancelled.");
             if (options.isCurrent && !options.isCurrent()) throw new Error("Project/request changed during publication.");
@@ -532,7 +532,7 @@ function classifyOptimizationError(error: unknown): OptimizationResult["status"]
         error instanceof OptimizationCancelledError ||
         error instanceof SimulationCancelledError ||
         error instanceof WeightedOutcomeLibraryGenerationCancelledError ||
-        error instanceof OutcomeLibraryBundleWriteCancelledError
+        error instanceof OutcomeLibraryFolderWriteCancelledError
     ) return "cancelled";
     if (
         error instanceof WeightedOutcomeLibraryGenerationError &&

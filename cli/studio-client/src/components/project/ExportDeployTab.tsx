@@ -220,7 +220,7 @@ function outcomeLibraryTerminalErrorRun(job: StudioOutcomeLibraryGenerateJobView
 }
 
 function describeCompletedOutcomeLibrarySelector(selector: Extract<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>["selector"]): string {
-    if (selector.kind === "bundle") return `bundle ${selector.bundleDir}, mode ${selector.modeName}`;
+    if (selector.kind === "folder") return `folder ${selector.libraryDir}, mode ${selector.modeName}`;
     if (selector.kind === "json") return `JSON ${selector.path}`;
     return `Stake Engine ${selector.stakeDir}, mode ${selector.modeName}`;
 }
@@ -648,7 +648,7 @@ function TargetCard({
                                         ? ` (${(outcomeLibraryRun.result.coverage * 100).toFixed(4)}% of the raw space)`
                                         : ""}
                                     {" "}(RTP {(outcomeLibraryRun.result.mode.rtp * 100).toFixed(2)}%) into{" "}
-                                    {outcomeLibraryRun.result.bundleDir}.
+                                    {outcomeLibraryRun.result.libraryDir}.
                                 </Text>
                                 <Text size="xs" c="dimmed">Final size: {outcomeLibraryRun.result.byteSize === undefined ? "unknown" : `${outcomeLibraryRun.result.byteSize.toLocaleString()} bytes`}
                                     {outcomeLibraryRun.durationMs === undefined ? "" : ` · Duration: ${outcomeLibraryRun.durationMs}ms`}.</Text>
@@ -1118,7 +1118,7 @@ function newestOutcomeLibraryJob(jobs: readonly StudioOutcomeLibraryGenerateJobV
 // The sole Studio Build/Export surface -- lists every applicable builder this project's own resolved
 // capabilities offer (see describeExportDeployTargetCards's own doc comment), grouped by what it actually
 // does, and runs it directly: outcome-library generation, Stake Engine Export, and every registered
-// ExternalDeploymentTarget each execute through this tab's own Run/Build/Check&Publish action, sharing one
+// ExternalExportTarget each execute through this tab's own Run/Build/Check&Publish action, sharing one
 // status/error convention (ErrorState + a plain-language result line), rather than navigating away into a
 // separate legacy Stepper-driven workflow first. Deployment's own selection/run/registry state is owned by
 // the shared useDeploymentManager hook (see DeploymentManager) -- ExportDeployTab drives it directly
@@ -1670,7 +1670,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             });
     }
 
-    // Runs a single "Build artifact" card's own target through ArtifactBuilderRegistry (via
+    // Runs a single "Build artifact" card's own target through BuildOutputBuilderRegistry (via
     // /api/project/artifacts/build) -- see StudioArtifactBuildService.build's own doc comment for exactly
     // what this does and doesn't promise. Guarded by this target's own current run status (rather than a
     // shared useDoubleSubmitGuard) since every target's own build runs fully independently of every other.
@@ -1920,7 +1920,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                                             onCancelOutcomeLibrary={handleCancelOutcomeLibrary}
                                             onResumeOutcomeLibrary={handleResumeOutcomeLibrary}
                                             onFeatureOutcomeLibraryRecoveryAction={onFeatureOutcomeLibraryRecoveryAction}
-                                            onInspectOutcomeLibrary={(bundleDir) => openAndNavigate(bundleDir).catch((error: unknown) => setArtifactActionError(errorMessage(error)))}
+                                            onInspectOutcomeLibrary={(libraryDir) => openAndNavigate(libraryDir).catch((error: unknown) => setArtifactActionError(errorMessage(error)))}
                                             outcomeLibraryGenerationOptions={outcomeLibraryGenerationOptions}
                                             onOutcomeLibraryGenerationOptionsChange={setOutcomeLibraryGenerationOptions}
                                             deployment={deployment}

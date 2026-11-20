@@ -5,8 +5,8 @@ import zlib from "zlib";
 import {InvalidJsonValueError} from "../json/InvalidJsonValueError.js";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
-import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
-import type {OutcomeLibraryBundleReading} from "../weightedoutcome/bundle/OutcomeLibraryBundleReading.js";
+import {OutcomeLibraryFolderReader} from "../weightedoutcome/folder/OutcomeLibraryFolderReader.js";
+import type {OutcomeLibraryFolderReading} from "../weightedoutcome/folder/OutcomeLibraryFolderReading.js";
 import {assertSafeToReplaceStakeEngineExportDirectory} from "./internal/assertSafeToReplaceStakeEngineExportDirectory.js";
 import {convertRatioToStakeUnits} from "./internal/convertRatioToStakeUnits.js";
 import {parseStakeEngineOutcomeId} from "./internal/parseStakeEngineOutcomeId.js";
@@ -104,7 +104,7 @@ type BuiltMode = {
 };
 
 // Exports one or more Stake modes directly from a canonical outcome-library bundle (see
-// docs/outcome-library-bundle.md), streaming each mode's outcomes straight from the bundle's own
+// docs/outcome-library-folder.md), streaming each mode's outcomes straight from the bundle's own
 // iterateModeOutcomes into Stake's CSV/books.jsonl.zst output — never materializing a WeightedOutcomeLibrary
 // (readLibrary() is never called), and never buffering a whole mode's CSV/books content in memory the way
 // StakeEngineExporter's own array-based buildMode does (the books file is streamed through Node's native
@@ -122,14 +122,14 @@ type BuiltMode = {
 // publishDirectoryAtomically, convertRatioToStakeUnits, parseStakeEngineOutcomeId, StakeEngineRoundEventsProjector)
 // so the two exporters can never silently disagree about what "the same mode, exported" looks like.
 //
-// Atomicity mirrors OutcomeLibraryBundleWriter's own approach for the same reason: publishDirectoryAtomically's
+// Atomicity mirrors OutcomeLibraryFolderWriter's own approach for the same reason: publishDirectoryAtomically's
 // writeFilesIntoTempDir callback must be synchronous, but streaming a mode's outcomes is inherently async, so
 // this class writes into its own staging directory first, then publishes by synchronously renaming each
 // already-written file into publishDirectoryAtomically's own temp dir.
 export class StakeEngineBundleStreamingExporter<T extends string | number = string> implements StakeEngineBundleStreamingExporting {
     private readonly pokieVersion: string;
     private readonly eventsProjector: StakeEngineRoundEventsProjecting<T>;
-    private readonly reader: OutcomeLibraryBundleReading<T>;
+    private readonly reader: OutcomeLibraryFolderReading<T>;
     private readonly now: () => Date;
     private readonly renameDirectory: (from: string, to: string) => void;
     private readonly removeDirectory: (dirPath: string) => void;
@@ -138,7 +138,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
     constructor(
         pokieVersion: string,
         eventsProjector: StakeEngineRoundEventsProjecting<T> = new StakeEngineRoundEventsProjector<T>(),
-        reader: OutcomeLibraryBundleReading<T> = new OutcomeLibraryBundleReader<T>(),
+        reader: OutcomeLibraryFolderReading<T> = new OutcomeLibraryFolderReader<T>(),
         now: () => Date = () => new Date(),
         renameDirectory: (from: string, to: string) => void = (from, to) => fs.renameSync(from, to),
         removeDirectory: (dirPath: string) => void = (dirPath) => fs.rmSync(dirPath, {recursive: true, force: true}),
@@ -335,7 +335,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
     // if any outcome fails — the same "no partial mode" contract StakeEngineExporter.buildMode has.
     private async buildMode(mode: StakeEngineBundleModeInput, stagingDir: string, issues: ValidationIssue[], options: StakeEngineExportOptions | undefined, completedBefore: bigint): Promise<BuiltMode | undefined> {
         assertNotCancelled(options);
-        const index = await this.reader.readModeIndex(mode.bundleDir, mode.bundleModeName);
+        const index = await this.reader.readModeIndex(mode.libraryDir, mode.libraryModeName);
         assertNotCancelled(options);
 
         const csvFileName = `lookup_${mode.modeName}.csv`;
@@ -358,7 +358,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
         let firstArtifact: {betMode: string; stake: number; payoutMultiplier: number; provenance: {game: StakeEngineManifest["game"]; configHash?: string; pokieVersion: string}} | undefined;
 
         try {
-            for await (const outcome of this.reader.iterateModeOutcomes(mode.bundleDir, mode.bundleModeName)) {
+            for await (const outcome of this.reader.iterateModeOutcomes(mode.libraryDir, mode.libraryModeName)) {
                 assertNotCancelled(options);
                 completed++;
                 options?.onProgress?.({completed: completedBefore + completed, message: `Building Stake mode ${mode.modeName}`});

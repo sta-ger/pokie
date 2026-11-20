@@ -27,9 +27,9 @@ import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjec
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE =
-    "Usage: pokie certification build <bundleDir> <config.json> [--out <dir>]\n" +
+    "Usage: pokie certification build <libraryDir> <config.json> [--out <dir>]\n" +
     "   or: pokie certification verify <certDir> --source <folder>";
-const BUILD_USAGE = "Usage: pokie certification build <bundleDir> <config.json> [--out <dir>]";
+const BUILD_USAGE = "Usage: pokie certification build <libraryDir> <config.json> [--out <dir>]";
 const VERIFY_USAGE = "Usage: pokie certification verify <certDir> --source <folder> [--trusted-sources <json>]";
 const CONFIG_HINT =
     '<config.json> lists one sample source per mode of the given outcome-library bundle — {"modes": ' +
@@ -46,7 +46,7 @@ export class CertificationCommand implements CliCommandHandling {
     private readonly builder: CertificationPackBuilding;
     private readonly verifier: CertificationPackVerifying;
     private readonly loadJson: (filePath: string) => unknown;
-    // Consulted once per verb, on the source bundleDir only (never <config.json>/<certDir>, which never name
+    // Consulted once per verb, on the source libraryDir only (never <config.json>/<certDir>, which never name
     // an existing outcome-library bundle themselves) -- see executeBuild/executeVerify's own comment on why a
     // resolved, non-"outcomeLibrary" source produces a capability diagnostic instead of falling through to
     // this.builder/this.verifier's own confusing "not a valid outcome library bundle" error. An unrecognized
@@ -74,7 +74,7 @@ export class CertificationCommand implements CliCommandHandling {
     public getDescription(): string {
         return (
             "Build a certification pack from an outcome library, or verify one " +
-            '("pokie certification build <bundleDir> <config.json>" / "pokie certification verify <certDir>").'
+            '("pokie certification build <libraryDir> <config.json>" / "pokie certification verify <certDir>").'
         );
     }
 
@@ -140,11 +140,11 @@ export class CertificationCommand implements CliCommandHandling {
         parent
             .command("build")
             .description("Build a certification pack from an outcome library.")
-            .argument("<bundleDir>", "an existing outcome-library bundle directory (create one with \"pokie build <config.json> --target outcomeLibrary --out <bundleDir>\")")
+            .argument("<libraryDir>", "an existing outcome-library bundle directory (create one with \"pokie build <config.json> --target outcomeLibrary --out <libraryDir>\")")
             .argument("<config.json>", "lists one sample source per mode -- see docs/certification-pack.md")
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
             .option("--out <dir>", "output directory (default: a \"certification\" sibling of <config.json>)")
-            .action(async (bundleDir: string, configPath: string, excess: string[], options: {out?: string}) => {
+            .action(async (libraryDir: string, configPath: string, excess: string[], options: {out?: string}) => {
                 if (excess.length > 0) {
                     throw new Error(`Unknown option "${excess[0]}". ${BUILD_USAGE}`);
                 }
@@ -153,7 +153,7 @@ export class CertificationCommand implements CliCommandHandling {
                 const onCancel = () => controller.abort();
                 process.once("SIGINT", onCancel);
                 try {
-                    exitCodeRef.value = await this.executeBuild(bundleDir, configPath, outDir, controller.signal);
+                    exitCodeRef.value = await this.executeBuild(libraryDir, configPath, outDir, controller.signal);
                 } finally {
                     process.off("SIGINT", onCancel);
                 }
@@ -187,8 +187,8 @@ export class CertificationCommand implements CliCommandHandling {
         return parent;
     }
 
-    private async executeBuild(bundleDir: string, configPath: string, outDir: string, signal?: AbortSignal): Promise<number> {
-        await this.checkOutcomeLibrarySource(bundleDir, CERTIFICATION_BUILD_OPERATION);
+    private async executeBuild(libraryDir: string, configPath: string, outDir: string, signal?: AbortSignal): Promise<number> {
+        await this.checkOutcomeLibrarySource(libraryDir, CERTIFICATION_BUILD_OPERATION);
 
         const descriptor = this.loadDescriptor(configPath);
 
@@ -200,7 +200,7 @@ export class CertificationCommand implements CliCommandHandling {
 
         let result: CertificationPackBuildResult;
         try {
-            result = await this.builder.buildFromBundle(bundleDir, modes, outDir, {signal, ...(descriptor.pack ? {pack: descriptor.pack} : {}), ...(descriptor.output ? {output: descriptor.output} : {})});
+            result = await this.builder.buildFromBundle(libraryDir, modes, outDir, {signal, ...(descriptor.pack ? {pack: descriptor.pack} : {}), ...(descriptor.output ? {output: descriptor.output} : {})});
         } catch (error) {
             if (error instanceof CertificationPackBuildCancelledError) {
                 console.error("Certification/evidence build was cancelled. No incomplete evidence was published; retry the same command when ready.");
@@ -212,14 +212,14 @@ export class CertificationCommand implements CliCommandHandling {
         const warnings = result.issues.filter((issue) => issue.severity !== "error");
 
         if (errors.length > 0) {
-            console.error(`Could not build a certification pack from "${bundleDir}" to "${outDir}" (${errors.length} error(s)):`);
+            console.error(`Could not build a certification pack from "${libraryDir}" to "${outDir}" (${errors.length} error(s)):`);
             this.printIssues(errors);
             return 1;
         }
 
         console.log(CERTIFICATION_PREPARATION_NOTICE);
         if (result.manifest) console.log(`Model coverage: ${result.manifest.pack.support.coverage}. ${result.manifest.pack.support.limitations.join(" ")}`);
-        console.log(`Built a certification pack from "${bundleDir}" to "${outDir}":`);
+        console.log(`Built a certification pack from "${libraryDir}" to "${outDir}":`);
         for (const file of result.files) {
             console.log(`  wrote  ${file}`);
         }
@@ -230,8 +230,8 @@ export class CertificationCommand implements CliCommandHandling {
         return 0;
     }
 
-    private async executeVerify(certDir: string, sourceBundleDir: string, trustedSourcesPath?: string, signal?: AbortSignal, templateFile?: string): Promise<number> {
-        await this.checkOutcomeLibrarySource(sourceBundleDir, CERTIFICATION_VERIFY_OPERATION);
+    private async executeVerify(certDir: string, sourceLibraryDir: string, trustedSourcesPath?: string, signal?: AbortSignal, templateFile?: string): Promise<number> {
+        await this.checkOutcomeLibrarySource(sourceLibraryDir, CERTIFICATION_VERIFY_OPERATION);
 
         let pack: CertificationPackInputs | undefined;
         if (trustedSourcesPath) {
@@ -239,7 +239,7 @@ export class CertificationCommand implements CliCommandHandling {
             validateCertificationPackInputs(raw);
             pack = this.resolveTrustedSources(raw, trustedSourcesPath);
         }
-        const issues = await this.verifier.verify(certDir, {sourceBundleDir, ...(pack ? {pack} : {}), ...(signal ? {signal} : {}), ...(templateFile ? {templateFile} : {})});
+        const issues = await this.verifier.verify(certDir, {sourceLibraryDir, ...(pack ? {pack} : {}), ...(signal ? {signal} : {}), ...(templateFile ? {templateFile} : {})});
         const errors = issues.filter((issue) => issue.severity === "error");
         const rest = issues.filter((issue) => issue.severity !== "error");
 
@@ -265,8 +265,8 @@ export class CertificationCommand implements CliCommandHandling {
     // e.g. an arbitrary or malformed directory this resolver can't classify at all -- falls straight through
     // to this.builder/this.verifier exactly as it always has, so an ordinary "not a valid outcome library
     // bundle" error is unaffected.
-    private async checkOutcomeLibrarySource(bundleDir: string, operation: PokieOperation): Promise<void> {
-        const project = await this.resolveProject.resolve(bundleDir);
+    private async checkOutcomeLibrarySource(libraryDir: string, operation: PokieOperation): Promise<void> {
+        const project = await this.resolveProject.resolve(libraryDir);
         if (project === undefined || project.type === "outcomeLibrary") {
             return;
         }

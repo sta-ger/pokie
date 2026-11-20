@@ -17,7 +17,7 @@ import type {FairnessServerSeedCommitment} from "../FairnessServerSeedCommitment
 
 const SHA256_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/;
 
-// The exact same canonical bundle rule OutcomeLibraryBundleValidator/CertificationPackValidator/
+// The exact same canonical bundle rule OutcomeLibraryFolderValidator/CertificationPackValidator/
 // StakeEngineImportValidator each enforce for a modeName (duplicated here rather than imported — each bundle
 // format's own "internal" is scoped to that format alone, same discipline sha256OfBytes already follows). A
 // modeName is read straight off an untrusted FairnessCommitment/FairnessRoundProof and later used to build a

@@ -58,13 +58,13 @@ export function hasTargetDescriptorChanged(previous: StudioDeploymentTargetSumma
 }
 
 // Plain-language descriptions for the Select-target step -- capability ids are an intentionally open
-// vocabulary (see ExternalDeploymentCapability.ts's own doc comment: a third-party target is free to
-// declare its own ids ExternalDeploymentCompatibilityValidator never checks against), so an unrecognized
+// vocabulary (see ExternalExportCapability.ts's own doc comment: a third-party target is free to
+// declare its own ids ExternalExportCompatibilityValidator never checks against), so an unrecognized
 // one is shown as-is rather than hidden — a target author's own capability id is still useful information
 // even when this UI doesn't have a friendlier label for it yet.
-// Mirrors ExternalDeploymentCapability.ts's own MULTI_MODE_DEPLOYMENT_CAPABILITY id -- a target that
+// Mirrors ExternalExportCapability.ts's own MULTI_MODE_DEPLOYMENT_CAPABILITY id -- a target that
 // doesn't declare this only ever accepts exactly one mode per deployment (see
-// ExternalDeploymentCompatibilityValidator's own enforcement of that), which is what gates whether the
+// ExternalExportCompatibilityValidator's own enforcement of that), which is what gates whether the
 // Configure step's own "Add mode" action is ever offered.
 export const MULTI_MODE_CAPABILITY_ID = "multiMode";
 
@@ -78,7 +78,7 @@ export function describeTargetCapability(capabilityId: string): string {
     return KNOWN_CAPABILITY_DESCRIPTIONS[capabilityId] ?? capabilityId;
 }
 
-// Every field of ExternalDeploymentRequirements is optional and permissive-by-default when omitted (see
+// Every field of ExternalExportRequirements is optional and permissive-by-default when omitted (see
 // that type's own doc comment) -- this only restates whichever fields the target actually declared, in
 // the language the Check-compatibility step's own preflight failures refer back to, never inventing a
 // constraint the target didn't declare.
@@ -141,7 +141,7 @@ export function remainingDeploymentModeChoices(
 // comment, means there is nothing real to pick for a new row, so adding one is blocked outright rather
 // than falling back to a hand-typed mode name), the selected target's own declared multiMode capability (a
 // target that omits it only ever accepts exactly one mode per deployment, see
-// ExternalDeploymentCompatibilityValidator), and whether any build mode remains unclaimed by an existing
+// ExternalExportCompatibilityValidator), and whether any build mode remains unclaimed by an existing
 // row.
 export function canAddDeploymentMode(
     buildModeIds: readonly string[] | undefined,
@@ -174,19 +174,19 @@ export function isBlankLibrarySelector(selector: OutcomeLibrarySelector): boolea
     if (selector.kind === "json") {
         return selector.path.trim().length === 0;
     }
-    if (selector.kind === "bundle") {
-        return selector.bundleDir.trim().length === 0 || selector.modeName.trim().length === 0;
+    if (selector.kind === "folder") {
+        return selector.libraryDir.trim().length === 0 || selector.modeName.trim().length === 0;
     }
     return selector.stakeDir.trim().length === 0 || selector.modeName.trim().length === 0;
 }
 
 // Whether a row's own librarySelector is safe to silently replace when its modeName changes -- a blank
-// selector obviously is, and so is a "bundle" one (its own `modeName` field must always match the row's,
+// selector obviously is, and so is a "folder" one (its own `modeName` field must always match the row's,
 // see discoverDeploymentModeLibrarySelector's own doc comment, so it's already tied to the mode it was
 // discovered for). A manually-chosen "json"/"stakeengine" selector is never auto-replaced this way -- see
 // useDeploymentManager's own setModeName, which is the only caller of this.
 export function isAutoDiscoverableLibrarySelector(selector: OutcomeLibrarySelector): boolean {
-    return selector.kind === "bundle" || isBlankLibrarySelector(selector);
+    return selector.kind === "folder" || isBlankLibrarySelector(selector);
 }
 
 // The Outcome Libraries registry's own compatibility classification for exactly the bundle a row's own
@@ -198,10 +198,10 @@ function registryBuildStatusForSelector(
     selector: OutcomeLibrarySelector,
     registry: StudioOutcomeLibraryRegistryView,
 ): "compatible" | "stale" | "wrong" | undefined {
-    if (registry.status !== "ok" || registry.buildStatus === "missing" || selector.kind !== "bundle") {
+    if (registry.status !== "ok" || registry.buildStatus === "missing" || selector.kind !== "folder") {
         return undefined;
     }
-    return registry.modes.find((mode) => mode.modeName === modeName && mode.bundleDir === selector.bundleDir)?.buildStatus;
+    return registry.modes.find((mode) => mode.modeName === modeName && mode.libraryDir === selector.libraryDir)?.buildStatus;
 }
 
 // The latest registry-known library compatible with the current build for a given mode name, ready to
@@ -213,7 +213,7 @@ export function discoverDeploymentModeLibrarySelector(modeName: string, registry
         return undefined;
     }
     const entry = registry.modes.find((mode) => mode.modeName === modeName && mode.buildStatus === "compatible");
-    return entry === undefined ? undefined : {kind: "bundle", bundleDir: entry.bundleDir, modeName: entry.modeName};
+    return entry === undefined ? undefined : {kind: "folder", libraryDir: entry.libraryDir, modeName: entry.modeName};
 }
 
 // Every status a Configure row's own mode-name+library pairing can be in, in the language the row's own
@@ -305,7 +305,7 @@ export function computeDeploymentConfigureBlockers(rows: readonly StudioDeployme
 // real Deploy would eventually send them (the destination). Destination detail is only ever as exact as
 // the preflight contract actually supplies: the SDK's own local-json-example target (see
 // LOCAL_JSON_EXAMPLE_TARGET_ID) writes to a known, project-relative local path via
-// atomicallyWriteExternalDeploymentArtifactsToDirectory's own documented temp-directory/atomic-swap/
+// atomicallyWriteExternalExportFilesToDirectory's own documented temp-directory/atomic-swap/
 // best-effort-cleanup contract, so that exact destination and lifecycle is rendered here rather than
 // asserted away as opaque; any other, third-party target's own runtimeAdapter genuinely isn't
 // introspectable client-side (see StudioDeploymentTargetSummary's own doc comment), so this says so

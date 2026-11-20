@@ -125,7 +125,7 @@ provides an approximation to the bounded display string. See the rare probabilit
 Standalone weights accept positive UInt64 integers, and aggregate totals may exceed UInt64. IDs and raw
 `payoutMultiplier` values remain **nonnegative safe-integer numbers**, up to `Number.MAX_SAFE_INTEGER` (**9007199254740991**), in both
 CSV and books. UInt64 weights do not provide complete UInt64 payout/ID support. Exact Stake payload
-import/re-export is supported; it does not widen native library/bundle schemas. Native persisted bundles require safe-integer weights and totals; native in-memory libraries
+import/re-export is supported; it does not widen native library/folder schemas. Native persisted folders require safe-integer weights and totals; native in-memory libraries
 accept finite positive numeric weights.
 
 `hitFrequency` is computed straight off the raw integer `payoutMultiplier > 0` (always exact, no reversal

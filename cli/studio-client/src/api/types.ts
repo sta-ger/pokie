@@ -1119,7 +1119,7 @@ export type StudioDeploymentStageSummary = {
 
 // POST /api/project/deployment/runs' own DTO — see cli/studio/deployment/StudioDeploymentRunView.ts's
 // own doc comment. `stages` is the authoritative per-stage status; the fields below it are the raw
-// ExternalDeploymentResult mirror `stages` was itself computed from.
+// ExternalExportResult mirror `stages` was itself computed from.
 export type StudioDeploymentRunView = {
     plan: StudioArtifactConversionPlan;
     status?: "ok" | "unavailable" | "conflict";
@@ -1143,7 +1143,7 @@ export type StudioDeploymentRunView = {
 // cli/studio/outcomeLibrary/OutcomeLibrarySelector.ts's own doc comment for what each source means.
 export type OutcomeLibrarySelector =
     | {kind: "json"; path: string}
-    | {kind: "bundle"; bundleDir: string; modeName: string}
+    | {kind: "folder"; libraryDir: string; modeName: string}
     | {kind: "stakeengine"; stakeDir: string; modeName: string};
 
 export type WeightedOutcomePayoutBucket = {payoutMultiplier: number; probability: number};
@@ -1227,7 +1227,7 @@ export type OutcomeLibraryGeneratorDiagnostics = {
 export type StudioOutcomeLibraryGenerateResultView =
     | {
           status: "ok";
-          bundleDir: string;
+          libraryDir: string;
           /** Canonical server-resolved bundle path for inspect/open/reveal. */
           resolvedBundleDir: string;
           files: string[];
@@ -1278,7 +1278,7 @@ export type StudioOutcomeLibraryGenerateJobView = {
 export type StudioOutcomeLibraryRegistryModeEntry = {
     modeName: string;
     libraryId: string;
-    bundleDir: string;
+    libraryDir: string;
     buildStatus: "compatible" | "stale" | "wrong";
     outcomeCount: number;
     totalWeight: number;
@@ -1292,10 +1292,10 @@ export type StudioOutcomeLibraryRegistryModeEntry = {
 // cli/studio/outcomeLibrary/StudioOutcomeLibraryRegistryView.ts's own doc comment for what
 // "compatible"/"stale"/"wrong"/"missing" mean.
 export type StudioOutcomeLibraryRegistryView =
-    | {status: "ok"; bundleDir: string; buildStatus: "missing"}
+    | {status: "ok"; libraryDir: string; buildStatus: "missing"}
     | {
           status: "ok";
-          bundleDir: string;
+          libraryDir: string;
           buildStatus: "compatible" | "stale" | "wrong";
           game: {id: string; name: string; version: string};
           currentGame: {id: string; name: string; version: string};
@@ -1342,8 +1342,8 @@ export type CertificationPackManifest = {
     game: PokieGameManifest;
     configHash?: string;
     artifactPokieVersion: string;
-    sourceBundleDir: string;
-    sourceBundleManifestHash: string;
+    sourceLibraryDir: string;
+    sourceLibraryManifestHash: string;
     modes: CertificationPackModeEntry[];
     deepValidation: CertificationPackDeepValidation;
     files: string[];
@@ -1489,7 +1489,7 @@ export type StudioStakeEngineExportView =
     | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan}
     | StudioStakeEngineExportMigrationView;
 
-// Mirrors the "@fromstan/pokie" package's own ArtifactTargetType -- the closed vocabulary ArtifactBuilderRegistry
+// Mirrors the "@fromstan/pokie" package's own OutputFormat -- the closed vocabulary BuildOutputBuilderRegistry
 // (and "pokie build <project> --target <target>") builds toward. Studio-client never imports the pokie
 // package directly (see ExportDeployTargets.ts's own top-level doc comment), so this is a plain literal
 // mirror, same convention as StudioProjectType above.
@@ -1511,7 +1511,7 @@ export type StudioArtifactConversionPlan = {
 
 // GET /api/project/artifacts/targets' own DTO — see cli/studio/artifacts/StudioArtifactTargetView.ts's
 // own doc comment. `supported` is already resolved against the active project's own ProjectType server-side
-// (the exact same ArtifactBuilderRegistry.supportsConversionFrom() check "pokie build" itself runs) — the
+// (the exact same BuildOutputBuilderRegistry.supportsConversionFrom() check "pokie build" itself runs) — the
 // Build/Export tab never re-derives that rule itself.
 export type StudioArtifactTargetView = {
     target: StudioArtifactTargetType;
@@ -1523,7 +1523,7 @@ export type StudioArtifactTargetView = {
 };
 
 // POST /api/project/artifacts/build's own DTO — see cli/studio/artifacts/StudioArtifactBuildView.ts's own
-// doc comment. Mirrors ArtifactBuilderRegistry.build()'s own outcomes exactly: a successful build's
+// doc comment. Mirrors BuildOutputBuilderRegistry.build()'s own outcomes exactly: a successful build's
 // outputPath/sourceType, an unsupported conversion, a destination conflict, or any other build failure.
 export type StudioArtifactBuildView =
     | {
@@ -1547,7 +1547,7 @@ export type StudioArtifactBuildView =
     | {status: "error"; message: string; plan: StudioArtifactConversionPlan};
 
 // The Build/Export artifact publisher is a server-side job, not a held-open request.  This lets the
-// screen render the same ArtifactBuildOptions preflight/progress callbacks that the CLI receives.
+// screen render the same BuildOutputOptions preflight/progress callbacks that the CLI receives.
 export type StudioArtifactBuildJobView = {
     id: string;
     target: StudioArtifactTargetType;

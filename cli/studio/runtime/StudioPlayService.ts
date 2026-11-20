@@ -17,9 +17,9 @@ import {
     OUTCOME_SOURCE_SAMPLE_OPERATION,
     PLAY_OPERATION,
     GameWithFreeGamesSessionHandling,
-    OutcomeLibraryBundleOutcomeSource,
-    OutcomeLibraryBundleReader,
-    OutcomeLibraryBundleReading,
+    OutcomeLibraryFolderOutcomeSource,
+    OutcomeLibraryFolderReader,
+    OutcomeLibraryFolderReading,
     PlayFreeGamesStrategy,
     PlayUntilAnyWinStrategy,
     PlayUntilSymbolWinStrategy,
@@ -68,7 +68,7 @@ export type StudioWasmRuntimeLoading = typeof loadPokieWasmFileRuntime;
 
 // The two shapes an active Play session can take, discriminated by "kind" -- a "runtime" session (a real
 // loaded PokieGame, spun through SpinCommandHandler) or an "outcomeSource" session (a resolved
-// "outcomeLibrary" project, drawn through its own real OutcomeLibraryBundleOutcomeSource; see
+// "outcomeLibrary" project, drawn through its own real OutcomeLibraryFolderOutcomeSource; see
 // newOutcomeSourceSession's own doc comment for why "stakeAdapter" never reaches this shape at all).
 // `credits` is deliberately mutable only on the outcomeSource variant -- it's Studio's own running ledger
 // over real stake/win numbers (see buildOutcomeSourceSessionView), not a value the bundle itself reports,
@@ -163,7 +163,7 @@ export type StudioPlaySpinResult =
 // project has no `pokie.entry`/loadPokieGame contract at all (see ProjectCapabilities.ts), so before ever
 // materializing/loading anything, newSession() resolves `projectRoot` the same way ServeCommand's own
 // outcome-source routing does (see that class's own doc comment) and, for a resolved "outcomeLibrary"
-// project, plays it through its own real OutcomeLibraryBundleOutcomeSource adapter instead -- the exact
+// project, plays it through its own real OutcomeLibraryFolderOutcomeSource adapter instead -- the exact
 // same selector class PreGeneratedSpinCommandHandler/sampleOutcomeSourceProject already use in production
 // -- never loadPokieGame, never a regenerated game-model draw (see newOutcomeSourceSession's own doc
 // comment). A resolved "stakeAdapter" project has no draw contract of its own and reports the same structured
@@ -187,7 +187,7 @@ export class StudioPlayService {
     private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
     private readonly pokieVersion: string;
     private readonly resolveProject: ProjectResolving;
-    private readonly outcomeLibraryReader: OutcomeLibraryBundleReading;
+    private readonly outcomeLibraryReader: OutcomeLibraryFolderReading;
     // Overridable only so a test can bound findAnyWin()/findSymbolWin()'s own search loop to a handful of
     // attempts instead of genuinely waiting out 2000 real spins to exercise the "exhausted" path -- see
     // spinUntilMatch()'s own doc comment for why the search itself is real spins, not something a smaller
@@ -210,7 +210,7 @@ export class StudioPlayService {
         resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
         pokieVersion = "unknown",
         resolveProject: ProjectResolving = new ProjectTargetResolver(),
-        outcomeLibraryReader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
+        outcomeLibraryReader: OutcomeLibraryFolderReading = new OutcomeLibraryFolderReader(),
         maxFindScenarioSpins = StudioPlayService.DEFAULT_MAX_FIND_SCENARIO_SPINS,
         roundRecorder: StudioRoundRecorder = new StudioRoundRecorder(),
         loadWasmRuntime: StudioWasmRuntimeLoading = loadPokieWasmFileRuntime,
@@ -779,7 +779,7 @@ export class StudioPlayService {
     // "outcomeLibrary" project plays `modeName` -- a real mode from the manifest's own list, resolved via
     // resolveOutcomeLibraryModeName (defaulting to the manifest's own first mode when the caller doesn't
     // request one, same as before Play had a mode picker at all) -- through a real
-    // OutcomeLibraryBundleOutcomeSource -- the exact same selector class
+    // OutcomeLibraryFolderOutcomeSource -- the exact same selector class
     // PreGeneratedSpinCommandHandler/sampleOutcomeSourceProject already use in production -- never
     // loadPokieGame, never a regenerated game-model draw.
     private async newOutcomeSourceSession(project: PokieProject, seed?: string | number, modeName?: string, assertCurrent: () => void = () => undefined): Promise<StudioPlaySessionResult> {
@@ -815,7 +815,7 @@ export class StudioPlayService {
         this.active = {
             kind: "outcomeSource",
             manifest: bundleGame,
-            outcomeSource: new OutcomeLibraryBundleOutcomeSource(project.rootPath, resolvedModeName),
+            outcomeSource: new OutcomeLibraryFolderOutcomeSource(project.rootPath, resolvedModeName),
             roundsPlayed: 0,
             credits: 0,
             projectRoot: project.rootPath,
@@ -829,7 +829,7 @@ export class StudioPlayService {
 
     // Draws exactly one real outcome per call from the bundle's own mode this session was created against
     // (see newOutcomeSourceSession) -- a bundle rewritten mid-draw surfaces as PreGeneratedOutcomeSourceConflictError
-    // (see OutcomeLibraryBundleOutcomeSource's own doc comment), reported the same honest "error" way any
+    // (see OutcomeLibraryFolderOutcomeSource's own doc comment), reported the same honest "error" way any
     // other draw failure is, never silently retried. `active.credits` is mutated in place: Studio's own
     // running ledger over this draw's real stake/totalWin, the only place this bundle-backed session's
     // "credits" figure lives at all (see the class doc comment).

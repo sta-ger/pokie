@@ -109,7 +109,7 @@ type PokieWasmComponentManifest = {
  model requires every draw to be traceable to a host-issued source; see [Provably Fair](provably-fair.md)).
  `host.services` is the open list of any other host-provided service ids the component needs.
 - **Capability discovery** — `capabilities` is an open vocabulary of ids the component declares support for,
- the same convention `ProjectCapability`/`ExternalDeploymentCapability` (see the
+ the same convention `ProjectCapability`/`ExternalExportCapability` (see the
  [External Adapter SDK](external-connector-sdk.md)) already use elsewhere in this package: never closed to a
  union, so a component author can declare ids a generic POKIE check simply never looks at.
 
@@ -119,8 +119,8 @@ correctly typed); `assessWasmComponentCompatibility` runs that validator first, 
 `schemaVersion` against `POKIE_WASM_CONTRACT_VERSION` — **major-only**: a manifest with an equal-or-lower
 minor/patch on the same major is compatible, a differing major is not. Shape and compatibility are deliberately
 two separate, separately testable steps, the same split
-[`ExternalDeploymentTargetDescriptorValidator`/`ExternalDeploymentCompatibilityValidator`](external-connector-sdk.md)
-draw for `ExternalDeploymentTarget`.
+[`ExternalExportTargetDescriptorValidator`/`ExternalExportCompatibilityValidator`](external-connector-sdk.md)
+draw for `ExternalExportTarget`.
 
 ## Resolution — `WasmProjectTargetAdapter`
 
@@ -142,7 +142,7 @@ module bytes and manifest have one identity, but authorizes no runtime operation
 declared `runtime.play`, `runtime.serialize`, `runtime.replay`, and `artifact.inspect` operations grant their
 matching supported actions independently after that integrity check. The complete portable play/serialize/replay
 declaration set additionally grants `WASM_RUNTIME_EXECUTE_CAPABILITY` (`"wasm.runtime.execute"`). Consumers must
-use the relevant declared per-operation supported action, not treat identity or the aggregate bundle as a
+use the relevant declared per-operation supported action, not treat identity or the aggregate folder as a
 substitute for it.
 
 A legacy sidecar-only component deliberately retains only manifest inspection so Studio and the CLI can explain the

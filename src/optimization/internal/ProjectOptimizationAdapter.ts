@@ -20,12 +20,12 @@ import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import type {PokieProject} from "../../project/PokieProject.js";
 import {readWasmComponentManifest} from "../../project/readWasmComponentManifest.js";
 import type {PokieWasmComponentManifest} from "../../project/wasm/PokieWasmComponentManifest.js";
-import {resolveCanonicalWasmGameModel} from "../../project/WasmArtifactBuilder.js";
+import {resolveCanonicalWasmGameModel} from "../../project/WasmOutputBuilder.js";
 import {computeBlueprintHash} from "../../parsheet/computeBlueprintHash.js";
 import {ParSheetImporter} from "../../parsheet/ParSheetImporter.js";
-import {OutcomeLibraryBundleReader} from "../../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
-import {OutcomeLibraryBundleWriter} from "../../weightedoutcome/bundle/OutcomeLibraryBundleWriter.js";
-import {OutcomeLibraryBundleValidator} from "../../weightedoutcome/bundle/OutcomeLibraryBundleValidator.js";
+import {OutcomeLibraryFolderReader} from "../../weightedoutcome/folder/OutcomeLibraryFolderReader.js";
+import {OutcomeLibraryFolderWriter} from "../../weightedoutcome/folder/OutcomeLibraryFolderWriter.js";
+import {OutcomeLibraryFolderValidator} from "../../weightedoutcome/folder/OutcomeLibraryFolderValidator.js";
 import {WeightedOutcomeLibraryAnalyzer} from "../../weightedoutcome/WeightedOutcomeLibraryAnalyzer.js";
 import {
     buildWeightedOutcomeLibrary,
@@ -105,8 +105,8 @@ function assertFiniteBlueprint(blueprint: GameBlueprint, policy: OptimizationPol
 async function readNative(project: PokieProject): Promise<NativeModel> {
     const model: NativeModel = {modes: {}};
     if (project.type === "outcomeLibrary") {
-        errors(await new OutcomeLibraryBundleValidator().validate(project.rootPath, {deep: true}));
-        const reader = new OutcomeLibraryBundleReader();
+        errors(await new OutcomeLibraryFolderValidator().validate(project.rootPath, {deep: true}));
+        const reader = new OutcomeLibraryFolderReader();
         const manifest = await reader.readManifest(project.rootPath);
         for (const mode of manifest.modes) {
             const library = await reader.readLibrary(project.rootPath, mode.modeName);
@@ -256,7 +256,7 @@ export async function acquireOptimizationAdapter(
                 const data = value as NativeModel;
                 const output = path.join(directory, "candidate");
                 if (project.type === "outcomeLibrary") {
-                    const written = await new OutcomeLibraryBundleWriter(POKIE_VERSION, undefined, () => new Date(0)).writeToDirectory(
+                    const written = await new OutcomeLibraryFolderWriter(POKIE_VERSION, undefined, () => new Date(0)).writeToDirectory(
                         Object.entries(data.modes).map(([modeName, mode]) => ({
                             modeName,
                             libraryId: mode.libraryId!,
@@ -272,7 +272,7 @@ export async function acquireOptimizationAdapter(
                         {signal},
                     );
                     errors(written.issues);
-                    const sourceManifest = await new OutcomeLibraryBundleReader().readManifest(project.rootPath);
+                    const sourceManifest = await new OutcomeLibraryFolderReader().readManifest(project.rootPath);
                     const canonicalFiles = new Set([...sourceManifest.files, "manifest.json"]);
                     for (const file of Object.keys(inventory(project.rootPath))) {
                         if (canonicalFiles.has(file)) continue;

@@ -2,14 +2,14 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
-    ArtifactConversionPlanner,
+    FormatConversionPlanner,
     PokieProject,
     ProjectMaterializationResult,
     ProjectMaterializing,
     type ProjectMaterializationOptions,
 } from "@fromstan/pokie";
-import {BlueprintArtifactBuilder} from "../../src/project/BlueprintArtifactBuilder.js";
-import {computeArtifactInputBindingHash} from "../../src/project/ArtifactConversionPlanner.js";
+import {BlueprintOutputBuilder} from "../../src/project/BlueprintOutputBuilder.js";
+import {computeBuildInputHash} from "../../src/project/FormatConversionPlanner.js";
 import {RuntimePreparationCancelledError} from "./RuntimePreparationCancelledError.js";
 import {RuntimePreparationCleanupError} from "./RuntimePreparationCleanupError.js";
 
@@ -21,13 +21,13 @@ import {RuntimePreparationCleanupError} from "./RuntimePreparationCleanupError.j
  */
 export class RunnableArtifactMaterializer implements ProjectMaterializing {
     private readonly blueprintMaterializer: ProjectMaterializing;
-    private readonly planner: ArtifactConversionPlanner;
-    private readonly blueprintBuilder: BlueprintArtifactBuilder;
+    private readonly planner: FormatConversionPlanner;
+    private readonly blueprintBuilder: BlueprintOutputBuilder;
 
     public constructor(
         blueprintMaterializer: ProjectMaterializing,
-        planner = new ArtifactConversionPlanner(),
-        blueprintBuilder = new BlueprintArtifactBuilder(),
+        planner = new FormatConversionPlanner(),
+        blueprintBuilder = new BlueprintOutputBuilder(),
     ) {
         this.blueprintMaterializer = blueprintMaterializer;
         this.planner = planner;
@@ -44,7 +44,7 @@ export class RunnableArtifactMaterializer implements ProjectMaterializing {
             return this.blueprintMaterializer.materialize(project, options);
         }
 
-        // The temporary directory is operation-owned.  BlueprintArtifactBuilder
+        // The temporary directory is operation-owned.  BlueprintOutputBuilder
         // writes both imported model and evidence atomically, and this finally
         // removes both on every failure/cancellation/release path.
         const stage = await fs.promises.mkdtemp(path.join(os.tmpdir(), "pokie-runtime-par-"));
@@ -73,12 +73,12 @@ export class RunnableArtifactMaterializer implements ProjectMaterializing {
                 rootPath: blueprintPath,
                 provenance: `temporary runtime import from PAR workbook ${project.rootPath}`,
                 capabilities: plan.steps[0].output.capabilities,
-                configurationProvenance: {configurationHash: computeArtifactInputBindingHash([project.rootPath])},
+                configurationProvenance: {configurationHash: computeBuildInputHash([project.rootPath])},
             }, {
                 ...options,
                 // A workbook's bytes participate even if two workbooks happen
                 // to import to the same Blueprint model.
-                cacheIdentity: computeArtifactInputBindingHash([project.rootPath]),
+                cacheIdentity: computeBuildInputHash([project.rootPath]),
             });
             this.assertNotCancelled(options.signal);
             return {runtimePath: result.runtimePath, ownsRuntimePath: result.ownsRuntimePath, release};
@@ -92,7 +92,7 @@ export class RunnableArtifactMaterializer implements ProjectMaterializing {
         if (signal?.aborted) throw new RuntimePreparationCancelledError();
     }
 
-    private describeUnavailable(plan: ReturnType<ArtifactConversionPlanner["planRuntime"]>): string {
+    private describeUnavailable(plan: ReturnType<FormatConversionPlanner["planRuntime"]>): string {
         const diagnostic = plan.diagnostic!;
         const path = plan.source.canonicalLocation === undefined ? "the requested artifact" : JSON.stringify(plan.source.canonicalLocation);
         const steps = plan.steps.length === 0 ? "no reusable runtime stages" : plan.steps.map((step) => `${step.choice} ${step.kind}`).join(", ");

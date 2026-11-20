@@ -114,14 +114,14 @@ it("continues a declarative bonus through portable JSON restore and independent 
 it("checks the Project-scoped browser byte/sidecar pair before granting execution", async () => {
     const fixture = createCanonicalWasmFixture();
     const artifact = {projectRoot: "/game.wasm", generation: "current", bytes: [...fixture.bytes], manifest: fixture.manifest};
-    await expect(browser.validatePokieWasmBrowserArtifact(artifact, "/game.wasm")).resolves.toBe(artifact);
-    await expect(browser.validatePokieWasmBrowserArtifact(artifact, "/other.wasm")).rejects.toThrow(/replaced/);
-    await expect(browser.validatePokieWasmBrowserArtifact(artifact, "/game.wasm", "sha256:foreign")).rejects.toThrow(/changed/);
-    await expect(browser.validatePokieWasmBrowserArtifact({...artifact, manifest: undefined!}, "/game.wasm")).rejects.toThrow();
-    await expect(browser.validatePokieWasmBrowserArtifact({...artifact, manifest: {...fixture.manifest, schemaVersion: "99.0.0"}}, "/game.wasm")).rejects.toThrow(/incompatible/);
-    await expect(browser.validatePokieWasmBrowserArtifact({...artifact, bytes: [...fixture.bytes.slice(0, -1)]}, "/game.wasm")).rejects.toThrow(/byte count/);
+    await expect(browser.validatePokieWasmBrowserBuild(artifact, "/game.wasm")).resolves.toBe(artifact);
+    await expect(browser.validatePokieWasmBrowserBuild(artifact, "/other.wasm")).rejects.toThrow(/replaced/);
+    await expect(browser.validatePokieWasmBrowserBuild(artifact, "/game.wasm", "sha256:foreign")).rejects.toThrow(/changed/);
+    await expect(browser.validatePokieWasmBrowserBuild({...artifact, manifest: undefined!}, "/game.wasm")).rejects.toThrow();
+    await expect(browser.validatePokieWasmBrowserBuild({...artifact, manifest: {...fixture.manifest, schemaVersion: "99.0.0"}}, "/game.wasm")).rejects.toThrow(/incompatible/);
+    await expect(browser.validatePokieWasmBrowserBuild({...artifact, bytes: [...fixture.bytes.slice(0, -1)]}, "/game.wasm")).rejects.toThrow(/byte count/);
     const swapped = createCanonicalWasmFixture({id: "swapped"});
-    await expect(browser.validatePokieWasmBrowserArtifact({...artifact, manifest: swapped.manifest}, "/game.wasm")).rejects.toThrow(/SHA-256|byte count/);
+    await expect(browser.validatePokieWasmBrowserBuild({...artifact, manifest: swapped.manifest}, "/game.wasm")).rejects.toThrow(/SHA-256|byte count/);
 });
 
 it("keeps public browser entries and every executable transitive import free of Node dependencies and globals", async () => {

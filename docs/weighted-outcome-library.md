@@ -267,7 +267,7 @@ JSON-safety, and every other existing invariant are still checked by that one re
 
 `generateExactWeightedOutcomeLibrary` collects the whole stream and returns an already-built library;
 `streamExactWeightedOutcomes` is the lower-level `AsyncGenerator` form, usable directly as an
-`OutcomeLibraryBundleModeInput`'s own `outcomes` (see [Outcome Library Folder](outcome-library-folder.md)) — both
+`OutcomeLibraryFolderModeInput`'s own `outcomes` (see [Outcome Library Folder](outcome-library-folder.md)) — both
 are the exact same underlying generation.
 
 ### Large spaces: bounds, bounded-coverage, cancel/resume/progress
@@ -315,15 +315,15 @@ pokie build <project> --target outcomeLibrary
 `pokie build` (or any package `loadPokieGame()` can require) — and drives *its own* session/win-calculation
 runtime through `generateExactWeightedOutcomeLibrary`, exactly as described in "Generating" above. This is a
 different workflow from outcome-library export (see [Outcome Library Folder](outcome-library-folder.md#cli-usage)):
-that export never loads or executes a `PokieGame` at all — it only bundles `WeightedOutcomeLibrary` JSON (or JSONL
-outcome streams) that some earlier step, such as `generate`, already produced. Bundle readers likewise only ever
-inspect an already-built bundle. `generate` is the public workflow that runs a live game.
+that export never loads or executes a `PokieGame` at all — it only folders `WeightedOutcomeLibrary` JSON (or JSONL
+outcome streams) that some earlier step, such as `generate`, already produced. Folder readers likewise only ever
+inspect an already-built folder. `generate` is the public workflow that runs a live game.
 
 `build --target outcomeLibrary` is the equivalent project-to-library-folder workflow. `--exact` is the default; its explicit
 form and `--sample <n> --seed <string>` make the choice visible in automation. The sampled form is passed through the
 registry-owned `BlueprintStakeOutcomeLibraryWorkflow`, which performs only the requested draws and writes a normal
-Outcome Library bundle; it can then be used with `pokie validate`, `pokie sim`, `pokie report`, `pokie replay`, and
-`pokie serve` just like an exact bundle.
+Outcome library folder; it can then be used with `pokie validate`, `pokie sim`, `pokie report`, `pokie replay`, and
+`pokie serve` just like an exact folder.
 
 - `<packageRoot>` — required. The game must opt into exact enumeration via
  `PokieGame.createExactEnumerationSession` (see "Opting a game into exact enumeration" above); a game that
@@ -333,7 +333,7 @@ Outcome Library bundle; it can then be used with `pokie validate`, `pokie sim`, 
 - `--mode <betModeId>` — the `betMode` threaded onto every generated outcome's artifact; also folds into the
  default `--library-id` (`<manifest.id>-<mode>` when `--library-id` isn't given). For an explicit runtime
  bet-mode interface, omitting `--mode` resolves its declared `Is Default` mode first: that resolved mode is
- selected on the enumeration session and is used consistently for the artifact, library id, and bundle mode
+ selected on the enumeration session and is used consistently for the artifact, library id, and library mode
  name. It is not an implicit `base` label. Legacy metadata-only `BetModes` remain labels only; omitting the
  flag preserves their historical unlabeled/base-compatible library identity.
 - `--stake <number>` — the stake threaded onto every generated round record; must be a positive number (see "library
@@ -369,12 +369,12 @@ Outcome Library bundle; it can then be used with `pokie validate`, `pokie sim`, 
 - `--format json` — print the full `{library, diagnostics}` result (or, with `--estimate`/`--dry-run`, the
  estimate report) as JSON to stdout instead of the default human-readable summary.
 
-### Generator diagnostics on a bundle
+### Generator diagnostics on a folder
 
 `OutcomeLibraryGeneratorDiagnostics` (`algorithm`, `strategy`, `totalOutcomeSpaceSize`/`sampledRawCount` — using the
 same bigint-safe number-or-decimal-string convention `stake-engine-standalone.md`'s own `StakeEngineStandaloneExactDecimal`
 uses, `seed` when `"bounded-coverage"`, `pokieVersion`/`game`/`configHash`/`generatedAt`) is returned alongside every
-generated library. Threading it into `OutcomeLibraryBundleModeInput.generator` copies it verbatim into that mode's
+generated library. Threading it into `OutcomeLibraryFolderModeInput.generator` copies it verbatim into that mode's
 own library index entry (see [Outcome Library Folder](outcome-library-folder.md)) — present only for a mode
 actually built by this generator, absent for one built from an already-computed outcome source.
 

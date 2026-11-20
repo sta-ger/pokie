@@ -1,5 +1,5 @@
 // A capability id is a plain, open string rather than a closed union — same convention as
-// ExternalDeploymentCapability (see externaladapter/ExternalDeploymentCapability.ts) and for the identical
+// ExternalExportCapability (see externaladapter/ExternalExportCapability.ts) and for the identical
 // reason: the constants below are the vocabulary POKIE's own ProjectCapabilities/PokieOperation model
 // understands today, but closing this to a union would make every future capability a breaking change to this
 // file rather than an additive one.
@@ -37,7 +37,7 @@ export const BLUEPRINT_BUILD_CAPABILITY: ProjectCapability = "blueprint.build";
 // "outcomeLibrary.validate" require. Only an "outcomeLibrary" project grants it today.
 export const OUTCOME_LIBRARY_READ_CAPABILITY: ProjectCapability = "outcomeLibrary.read";
 
-// Produces a canonical Outcome Library through ArtifactBuilderRegistry.  This is intentionally separate
+// Produces a canonical Outcome Library through BuildOutputBuilderRegistry.  This is intentionally separate
 // from OUTCOME_LIBRARY_READ_CAPABILITY: a runnable package can calculate a new library without already
 // being a bundle, while a bundle can be republished without loading a game runtime.
 export const OUTCOME_LIBRARY_GENERATE_CAPABILITY: ProjectCapability = "outcomeLibrary.generate";
@@ -56,7 +56,7 @@ export const STAKE_ADAPTER_EXPORT_CAPABILITY: ProjectCapability = "stakeAdapter.
 // a "parWorkbook" project grants it today.
 export const PAR_WORKBOOK_EXCHANGE_CAPABILITY: ProjectCapability = "parWorkbook.exchange";
 
-// Produces a canonical WASM component from an authored source through ArtifactBuilderRegistry. Blueprint and
+// Produces a canonical WASM component from an authored source through BuildOutputBuilderRegistry. Blueprint and
 // PAR workbook projects grant it; existing WASM artifacts deliberately do not, because they are products rather
 // than source inputs for another conversion.
 export const WASM_EXPORT_CAPABILITY: ProjectCapability = "wasm.export";
@@ -72,7 +72,7 @@ export const WASM_MANIFEST_READ_CAPABILITY: ProjectCapability = "wasm.manifest.r
 // A project whose own pre-computed outcomes can be inspected and exactly analyzed straight off disk, via its
 // own canonical outcome-source reader — never by loading or executing a PokieGame. What
 // "outcomeSource.inspect" and "outcomeSource.analyze" require. Granted to both "outcomeLibrary" (read via
-// OutcomeLibraryBundleReading/WeightedOutcomeLibraryAnalyzer) and "stakeAdapter" (read via
+// OutcomeLibraryFolderReading/WeightedOutcomeLibraryAnalyzer) and "stakeAdapter" (read via
 // StakeEngineOutcomeSourceReading/StakeEngineStandaloneAnalyzer) — each already has its own
 // validator/analyzer over its own canonical source; see CanonicalOutcomeSourceDescriptor for what each
 // source's own reader promises/limits (streaming vs. whole-directory, and what it deliberately never

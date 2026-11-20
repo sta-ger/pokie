@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
+import {OutcomeLibraryFolderReader} from "../weightedoutcome/folder/OutcomeLibraryFolderReader.js";
 import type {OutcomeLibraryGeneratorDiagnostics} from "../weightedoutcome/generate/OutcomeLibraryGeneratorDiagnostics.js";
 import type {PokieProject} from "./PokieProject.js";
 import type {ProjectResolving} from "./ProjectResolving.js";
@@ -24,7 +24,7 @@ export type OutcomeProjectCompatibility = {
     readonly compatibilityPolicyVersion?: string;
 };
 
-// The authoritative lifecycle boundary for a Blueprint's managed Outcome Project.  ArtifactBuilderRegistry
+// The authoritative lifecycle boundary for a Blueprint's managed Outcome Project.  BuildOutputBuilderRegistry
 // owns the conversion, while this service owns discovery, registration and reopening.  CLI and Studio inject
 // the same service contract; neither surface is allowed to maintain a private "generated outcome" index.
 export interface ManagedOutcomeProjectServicing {
@@ -71,7 +71,7 @@ const DEFAULT_FILE_OPERATIONS: ManagedOutcomeProjectFileOperations = {
 // either UI process to be alive.  Older deterministic bundles are adopted only after their manifest has been
 // verified and they are written into this registry; the workflow itself never treats a path as registered.
 export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServicing {
-    private readonly reader = new OutcomeLibraryBundleReader();
+    private readonly reader = new OutcomeLibraryFolderReader();
     private readonly resolveProject: ProjectResolving;
     private readonly onRegistered: (project: PokieProject) => Promise<void>;
     // Managed Outcome registration can cause a second, caller-owned registry

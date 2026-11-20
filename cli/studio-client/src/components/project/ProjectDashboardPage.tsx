@@ -154,7 +154,7 @@ type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
 // deliberately ungrouped (not "Advanced") alongside Overview/Simulation: playing the game is the primary
 // thing a project workspace is for. Also reachable for a resolved "outcomeLibrary" project (see
 // OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES) -- StudioPlayService already plays it through its own real
-// OutcomeLibraryBundleOutcomeSource adapter.
+// OutcomeLibraryFolderOutcomeSource adapter.
 //
 // "exportDeploy"/ExportDeployTab (labeled "Build/Export") is the sole Studio build surface -- the old
 // standalone Deployment/Stake Engine Export/Outcome Libraries workspaces (each its own Stepper-driven

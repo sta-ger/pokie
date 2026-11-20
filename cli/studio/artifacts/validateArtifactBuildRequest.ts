@@ -1,4 +1,4 @@
-import {ADVERTISED_ARTIFACT_BUILD_TARGETS, type ArtifactTargetType} from "@fromstan/pokie";
+import {ADVERTISED_ARTIFACT_BUILD_TARGETS, type OutputFormat} from "@fromstan/pokie";
 
 export type ArtifactBuildRequestInput = {
     target?: unknown;
@@ -8,16 +8,16 @@ export type ArtifactBuildRequestInput = {
 };
 
 export type ValidatedArtifactBuildRequest = {
-    readonly target: ArtifactTargetType;
+    readonly target: OutputFormat;
     readonly outDir?: string;
     readonly preparedOperationId?: string;
     readonly deferExecution?: boolean;
 };
 
-// The same closed vocabulary ArtifactBuilderRegistry.listTargets() (and BuildCommand's own --target
+// The same closed vocabulary BuildOutputBuilderRegistry.listTargets() (and BuildCommand's own --target
 // option) already enforce -- spelled out here so an unknown "target" is rejected as a 400 before ever
 // resolving a project, instead of surfacing as a later, less specific registry error.
-const ARTIFACT_TARGET_TYPES: readonly ArtifactTargetType[] = ADVERTISED_ARTIFACT_BUILD_TARGETS;
+const ARTIFACT_TARGET_TYPES: readonly OutputFormat[] = ADVERTISED_ARTIFACT_BUILD_TARGETS;
 
 function isNonEmptyString(value: unknown): value is string {
     return typeof value === "string" && value.trim().length > 0;
@@ -28,11 +28,11 @@ function isNonEmptyString(value: unknown): value is string {
 // it to 400) for a missing/unknown "target" or a non-string "outDir". Does not check that `target` is
 // actually buildable from the active project, or that `outDir` is a safe/available destination -- those
 // are StudioArtifactBuildService's own job (the same capability-diagnostic/conflict concerns
-// ArtifactBuilderRegistry.build() itself already reports, not a second, differently-worded check here).
+// BuildOutputBuilderRegistry.build() itself already reports, not a second, differently-worded check here).
 export function validateArtifactBuildRequest(input: ArtifactBuildRequestInput): ValidatedArtifactBuildRequest {
     const {target, outDir, preparedOperationId, deferExecution} = input;
 
-    if (!isNonEmptyString(target) || !ARTIFACT_TARGET_TYPES.includes(target as ArtifactTargetType)) {
+    if (!isNonEmptyString(target) || !ARTIFACT_TARGET_TYPES.includes(target as OutputFormat)) {
         throw new Error(`"target" must be one of: ${ARTIFACT_TARGET_TYPES.join(", ")}.`);
     }
     if (outDir !== undefined && !isNonEmptyString(outDir)) {
@@ -48,7 +48,7 @@ export function validateArtifactBuildRequest(input: ArtifactBuildRequestInput): 
 
     return {
         ...(deferExecution === undefined ? {} : {deferExecution}),
-        target: target as ArtifactTargetType,
+        target: target as OutputFormat,
         outDir: outDir as string | undefined,
         ...(preparedOperationId === undefined ? {} : {preparedOperationId}),
     };

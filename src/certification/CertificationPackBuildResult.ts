@@ -3,7 +3,7 @@ import type {CertificationPackManifest} from "./CertificationPackManifest.js";
 import type {PublishedDirectoryOwnership} from "../stakeengine/internal/publishDirectoryAtomically.js";
 
 // The result of CertificationPackBuilding.buildFromBundle. "manifest" is undefined if and only if
-// "issues" contains an error — the same "no partial bundle" guarantee OutcomeLibraryBundleWriteResult/
+// "issues" contains an error — the same "no partial bundle" guarantee OutcomeLibraryFolderWriteResult/
 // StakeEngineExportResult already carry: either every file (each mode's samples, manifest.json) was written, or
 // none was.
 export type CertificationPackBuildResult = {

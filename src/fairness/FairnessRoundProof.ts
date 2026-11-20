@@ -23,7 +23,7 @@ export type FairnessRoundProof = {
     readonly indexHash: string; // computeFairnessIndexHash of the mode index this outcome was drawn from
     readonly outcomeId: string;
     readonly weight: number;
-    readonly recordHash: string; // the drawn outcome's own OutcomeLibraryBundleIndexEntry.recordHash
+    readonly recordHash: string; // the drawn outcome's own OutcomeLibraryFolderIndexEntry.recordHash
     readonly commitmentHash: string; // computeFairnessCommitmentHash of the exact FairnessCommitment this round was built from
     readonly revealedAt: string;
 };

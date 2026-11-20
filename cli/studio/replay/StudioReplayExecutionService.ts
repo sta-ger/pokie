@@ -9,7 +9,7 @@ import {
     captureInitialPokieSessionState,
     captureRoundPokieSessionState,
     captureScreen,
-    describeUnavailableArtifactOperation,
+    describeUnavailableBuildOperation,
     readCanonicalWasmDeclaration,
     isWasmComponentFile,
     loadPokieWasmFileRuntime,
@@ -17,9 +17,9 @@ import {
     loadPokieGame,
     releasePokieGame,
     OUTCOME_SOURCE_REPLAY_OPERATION,
-    OutcomeLibraryBundleOutcomeSource,
-    OutcomeLibraryBundleReader,
-    OutcomeLibraryBundleReading,
+    OutcomeLibraryFolderOutcomeSource,
+    OutcomeLibraryFolderReader,
+    OutcomeLibraryFolderReading,
     PokieGame,
     PokieGameContext,
     PokieGameManifest,
@@ -96,7 +96,7 @@ export class StudioReplayExecutionService {
     private readonly onCompleted: (record: StudioReplayJobRecord) => void;
     // Reads a resolved "outcomeLibrary"/"stakeAdapter" project's own bundle manifest -- see start()'s
     // own `outcomeSourceProject` parameter for why this service never resolves a project's type itself.
-    private readonly outcomeLibraryReader: OutcomeLibraryBundleReading;
+    private readonly outcomeLibraryReader: OutcomeLibraryFolderReading;
     private readonly loadWasmRuntime: typeof loadPokieWasmFileRuntime;
     private readonly releaseRuntimeGame: typeof releasePokieGame;
     private jobService: StudioJobService | undefined;
@@ -113,7 +113,7 @@ export class StudioReplayExecutionService {
         createId: () => string = () => crypto.randomUUID(),
         pokieVersion = "unknown",
         onCompleted: (record: StudioReplayJobRecord) => void = () => undefined,
-        outcomeLibraryReader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
+        outcomeLibraryReader: OutcomeLibraryFolderReading = new OutcomeLibraryFolderReader(),
         loadRuntimeGame: StudioGameLoading = (projectRoot) => loadGame(projectRoot),
         loadWasmRuntime: typeof loadPokieWasmFileRuntime = loadPokieWasmFileRuntime,
         releaseRuntimeGame: typeof releasePokieGame = releasePokieGame,
@@ -649,7 +649,7 @@ export class StudioReplayExecutionService {
     // seeded draw stream against `record.modeName` -- a real mode from the manifest's own list, resolved
     // via resolveOutcomeLibraryModeName (defaulting to the manifest's own first mode when start() wasn't
     // given one explicitly, same as before Replay had a mode picker at all) -- the exact same
-    // OutcomeLibraryBundleOutcomeSource selector Play/Simulation already draw through, drawn forward
+    // OutcomeLibraryFolderOutcomeSource selector Play/Simulation already draw through, drawn forward
     // `record.round` times and keeping only the last draw, mirroring exactly what a fresh Play session
     // seeded the same way, against the same mode, would show at that Nth draw. Unlike the "runtime"
     // branch above, there is no live GameSessionHandling/PokieSessionState to snapshot before/after -- a
@@ -659,7 +659,7 @@ export class StudioReplayExecutionService {
     // actually-resolved value, mirroring StudioSimulationService.runOutcomeSourceSampling's own reasoning
     // -- every terminal job/list entry carries the real mode this run replayed against.
     private async runOutcomeSourceReplay(record: StudioReplayJobRecord, project: PokieProject): Promise<void> {
-        const diagnostic = describeUnavailableArtifactOperation(project, OUTCOME_SOURCE_REPLAY_OPERATION);
+        const diagnostic = describeUnavailableBuildOperation(project, OUTCOME_SOURCE_REPLAY_OPERATION);
         if (diagnostic !== undefined) {
             this.fail(record, new Error(diagnostic.message));
             return;
@@ -698,7 +698,7 @@ export class StudioReplayExecutionService {
         record.game = gameIdentity;
 
         const sessionId = this.createId();
-        const outcomeSource = new OutcomeLibraryBundleOutcomeSource(project.rootPath, modeName);
+        const outcomeSource = new OutcomeLibraryFolderOutcomeSource(project.rootPath, modeName);
         let roundsRemaining = record.round;
         let lastArtifact: RoundRecord | undefined;
         let lastSelection: {libraryId: string; libraryHash: string; outcomeId: string; weight: number} | undefined;

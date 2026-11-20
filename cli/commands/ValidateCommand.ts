@@ -5,8 +5,8 @@ import type {AdvancedModelValidationReport} from "../../src/validation/AdvancedM
 import {writeNewValidationReportAtomically} from "./internal/writeNewValidationReportAtomically.js";
 import {Command} from "commander";
 import {
-    OutcomeLibraryBundleValidating,
-    OutcomeLibraryBundleValidator,
+    OutcomeLibraryFolderValidating,
+    OutcomeLibraryFolderValidator,
     GameBlueprintValidator,
     loadGameBlueprint,
     PokieGamePackageValidating,
@@ -69,7 +69,7 @@ export class ValidateCommand implements CliCommandHandling {
     // cli/pokie.ts wires the real, materializing one in.
     private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
     private readonly resolveProject: ProjectResolving;
-    private readonly outcomeLibraryValidator: OutcomeLibraryBundleValidating;
+    private readonly outcomeLibraryValidator: OutcomeLibraryFolderValidating;
     private readonly stakeEngineImporter: StakeEngineImporting;
 
     constructor(
@@ -77,7 +77,7 @@ export class ValidateCommand implements CliCommandHandling {
         writeFile: (file: string, contents: string) => void = writeNewValidationReportAtomically,
         resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
         resolveProject: ProjectResolving = new ProjectTargetResolver(),
-        outcomeLibraryValidator: OutcomeLibraryBundleValidating = new OutcomeLibraryBundleValidator(),
+        outcomeLibraryValidator: OutcomeLibraryFolderValidating = new OutcomeLibraryFolderValidator(),
         stakeEngineImporter: StakeEngineImporting = new StakeEngineImporter(),
     ) {
         this.validator = validator;
@@ -344,9 +344,9 @@ export class ValidateCommand implements CliCommandHandling {
         return this.reportFromIssues(packageRoot, "package", issues, report.game);
     }
 
-    private async validateOutcomeLibrary(bundleDir: string, deep: boolean): Promise<ValidateReport> {
-        const issues = await this.outcomeLibraryValidator.validate(bundleDir, {deep});
-        return {...this.reportFromIssues(bundleDir, "outcome-library", issues), deep};
+    private async validateOutcomeLibrary(libraryDir: string, deep: boolean): Promise<ValidateReport> {
+        const issues = await this.outcomeLibraryValidator.validate(libraryDir, {deep});
+        return {...this.reportFromIssues(libraryDir, "outcome-library", issues), deep};
     }
 
     private async validateStakeEngineExport(stakeDir: string): Promise<ValidateReport> {
@@ -416,7 +416,7 @@ export class ValidateCommand implements CliCommandHandling {
     }
 
     private safeIssue(issue: ValidationIssue): ValidationIssue {
-        if (issue.code.startsWith("outcome-library-bundle-")) {
+        if (issue.code.startsWith("outcome-library-folder-")) {
             return this.safeOutcomeLibraryIssue(issue);
         }
         const packageIssue = this.safePackageIssue(issue);

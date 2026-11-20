@@ -1,4 +1,4 @@
-import type {OutcomeLibraryBundleManifest} from "../weightedoutcome/bundle/OutcomeLibraryBundleManifest.js";
+import type {OutcomeLibraryFolderManifest} from "../weightedoutcome/folder/OutcomeLibraryFolderManifest.js";
 import type {MathDefinitionSnapshot} from "../diff/MathDefinitionDiff.js";
 import type {SimulationReport} from "../reporting/SimulationReport.js";
 import type {AuditRoundRecording} from "../replay/AuditRoundRecording.js";
@@ -41,8 +41,8 @@ export type CertificationPack = {
         readonly runtimeVersion: "pokie.session-runtime.v1";
         readonly modelHash: string | null;
         readonly modelArtifactHash: string | null;
-        readonly sourceBundleManifestHash: string;
-        readonly sourceBundleManifest: OutcomeLibraryBundleManifest;
+        readonly sourceLibraryManifestHash: string;
+        readonly sourceLibraryManifest: OutcomeLibraryFolderManifest;
         readonly sourceRevision: string | null;
         readonly candidateRevision: string | null;
     };

@@ -89,8 +89,8 @@ the same underlying snapshot. Two implementations ship out of the box:
  with `InMemoryPreGeneratedOutcomeSourceError` on a mismatch — the library never changes for this connector's
  whole lifetime, so there's nothing to gain from re-verifying on every draw). Internally reuses
  `WeightedOutcomeSelector`, so its own draws are byte-for-byte the same as before this abstraction existed.
-- **`OutcomeLibraryBundleOutcomeSource`** (see [Outcome Library Folder](outcome-library-folder.md)) — reads a
- outcome-library bundle directly off disk: one small `index_<modeName>.json` read per draw (never the
+- **`OutcomeLibraryFolderOutcomeSource`** (see [Outcome Library Folder](outcome-library-folder.md)) — reads a
+ outcome-library folder directly off disk: one small `index_<modeName>.json` read per draw (never the
  full outcomes file, never `readLibrary()`), a weighted pick by exact integer cumulative weight over that
  index's own entries, then a single byte-range read for exactly the winning outcome. The whole `{libraryId,
  libraryHash, totalWeight, outcome}` result comes from that *one* index read, never a separately-fetched hash —
@@ -107,8 +107,8 @@ class PreGeneratedOutcomeSelectionValidator<T = string> implements ValidationRul
 ```
 
 `drawOutcome()` may throw `PreGeneratedOutcomeSourceConflictError` to signal that the content this draw relied on
-no longer matches what the source itself last promised — `OutcomeLibraryBundleOutcomeSource` throws it whenever
-the underlying byte-range read detects an id/weight/`recordHash` mismatch (the bundle changed mid-draw, or a
+no longer matches what the source itself last promised — `OutcomeLibraryFolderOutcomeSource` throws it whenever
+the underlying byte-range read detects an id/weight/`recordHash` mismatch (the folder changed mid-draw, or a
 record was tampered with in place — see [Outcome Library Folder](outcome-library-folder.md#validation)). Any
 other `PreGeneratedOutcomeSourcing` implementation — including a hand-written test double or a buggy custom
 source — can throw the same error for its own reasons and get identical treatment.
@@ -205,10 +205,10 @@ library always reproduces the identical draw — no wallet, session, or idempote
 The resulting durable descriptor records `modeName` and `selectionAlgorithm: "derived-round-seed-v1"` as well as
 library id/hash, seed, round, selected outcome, stake, screen, payout and the artifact. A blank seed,
 mode or library hash is rejected before selection. Server `/sessions/:id/spin` responses expose the portable replay
-identity (including seed and mode) in `replay`; use those values with `pokie replay <bundle> --seed... --round...
+identity (including seed and mode) in `replay`; use those values with `pokie replay <folder> --seed... --round...
 --mode...`. A descriptor missing any provenance can still be inspected, but it cannot substantiate an
 exact recorded-result comparison: `replayOutcomeSourceProject(..., recordedDescriptor)` rejects it with recovery
-instructions. Omitting `recordedDescriptor` remains a current-bundle reconstruction rather than a comparison.
+instructions. Omitting `recordedDescriptor` remains a current-folder reconstruction rather than a comparison.
 
 Studio follows this exact selection interface too: a seeded Outcome Library Play spin and a seeded Outcome Source
 sample return (and retain in Recent Rounds) the same full `replay` descriptor, including library id/hash, mode,
@@ -247,8 +247,8 @@ just drew from — never a separately-fetched, potentially stale or newer snapsh
 (deterministic, no wallet/session side effects), immediately followed by this comparison, before the idempotency
 cache is ever consulted and before any wallet transaction. This matters for the in-memory connector too (a stale
 cached result must never stand in for a fresh conflict check when a session was migrated to a different library),
-but it's essential for a bundle-backed source: `OutcomeLibraryBundleOutcomeSource` reads its mode's index fresh on
-every `drawOutcome()` call, so if the bundle is rebuilt in place between two spins (e.g. a redeploy regenerating
+but it's essential for a folder-backed source: `OutcomeLibraryFolderOutcomeSource` reads its mode's index fresh on
+every `drawOutcome()` call, so if the folder is rebuilt in place between two spins (e.g. a redeploy regenerating
 the same `libraryId`/mode with different weights), the very next draw's own atomic result already reflects that —
 there is no separate, independently-refreshed "current identity" call that could observe a different version than
 the draw itself did.
@@ -272,14 +272,14 @@ and all — except the last — caught before the idempotency cache is consulted
 so there's nothing to compensate:
 
 - **Source-level conflict**: `drawOutcome()` itself threw `PreGeneratedOutcomeSourceConflictError` — the content
- this draw relied on no longer matches what the source last promised (e.g. a bundle rewritten, or one of its
+ this draw relied on no longer matches what the source last promised (e.g. a folder rewritten, or one of its
  records tampered in place, between the index being read and the winning record's own byte range being read).
 - **Invalid selection**: the drawn selection failed `PreGeneratedOutcomeSelectionValidator` — a forged or buggy
  custom `PreGeneratedOutcomeSourcing` implementation returned something structurally untrustworthy (an empty
  `libraryId`, a weight exceeding `totalWeight`, an artifact that fails `RoundRecordValidator`,...).
 - **Library mismatch**: the loaded session's own `libraryId`/`libraryHash` (stamped at creation) doesn't match the
  identity the handler's outcome source reports for the round it just atomically drew — e.g. a session from
- before a redeploy that swapped the library/bundle, or a same-id library/bundle regenerated with different
+ before a redeploy that swapped the library/folder, or a same-id library/folder regenerated with different
  weights. A stale cached result can never bypass it either, since all three checks above run before the
  idempotency cache is ever consulted.
 - **Optimistic-locking version conflict**: when the configured `PreGeneratedSessionRepository` additionally

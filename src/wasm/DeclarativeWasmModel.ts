@@ -70,7 +70,7 @@ export function canonicalWasmMath(model: CanonicalWasmGameModel): SharedSlotMath
     return model.features ? resolveSharedSlotMathModel(model.features.blueprint) : model;
 }
 
-export function compileCanonicalWasmArtifact(model: CanonicalWasmGameModel, descriptor: unknown): Uint8Array<ArrayBuffer> {
+export function compileCanonicalWasmBuild(model: CanonicalWasmGameModel, descriptor: unknown): Uint8Array<ArrayBuffer> {
     assertCanonicalWasmGameModel(model);
     const sections = [compileSharedSlotMath(canonicalWasmMath(model)), sharedSlotCustomSection("pokie.game.v2", stableSlotMathJson(model)), sharedSlotCustomSection("pokie.component.v2", stableSlotMathJson(descriptor))];
     const bytes = new Uint8Array(sections.reduce((length, part) => length + part.length, 0));

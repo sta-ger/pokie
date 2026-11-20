@@ -1,5 +1,5 @@
 import path from "path";
-import type {ArtifactConversionPlan, ArtifactTargetType} from "@fromstan/pokie";
+import type {FormatConversionPlan, OutputFormat} from "@fromstan/pokie";
 
 /**
  * Checks the immutable facts an adapter supplied when it prepared a plan.  This
@@ -8,9 +8,9 @@ import type {ArtifactConversionPlan, ArtifactTargetType} from "@fromstan/pokie";
  * conversion.
  */
 export function describePreparedArtifactPlanDrift(
-    plan: ArtifactConversionPlan | undefined,
+    plan: FormatConversionPlan | undefined,
     sourcePath: string,
-    target: ArtifactTargetType,
+    target: OutputFormat,
     destinationPath?: string,
     generationSemantics?: "exact" | "boundedSample",
     sampleCount?: bigint | string,

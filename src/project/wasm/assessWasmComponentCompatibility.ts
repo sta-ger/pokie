@@ -8,7 +8,7 @@ const manifestValidator = new PokieWasmComponentManifestValidator();
 // Checks a WASM component's own manifest against POKIE's own WASM component contract -- always run before
 // WasmProjectTargetAdapter resolves a ".wasm" target as a "wasm" ProjectType (see that adapter), the same
 // "compatibility is checked before anything else trusts the target" discipline
-// ExternalDeploymentCompatibilityValidator applies to ExternalDeploymentTarget. Runs shape validation
+// ExternalExportCompatibilityValidator applies to ExternalExportTarget. Runs shape validation
 // (PokieWasmComponentManifestValidator) first -- a malformed manifest is reported as incompatible with that
 // validator's own issues, never partially checked further. Only the major segment of "schemaVersion" is
 // compared against POKIE_WASM_CONTRACT_VERSION's own major segment (an equal-or-lower minor/patch on the

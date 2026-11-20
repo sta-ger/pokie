@@ -11,7 +11,7 @@ outcomes/artifacts, re-shaped, not recomputed.
 
 This is a deliberately separate, sibling pipeline to the [External Adapter SDK](external-connector-sdk.md) — not
 built on top of it, and not the other way around. See
-[Why Stake Engine Export isn't an `ExternalDeploymentTarget`](external-connector-sdk.md#why-stake-engine-export-isnt-an-externaldeploymenttarget)
+[Why Stake Engine Export isn't an `ExternalExportTarget`](external-connector-sdk.md#why-stake-engine-export-isnt-an-externaldeploymenttarget)
 for exactly why (a mode's own `cost`, required here for unit conversion, has no channel through that SDK's
 generic projector interface, and a real Stake export's atomicity spans modes with different costs in a way the
 SDK's per-target-fixed-descriptor model can't represent).
@@ -238,19 +238,19 @@ incompatible source or occupied destination before a publish is attempted.
 directory plus `/stakeAdapter`.
 
 A mode entry can load its library from a [Outcome Library Folder](outcome-library-folder.md) instead
-of a plain JSON file — replace `libraryPath` with `bundleDir` (and optionally `bundleModeName`, which defaults
+of a plain JSON file — replace `libraryPath` with `libraryDir` (and optionally `libraryModeName`, which defaults
 to `modeName`):
 
 ```json
-{"modeName": "bonus", "cost": 100, "bundleDir": "./bundle", "bundleModeName": "bonus"}
+{"modeName": "bonus", "cost": 100, "libraryDir": "./library", "libraryModeName": "bonus"}
 ```
 
-Exactly one of `libraryPath`/`bundleDir` is required per mode. When **every** mode in the config uses
-`bundleDir`, the export streams each mode's outcomes directly from its bundle via
+Exactly one of `libraryPath`/`libraryDir` is required per mode. When **every** mode in the config uses
+`libraryDir`, the export streams each mode's outcomes directly from its folder via
 `StakeEngineBundleStreamingExporter` — reading `libraryHash`/`libraryId`/`outcomeCount` straight from the
-bundle's own index and never calling `readLibrary()`, never creating a `WeightedOutcomeLibrary`. Mixing even
+folder's own index and never calling `readLibrary()`, never creating a `WeightedOutcomeLibrary`. Mixing even
 one `libraryPath` mode into the same export falls back to the existing `StakeEngineExporter` path (loading every
-`bundleDir` mode's library fully via `loadWeightedOutcomeLibraryFromBundle` first) — both paths produce
+`libraryDir` mode's library fully via `loadWeightedOutcomeLibraryFromFolder` first) — both paths produce
 byte-identical `index.json`/CSV/books output, so which one runs is purely a performance/memory concern, never a
 behavioral one.
 
@@ -275,11 +275,11 @@ if (result.issues.some((issue) => issue.severity === "error")) {
 }
 ```
 
-### Streaming directly from a bundle
+### Streaming directly from a folder
 
 `StakeEngineBundleStreamingExporter` implements the same `StakeEngineExportResult`-returning shape but takes a
-bundle reference per mode instead of a `WeightedOutcomeLibrary`, and streams each mode's outcomes straight from
-the bundle's own `iterateModeOutcomes` into that mode's CSV/books — never buffering a whole mode's CSV/books
+folder reference per mode instead of a `WeightedOutcomeLibrary`, and streams each mode's outcomes straight from
+the folder's own `iterateModeOutcomes` into that mode's CSV/books — never buffering a whole mode's CSV/books
 content in memory (the books file streams through Node's native zstd `Transform` stream) and never calling
 `readLibrary()`:
 
@@ -289,8 +289,8 @@ import {StakeEngineBundleStreamingExporter} from "@fromstan/pokie";
 const exporter = new StakeEngineBundleStreamingExporter(pokieVersion);
 const result = await exporter.exportToDirectory(
  [
- {modeName: "base", cost: 1, bundleDir: "./bundle", bundleModeName: "base"},
- {modeName: "bonus", cost: 100, bundleDir: "./bundle", bundleModeName: "bonus"},
+ {modeName: "base", cost: 1, libraryDir: "./library", libraryModeName: "base"},
+ {modeName: "bonus", cost: 100, libraryDir: "./library", libraryModeName: "bonus"},
  ],
  "./stakeengine",
 );
@@ -307,7 +307,7 @@ stabilized and untouched by this streaming path.
 POKIE accepts nonnegative safe-integer numeric Stake IDs and raw payouts (at most
 `Number.MAX_SAFE_INTEGER`, **9007199254740991**); it does not support the complete UInt64 ID/payout range.
 Standalone reading supports positive UInt64 weights with exact BigInt weight accounting,
-while native persisted bundles retain their safe-integer weight/total restrictions.
+while native persisted folders retain their safe-integer weight/total restrictions.
 Exact Stake payload import/re-export supports wide weights as described below.
 Numeric analytics are approximate; standalone decimal fractions are capped at 40 fractional digits.
 
@@ -315,7 +315,7 @@ Numeric analytics are approximate; standalone decimal fractions are capped at 40
 
 Numeric `WeightedOutcomeLibrary` exporter inputs require **positive safe integer**
 weights (1 through 9007199254740991); an unsafe integer-valued JavaScript Number
-is rejected. Streaming native bundles retain their safe-integer bundle interface.
+is rejected. Streaming native folders retain their safe-integer folder interface.
 Exact imported Stake payloads instead retain positive UInt64 decimal weights
 through `exportExactSourceToDirectory`; aggregate totals may exceed UInt64.
 No weight is rounded or probability-preservingly rescaled. This does not widen

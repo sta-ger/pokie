@@ -1,8 +1,8 @@
 import {Command} from "commander";
 import path from "path";
 import {
-    ArtifactBuilderRegistry,
-    ArtifactConversionPlanner,
+    BuildOutputBuilderRegistry,
+    FormatConversionPlanner,
     describeUnsupportedProjectOperation,
     PAR_IMPORT_OPERATION,
     ProjectResolving,
@@ -28,19 +28,19 @@ export class ImportCommand implements CliCommandHandling {
     private readonly par: ParCommand;
     private readonly stake: StakeEngineCommand;
     private readonly resolveProject: ProjectResolving;
-    private readonly planner: ArtifactConversionPlanner;
-    private readonly registry: ArtifactBuilderRegistry;
+    private readonly planner: FormatConversionPlanner;
+    private readonly registry: BuildOutputBuilderRegistry;
 
     constructor(
         pokieVersion: string,
         resolveProject: ProjectResolving = new ProjectTargetResolver(),
-        planner: ArtifactConversionPlanner = new ArtifactConversionPlanner(),
+        planner: FormatConversionPlanner = new FormatConversionPlanner(),
     ) {
         this.par = new ParCommand(pokieVersion);
         this.stake = new StakeEngineCommand(pokieVersion);
         this.resolveProject = resolveProject;
         this.planner = planner;
-        this.registry = new ArtifactBuilderRegistry(pokieVersion);
+        this.registry = new BuildOutputBuilderRegistry(pokieVersion);
     }
 
     public getName(): string {

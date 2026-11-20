@@ -1,5 +1,5 @@
-import {OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION} from "../weightedoutcome/bundle/OutcomeLibraryBundleManifest.js";
-import {recognizeOutcomeLibraryBundleDirectory} from "./internal/isOutcomeLibraryBundleDirectory.js";
+import {OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION} from "../weightedoutcome/folder/OutcomeLibraryFolderManifest.js";
+import {recognizeOutcomeLibraryFolderDirectory} from "./internal/isOutcomeLibraryFolderDirectory.js";
 import {ProjectTargetMalformedError} from "./ProjectTargetMalformedError.js";
 import type {ProjectTargetTypeAdapter} from "./ProjectTargetTypeAdapter.js";
 
@@ -11,7 +11,7 @@ export class OutcomeLibraryProjectTargetAdapter implements ProjectTargetTypeAdap
     public readonly targetKind = "directory";
 
     public recognize(resolvedPath: string): Promise<string | undefined> {
-        const recognition = recognizeOutcomeLibraryBundleDirectory(resolvedPath);
+        const recognition = recognizeOutcomeLibraryFolderDirectory(resolvedPath);
         if (recognition.kind === "malformed") {
             throw new ProjectTargetMalformedError(recognition.reason);
         }

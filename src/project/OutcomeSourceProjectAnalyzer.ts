@@ -2,11 +2,11 @@ import {StakeEngineOutcomeSourceReader} from "../stakeengine/standalone/StakeEng
 import type {StakeEngineOutcomeSourceReading} from "../stakeengine/standalone/StakeEngineOutcomeSourceReading.js";
 import {StakeEngineStandaloneAnalyzer} from "../stakeengine/standalone/StakeEngineStandaloneAnalyzer.js";
 import {describeStakeEngineOutcomeSource} from "../stakeengine/standalone/describeStakeEngineOutcomeSource.js";
-import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
-import type {OutcomeLibraryBundleReading} from "../weightedoutcome/bundle/OutcomeLibraryBundleReading.js";
-import {OutcomeLibraryBundleValidator} from "../weightedoutcome/bundle/OutcomeLibraryBundleValidator.js";
-import type {OutcomeLibraryBundleValidating} from "../weightedoutcome/bundle/OutcomeLibraryBundleValidating.js";
-import {describeOutcomeLibraryBundleSource} from "../weightedoutcome/bundle/describeOutcomeLibraryBundleSource.js";
+import {OutcomeLibraryFolderReader} from "../weightedoutcome/folder/OutcomeLibraryFolderReader.js";
+import type {OutcomeLibraryFolderReading} from "../weightedoutcome/folder/OutcomeLibraryFolderReading.js";
+import {OutcomeLibraryFolderValidator} from "../weightedoutcome/folder/OutcomeLibraryFolderValidator.js";
+import type {OutcomeLibraryFolderValidating} from "../weightedoutcome/folder/OutcomeLibraryFolderValidating.js";
+import {describeOutcomeLibraryFolderSource} from "../weightedoutcome/folder/describeOutcomeLibraryFolderSource.js";
 import type {OutcomeSourceProjectAnalyzing} from "./OutcomeSourceProjectAnalyzing.js";
 import type {OutcomeSourceProjectReport} from "./OutcomeSourceProjectReport.js";
 import type {PokieProject} from "./PokieProject.js";
@@ -15,12 +15,12 @@ import type {PokieProject} from "./PokieProject.js";
 // reader -- never loadPokieGame, never a re-derived/regenerated game-model calculation (see
 // CanonicalOutcomeSourceDescriptor's own doc comment). A native bundle's exact per-mode analysis is read
 // straight off its own manifest.json (embedded there at build time -- see
-// OutcomeLibraryBundleManifestModeEntry.analysis), never recomputed and never requiring a full outcomes-file
-// read, which is what keeps this analyzer honoring OutcomeLibraryBundleReading's own documented streaming
+// OutcomeLibraryFolderManifestModeEntry.analysis), never recomputed and never requiring a full outcomes-file
+// read, which is what keeps this analyzer honoring OutcomeLibraryFolderReading's own documented streaming
 // behavior even against a very large bundle. A Stake Engine outcome directory carries no such precomputed
 // analysis, so StakeEngineStandaloneAnalyzer must read every mode's own CSV/books first -- matching that
 // source's own "streaming: false" descriptor. Either source's own malformed/invalid content surfaces as this
-// report's own `issues` (see OutcomeLibraryBundleValidating/StakeEngineOutcomeSourceReading -- neither ever
+// report's own `issues` (see OutcomeLibraryFolderValidating/StakeEngineOutcomeSourceReading -- neither ever
 // throws for a structurally malformed input), never a raw package-runtime error.
 //
 // WeightedOutcomeLibraryAnalysis and StakeEngineStandaloneModeAnalysis deliberately share the same core field
@@ -28,14 +28,14 @@ import type {PokieProject} from "./PokieProject.js";
 // -- so a caller (ReportCommand's own rendering) can treat OutcomeSourceProjectReport.modes[].analysis
 // uniformly regardless of which reader family produced it, without a per-kind branch of its own.
 export class OutcomeSourceProjectAnalyzer implements OutcomeSourceProjectAnalyzing {
-    private readonly outcomeLibraryValidator: OutcomeLibraryBundleValidating;
-    private readonly outcomeLibraryReader: OutcomeLibraryBundleReading;
+    private readonly outcomeLibraryValidator: OutcomeLibraryFolderValidating;
+    private readonly outcomeLibraryReader: OutcomeLibraryFolderReading;
     private readonly stakeEngineReader: StakeEngineOutcomeSourceReading;
     private readonly stakeEngineAnalyzer: StakeEngineStandaloneAnalyzer;
 
     constructor(
-        outcomeLibraryValidator: OutcomeLibraryBundleValidating = new OutcomeLibraryBundleValidator(),
-        outcomeLibraryReader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
+        outcomeLibraryValidator: OutcomeLibraryFolderValidating = new OutcomeLibraryFolderValidator(),
+        outcomeLibraryReader: OutcomeLibraryFolderReading = new OutcomeLibraryFolderReader(),
         stakeEngineReader: StakeEngineOutcomeSourceReading = new StakeEngineOutcomeSourceReader(),
         stakeEngineAnalyzer: StakeEngineStandaloneAnalyzer = new StakeEngineStandaloneAnalyzer(),
     ) {
@@ -60,16 +60,16 @@ export class OutcomeSourceProjectAnalyzer implements OutcomeSourceProjectAnalyzi
         );
     }
 
-    private async analyzeOutcomeLibrary(bundleDir: string): Promise<OutcomeSourceProjectReport> {
-        const descriptor = describeOutcomeLibraryBundleSource();
-        const issues = await this.outcomeLibraryValidator.validate(bundleDir);
+    private async analyzeOutcomeLibrary(libraryDir: string): Promise<OutcomeSourceProjectReport> {
+        const descriptor = describeOutcomeLibraryFolderSource();
+        const issues = await this.outcomeLibraryValidator.validate(libraryDir);
         if (issues.some((issue) => issue.severity === "error")) {
-            return {rootPath: bundleDir, descriptor, issues, modes: []};
+            return {rootPath: libraryDir, descriptor, issues, modes: []};
         }
 
-        const manifest = await this.outcomeLibraryReader.readManifest(bundleDir);
+        const manifest = await this.outcomeLibraryReader.readManifest(libraryDir);
         return {
-            rootPath: bundleDir,
+            rootPath: libraryDir,
             descriptor,
             issues,
             modes: manifest.modes.map((mode) => ({modeName: mode.modeName, analysis: mode.analysis})),

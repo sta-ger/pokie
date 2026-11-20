@@ -1,7 +1,7 @@
 import {ProjectTargetUnsupportedError} from "../../src/project/ProjectTargetUnsupportedError.js";
 import {jsonHash, projectRevision} from "../../src/optimization/internal/optimizationData.js";
 import {OptimizationCancelledError} from "../../src/optimization/internal/ProjectOptimizationAdapter.js";
-import {ArtifactBuildCancelledError} from "../../src/project/ArtifactBuildOptions.js";
+import {BuildCancelledError} from "../../src/project/BuildOutputOptions.js";
 import fs from "fs";
 import {Command} from "commander";
 import type {CliCommandHandling} from "../CliCommandHandling.js";
@@ -124,6 +124,6 @@ export class OptimizeCommand implements CliCommandHandling {
 function classifyCommandError(error: unknown): OptimizationResult["status"] {
     if (error instanceof ProjectTargetUnsupportedError) return "unsupported";
     if (error instanceof OptimizationInputError || (error as {code?: string}).code?.startsWith("commander.")) return "invalid";
-    if (error instanceof OptimizationCancelledError || error instanceof ArtifactBuildCancelledError) return "cancelled";
+    if (error instanceof OptimizationCancelledError || error instanceof BuildCancelledError) return "cancelled";
     return "failure";
 }

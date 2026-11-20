@@ -1,5 +1,5 @@
-export type CertificationSourceValidateRequestInput = {bundleDir?: unknown};
-export type ValidatedCertificationSourceValidateRequest = {readonly bundleDir: string};
+export type CertificationSourceValidateRequestInput = {libraryDir?: unknown};
+export type ValidatedCertificationSourceValidateRequest = {readonly libraryDir: string};
 
 function isNonEmptyString(value: unknown): value is string {
     return typeof value === "string" && value.trim().length > 0;
@@ -8,8 +8,8 @@ function isNonEmptyString(value: unknown): value is string {
 export function validateCertificationSourceValidateRequest(
     input: CertificationSourceValidateRequestInput,
 ): ValidatedCertificationSourceValidateRequest {
-    if (!isNonEmptyString(input.bundleDir)) {
-        throw new Error('"bundleDir" must be a non-empty string.');
+    if (!isNonEmptyString(input.libraryDir)) {
+        throw new Error('"libraryDir" must be a non-empty string.');
     }
-    return {bundleDir: input.bundleDir};
+    return {libraryDir: input.libraryDir};
 }

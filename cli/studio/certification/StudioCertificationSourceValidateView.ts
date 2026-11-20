@@ -2,7 +2,7 @@ import type {ValidationIssue} from "@fromstan/pokie";
 
 // The Certification tab's "Validate" step -- a preflight, opt-in-before-you-commit run of the exact
 // same deep bundle validation CertificationPackBuilder.buildFromBundle itself runs (and
-// aborts on) before sampling a single round. Never a bespoke check: the same OutcomeLibraryBundleValidating
+// aborts on) before sampling a single round. Never a bespoke check: the same OutcomeLibraryFolderValidating
 // deep-validation call.
 export type StudioCertificationSourceValidateView =
     | {readonly status: "ok"; readonly errors: readonly ValidationIssue[]; readonly warnings: readonly ValidationIssue[]}

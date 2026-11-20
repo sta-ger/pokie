@@ -1,4 +1,4 @@
-import {BUILT_PACKAGE_FILES, assertPreparedArtifactDestinationAvailable, resolveGamePackageDestination} from "@fromstan/pokie";
+import {BUILT_PACKAGE_FILES, assertPreparedOutputDestinationAvailable, resolveGamePackageDestination} from "@fromstan/pokie";
 import fs from "fs";
 import path from "path";
 
@@ -39,7 +39,7 @@ export function previewBuildDestination(
         }
         if (protectedRoot !== undefined) {
             try {
-                assertPreparedArtifactDestinationAvailable(protectedRoot, projectRoot, "directory");
+                assertPreparedOutputDestinationAvailable(protectedRoot, projectRoot, "directory");
             } catch (error) {
                 if (error instanceof Error && (/source itself|inside source/).test(error.message)) {
                     throw new Error(`"${projectRoot}" resolves inside POKIE Studio's own internal directory. Choose a separate output directory.`);
@@ -47,7 +47,7 @@ export function previewBuildDestination(
                 throw error;
             }
         }
-        assertPreparedArtifactDestinationAvailable(sourcePath === undefined ? undefined : path.resolve(cwd, sourcePath), projectRoot, "directory");
+        assertPreparedOutputDestinationAvailable(sourcePath === undefined ? undefined : path.resolve(cwd, sourcePath), projectRoot, "directory");
     } catch (error) {
         destinationError = error instanceof Error ? error.message : String(error);
         if ((/not a valid directory name|source itself|inside source|internal directory/).test(destinationError)) destinationState = "unsafe";

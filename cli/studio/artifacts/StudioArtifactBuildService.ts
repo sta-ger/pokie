@@ -1,14 +1,14 @@
 import {
-    ArtifactBuildConflictError,
+    BuildConflictError,
     rollbackArtifactPublication,
-    ArtifactBuildCancelledError,
-    type ArtifactConversionPlan,
-    type ArtifactBuildOptions,
-    type ArtifactBuildProgress,
-    ArtifactBuilderRegistry,
-    ArtifactConversionPlanner,
-    ArtifactTargetType,
-    describeArtifactConversionPlanDiagnostic,
+    BuildCancelledError,
+    type FormatConversionPlan,
+    type BuildOutputOptions,
+    type BuildProgress,
+    BuildOutputBuilderRegistry,
+    FormatConversionPlanner,
+    OutputFormat,
+    describeFormatConversionPlanDiagnostic,
     ManagedOutcomeProjectService,
     ManagedOutcomeProjectServicing,
     PokieProject,
@@ -17,7 +17,7 @@ import {
     ProjectResolving,
     ProjectTargetResolver,
     requireManagedOutcomeProjectOwnership,
-    assertArtifactBuildNotCancelled,
+    assertBuildNotCancelled,
     describeWasmLifecycleBoundary,
     describeUnsupportedProjectOperation,
     isWasmComponentFile,
@@ -33,8 +33,8 @@ import type {StudioArtifactBuildJobView, StudioArtifactBuildProgressView} from "
 import type {StudioArtifactPreflighting, StudioPreparedArtifactPreview} from "./StudioArtifactPreflighting.js";
 import type {StudioArtifactPreviewView} from "./StudioArtifactPreviewView.js";
 import type {StudioArtifactTargetView} from "./StudioArtifactTargetView.js";
-import {createUnresolvedRuntimePlan} from "./createExternalArtifactConversionPlan.js";
-import {resolveStudioProjectSource} from "./StudioArtifactConversionPlanningService.js";
+import {createUnresolvedRuntimePlan} from "./createExternalFormatConversionPlan.js";
+import {resolveStudioProjectSource} from "./StudioFormatConversionPlanningService.js";
 import {StudioJobService} from "../jobs/StudioJobService.js";
 import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";
 import type {StudioJobView} from "../jobs/StudioJobView.js";
@@ -55,14 +55,14 @@ export type StudioPreparedStakeProjectionStartResult =
 const PAR_WORKBOOK_DEFAULT_EXTENSION = ".xlsx";
 const WASM_DEFAULT_FILE_NAME = "game.wasm";
 
-function destinationKindFor(target: ArtifactTargetType): "file" | "directory" {
+function destinationKindFor(target: OutputFormat): "file" | "directory" {
     return target === "parWorkbook" || target === "blueprint" || target === "wasm" ? "file" : "directory";
 }
 
 // This is intentionally a compact, target-level plan rather than a guessed inventory of generated
 // files. Builders remain free to evolve their internal package layouts; the preflight promises the
 // stable artifact(s) a user is choosing to create, without lying about incidental implementation files.
-function plannedOutputsFor(target: ArtifactTargetType): readonly string[] {
+function plannedOutputsFor(target: OutputFormat): readonly string[] {
     switch (target) {
         case "blueprint":
             return ["Game design JSON file with conversion details"];
@@ -85,7 +85,7 @@ function plannedOutputsFor(target: ArtifactTargetType): readonly string[] {
 // resolved project's own rootPath, the exact same default BuildCommand.resolveDestination() computes for
 // a bare `pokie build <project> --target <target>` (no --out). Keeping this identical means Studio's own
 // zero-configuration "Build" click and the CLI's own default land in the same place for the same project.
-function resolveDefaultDestination(rootPath: string, target: ArtifactTargetType): string {
+function resolveDefaultDestination(rootPath: string, target: OutputFormat): string {
     let siblingName: string = target;
     if (target === "parWorkbook") siblingName = `${target}${PAR_WORKBOOK_DEFAULT_EXTENSION}`;
     if (target === "blueprint") siblingName = "blueprint.json";
@@ -94,7 +94,7 @@ function resolveDefaultDestination(rootPath: string, target: ArtifactTargetType)
 }
 
 // The Project Dashboard's Build/Export tab's own "Build artifact" group (see ExportDeployTab.tsx) -- the
-// *only* Studio surface that runs the active project through ArtifactBuilderRegistry directly, the same
+// *only* Studio surface that runs the active project through BuildOutputBuilderRegistry directly, the same
 // matrix-advertised tsPackage/outcomeLibrary/stakeAdapter/parWorkbook vocabulary and the same
 // resolve -> capability-check -> build pipeline "pokie build <project> --target <target>" itself runs (see
 // cli/commands/BuildCommand.ts) -- never a second, Studio-only build or serialization path.
@@ -107,7 +107,7 @@ function resolveDefaultDestination(rootPath: string, target: ArtifactTargetType)
 export class StudioArtifactBuildService {
     private readonly executionFailures: unknown[] = [];
     private readonly pendingExecutions = new Set<Promise<void>>();
-    private readonly registry: ArtifactBuilderRegistry;
+    private readonly registry: BuildOutputBuilderRegistry;
     private readonly stakeProjection: StakeProjectionExportService;
     private readonly resolveProject: ProjectResolving;
     private readonly jobs = new Map<string, StudioArtifactBuildJobRecord>();
@@ -121,7 +121,7 @@ export class StudioArtifactBuildService {
 
     constructor(
         pokieVersion: string,
-        registry?: ArtifactBuilderRegistry,
+        registry?: BuildOutputBuilderRegistry,
         resolveProject?: ProjectResolving,
         private readonly registerManagedProject: (projectRoot: string, provenance?: {readonly sourceWorkbookPath?: string; readonly conversionEvidencePath?: string}) => Promise<void> = () => Promise.resolve(),
         managedOutcomeProjects?: ManagedOutcomeProjectServicing,
@@ -133,7 +133,7 @@ export class StudioArtifactBuildService {
         private readonly preflight?: StudioArtifactPreflighting,
     ) {
         this.resolveProject = resolveProject ?? new ProjectTargetResolver();
-        this.registry = registry ?? new ArtifactBuilderRegistry(pokieVersion, undefined, managedOutcomeProjects ?? new ManagedOutcomeProjectService(this.resolveProject));
+        this.registry = registry ?? new BuildOutputBuilderRegistry(pokieVersion, undefined, managedOutcomeProjects ?? new ManagedOutcomeProjectService(this.resolveProject));
         this.stakeProjection = new StakeProjectionExportService(this.registry);
         if (pokiePackageRoot !== undefined) this.registry.withRuntimePackageRoot(pokiePackageRoot);
     }
@@ -148,7 +148,7 @@ export class StudioArtifactBuildService {
             : this.preflight.extractPackage(projectRoot, signal);
     }
 
-    // Every target ArtifactBuilderRegistry knows about, alongside whether the active project (by its own
+    // Every target BuildOutputBuilderRegistry knows about, alongside whether the active project (by its own
     // resolved ProjectType) actually supports building it -- the exact same registry-supported plan BuildCommand
     // itself runs, computed once here so ExportDeployTab never re-derives a ProjectType/capability rule of its own.
     // This is intentionally destination-free: a target card describes whether a conversion is possible, while
@@ -157,17 +157,17 @@ export class StudioArtifactBuildService {
     // republish edge disappear from the available-targets surface.
     public async listTargets(projectRoot: string, signal?: AbortSignal): Promise<readonly StudioArtifactTargetView[]> {
         if (this.preflight !== undefined) return this.preflight.listTargets(projectRoot, signal);
-        assertArtifactBuildNotCancelled({signal});
+        assertBuildNotCancelled({signal});
         const project = await resolveStudioProjectSource(this.resolveProject, projectRoot);
         return Promise.all(this.registry.listTargets().map(async (target) => {
             const descriptor = this.registry.describe(target);
-            let plan: ArtifactConversionPlan;
+            let plan: FormatConversionPlan;
             try {
                 plan = project === undefined ? createUnresolvedRuntimePlan(projectRoot, target) : await this.plan(project, target);
             } catch (error) {
                 if (project === undefined) throw error;
                 plan = {
-                    ...new ArtifactConversionPlanner().plan(project, target), status: "unavailable", steps: [],
+                    ...new FormatConversionPlanner().plan(project, target), status: "unavailable", steps: [],
                     diagnostic: {code: "unsupported-boundary", failedEdge: {from: project.type, to: target},
                         message: `${target} preflight failed: ${(error instanceof Error ? error.message : "Runtime inspection failed").slice(0, 2000)}`,
                         recovery: "Inspect this target's supported actions or choose an available model conversion."},
@@ -186,10 +186,10 @@ export class StudioArtifactBuildService {
 
     // Reports what a build against the active project would do, without ever invoking a builder -- the same
     // registry-resolved target/destination/capability diagnostic build() itself uses (see
-    // ArtifactBuilderRegistry.checkDestination's own doc comment for why this never needs to run the builder
+    // BuildOutputBuilderRegistry.checkDestination's own doc comment for why this never needs to run the builder
     // to know whether its destination would be accepted), so Build/Export can show a real destination and
     // conflict/diagnostic before the user ever clicks Build. Never writes anything.
-    public async preview(projectRoot: string, target: ArtifactTargetType, outDir?: string, signal?: AbortSignal): Promise<StudioArtifactPreviewView> {
+    public async preview(projectRoot: string, target: OutputFormat, outDir?: string, signal?: AbortSignal): Promise<StudioArtifactPreviewView> {
         const identity = canonicalStudioProjectIdentity(projectRoot);
         const key = JSON.stringify([identity, target]);
         const version = (this.previewVersions.get(key) ?? 0) + 1;
@@ -204,7 +204,7 @@ export class StudioArtifactBuildService {
         const prepared = this.preflight === undefined
             ? await this.preparePreview(projectRoot, target, outDir, signal)
             : await this.preflight.preparePreview(projectRoot, target, outDir, signal);
-        assertArtifactBuildNotCancelled({signal});
+        assertBuildNotCancelled({signal});
         if (this.previewVersions.get(key) !== version) throw new Error("Build check superseded by a newer destination.");
         const {view, extraction, stakeOperation} = prepared;
         if (view.status !== "ok") return view;
@@ -215,8 +215,8 @@ export class StudioArtifactBuildService {
     }
 
     /** Same planner in the request worker; only immutable data crosses back to the publication owner. */
-    public async preparePreview(projectRoot: string, target: ArtifactTargetType, outDir?: string, signal?: AbortSignal): Promise<StudioPreparedArtifactPreview> {
-        assertArtifactBuildNotCancelled({signal});
+    public async preparePreview(projectRoot: string, target: OutputFormat, outDir?: string, signal?: AbortSignal): Promise<StudioPreparedArtifactPreview> {
+        assertBuildNotCancelled({signal});
         const resolved = await this.resolveForTarget(projectRoot, target, outDir);
         if (resolved === undefined) {
             return {view: {
@@ -248,7 +248,7 @@ export class StudioArtifactBuildService {
             }
         }
 
-        assertArtifactBuildNotCancelled({signal});
+        assertBuildNotCancelled({signal});
         // Resolver configuration provenance is non-enumerable. Preserve it explicitly across IPC.
         const source = {...project, configurationProvenance: project.configurationProvenance};
         return {
@@ -273,7 +273,7 @@ export class StudioArtifactBuildService {
         return this.stakeProjection.prepareOperation(resolved.project, resolved.destination);
     }
 
-    public async validateStakeProjection(projectRoot: string, outDir?: string): Promise<{readonly plan: ArtifactConversionPlan; readonly operation: PreparedStakeProjectionOperation} | undefined> {
+    public async validateStakeProjection(projectRoot: string, outDir?: string): Promise<{readonly plan: FormatConversionPlan; readonly operation: PreparedStakeProjectionOperation} | undefined> {
         const operation = await this.prepareStakeProjection(projectRoot, outDir);
         return operation === undefined ? undefined : {plan: operation.plan, operation};
     }
@@ -284,7 +284,7 @@ export class StudioArtifactBuildService {
      * calling Studio boundary, so selecting a library never changes the final
      * destination that preflight inspected.
      */
-    public async validateStakeProjectionSource(sourcePath: string, destinationPath: string): Promise<{readonly plan: ArtifactConversionPlan; readonly operation: PreparedStakeProjectionOperation} | undefined> {
+    public async validateStakeProjectionSource(sourcePath: string, destinationPath: string): Promise<{readonly plan: FormatConversionPlan; readonly operation: PreparedStakeProjectionOperation} | undefined> {
         const source = await resolveStudioProjectSource(this.resolveProject, sourcePath);
         if (source === undefined) return undefined;
         const operation = await this.stakeProjection.prepareOperation(source, destinationPath);
@@ -294,7 +294,7 @@ export class StudioArtifactBuildService {
     public async buildStakeProjectionSource(
         sourcePath: string,
         destinationPath: string,
-        options?: ArtifactBuildOptions,
+        options?: BuildOutputOptions,
     ): Promise<StudioArtifactBuildView> {
         const source = await resolveStudioProjectSource(this.resolveProject, sourcePath);
         if (source === undefined) {
@@ -309,23 +309,23 @@ export class StudioArtifactBuildService {
     }
 
     /** Execute a previously validated Studio Stake operation without preparing another plan. */
-    public executeStakeProjection(operation: PreparedStakeProjectionOperation, options?: ArtifactBuildOptions): Promise<StudioArtifactBuildView> {
+    public executeStakeProjection(operation: PreparedStakeProjectionOperation, options?: BuildOutputOptions): Promise<StudioArtifactBuildView> {
         return this.buildResolved(operation.source, "stakeAdapter", operation.destinationPath, options, operation);
     }
 
     // Executes a real build against the active project -- resolves `projectRoot` into a PokieProject
     // exactly like BuildCommand does, re-checks the same capability listTargets()/preview() already reported
     // (so a stale client-side target list or preview can never trigger a build the registry itself would
-    // reject), then hands off to ArtifactBuilderRegistry.build() with `outDir` defaulted the same way a bare
+    // reject), then hands off to BuildOutputBuilderRegistry.build() with `outDir` defaulted the same way a bare
     // `pokie build <project> --target <target>` (no --out) is. A destination conflict surfaces as its own
-    // "conflict" status (never a bare 500) since ArtifactBuildConflictError is the one error every concrete
-    // ArtifactBuilder throws for "destination already occupied" -- see assertArtifactDestinationAvailable's
+    // "conflict" status (never a bare 500) since BuildConflictError is the one error every concrete
+    // BuildOutputBuilder throws for "destination already occupied" -- see assertArtifactDestinationAvailable's
     // own doc comment.
     public async build(
         projectRoot: string,
-        target: ArtifactTargetType,
+        target: OutputFormat,
         outDir?: string,
-        options?: ArtifactBuildOptions,
+        options?: BuildOutputOptions,
     ): Promise<StudioArtifactBuildView> {
         const resolved = await this.resolveForTarget(projectRoot, target, outDir);
         if (resolved === undefined) {
@@ -337,11 +337,11 @@ export class StudioArtifactBuildService {
 
     public async buildResolved(
         project: PokieProject,
-        target: ArtifactTargetType,
+        target: OutputFormat,
         destination: string,
-        options?: ArtifactBuildOptions,
+        options?: BuildOutputOptions,
         preparedStakeOperation?: PreparedStakeProjectionOperation,
-        preparedPlan?: ArtifactConversionPlan,
+        preparedPlan?: FormatConversionPlan,
     ): Promise<StudioArtifactBuildView> {
         // Directory targets deliberately accept a caller-created empty
         // destination.  It is not owned by this operation, even though its
@@ -352,13 +352,13 @@ export class StudioArtifactBuildService {
         const operation = target === "stakeAdapter"
             ? preparedStakeOperation ?? await this.stakeProjection.prepareOperation(project, destination, options)
             : undefined;
-        let plan: ArtifactConversionPlan;
+        let plan: FormatConversionPlan;
         try {
             plan = preparedPlan ?? operation?.plan ?? await this.plan(project, target, destination, options);
-            assertArtifactBuildNotCancelled(options);
+            assertBuildNotCancelled(options);
         } catch (error) {
-            plan = new ArtifactConversionPlanner().plan(project, target, {destinationPath: destination});
-            return error instanceof ArtifactBuildCancelledError ? {status: "cancelled", message: "Build cancelled before publication.", plan} : {status: "error", message: error instanceof Error ? error.message : String(error), plan};
+            plan = new FormatConversionPlanner().plan(project, target, {destinationPath: destination});
+            return error instanceof BuildCancelledError ? {status: "cancelled", message: "Build cancelled before publication.", plan} : {status: "error", message: error instanceof Error ? error.message : String(error), plan};
         }
         if (plan.status === "unavailable") {
             return {status: "unsupported", target, message: this.describePlanDiagnostic(plan), plan};
@@ -389,10 +389,10 @@ export class StudioArtifactBuildService {
                 // project has been registered.  Keep this boundary inside the
                 // rollback owner so cancellation cannot strand a module or
                 // one of its companion publications.
-                assertArtifactBuildNotCancelled(options);
+                assertBuildNotCancelled(options);
                 const provenance = await this.parImportRegistrationProvenance(result.conversionEvidencePath);
                 for (const projectRoot of managedProjectRoots) {
-                    assertArtifactBuildNotCancelled(options);
+                    assertBuildNotCancelled(options);
                     await this.registerManagedProject(
                         projectRoot,
                         // The terminal and the durable imported Blueprint both
@@ -400,7 +400,7 @@ export class StudioArtifactBuildService {
                         projectRoot === result.outputPath || projectRoot === result.importedBlueprintPath ? provenance : undefined,
                     );
                     registeredRoots.push(projectRoot);
-                    assertArtifactBuildNotCancelled(options);
+                    assertBuildNotCancelled(options);
                 }
             } catch (error) {
                 // A Studio build is not successful until every operation-owned
@@ -443,10 +443,10 @@ export class StudioArtifactBuildService {
                 ...(operation === undefined ? {} : {stakePrerequisiteProvenance: this.stakePrerequisiteProvenance(operation, result)}),
             };
         } catch (error) {
-            if (error instanceof ArtifactBuildConflictError) {
+            if (error instanceof BuildConflictError) {
                 return {status: "conflict", target, message: error.message, plan};
             }
-            if (error instanceof ArtifactBuildCancelledError) {
+            if (error instanceof BuildCancelledError) {
                 return {status: "cancelled", message: "Build was cancelled.", plan};
             }
             return {status: "error", message: error instanceof Error ? error.message : String(error), plan};
@@ -456,7 +456,7 @@ export class StudioArtifactBuildService {
     // Starts independently from the request that created it, so a client can observe the preflight and
     // every running update rather than waiting for one terminal HTTP response.  Retention is bounded;
     // active jobs are never evicted.
-    public start(projectRoot: string, target: ArtifactTargetType, outDir?: string, deferExecution = false): StudioArtifactBuildStartResult {
+    public start(projectRoot: string, target: OutputFormat, outDir?: string, deferExecution = false): StudioArtifactBuildStartResult {
         // A direct service caller has the same no-job boundary as the HTTP
         // route: a WASM path must never receive an id, destination, staging
         // plan, or queued builder merely to fail later.
@@ -587,7 +587,7 @@ export class StudioArtifactBuildService {
 
     private startOperation(
         projectRoot: string,
-        target: ArtifactTargetType,
+        target: OutputFormat,
         outDir?: string,
         preparedStakeOperation?: PreparedStakeProjectionOperation,
         preparedExtraction?: PreparedExtractionRecord,
@@ -639,7 +639,7 @@ export class StudioArtifactBuildService {
         record.status = "running";
         this.jobService?.markRunning(record.id);
         this.jobService?.progress(record.id, {stage: "preparing", unit: "work", current: "indeterminate", total: "indeterminate"});
-        const options: ArtifactBuildOptions = {
+        const options: BuildOutputOptions = {
             signal: record.controller.signal,
             onProgress: (progress) => {
                 const next = toProgressView(progress);
@@ -710,7 +710,7 @@ export class StudioArtifactBuildService {
         const result = artifactResultFromDurableJob(job);
         return {
             id: job.id,
-            target: job.request.target as ArtifactTargetType,
+            target: job.request.target as OutputFormat,
             status: job.status,
             cancellationRequested: job.status === "cancelling",
             ...(result === undefined ? {} : {result}),
@@ -727,7 +727,7 @@ export class StudioArtifactBuildService {
         }
     }
 
-    private retainPreparedExtraction(projectRoot: string, project: PokieProject, destination: string, plan: ArtifactConversionPlan): string {
+    private retainPreparedExtraction(projectRoot: string, project: PokieProject, destination: string, plan: FormatConversionPlan): string {
         const id = `extraction-${crypto.randomUUID()}`;
         // Do not share a mutable public DTO with the retained publication authority.
         // Resolver provenance is deliberately non-enumerable; copy it explicitly before cloning.
@@ -776,7 +776,7 @@ export class StudioArtifactBuildService {
 
     private stakePrerequisiteProvenance(
         operation: PreparedStakeProjectionOperation,
-        result: import("@fromstan/pokie").ArtifactBuildResult,
+        result: import("@fromstan/pokie").BuildOutputResult,
     ): NonNullable<Extract<StudioArtifactBuildView, {readonly status: "ok"}>["stakePrerequisiteProvenance"]> {
         const source = operation.plan.source.configurationProvenance;
         const ownership = requireManagedOutcomeProjectOwnership(result)[0];
@@ -801,7 +801,7 @@ export class StudioArtifactBuildService {
         };
     }
 
-    private plan(project: PokieProject, target: ArtifactTargetType, destinationPath?: string, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan> {
+    private plan(project: PokieProject, target: OutputFormat, destinationPath?: string, options?: BuildOutputOptions): Promise<FormatConversionPlan> {
         return target === "stakeAdapter"
             ? this.stakeProjection.prepare(project, destinationPath, options)
             : this.registry.preparePlan(project, target, {destinationPath, outcomeLibraryGeneration: options?.outcomeLibraryGeneration, signal: options?.signal});
@@ -813,7 +813,7 @@ export class StudioArtifactBuildService {
     // "error" status for that).
     private async resolveForTarget(
         projectRoot: string,
-        target: ArtifactTargetType,
+        target: OutputFormat,
         outDir: string | undefined,
     ): Promise<{project: PokieProject; destination: string} | undefined> {
         const project = await resolveStudioProjectSource(this.resolveProject, projectRoot);
@@ -823,21 +823,21 @@ export class StudioArtifactBuildService {
         return {project, destination: path.resolve(outDir ?? resolveDefaultDestination(project.rootPath, target))};
     }
 
-    private describePlanDiagnostic(plan: ArtifactConversionPlan): string {
+    private describePlanDiagnostic(plan: FormatConversionPlan): string {
         const diagnostic = plan.diagnostic;
         return diagnostic === undefined
             ? "Format conversion is unavailable."
-            : describeArtifactConversionPlanDiagnostic(plan) ?? `${diagnostic.message} Next: ${diagnostic.recovery}`;
+            : describeFormatConversionPlanDiagnostic(plan) ?? `${diagnostic.message} Next: ${diagnostic.recovery}`;
     }
 
-    private targetPlannerFields(plan: ArtifactConversionPlan): {readonly diagnostic?: string; readonly plan: ArtifactConversionPlan} {
+    private targetPlannerFields(plan: FormatConversionPlan): {readonly diagnostic?: string; readonly plan: FormatConversionPlan} {
         if (plan.status === "unavailable") return {diagnostic: this.describePlanDiagnostic(plan), plan};
         return {plan};
     }
 
     private async rollbackRegistrationFailure(
-        result: import("@fromstan/pokie").ArtifactBuildResult,
-        plan: ArtifactConversionPlan,
+        result: import("@fromstan/pokie").BuildOutputResult,
+        plan: FormatConversionPlan,
         registeredRoots: readonly string[],
         outputDestinationExisted: boolean,
     ): Promise<void> {
@@ -873,7 +873,7 @@ export class StudioArtifactBuildService {
             // deleted bundle must never remain advertised as reusable.
             const ownership = managedOwnership.find((entry) => entry.rootPath === projectRoot && entry.disposition === "owned");
             if (ownership !== undefined) {
-                const registry = this.registry as ArtifactBuilderRegistry & {
+                const registry = this.registry as BuildOutputBuilderRegistry & {
                     releaseManagedOutcomeProject?: (sourceRootPath: string, rootPath: string) => Promise<void>;
                 };
                 if (registry.releaseManagedOutcomeProject !== undefined) {
@@ -917,7 +917,7 @@ export class StudioArtifactBuildService {
         assertRegistrationCleanup();
     }
 
-    private durableManagedRoots(result: import("@fromstan/pokie").ArtifactBuildResult): readonly string[] {
+    private durableManagedRoots(result: import("@fromstan/pokie").BuildOutputResult): readonly string[] {
         const ownership = requireManagedOutcomeProjectOwnership(result);
         const transient = new Set(ownership.filter((entry) => entry.disposition === "transient").map((entry) => entry.rootPath));
         return Array.from(new Set([...(result.prerequisiteProjectRoots ?? []), ...(result.managedProjectRoots ?? [])]))
@@ -954,7 +954,7 @@ function terminalStatusFor(result: StudioArtifactBuildView): "completed" | "fail
 type StudioArtifactBuildJobRecord = {
     readonly id: string;
     readonly projectRoot: string;
-    readonly target: ArtifactTargetType;
+    readonly target: OutputFormat;
     status: "queued" | "running" | "completed" | "failed" | "cancelled";
     cancellationRequested: boolean;
     executionStarted: boolean;
@@ -971,7 +971,7 @@ type PreparedStakeOperationRecord = {
     readonly operation: PreparedStakeProjectionOperation;
 };
 
-function toProgressView(progress: ArtifactBuildProgress): StudioArtifactBuildProgressView {
+function toProgressView(progress: BuildProgress): StudioArtifactBuildProgressView {
     return {
         status: progress.status,
         ...(progress.phase === undefined ? {} : {phase: progress.phase}),
@@ -991,4 +991,4 @@ function toProgressView(progress: ArtifactBuildProgress): StudioArtifactBuildPro
     };
 }
 
-type PreparedExtractionRecord = {readonly projectRoot: string; readonly project: PokieProject; readonly destination: string; readonly plan: ArtifactConversionPlan};
+type PreparedExtractionRecord = {readonly projectRoot: string; readonly project: PokieProject; readonly destination: string; readonly plan: FormatConversionPlan};

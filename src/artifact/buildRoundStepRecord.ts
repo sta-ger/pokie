@@ -1,6 +1,6 @@
 import {validateSequenceSelections} from "./validateSequenceSelections.js";
 import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
-import {validateArtifactCoordinates} from "./validateArtifactCoordinates.js";
+import {validateRoundRecordCoordinates} from "./validateRoundRecordCoordinates.js";
 import {assertValidFeatureEventInput} from "./internal/assertValidFeatureEventInput.js";
 import {canonicalizeJsonField} from "./internal/canonicalizeJsonField.js";
 import {deepFreeze} from "../internal/deepFreeze.js";
@@ -88,6 +88,6 @@ export function buildRoundStepRecord<T extends string | number = string>(
         ...(source.debug !== undefined ? {debug: canonicalizeJsonField(`step ${index} debug`, source.debug)} : {}),
     };
 
-    validateArtifactCoordinates(step);
+    validateRoundRecordCoordinates(step);
     return deepFreeze(step);
 }

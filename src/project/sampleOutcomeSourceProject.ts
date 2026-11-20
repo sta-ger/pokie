@@ -1,6 +1,6 @@
 import type {PreGeneratedOutcomeSelection} from "../pregenerated/PreGeneratedOutcomeSelection.js";
 import type {WeightedOutcomeRandomSource} from "../pregenerated/WeightedOutcomeRandomSource.js";
-import {OutcomeLibraryBundleOutcomeSource} from "../weightedoutcome/bundle/OutcomeLibraryBundleOutcomeSource.js";
+import {OutcomeLibraryFolderOutcomeSource} from "../weightedoutcome/folder/OutcomeLibraryFolderOutcomeSource.js";
 import {OUTCOME_SOURCE_SAMPLE_OPERATION} from "./PokieOperation.js";
 import type {PokieProject} from "./PokieProject.js";
 import type {UnsupportedProjectOperationDiagnostic} from "./UnsupportedProjectOperationDiagnostic.js";
@@ -12,7 +12,7 @@ export type OutcomeSourceSampleResult<T extends string | number = string> =
 
 // Draws exactly one outcome from a resolved "outcomeLibrary" project's own mode, through the same
 // selector/session/server path PreGeneratedSpinCommandHandler/PreGeneratedRoundReplayer already use --
-// OutcomeLibraryBundleOutcomeSource itself wraps WeightedOutcomeSelector's own cumulative-weight walk over the
+// OutcomeLibraryFolderOutcomeSource itself wraps WeightedOutcomeSelector's own cumulative-weight walk over the
 // mode's own index -- never a freshly regenerated game-model draw (see CanonicalOutcomeSourceDescriptor's own
 // doc comment on OUTCOME_SOURCE_SAMPLE_CAPABILITY for why). Any project lacking that capability -- a
 // "stakeAdapter" export has no PreGeneratedOutcomeSourcing-style draw contract, see that capability's own doc
@@ -28,7 +28,7 @@ export async function sampleOutcomeSourceProject<T extends string | number = str
         return {supported: false, diagnostic};
     }
 
-    const outcomeSource = new OutcomeLibraryBundleOutcomeSource<T>(project.rootPath, modeName);
+    const outcomeSource = new OutcomeLibraryFolderOutcomeSource<T>(project.rootPath, modeName);
     const selection = await outcomeSource.drawOutcome(randomSource);
     return {supported: true, selection};
 }

@@ -1,14 +1,14 @@
-import type {ArtifactConversionPlan, ExternalDeploymentResult} from "@fromstan/pokie";
+import type {FormatConversionPlan, ExternalExportResult} from "@fromstan/pokie";
 import {computeDeploymentStages} from "./computeDeploymentStages.js";
 import type {StudioDeploymentRunView} from "./StudioDeploymentRunView.js";
 
-// The one conversion point from ExternalDeploymentService's own ExternalDeploymentResult to the plain
+// The one conversion point from ExternalExportService's own ExternalExportResult to the plain
 // JSON DTO an API response actually sends. Every field here is copied straight from `result` — the
 // only real transforms are content-decoding each generated artifact's own `content` (string | Buffer)
 // into a plain string, and computing `stages` (see computeDeploymentStages). This function never
-// re-derives, re-checks, or second-guesses anything ExternalDeploymentService already computed — see
+// re-derives, re-checks, or second-guesses anything ExternalExportService already computed — see
 // StudioDeploymentService's own doc comment for why that matters.
-export function toStudioDeploymentRunView(result: ExternalDeploymentResult, targetId: string, publish: boolean, plan: ArtifactConversionPlan): StudioDeploymentRunView {
+export function toStudioDeploymentRunView(result: ExternalExportResult, targetId: string, publish: boolean, plan: FormatConversionPlan): StudioDeploymentRunView {
     return {
         plan,
         targetId,

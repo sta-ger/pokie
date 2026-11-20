@@ -12,14 +12,14 @@ import {SeededWeightedOutcomeRandomSource} from "../pregenerated/SeededWeightedO
 import type {WeightedOutcomeRandomSource} from "../pregenerated/WeightedOutcomeRandomSource.js";
 import {capturePublishDirectoryOwnership, preflightAtomicDirectoryPublication, publishDirectoryAtomically, removePublishedDirectoryIfOwned, type PublishedDirectoryOwnership} from "../stakeengine/internal/publishDirectoryAtomically.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
-import type {OutcomeLibraryBundleManifest, OutcomeLibraryBundleManifestModeEntry} from "../weightedoutcome/bundle/OutcomeLibraryBundleManifest.js";
-import type {OutcomeLibraryBundleModeIndex} from "../weightedoutcome/bundle/OutcomeLibraryBundleModeIndex.js";
-import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
-import type {OutcomeLibraryBundleReading} from "../weightedoutcome/bundle/OutcomeLibraryBundleReading.js";
-import {OutcomeLibraryBundleValidator} from "../weightedoutcome/bundle/OutcomeLibraryBundleValidator.js";
-import type {OutcomeLibraryBundleValidating} from "../weightedoutcome/bundle/OutcomeLibraryBundleValidating.js";
-import {readAndVerifyOutcomeAtByteRange} from "../weightedoutcome/bundle/internal/readOutcomeAtByteRange.js";
-import {selectIndexEntryByCumulativeWeight} from "../weightedoutcome/bundle/internal/selectIndexEntryByCumulativeWeight.js";
+import type {OutcomeLibraryFolderManifest, OutcomeLibraryFolderManifestModeEntry} from "../weightedoutcome/folder/OutcomeLibraryFolderManifest.js";
+import type {OutcomeLibraryFolderModeIndex} from "../weightedoutcome/folder/OutcomeLibraryFolderModeIndex.js";
+import {OutcomeLibraryFolderReader} from "../weightedoutcome/folder/OutcomeLibraryFolderReader.js";
+import type {OutcomeLibraryFolderReading} from "../weightedoutcome/folder/OutcomeLibraryFolderReading.js";
+import {OutcomeLibraryFolderValidator} from "../weightedoutcome/folder/OutcomeLibraryFolderValidator.js";
+import type {OutcomeLibraryFolderValidating} from "../weightedoutcome/folder/OutcomeLibraryFolderValidating.js";
+import {readAndVerifyOutcomeAtByteRange} from "../weightedoutcome/folder/internal/readOutcomeAtByteRange.js";
+import {selectIndexEntryByCumulativeWeight} from "../weightedoutcome/folder/internal/selectIndexEntryByCumulativeWeight.js";
 import {computeCertificationPackContentHash} from "./computeCertificationPackContentHash.js";
 import {
     CERTIFICATION_PACK_MANIFEST_SCHEMA_VERSION,
@@ -37,7 +37,7 @@ import {isPositiveSafeInteger, MODE_NAME_PATTERN} from "./internal/certification
 import {assertSafeToReplaceCertificationPackDirectory} from "./internal/assertSafeToReplaceCertificationPackDirectory.js";
 import {sha256OfBytes} from "./internal/sha256OfBytes.js";
 
-function hashManifest(manifest: OutcomeLibraryBundleManifest): string {
+function hashManifest(manifest: OutcomeLibraryFolderManifest): string {
     return sha256OfBytes(JSON.stringify(toCanonicalJson(manifest)));
 }
 
@@ -50,7 +50,7 @@ function assertNotCancelled(options: CertificationPackBuildOptions | undefined):
 // file could have its entries (byteOffset/byteLength/recordHash, even their order) rewritten while the
 // libraryHash *string* is left untouched. Hashing the whole object makes that indistinguishable from any other
 // content change.
-function hashIndex(index: OutcomeLibraryBundleModeIndex): string {
+function hashIndex(index: OutcomeLibraryFolderModeIndex): string {
     return sha256OfBytes(JSON.stringify(toCanonicalJson(index)));
 }
 
@@ -59,16 +59,16 @@ function hashIndex(index: OutcomeLibraryBundleModeIndex): string {
 // verbatim off the source bundle's own manifest.json (libraryHash/outcomeCount/totalWeight/analysis), or
 // produced by selecting and reading samples directly against one pinned-in-memory snapshot of a mode's own
 // index (see "Pinned-snapshot sampling" below) — the exact same selection/verification algorithms the
-// pre-generated runtime and OutcomeLibraryBundleReader themselves use, just invoked directly against a snapshot
+// pre-generated runtime and OutcomeLibraryFolderReader themselves use, just invoked directly against a snapshot
 // this class captured itself, rather than through a wrapper that would re-read the index on every call. Refuses
-// to write anything (the same "no partial artifact" guarantee OutcomeLibraryBundleWriter and StakeEngineExporter
+// to write anything (the same "no partial artifact" guarantee OutcomeLibraryFolderWriter and StakeEngineExporter
 // already carry) if the source bundle itself doesn't deep-validate cleanly — evidence built on top of a library
 // that doesn't even validate against its own rules can't be trusted either.
 //
 // Pinned-snapshot sampling: each requested mode's own index is read exactly ONCE, before any sampling begins,
 // and held in memory for the rest of the build — every one of that mode's sampleCount draws selects an entry
-// (via selectIndexEntryByCumulativeWeight, the exact same cumulative-weight walk OutcomeLibraryBundleReader.
-// drawOutcome uses internally) against that SAME captured OutcomeLibraryBundleModeIndex object, then reads and
+// (via selectIndexEntryByCumulativeWeight, the exact same cumulative-weight walk OutcomeLibraryFolderReader.
+// drawOutcome uses internally) against that SAME captured OutcomeLibraryFolderModeIndex object, then reads and
 // verifies that exact entry's own byte range (via readAndVerifyOutcomeAtByteRange, the same byte-range read +
 // recordHash check readOutcomeById/drawOutcome themselves rely on) directly — never through drawOutcome, which
 // would re-read a fresh index on every single call and could therefore observe a different snapshot mid-mode.
@@ -86,8 +86,8 @@ function hashIndex(index: OutcomeLibraryBundleModeIndex): string {
 // any other error, rather than ever making a broken bundle visible at outDir.
 export class CertificationPackBuilder<T extends string | number = string> implements CertificationPackBuilding {
     private readonly pokieVersion: string;
-    private readonly reader: OutcomeLibraryBundleReading<T>;
-    private readonly bundleValidator: OutcomeLibraryBundleValidating;
+    private readonly reader: OutcomeLibraryFolderReading<T>;
+    private readonly bundleValidator: OutcomeLibraryFolderValidating;
     private readonly randomSourceFactory: (seed: string) => WeightedOutcomeRandomSource;
     private readonly now: () => Date;
     private readonly writeFile: (filePath: string, contents: string | Buffer) => void;
@@ -100,8 +100,8 @@ export class CertificationPackBuilder<T extends string | number = string> implem
 
     constructor(
         pokieVersion: string,
-        reader: OutcomeLibraryBundleReading<T> = new OutcomeLibraryBundleReader<T>(),
-        bundleValidator: OutcomeLibraryBundleValidating = new OutcomeLibraryBundleValidator(),
+        reader: OutcomeLibraryFolderReading<T> = new OutcomeLibraryFolderReader<T>(),
+        bundleValidator: OutcomeLibraryFolderValidating = new OutcomeLibraryFolderValidator(),
         randomSourceFactory: (seed: string) => WeightedOutcomeRandomSource = (seed) => new SeededWeightedOutcomeRandomSource(seed),
         now: () => Date = () => new Date(),
         writeFile: (filePath: string, contents: string | Buffer) => void = (filePath, contents) => fs.writeFileSync(filePath, contents),
@@ -131,7 +131,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
     }
 
     public async buildFromBundle(
-        bundleDir: string,
+        libraryDir: string,
         modes: readonly CertificationPackModeSampleInput[],
         outDir: string,
         options?: CertificationPackBuildOptions,
@@ -147,7 +147,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
             return path.join(physical(path.dirname(absolute)), path.basename(absolute));
         };
         const outputIdentity = physical(outDir);
-        for (const input of [bundleDir, options?.pack?.modelSource, ...(options?.pack?.reportFiles ?? []), ...(options?.pack?.replayFiles ?? []), options?.output?.templateFile]) {
+        for (const input of [libraryDir, options?.pack?.modelSource, ...(options?.pack?.reportFiles ?? []), ...(options?.pack?.replayFiles ?? []), options?.output?.templateFile]) {
             if (!input) continue;
             const inputIdentity = physical(input);
             if (inputIdentity === outputIdentity || inputIdentity.startsWith(outputIdentity + path.sep) || outputIdentity.startsWith(inputIdentity + path.sep)) throw new Error("Certification source/output overlap is not permitted, including symlink aliases.");
@@ -159,23 +159,23 @@ export class CertificationPackBuilder<T extends string | number = string> implem
             return {outDir, files: [], manifest: undefined, issues: upfrontIssues};
         }
 
-        let sourceManifest: OutcomeLibraryBundleManifest;
+        let sourceManifest: OutcomeLibraryFolderManifest;
         try {
-            if (!resolveSafeCertificationPackFilePath(bundleDir, "manifest.json")) throw new Error("Source manifest is missing, symlinked or unsafe.");
-            sourceManifest = await this.reader.readManifest(bundleDir);
+            if (!resolveSafeCertificationPackFilePath(libraryDir, "manifest.json")) throw new Error("Source manifest is missing, symlinked or unsafe.");
+            sourceManifest = await this.reader.readManifest(libraryDir);
         } catch (error) {
             return this.failed(outDir, upfrontIssues, [
                 {
                     code: "certification-pack-build-source-bundle-manifest-unreadable",
                     severity: "error",
-                    message: `Could not read "${bundleDir}"'s own manifest.json: ${error instanceof Error ? error.message : String(error)}.`,
+                    message: `Could not read "${libraryDir}"'s own manifest.json: ${error instanceof Error ? error.message : String(error)}.`,
                 },
             ]);
         }
-        if (sourceManifest.files.some(file => !resolveSafeCertificationPackFilePath(bundleDir, file))) return this.failed(outDir, upfrontIssues, [{code: "certification-pack-source-unsafe", severity: "error", message: "Source inventory contains a missing, symlinked or escaping file."}]);
+        if (sourceManifest.files.some(file => !resolveSafeCertificationPackFilePath(libraryDir, file))) return this.failed(outDir, upfrontIssues, [{code: "certification-pack-source-unsafe", severity: "error", message: "Source inventory contains a missing, symlinked or escaping file."}]);
         const initialManifestHash = hashManifest(sourceManifest);
 
-        const deepValidationIssues = await this.bundleValidator.validate(bundleDir, {deep: true, signal: options?.signal, throwIfAborted: () => assertNotCancelled(options)});
+        const deepValidationIssues = await this.bundleValidator.validate(libraryDir, {deep: true, signal: options?.signal, throwIfAborted: () => assertNotCancelled(options)});
         assertNotCancelled(options);
         if (deepValidationIssues.some((issue) => issue.severity === "error")) {
             return this.failed(outDir, upfrontIssues, deepValidationIssues);
@@ -187,7 +187,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
                 missingModeIssues.push({
                     code: "certification-pack-build-mode-not-found-in-bundle",
                     severity: "error",
-                    message: `mode "${modeInput.modeName}" is not present in "${bundleDir}"'s own manifest.json.`,
+                    message: `mode "${modeInput.modeName}" is not present in "${libraryDir}"'s own manifest.json.`,
                     details: {modeName: modeInput.modeName},
                 });
             }
@@ -200,16 +200,16 @@ export class CertificationPackBuilder<T extends string | number = string> implem
         // every draw for that mode selects/reads against this same in-memory object (see sampleMode), and its
         // exact hash (not just its own libraryHash field) is re-checked once more right before publishing (see
         // detectSourceBundleDrift).
-        let initialIndexes: Map<string, OutcomeLibraryBundleModeIndex>;
+        let initialIndexes: Map<string, OutcomeLibraryFolderModeIndex>;
         try {
-            initialIndexes = await this.readModeIndexes(bundleDir, modes);
+            initialIndexes = await this.readModeIndexes(libraryDir, modes);
         } catch (error) {
             return this.failed(outDir, upfrontIssues, [
                 ...deepValidationIssues,
                 {
                     code: "certification-pack-build-source-bundle-index-unreadable",
                     severity: "error",
-                    message: `Could not read a requested mode's own index in "${bundleDir}": ${error instanceof Error ? error.message : String(error)}.`,
+                    message: `Could not read a requested mode's own index in "${libraryDir}": ${error instanceof Error ? error.message : String(error)}.`,
                 },
             ]);
         }
@@ -230,7 +230,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
                 template = parseCertificationJson(fs.readFileSync(options.output.templateFile, "utf8")) as CertificationPackTemplate;
             }
             validateCertificationPackTemplate(template);
-            pack = await acquireCertificationPack(sourceManifest, initialManifestHash, options?.pack, options?.signal, bundleDir);
+            pack = await acquireCertificationPack(sourceManifest, initialManifestHash, options?.pack, options?.signal, libraryDir);
         } catch (error) {
             if (error instanceof Error && (/cleanup failed/).test(error.message)) throw error;
             assertNotCancelled(options);
@@ -250,13 +250,13 @@ export class CertificationPackBuilder<T extends string | number = string> implem
                 const sourceEntry = sourceManifest.modes.find((entry) => entry.modeName === modeInput.modeName)!;
                 // Safe: captured for every requested mode in readModeIndexes above.
                 const capturedIndex = initialIndexes.get(modeInput.modeName)!;
-                modeEntries.push(await this.sampleMode(bundleDir, modeInput, sourceEntry, capturedIndex, stagingDir, options, () => {
+                modeEntries.push(await this.sampleMode(libraryDir, modeInput, sourceEntry, capturedIndex, stagingDir, options, () => {
                     completedSamples++;
                     options?.onSample?.(completedSamples, totalSamples);
                 }));
             }
 
-            const driftIssue = await this.detectSourceBundleDrift(bundleDir, modes, initialManifestHash, initialIndexes);
+            const driftIssue = await this.detectSourceBundleDrift(libraryDir, modes, initialManifestHash, initialIndexes);
             if (driftIssue !== undefined) {
                 return this.failed(outDir, upfrontIssues, [...deepValidationIssues, driftIssue]);
             }
@@ -273,7 +273,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
                 game: sourceManifest.game,
                 ...(sourceManifest.configHash !== undefined ? {configHash: sourceManifest.configHash} : {}),
                 artifactPokieVersion: sourceManifest.artifactPokieVersion,
-                sourceBundleManifestHash: initialManifestHash,
+                sourceLibraryManifestHash: initialManifestHash,
                 modes: modeEntries,
                 deepValidation: {ranAt: generatedAt, issues: deepValidationIssues},
                 files: relativeFiles,
@@ -281,7 +281,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
             const manifest: CertificationPackManifest = {
                 ...draftManifest,
                 generatedAt,
-                sourceBundleDir: bundleDir,
+                sourceLibraryDir: libraryDir,
                 evidenceContentHash: computeCertificationPackContentHash(draftManifest),
             };
             const renderer = new CertificationPackRenderer();
@@ -305,7 +305,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
 
             assertNotCancelled(options);
             // Reacquire every explicit authority before commit, closing changes during sampling/rendering.
-            const finalPack = await acquireCertificationPack(sourceManifest, initialManifestHash, options?.pack, options?.signal, bundleDir);
+            const finalPack = await acquireCertificationPack(sourceManifest, initialManifestHash, options?.pack, options?.signal, libraryDir);
             if (packHash(finalPack) !== packHash(pack)) throw new Error("Pack trusted sources changed before publication.");
             if (options?.output?.templateFile && (packHash(parseCertificationJson(fs.readFileSync(options.output.templateFile, "utf8"))) !== presentation.templateHash || sha256OfBytes(fs.readFileSync(options.output.templateFile)) !== templateArtifactHash)) throw new Error("Template changed before publication.");
             options?.onStage?.("Publishing pack");
@@ -315,7 +315,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
             });
             assertNotCancelled(options);
             this.assertAuthorityBytesUnchanged(pack, templateArtifactHash, options);
-            const finalSourceDrift = await this.detectSourceBundleDrift(bundleDir, modes, initialManifestHash, initialIndexes);
+            const finalSourceDrift = await this.detectSourceBundleDrift(libraryDir, modes, initialManifestHash, initialIndexes);
             if (finalSourceDrift) return this.failed(outDir, upfrontIssues, [finalSourceDrift]);
             assertNotCancelled(options);
             const published = publishDirectoryAtomically({
@@ -390,12 +390,12 @@ export class CertificationPackBuilder<T extends string | number = string> implem
     }
 
     private async readModeIndexes(
-        bundleDir: string,
+        libraryDir: string,
         modes: readonly CertificationPackModeSampleInput[],
-    ): Promise<Map<string, OutcomeLibraryBundleModeIndex>> {
-        const indexes = new Map<string, OutcomeLibraryBundleModeIndex>();
+    ): Promise<Map<string, OutcomeLibraryFolderModeIndex>> {
+        const indexes = new Map<string, OutcomeLibraryFolderModeIndex>();
         for (const modeInput of modes) {
-            indexes.set(modeInput.modeName, await this.reader.readModeIndex(bundleDir, modeInput.modeName));
+            indexes.set(modeInput.modeName, await this.reader.readModeIndex(libraryDir, modeInput.modeName));
         }
         return indexes;
     }
@@ -406,38 +406,38 @@ export class CertificationPackBuilder<T extends string | number = string> implem
     // stale) could otherwise slip past. Returns the drift ValidationIssue if anything differs, or a read itself
     // fails (the source bundle disappearing mid-sample is drift too), or undefined if the snapshot held.
     private async detectSourceBundleDrift(
-        bundleDir: string,
+        libraryDir: string,
         modes: readonly CertificationPackModeSampleInput[],
         initialManifestHash: string,
-        initialIndexes: ReadonlyMap<string, OutcomeLibraryBundleModeIndex>,
+        initialIndexes: ReadonlyMap<string, OutcomeLibraryFolderModeIndex>,
     ): Promise<ValidationIssue | undefined> {
-        let finalManifest: OutcomeLibraryBundleManifest;
+        let finalManifest: OutcomeLibraryFolderManifest;
         try {
-            finalManifest = await this.reader.readManifest(bundleDir);
+            finalManifest = await this.reader.readManifest(libraryDir);
         } catch (error) {
             return {
                 code: "certification-pack-build-source-bundle-drift",
                 severity: "error",
-                message: `the source bundle at "${bundleDir}" could no longer be read after sampling (${error instanceof Error ? error.message : String(error)}); refusing to publish evidence against a possibly-inconsistent snapshot.`,
+                message: `the source bundle at "${libraryDir}" could no longer be read after sampling (${error instanceof Error ? error.message : String(error)}); refusing to publish evidence against a possibly-inconsistent snapshot.`,
             };
         }
         if (hashManifest(finalManifest) !== initialManifestHash) {
             return {
                 code: "certification-pack-build-source-bundle-drift",
                 severity: "error",
-                message: `the source bundle's own manifest.json at "${bundleDir}" changed while evidence was being sampled; refusing to publish evidence against an inconsistent snapshot.`,
+                message: `the source bundle's own manifest.json at "${libraryDir}" changed while evidence was being sampled; refusing to publish evidence against an inconsistent snapshot.`,
             };
         }
 
         for (const modeInput of modes) {
-            let finalIndex: OutcomeLibraryBundleModeIndex;
+            let finalIndex: OutcomeLibraryFolderModeIndex;
             try {
-                finalIndex = await this.reader.readModeIndex(bundleDir, modeInput.modeName);
+                finalIndex = await this.reader.readModeIndex(libraryDir, modeInput.modeName);
             } catch (error) {
                 return {
                     code: "certification-pack-build-source-bundle-drift",
                     severity: "error",
-                    message: `mode "${modeInput.modeName}"'s own index in "${bundleDir}" could no longer be read after sampling (${error instanceof Error ? error.message : String(error)}); refusing to publish evidence against a possibly-inconsistent snapshot.`,
+                    message: `mode "${modeInput.modeName}"'s own index in "${libraryDir}" could no longer be read after sampling (${error instanceof Error ? error.message : String(error)}); refusing to publish evidence against a possibly-inconsistent snapshot.`,
                     details: {modeName: modeInput.modeName},
                 };
             }
@@ -447,7 +447,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
                 return {
                     code: "certification-pack-build-source-bundle-drift",
                     severity: "error",
-                    message: `mode "${modeInput.modeName}"'s own index in "${bundleDir}" changed while evidence was being sampled; refusing to publish evidence against an inconsistent snapshot.`,
+                    message: `mode "${modeInput.modeName}"'s own index in "${libraryDir}" changed while evidence was being sampled; refusing to publish evidence against an inconsistent snapshot.`,
                     details: {modeName: modeInput.modeName},
                 };
             }
@@ -459,7 +459,7 @@ export class CertificationPackBuilder<T extends string | number = string> implem
     // Samples "modeInput.sampleCount" outcomes deterministically from "index" — a snapshot already captured
     // before this call, never re-read here or by anything this method calls. Each draw:
     // 1. selects a winning index entry via selectIndexEntryByCumulativeWeight against index.entries (the exact
-    //    same cumulative-weight walk OutcomeLibraryBundleReader.drawOutcome uses internally, invoked directly
+    //    same cumulative-weight walk OutcomeLibraryFolderReader.drawOutcome uses internally, invoked directly
     //    against the pinned snapshot rather than through a wrapper that would re-read a fresh index);
     // 2. reads and verifies that exact entry's own byte range via readAndVerifyOutcomeAtByteRange (the same
     //    byte-range read + recordHash check readOutcomeById/drawOutcome themselves rely on) — never drawOutcome
@@ -467,16 +467,16 @@ export class CertificationPackBuilder<T extends string | number = string> implem
     // Sampling uses a captured in-memory index, so yielding does not weaken the snapshot guarantee.  It does,
     // however, let the server receive cancellation while a single very large mode is still being sampled.
     private async sampleMode(
-        bundleDir: string,
+        libraryDir: string,
         modeInput: CertificationPackModeSampleInput,
-        sourceEntry: OutcomeLibraryBundleManifestModeEntry,
-        index: OutcomeLibraryBundleModeIndex,
+        sourceEntry: OutcomeLibraryFolderManifestModeEntry,
+        index: OutcomeLibraryFolderModeIndex,
         stagingDir: string,
         options: CertificationPackBuildOptions | undefined,
         onSample: () => void,
     ): Promise<CertificationPackModeEntry> {
         const randomSource = this.randomSourceFactory(modeInput.seed);
-        const outcomesFilePath = path.join(bundleDir, index.outcomesFile);
+        const outcomesFilePath = path.join(libraryDir, index.outcomesFile);
 
         const lines: string[] = [];
         for (let sampleIndex = 0; sampleIndex < modeInput.sampleCount; sampleIndex++) {
