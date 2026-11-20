@@ -63,7 +63,7 @@ export function isValidSha256Hash(value: unknown): value is string {
 
 const POKIE_GAME_MANIFEST_KEYS = new Set(["id", "name", "version", "description", "author"]);
 
-function isPokieGameManifestShape(value: unknown): value is {id: string; name: string; version: string; description?: string; author?: string} {
+function isPokieGameInfoShape(value: unknown): value is {id: string; name: string; version: string; description?: string; author?: string} {
     if (typeof value !== "object" || value === null || !hasOnlyAllowedKeys(value, POKIE_GAME_MANIFEST_KEYS)) {
         return false;
     }
@@ -225,7 +225,7 @@ export function isManifestShape(value: unknown): value is CertificationPackIndex
         isNonEmptyString(manifest.generatedBy) &&
         isNonEmptyString(manifest.pokieVersion) &&
         isNonEmptyString(manifest.generatedAt) &&
-        isPokieGameManifestShape(manifest.game) &&
+        isPokieGameInfoShape(manifest.game) &&
         (manifest.configHash === undefined || isNonEmptyString(manifest.configHash)) &&
         isNonEmptyString(manifest.artifactPokieVersion) &&
         isNonEmptyString(manifest.sourceLibraryDir) &&
