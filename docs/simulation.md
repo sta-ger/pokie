@@ -727,9 +727,9 @@ component hits and jackpot attribution. Their other component amounts are marked
 unattributed (`partition.unavailable`): event presence does not establish a
 feature stages. Feature WASM rounds expose accepted mathematical status/component samples and weighted counters. Ordinary amount-only artifacts keep those metrics explicitly unavailable.
 
-Built-in free games, Hold&Win, bounded respins, collection, cascades, weighted
+Built-in free games, Hold&Win, limited respins, collection, cascades, weighted
 bonuses, modifiers and their already-supported jackpot/bet-mode compositions use
-the same observer. Retained active state is session-local and contains only fixed
+the same observer. Saved active state is session-local and contains only fixed
 feature counters, duration and win sums. Same-session chunks complete the original
 instance once; a separately restored tail records excluded completion and carried
 subrounds, never a fabricated feature entry. A fixed per-session terminal marker

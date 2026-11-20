@@ -344,10 +344,10 @@ literal keys. Unsupported ancestors override exact/default evidence at every
 descendant; default filtering and normalization use the same path identity.
 
 Provenance is compared at containers as well as leaves, including empty objects
-and arrays. Retained all-exact sequence declarations also retain trusted source-only
+and arrays. Saved all-exact sequence declarations also keep trusted-source-only
 changes at `/reelSequences`, individual reels, `type`, and `symbols`, even though
 mathematical values compare through effective strips. Recorded absent symbol
-tables, payout entries and omitted feature fields retain their own provenance
+tables, payout entries and omitted feature fields keep their own origin
 changes with `present: false` on both sides. This never supplies missing values. A container trusted source change has its own pointer even when child
 fields have independent trusted source. A child representation change that already
 discloses adding/removing a default declaration avoids redundant parent entries.
