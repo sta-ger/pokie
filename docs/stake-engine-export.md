@@ -153,7 +153,7 @@ checks on top:
 | `stakeengine-mode-name-case-collision` | error | two `modeName`s differing only in case — these would write the exact same `lookup_*.csv`/`books_*.jsonl.zst` filenames on a case-insensitive filesystem, a real conflict, not just a portability nit |
 | `stakeengine-mode-cost-invalid` | error | `cost` isn't a finite number `> 0` |
 | `stakeengine-cross-mode-provenance-mismatch` | error | a mode's game id/version, `configHash`, or `pokieVersion` doesn't match the export's other modes (`betMode`/`stake` are expected to differ per mode, so those are excluded from this check) |
-| `stakeengine-outcome-id-not-integer` | error | an outcome `id` isn't a canonical non-negative integer string |
+| `stakeengine-outcome-id-not-integer` | error | an outcome `id` isn't a plain non-negative integer string |
 | `stakeengine-outcome-weight-not-integer` | error | an outcome's `weight` isn't a whole number |
 | `stakeengine-outcome-payout-multiplier-not-representable` | error | an outcome's `record.payoutMultiplier * cost * 100` isn't a non-negative safe integer |
 | `stakeengine-outcome-events-invalid` | error | the events projector (standard or custom) threw while projecting an outcome's artifact — e.g. an event amount that isn't representable in Stake units |

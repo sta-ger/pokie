@@ -4,7 +4,7 @@ const VERSION_PATTERN = /^(\d+)\.(\d+)\.(\d+)/;
 // externalexport/internal/compareSemverLite.ts rather than imported across module boundaries -- "internal"
 // directories are private to their own module by this package's own convention (every other module with its
 // own internal/ folder owns its own copy of anything it needs from a sibling module's internal/), so wasm/
-// owns its own copy instead of reaching into externaladapter's.
+// owns its own copy instead of reaching into external export's internal helpers.
 export function isValidSemverLite(version: string): boolean {
     return VERSION_PATTERN.test(version.trim());
 }

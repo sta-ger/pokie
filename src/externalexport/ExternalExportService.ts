@@ -21,20 +21,20 @@ function hasError(issues: readonly ValidationIssue[]): boolean {
 }
 
 // The SDK's own single-call orchestrator: descriptor validation -> compatibility validation -> projection ->
-// generation -> artifact validation -> optional diagnostic -> optional delivery, in that fixed order, with
+// generation -> file validation -> optional diagnostic -> optional delivery, in that fixed order, with
 // every stage past the first one that reports an error-severity issue simply never run (see
 // ExternalExportResult's own doc comment on why each stage's field is `undefined` rather than an empty
 // placeholder in that case). This is the one place in the SDK that's allowed to assume "compatibility already
-// passed" before projecting, or "artifacts already validated" before calling a runtime adapter — calling those
+// passed" before projecting, or "files already validated" before calling a runtime connector — calling those
 // collaborators directly, in a different order or skipping a stage, is exactly the class of mistake this
 // orchestrator exists to make impossible for a normal caller to make by accident.
 //
 // Four invariants this class exists specifically to enforce, not just document:
-//   - **The three mandatory built-in validators (descriptor/compatibility/artifact) always run, in full, no
+//   - **The three mandatory built-in validators (descriptor/compatibility/file) always run, in full, no
 //     matter what.** They are not constructor parameters and cannot be swapped out or disabled — the
 //     constructor only accepts an *extra* validator per stage, whose own issues are always concatenated onto
 //     (never substituted for) the built-in ones. A permissive extra validator — one that always returns no
-//     issues — can therefore never make a genuinely broken target/deployment/artifact set look clean to a
+//     issues — can therefore never make a genuinely broken target/deployment/file set look clean to a
 //     caller who only inspects the final `ExternalExportResult`.
 //   - **Projection happens exactly once, here, and nowhere else.** `deploy()` itself calls
 //     `target.roundProjector.project(...)` for every outcome in every mode — never the generator (see
@@ -43,37 +43,37 @@ function hasError(issues: readonly ValidationIssue[]): boolean {
 //     reference, and nothing generic-over-T to project through, so it has no way to select, ignore, or diverge
 //     from the target's own declared projector.
 //   - **A thrown exception from descriptor validation, compatibility validation, projection, generation, or
-//     artifact validation is always caught and turned into a single error-severity ValidationIssue** — on the
+//     file validation is always caught and turned into a single error-severity ValidationIssue** — on the
 //     relevant stage's own issues, exactly as if that collaborator had reported the problem the normal way —
 //     rather than being allowed to propagate out of `deploy()` itself. Every stage after the one that threw is
 //     still simply never run, the same as for a normally-reported error.
-//   - **`target.diagnostic`/`target.runtimeAdapter` are never called once an earlier stage has failed.**
+//   - **`target.diagnostic`/`target.runtimeConnector` are never called once an earlier stage has failed.**
 //   - **A generator's return value is treated as an untrusted `unknown` runtime value, not the
 //     ExternalFileGenerationResult its own TypeScript type declares.** StandardExternalFileValidator
-//     always runs against it first, before anything here ever reads `.issues`/`.artifacts` off it. If that
+//     always runs against it first, before anything here ever reads `.issues`/`.files` off it. If that
 //     structural check fails, the malformed value is never exposed as `generation` on the returned
 //     ExternalExportResult (which stays `undefined`, the same as if generation had never been attempted),
-//     and target.artifactValidator/the extra artifact validator/target.diagnostic/target.runtimeAdapter are all
+//     and target.fileValidator/the extra file validator/target.diagnostic/target.runtimeConnector are all
 //     skipped, exactly like any other stage failure.
 export class ExternalExportService<T extends string | number = string> implements ExternalExportServicing<T> {
     private readonly descriptorValidator: ExternalExportTargetDescriptorValidating<T> = new ExternalExportTargetDescriptorValidator<T>();
     private readonly compatibilityValidator: ExternalExportCompatibilityValidating<T> = new ExternalExportCompatibilityValidator<T>();
-    private readonly standardArtifactValidator: ExternalFileValidator = new StandardExternalFileValidator();
+    private readonly standardFileValidator: ExternalFileValidator = new StandardExternalFileValidator();
     private readonly extraDescriptorValidator: ExternalExportTargetDescriptorValidating<T> | undefined;
     private readonly extraCompatibilityValidator: ExternalExportCompatibilityValidating<T> | undefined;
-    private readonly extraArtifactValidator: ExternalFileValidator | undefined;
+    private readonly extraFileValidator: ExternalFileValidator | undefined;
 
     // Every parameter here is *additive only* — see the class's own doc comment. There is deliberately no way
-    // to pass a replacement for the built-in descriptor/compatibility/artifact validators; only a further check
+    // to pass a replacement for the built-in descriptor/compatibility/file validators; only a further check
     // layered on top of them.
     constructor(
         extraDescriptorValidator?: ExternalExportTargetDescriptorValidating<T>,
         extraCompatibilityValidator?: ExternalExportCompatibilityValidating<T>,
-        extraArtifactValidator?: ExternalFileValidator,
+        extraFileValidator?: ExternalFileValidator,
     ) {
         this.extraDescriptorValidator = extraDescriptorValidator;
         this.extraCompatibilityValidator = extraCompatibilityValidator;
-        this.extraArtifactValidator = extraArtifactValidator;
+        this.extraFileValidator = extraFileValidator;
     }
 
     public async deploy(target: ExternalExportTarget<T>, modes: readonly ExternalExportModeInput<T>[]): Promise<ExternalExportResult> {
@@ -86,7 +86,7 @@ export class ExternalExportService<T extends string | number = string> implement
             ),
         ];
         if (hasError(descriptorIssues)) {
-            return {descriptorIssues, compatibilityIssues: [], projectionIssues: [], artifactIssues: []};
+            return {descriptorIssues, compatibilityIssues: [], projectionIssues: [], fileIssues: []};
         }
 
         const compatibilityIssues = [
@@ -102,30 +102,30 @@ export class ExternalExportService<T extends string | number = string> implement
             ),
         ];
         if (hasError(compatibilityIssues)) {
-            return {descriptorIssues, compatibilityIssues, projectionIssues: [], artifactIssues: []};
+            return {descriptorIssues, compatibilityIssues, projectionIssues: [], fileIssues: []};
         }
 
         const {projected, issues: projectionIssues} = this.projectModes(target, modes);
         if (projected === undefined) {
-            return {descriptorIssues, compatibilityIssues, projectionIssues, artifactIssues: []};
+            return {descriptorIssues, compatibilityIssues, projectionIssues, fileIssues: []};
         }
 
         // "rawGeneration" is deliberately typed `unknown`, never ExternalFileGenerationResult — a
         // caller-supplied ExternalFileGenerator is a runtime value POKIE has no way to actually enforce the
         // shape of, whatever its own TypeScript type declares. It stays unknown until
-        // StandardExternalFileValidator has confirmed it below; nothing here reads `.issues`/`.artifacts`
+        // StandardExternalFileValidator has confirmed it below; nothing here reads `.issues`/`.files`
         // off it before that.
         let rawGeneration: unknown;
         try {
-            rawGeneration = target.artifactGenerator.generate(projected);
+            rawGeneration = target.fileGenerator.generate(projected);
         } catch (error) {
             rawGeneration = {
-                artifacts: [],
+                files: [],
                 issues: [
                     {
                         code: "external-deployment-generator-threw",
                         severity: "error",
-                        message: `artifactGenerator.generate threw: ${error instanceof Error ? error.message : String(error)}`,
+                        message: `fileGenerator.generate threw: ${error instanceof Error ? error.message : String(error)}`,
                     },
                 ],
             };
@@ -133,51 +133,51 @@ export class ExternalExportService<T extends string | number = string> implement
 
         // Structural validation always runs first, against the still-untrusted raw value — see
         // StandardExternalFileValidator's own doc comment for what "structural" covers (an object at all,
-        // "artifacts"/"issues" as arrays, every artifact's own relativePath/content well-typed, ...). A
+        // "files"/"issues" as arrays, every file's own relativePath/content well-typed, ...). A
         // malformed result is reported here and *never* exposed as "generation" on the returned
-        // ExternalExportResult — not even as a partially-trusted value — and neither target.artifactValidator,
-        // the extra artifact validator, target.diagnostic, nor target.runtimeAdapter is ever called against it.
+        // ExternalExportResult — not even as a partially-trusted value — and neither target.fileValidator,
+        // the extra file validator, target.diagnostic, nor target.runtimeConnector is ever called against it.
         const shapeIssues = this.safeIssues(
-            () => this.standardArtifactValidator.validate(rawGeneration as ExternalFileGenerationResult),
-            "external-deployment-standard-artifact-validator-threw",
-            "Standard artifact validation",
+            () => this.standardFileValidator.validate(rawGeneration as ExternalFileGenerationResult),
+            "external-deployment-standard-file-validator-threw",
+            "Standard file validation",
         );
         if (hasError(shapeIssues)) {
-            return {descriptorIssues, compatibilityIssues, projectionIssues, artifactIssues: shapeIssues};
+            return {descriptorIssues, compatibilityIssues, projectionIssues, fileIssues: shapeIssues};
         }
 
-        // Safe from here on: StandardExternalFileValidator has already confirmed "artifacts"/"issues" are
-        // arrays and every artifact's own relativePath/content are well-typed, so this cast reflects a
+        // Safe from here on: StandardExternalFileValidator has already confirmed "files"/"issues" are
+        // arrays and every file's own relativePath/content are well-typed, so this cast reflects a
         // structural guarantee that's actually been checked, not merely assumed.
         const generation = rawGeneration as ExternalFileGenerationResult;
         if (hasError(generation.issues)) {
-            return {descriptorIssues, compatibilityIssues, projectionIssues, generation, artifactIssues: shapeIssues};
+            return {descriptorIssues, compatibilityIssues, projectionIssues, generation, fileIssues: shapeIssues};
         }
 
-        const artifactIssues = [
+        const fileIssues = [
             ...shapeIssues,
             ...this.safeIssues(
-                () => target.artifactValidator?.validate(generation) ?? [],
-                "external-deployment-target-artifact-validator-threw",
-                "Target artifact validation",
+                () => target.fileValidator?.validate(generation) ?? [],
+                "external-deployment-target-file-validator-threw",
+                "Target file validation",
             ),
             ...this.safeIssues(
-                () => this.extraArtifactValidator?.validate(generation) ?? [],
-                "external-deployment-extra-artifact-validator-threw",
-                "Extra artifact validation",
+                () => this.extraFileValidator?.validate(generation) ?? [],
+                "external-deployment-extra-file-validator-threw",
+                "Extra file validation",
             ),
         ];
-        if (hasError(artifactIssues)) {
-            return {descriptorIssues, compatibilityIssues, projectionIssues, generation, artifactIssues};
+        if (hasError(fileIssues)) {
+            return {descriptorIssues, compatibilityIssues, projectionIssues, generation, fileIssues};
         }
 
         const diagnostic = target.diagnostic !== undefined ? await target.diagnostic.diagnose() : undefined;
         if (diagnostic !== undefined && !diagnostic.ok) {
-            return {descriptorIssues, compatibilityIssues, projectionIssues, generation, artifactIssues, diagnostic};
+            return {descriptorIssues, compatibilityIssues, projectionIssues, generation, fileIssues, diagnostic};
         }
 
-        const delivery = target.runtimeAdapter !== undefined ? await target.runtimeAdapter.deliver(generation) : undefined;
-        return {descriptorIssues, compatibilityIssues, projectionIssues, generation, artifactIssues, diagnostic, delivery};
+        const delivery = target.runtimeConnector !== undefined ? await target.runtimeConnector.deliver(generation) : undefined;
+        return {descriptorIssues, compatibilityIssues, projectionIssues, generation, fileIssues, diagnostic, delivery};
     }
 
     // Runs one validator call, catching any thrown exception and turning it into a single error-severity

@@ -45,7 +45,7 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
             if (JSON.stringify(expectedScreen) !== JSON.stringify(state.screen)) throw new Error("Persisted viewport does not match generated coordinate evidence.");
             if (state.roundPayload) captureCoordinatePublicPayload(state, state.roundPayload);
             if (state.roundRecord && (JSON.stringify(state.roundRecord.geometry) !== JSON.stringify(state.coordinates.geometry) ||
-                JSON.stringify(state.roundRecord.generatedScreen) !== JSON.stringify(state.coordinates.generatedScreen))) throw new Error("Persisted artifact coordinate evidence differs from session capture.");
+                JSON.stringify(state.roundRecord.generatedScreen) !== JSON.stringify(state.coordinates.generatedScreen))) throw new Error("Persisted round-record coordinate evidence differs from session capture.");
         }
         let schema = state.stateSchema;
         const visitedSchemas = new Set<unknown>();
@@ -118,12 +118,12 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
     while (entrySchema && "base" in entrySchema) {
         if (entrySchema.kind === "feature-chains" && entrySchema.rules.weightedBonus) {
             const payload = state.roundPayload?.featureChains as {weightedBonus?: unknown} | undefined;
-            // A full logical artifact folds every subround's events at the top level.
+            // A full logical round record folds every subround's events at the top level.
             // Its final canonical step, rather than the first entry event, owns current progress.
             const steps = state.roundRecord?.steps;
             const artifact = steps?.[steps.length - 1]?.featureEvents?.find(event => event.type === "featureChains")?.data?.weightedBonus;
             try {
-                // Partial capture retains serializer observations; full capture also has an artifact.
+                // Partial capture retains serializer observations; full capture also has a round record.
                 // A logical envelope was checked above. Every retained copy must agree.
                 if (state.roundPayload) validateWeightedBonusObservation(entryFeature!, payload?.weightedBonus);
                 else if (!state.logicalRound) validateWeightedBonusObservation(entryFeature!, artifact);

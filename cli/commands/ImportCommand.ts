@@ -126,7 +126,7 @@ export class ImportCommand implements CliCommandHandling {
             // preview must remain as non-writing as a PAR/registry preview.
             // Do not delegate to runPreparedImport: that method publishes.
             console.log(`Dry run -- would import Stake Engine export "${source.rootPath}" to "${destination}" (directory destination). No files written.`);
-            console.log(`Conversion plan: materialize ${plan.operation}.`);
+            console.log(`Conversion plan: create ${plan.operation}.`);
             console.log(`Final destination: ${plan.output.canonicalLocation ?? destination}.`);
             console.log(`Destination kind: ${plan.preflight.destinationKind}.`);
             if (plan.preflight.losses.length > 0) console.log(`Data boundary: ${plan.preflight.losses.join(" ")}`);

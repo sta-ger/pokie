@@ -5,7 +5,7 @@ import {resolveSharedSlotMathModel} from "../../src/generated/resolveSharedSlotM
 import {assertPlayableSharedSlotMathModel} from "../../src/wasm/math/SharedSlotMath.js";
 import {BuildOutputBuilderRegistry} from "../../src/project/BuildOutputBuilderRegistry.js";
 import {AUTHORED_MECHANIC_CATALOG} from "@fromstan/pokie";
-import {existingMechanicsBlueprint} from "../v2/fixtures/ExistingMechanicsGame.js";
+import {existingMechanicsBlueprint} from "../contracts/fixtures/ExistingMechanicsGame.js";
 import crypto from "crypto";
 import fs from "fs";
 import os from "os";

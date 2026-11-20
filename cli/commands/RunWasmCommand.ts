@@ -34,7 +34,7 @@ export class RunWasmCommand implements CliCommandHandling {
     private buildCommand(exitCode: {value: number} = {value: 0}): Command {
         return createCommanderCliCommand("run")
             .description(this.getDescription())
-            .argument("<artifact.wasm>", "a POKIE WASM build")
+            .argument("<game.wasm>", "a POKIE WASM build")
             .option("--seed <string>", "deterministic host RNG seed", "pokie-wasm-cli")
             .option("--bet <number>", "available entry denomination", (value: string) => {
                 const bet = Number(value);

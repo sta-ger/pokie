@@ -47,7 +47,7 @@ export function isStaleParSheetExportRequest(requestedRevision: number, currentR
     return requestedRevision !== currentRevision;
 }
 
-// Every outcome the Import step's own Diagnose & map / Preview canonical model steps can end up in, in
+// Every outcome the Import step's own Diagnose & map / Preview model steps can end up in, in
 // the language a non-technical user would recognize -- never re-validating anything, only reading
 // whether the import's own errors/warnings (already computed server-side by ParSheetImporting, merged
 // from both PAR-specific mapping diagnostics and the assembled blueprint's own GameBlueprintValidator

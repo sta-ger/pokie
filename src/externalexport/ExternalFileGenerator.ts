@@ -3,7 +3,7 @@ import type {ExternalExportProjectedModeInput} from "./ExternalExportProjectedMo
 
 // One target's own content -> files/payloads generation step. Always in-memory and synchronous — no disk or
 // network I/O happens inside generate() itself (mirrors StakeEngineExporter's own "build everything in memory
-// first" phase, minus the disk-writing half of it): a target that needs to publish generated artifacts
+// first" phase, minus the disk-writing half of it): a target that needs to publish generated files
 // somewhere does so afterward, either by hand or through its own ExternalExportRuntimeConnector (see
 // writeExternalExportFilesToDirectory for the local-filesystem case). Keeping generation itself
 // transport-agnostic is what lets ExternalFileValidator run against a generator's output before anything is

@@ -27,7 +27,7 @@ export function emitPublicRuntime(options: {runtimeFilesOnly?: boolean; temporar
     fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({name: "public-runtime-consumer", private: true, type: "module"}));
     for (const format of ["esm", "cjs"] as const) {
         for (const [fixtureName, outputName] of [["LegacyComposedGame", "game"], ["RuntimeExtension", "extension"]]) {
-            const fixture = fs.readFileSync(path.join(root, `tests/v2/fixtures/${fixtureName}.ts`), "utf8");
+            const fixture = fs.readFileSync(path.join(root, `tests/contracts/fixtures/${fixtureName}.ts`), "utf8");
             fs.writeFileSync(path.join(directory, `${outputName}.${format === "esm" ? "mjs" : "cjs"}`), ts.transpileModule(fixture, {
                 compilerOptions: {module: format === "esm" ? ts.ModuleKind.ESNext : ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
             }).outputText);

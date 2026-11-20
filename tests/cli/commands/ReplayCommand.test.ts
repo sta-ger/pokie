@@ -1,5 +1,5 @@
-import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../../v2/fixtures/PackageExtractionFixture.js";
-import {createOverscanGame} from "../../v2/fixtures/OverscanGame.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../../contracts/fixtures/PackageExtractionFixture.js";
+import {createOverscanGame} from "../../contracts/fixtures/OverscanGame.js";
 import {
     GameSessionHandling,
     GamePackageGenerator,
@@ -24,7 +24,7 @@ import {ReplayCommand} from "../../../cli/commands/ReplayCommand.js";
 import {createPreparingRuntimePackageResolver} from "../../../cli/runtime/prepareRuntimePackage.js";
 import {buildOutcomeLibraryFolderModeInput} from "../../weightedoutcome/folder/OutcomeLibraryFolderTestFixtures.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
-import {mechanicsSession, replayModesBlueprint} from "../../v2/fixtures/ExistingMechanicsGame.js";
+import {mechanicsSession, replayModesBlueprint} from "../../contracts/fixtures/ExistingMechanicsGame.js";
 
 function stubProjectResolver(project: PokieProject | undefined): ProjectResolving & {calls: string[]} {
     const calls: string[] = [];
@@ -480,7 +480,7 @@ describe("ReplayCommand runtime package materialization boundary", () => {
     });
 
     it("completes seed-7 cascade logical replay and persists its RNG continuation", async () => {
-        const {boundedBlueprint} = await import("../../v2/fixtures/FeatureChainsGame.js");
+        const {boundedBlueprint} = await import("../../contracts/fixtures/FeatureChainsGame.js");
         const {instantiatePokieWasm, SeededPokieWasmHost} = await import("../../../src/wasm/PokieWasmRuntime.js");
         const blueprint = boundedBlueprint("cascade");
         blueprint.reelStrips = [["A", "B"], ["A", "B"], ["A", "B"]];
@@ -619,7 +619,7 @@ describe("ReplayCommand runtime package materialization boundary", () => {
     });
 });
 
-// Proves P3-POLISH-21's own replay-side outcome-source boundary: a resolved "outcomeLibrary" project is
+// Proves the replay-side outcome-source boundary: a resolved "outcomeLibrary" project is
 // routed through the canonical outcome-source selector/session path (replayOutcomeSourceProject) instead of
 // resolveRuntimePackageRoot/loadGame, while a resolved "stakeAdapter" project surfaces the same structured
 // missing-capability diagnostic every other unsupported-operation attempt does -- and never reaches

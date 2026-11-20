@@ -29,6 +29,21 @@ const removedStudioLabels = [
     "Artifact SHA-256",
     "Canonical symbol/line/scatter hits unavailable.",
     "Continue to Preview canonical model",
+    "Preview canonical model",
+    "Choose canonical symbol",
+    "analytics provenance",
+    "Analytics provenance",
+    "Issues & provenance",
+    "building artifacts",
+    "canonical hits and components",
+    "Round artifact unavailable",
+    "Replay Artifact",
+    "The pasted artifact",
+    "Provenance / source",
+    "Canonical hit rates",
+    "Lifecycle unavailable",
+    "Validating artifact",
+    "Preflight diagnostic",
     "Declared capabilities",
     "Download index.json",
     "Feature lifecycle",
@@ -41,6 +56,22 @@ const removedStudioLabels = [
     "PAR evidence eligibility is verified from explicit import facts and Meta/hash provenance.",
     "RNG host binding",
     "Snapshot captured for this round",
+];
+
+// Exact CLI output fragments that used to expose internal build vocabulary. The CLI tests assert the
+// replacement wording; this list keeps the old phrases from creeping back in.
+const removedCliStrings = [
+    "<artifact.wasm>",
+    "Cancelling artifact build",
+    "Artifact build cancelled",
+    "Build preflight:",
+    "Conversion plan: materialize",
+    "outcome-library artifact at",
+    "Materialized ",
+    "Materialization boundary",
+    "Declared component manifest",
+    "canonical ABI",
+    "capabilities     ",
 ];
 
 function read(file: string): string {
@@ -73,6 +104,23 @@ describe("user-facing terminology", () => {
     });
 
     it.each([
+        "cli/commands/BuildCommand.ts",
+        "cli/commands/ReplayCommand.ts",
+        "cli/commands/SimCommand.ts",
+        "cli/commands/RunWasmCommand.ts",
+        "cli/commands/ImportCommand.ts",
+        "cli/commands/ValidateCommand.ts",
+        "cli/commands/InspectCommand.ts",
+        "cli/commands/ReelCommand.ts",
+        "cli/commands/ParCommand.ts",
+    ])("%s no longer prints removed CLI wording", (file) => {
+        const text = read(file);
+        for (const label of removedCliStrings) {
+            expect(text).not.toContain(label);
+        }
+    });
+
+    it.each([
         "cli/studio-client/src/components/project/ExportDeployTab.tsx",
         "cli/studio-client/src/components/project/CertificationTab.tsx",
         "cli/studio-client/src/components/project/ProjectDashboardPage.tsx",
@@ -80,6 +128,10 @@ describe("user-facing terminology", () => {
         "cli/studio-client/src/components/common/JobResultCard.tsx",
         "cli/studio-client/src/components/common/AdvancedValidationPanel.tsx",
         "cli/studio-client/src/components/project/OptimizationPanel.tsx",
+        "cli/studio-client/src/components/blueprintEditor/ParSheetImportExportPanel.tsx",
+        "cli/studio-client/src/components/blueprintEditor/ReelStripsEditor.tsx",
+        "cli/studio-client/src/components/blueprintEditor/ReelStripGenerationEditor.tsx",
+        "cli/studio-client/src/components/project/ReplayTab.tsx",
     ])("%s no longer renders the removed Studio labels", (file) => {
         const text = read(file);
         for (const label of removedStudioLabels) {

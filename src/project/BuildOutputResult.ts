@@ -1,5 +1,5 @@
-// What a future BuildOutputBuilder.build() resolves to on success: where the produced artifact now lives.
-// Deliberately contract-only here, same as ProjectPreparationResult was in P3-POLISH-02 -- no
+// What a future BuildOutputBuilder.build() resolves to on success: where the produced output now lives.
+// Deliberately interface-only here, same as ProjectPreparationResult -- no
 // implementation wires a concrete builder to this shape yet (see BuildOutputBuilder's own doc comment); this type
 // only fixes what a future implementation must report.
 /**
@@ -17,7 +17,7 @@ export type ManagedOutcomeProjectOwnership = {
 export function requireManagedOutcomeProjectOwnership(result: BuildOutputResult): readonly ManagedOutcomeProjectOwnership[] {
     if (result.managedOutcomeProjectOwnership !== undefined) return result.managedOutcomeProjectOwnership;
     if ((result.prerequisiteProjectRoots?.length ?? 0) === 0 && (result.managedProjectRoots?.length ?? 0) === 0) return [];
-    throw new Error("Artifact build result reports managed Outcome roots without per-root managedOutcomeProjectOwnership.");
+    throw new Error("Build result reports managed Outcome roots without per-root managedOutcomeProjectOwnership.");
 }
 
 export type BuildOutputResult = {
@@ -35,11 +35,11 @@ export type BuildOutputResult = {
     // explicit to CLI and Studio callers; outputPath is always the actual opened project root.
     readonly requestedDestinationPath?: string;
     readonly reusedCompatibleProject?: boolean;
-    // Registry-owned prerequisite Projects created or opened while producing this artifact.  Consumers
+    // Registry-owned prerequisite Projects created or opened while producing this output.  Consumers
     // that maintain a Project registry (Studio) use this to register/open the actual Outcome Project,
     // instead of trying to rediscover a private path index after the Stake export has completed.
     readonly prerequisiteProjectRoots?: readonly string[];
-    // Managed projects created or reopened as this artifact's actual result.  A direct Blueprint -> Outcome
+    // Managed projects created or reopened as this output's actual result.  A direct Blueprint -> Outcome
     // request returns its registered Outcome Project here; Stake keeps using prerequisiteProjectRoots for
     // backward-compatible callers that display its generated prerequisite separately.
     readonly managedProjectRoots?: readonly string[];
@@ -48,9 +48,9 @@ export type BuildOutputResult = {
     // A completed build repeats its up-front estimate so callers can retain an honest job summary after the
     // transient progress callback has gone away.
     readonly preflight?: import("./BuildOutputOptions.js").BuildCheck;
-    /** Durable PAR import record retained beside this artifact, when it was derived from a workbook. */
+    /** Durable PAR import record retained beside this output, when it was derived from a workbook. */
     readonly conversionEvidencePath?: string;
-    /** Durable imported Blueprint retained with a PAR-derived downstream artifact. */
+    /** Durable imported Blueprint retained with a PAR-derived downstream output. */
     readonly importedBlueprintPath?: string;
     /** Stake publication evidence, present only for a successful Stake export. */
     readonly stakeManifest?: import("../stakeengine/StakeEngineInfo.js").StakeEngineInfo;

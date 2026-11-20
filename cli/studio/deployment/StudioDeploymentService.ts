@@ -106,7 +106,7 @@ function describeUnverifiedDeploymentSelector(modeName: string): string {
 
 // The Project Dashboard's Deployment tab, built directly on top of the pokie package's own External
 // connector SDK (see docs/external-connector-sdk.md) — this class never projects a RoundRecord, never
-// generates artifacts, and never validates a compatibility/artifact-shape concern itself; every one of
+// generates files, and never validates a compatibility/file-shape concern itself; every one of
 // those already-solved problems is delegated straight to ExternalExportService.deploy(), the SDK's
 // own single orchestrator. What this class actually owns is Studio-specific plumbing only: which
 // target(s) are available for the active project (a registry seeded with exactly the SDK's own
@@ -117,8 +117,8 @@ function describeUnverifiedDeploymentSelector(modeName: string): string {
 // hold for a request that skips the UI entirely (see run()'s own doc comment).
 //
 // "Preview" vs "Deploy" is not two different pipelines — it's the exact same deploy() call against two
-// different target objects: publish:false strips `runtimeAdapter` (so ExternalExportService's own
-// existing "only calls runtimeAdapter.deliver() when the target declares one" behavior means nothing
+// different target objects: publish:false strips `runtimeConnector` (so ExternalExportService's own
+// existing "only calls runtimeConnector.deliver() when the target declares one" behavior means nothing
 // is ever written to disk), publish:true keeps it. See run()'s own doc comment.
 export class StudioDeploymentService {
     private readonly externalDeploymentService: ExternalExportServicing;
@@ -311,7 +311,7 @@ export class StudioDeploymentService {
             | {readonly status: "ok"; readonly modes: readonly ExternalExportModeInput[]}
             | {readonly status: "load-error"; readonly error: string};
         try {
-            onProgress?.("Loading artifacts", "deployment modes", 0, selectedModes.length, "Loading each selected outcome library.");
+            onProgress?.("Loading libraries", "deployment modes", 0, selectedModes.length, "Loading each selected outcome library.");
             // Loading selectors and calling the SDK are deliberately callbacks of
             // the prepared operation.  The adapter has finished validating the
             // request above; from this point the operation owns the final source
@@ -333,7 +333,7 @@ export class StudioDeploymentService {
                             return {status: "load-error", error: `mode "${mode.modeName}": ${loaded.error}`};
                         }
                         modes.push({modeName: mode.modeName, library: loaded.library});
-                        onProgress?.("Loading artifacts", "deployment modes", index + 1, selectedModes.length, `Loaded mode ${mode.modeName}.`);
+                        onProgress?.("Loading libraries", "deployment modes", index + 1, selectedModes.length, `Loaded mode ${mode.modeName}.`);
                     }
                     return {status: "ok", modes};
                 },
@@ -343,9 +343,9 @@ export class StudioDeploymentService {
                     // ExternalExportTargetRegistry), but spreading it into
                     // a fresh object literal is the SDK's documented preview
                     // variant and never mutates the registered target.
-                    const runnableTarget = request.publish ? target : {...target, runtimeAdapter: undefined};
+                    const runnableTarget = request.publish ? target : {...target, runtimeConnector: undefined};
                     if (read.status !== "ok") throw new Error(read.error);
-                    onProgress?.("Delivering artifacts", "pipeline stages", 4, 5, request.publish ? "Delivering artifacts to the selected target." : "Preparing a deployment preview without delivery.");
+                    onProgress?.("Delivering files", "pipeline stages", 4, 5, request.publish ? "Delivering files to the selected target." : "Preparing a deployment preview without delivery.");
                     publicationStarted = true;
                     return this.externalDeploymentService.deploy(runnableTarget, read.modes);
                 },

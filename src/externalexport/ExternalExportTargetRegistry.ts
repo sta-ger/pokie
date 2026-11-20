@@ -18,7 +18,7 @@ import type {ExternalExportTargetRegistering} from "./ExternalExportTargetRegist
 // collides in case.
 //
 // A successfully registered target is frozen (its own top-level properties, plus its "capabilities" array and
-// "requirements" object) — never its nested collaborator instances (roundProjector/artifactGenerator/... keep
+// "requirements" object) — never its nested collaborator instances (roundProjector/fileGenerator/... keep
 // whatever mutable internal state they need). This is deliberate: without it, `target.id = "somethingElse"`
 // after registration would silently desync the object a caller holds from the key it's actually stored under,
 // and get(originalId) would keep resolving a target whose own `.id` field no longer agrees with how it was

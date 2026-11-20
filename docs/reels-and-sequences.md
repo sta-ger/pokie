@@ -443,7 +443,7 @@ Legacy literal `ReelStrips` remains supported. Generated reels and per-symbol
 `symbolWeights` export as separately diagnosed deterministic snapshots. Whole-sequence
 PAR does not create or flatten alternatives. `pokie reel generate` retains its
 explicit unsupported preparation boundary, and weighted outcome libraries remain
-precomputed outcome artifacts, with no reconstruction edge to Blueprint/PAR.
+precomputed outcome libraries, with no reconstruction edge to Blueprint/PAR.
 
 ## Weighted bonus authoring
 

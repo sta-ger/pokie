@@ -1,9 +1,9 @@
-import {generatedMechanicsGame, replayModesBlueprint} from "../v2/fixtures/ExistingMechanicsGame.js";
-import {transactionalRoundGame} from "../v2/fixtures/TransactionalRoundGame.js";
-import {createOverscanGame} from "../v2/fixtures/OverscanGame.js";
+import {generatedMechanicsGame, replayModesBlueprint} from "../contracts/fixtures/ExistingMechanicsGame.js";
+import {transactionalRoundGame} from "../contracts/fixtures/TransactionalRoundGame.js";
+import {createOverscanGame} from "../contracts/fixtures/OverscanGame.js";
 import {GameSessionHandling, loadPokieGame, PokieGame, PokieGameContext, PokieGameInfo, ReplayRecorder, ReplayDescriptor, SessionRuntime, AuditRoundReplay, AuditReplayError, ConvertableToSessionState, captureAuditBoundary, SessionCommand, validateAuditReplayDescriptor} from "@fromstan/pokie";
 import path from "path";
-import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment} from "../contracts/fixtures/PackageExtractionFixture.js";
 
 let disposeRuntimeStorage: () => void;
 beforeAll(() => {

@@ -8,7 +8,7 @@ import {
     WinningLine,
 } from "@fromstan/pokie";
 
-import {overscanConfig, overscanGeometry} from "../../v2/fixtures/OverscanGame.js";
+import {overscanConfig, overscanGeometry} from "../../contracts/fixtures/OverscanGame.js";
 
 describe("PlayUntilSymbolWinStrategy", () => {
     it.each([0, 2])("uses evaluation-local lines for no-wild search with a wild at generated row %s", wildRow => {

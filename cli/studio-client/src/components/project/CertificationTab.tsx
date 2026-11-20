@@ -586,7 +586,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                 <Stepper.Step label="Select/configure" description="Bundle & modes" aria-current={activeStep === 0 ? "step" : undefined} />
                 <Stepper.Step
                     label="Validate"
-                    description="Preflight"
+                    description="Check"
                     disabled={!validateReachable}
                     title={validateReachable ? undefined : "Configure a valid source outcome library before validation."}
                     aria-current={activeStep === 1 ? "step" : undefined}

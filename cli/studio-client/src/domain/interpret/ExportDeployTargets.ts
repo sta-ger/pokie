@@ -149,7 +149,7 @@ export function describeArtifactBuildTargetCards(targets: readonly StudioOutputF
                 destination: info.destination,
                 technicalDestination: info.technicalDestination,
                 writePublishBehavior:
-                    "A registry-backed preview reports the resolved destination (and any conflict) before Build is ever clicked; Build itself still writes the artifact to disk in one step, and directory destinations must be new or empty, and file destinations (even zero-byte files) must be new; conflicts are refused untouched.",
+                    "A registry-backed preview reports the resolved destination (and any conflict) before Build is ever clicked; Build itself still writes the output to disk in one step, and directory destinations must be new or empty, and file destinations (even zero-byte files) must be new; conflicts are refused untouched.",
                 capabilities: [],
                 limits: entry.target === "wasm" || entry.plan?.packageExtraction || entry.plan?.steps.some(step => step.kind === "extractPackageModel") ? entry.unsupportedNotes : [],
                 prerequisites: entry.plan?.status === "planned"
@@ -195,7 +195,7 @@ const OUTCOME_LIBRARY_CARD: ExportDeployTargetCard = {
 // (see describeExportDeployTargetCards below) is inherently "remote" from this Studio's own point of
 // view -- its own runtime adapter is what actually delivers it, wherever that turns out to be -- and there
 // is no other, non-demo signal in this data model to call one "local" instead.
-function describeExternalAdapterTargetCard(target: StudioDeploymentTargetSummary): ExportDeployTargetCard {
+function describeExternalConnectorTargetCard(target: StudioDeploymentTargetSummary): ExportDeployTargetCard {
     return {
         kind: "remoteDeployment",
         id: target.id,
@@ -206,7 +206,7 @@ function describeExternalAdapterTargetCard(target: StudioDeploymentTargetSummary
         destination: "Use the configured remote destination after a compatibility check succeeds.",
         technicalDestination: "Wherever this target's own runtime connector delivers to -- not necessarily local to this machine.",
         writePublishBehavior:
-            "Preview runs the full pipeline (compatibility check, projection, generation, artifact validation, target diagnostic) without writing; Deploy additionally publishes the generated artifacts to the target's own output location.",
+            "Preview runs the full pipeline (compatibility check, projection, generation, file validation, target diagnostic) without writing; Deploy additionally publishes the generated files to the target's own output location.",
         capabilities: target.capabilities.length > 0 ? target.capabilities.map(describeTargetCapability) : ["No optional supported actions declared."],
         limits: describeTargetRequirements(target.requirements),
         prerequisites: ["One outcome library file per deployment mode", "A reachable target diagnostic before Deploy is offered"],
@@ -253,8 +253,8 @@ export function describeExportDeployTargetCards(
     const cards: ExportDeployTargetCard[] = outcomeTarget !== undefined && !isOutcomeGenerationSource(outcomeTarget)
         ? []
         : [plannerBackedCard(OUTCOME_LIBRARY_CARD, "outcomeLibrary", artifactTargets)];
-    const adapterCards = deploymentTargets.filter((target) => target.id !== LOCAL_JSON_EXAMPLE_TARGET_ID).map(describeExternalAdapterTargetCard);
-    cards.push(...adapterCards, ...(adapterCards.length > 0 ? [] : [REMOTE_DEPLOYMENT_PLACEHOLDER_CARD]));
+    const connectorCards = deploymentTargets.filter((target) => target.id !== LOCAL_JSON_EXAMPLE_TARGET_ID).map(describeExternalConnectorTargetCard);
+    cards.push(...connectorCards, ...(connectorCards.length > 0 ? [] : [REMOTE_DEPLOYMENT_PLACEHOLDER_CARD]));
     return cards;
 }
 

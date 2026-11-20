@@ -569,7 +569,7 @@ function TargetCard({
                             {outcomeLibraryPreflight.status === "error" && (
                                 <>
                                     <Text size="sm" c="red">{outcomeLibraryPreflight.result === undefined ? outcomeLibraryPreflight.message ?? "Check could not be prepared." : describePreflightError(outcomeLibraryPreflight.result)} Refresh the check after resolving this issue.</Text>
-                                    {outcomeLibraryPreflight.result !== undefined && <AdvancedDisclosure label="Preflight diagnostic"><Text size="sm">{outcomeLibraryPreflight.result.error}</Text></AdvancedDisclosure>}
+                                    {outcomeLibraryPreflight.result !== undefined && <AdvancedDisclosure label="Check diagnostic"><Text size="sm">{outcomeLibraryPreflight.result.error}</Text></AdvancedDisclosure>}
                                 </>
                             )}
                             {outcomeLibraryPreflight.status === "ok" && (
@@ -805,7 +805,7 @@ function TargetCard({
                         )}
                         {(artifactBuildRun.status === "running" || artifactBuildRun.status === "ok") && artifactBuildRun.progress?.preflight !== undefined && (
                             <Text size="sm" c="dimmed" mt={4}>
-                                {`Preflight: ${artifactBuildRun.progress.preflight.estimatedItemCount ?? "item count unavailable"} estimated item(s)` +
+                                {`Check: ${artifactBuildRun.progress.preflight.estimatedItemCount ?? "item count unavailable"} estimated item(s)` +
                                     `${artifactBuildRun.progress.preflight.estimatedBytes !== undefined ? `, ${artifactBuildRun.progress.preflight.estimatedBytes} estimated bytes` : ""}` +
                                     `${artifactBuildRun.progress.preflight.complexityWarning ? `. Warning: ${artifactBuildRun.progress.preflight.complexityWarning}` : ""}`}
                                 {artifactBuildRun.status === "running" && artifactBuildRun.progress.status !== "preflight" && (
@@ -1670,7 +1670,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             });
     }
 
-    // Runs a single "Build artifact" card's own target through BuildOutputBuilderRegistry (via
+    // Runs a single "Build output" card's own target through BuildOutputBuilderRegistry (via
     // /api/project/build/build) -- see StudioBuildService.build's own doc comment for exactly
     // what this does and doesn't promise. Guarded by this target's own current run status (rather than a
     // shared useDoubleSubmitGuard) since every target's own build runs fully independently of every other.

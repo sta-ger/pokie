@@ -102,10 +102,10 @@ export class ExternalExportCompatibilityValidator<T extends string | number = st
             this.validateHomogeneousProvenance(target.id, modes, issues);
         }
 
-        const artifacts = everyRecordOf(modes);
-        this.validateMinPokieVersion(target, artifacts, issues);
-        this.validateSymbolAlphabet(target, artifacts, issues);
-        this.validateFeatureCapabilities(target, artifacts, issues);
+        const records = everyRecordOf(modes);
+        this.validateMinPokieVersion(target, records, issues);
+        this.validateSymbolAlphabet(target, records, issues);
+        this.validateFeatureCapabilities(target, records, issues);
 
         return issues;
     }
@@ -175,13 +175,13 @@ export class ExternalExportCompatibilityValidator<T extends string | number = st
         });
     }
 
-    private validateMinPokieVersion(target: ExternalExportTarget<T>, artifacts: readonly RoundRecord<T>[], issues: ValidationIssue[]): void {
+    private validateMinPokieVersion(target: ExternalExportTarget<T>, records: readonly RoundRecord<T>[], issues: ValidationIssue[]): void {
         const minVersion = target.requirements.minPokieVersion;
         if (minVersion === undefined) {
             return;
         }
 
-        const seenVersions = new Set(artifacts.map((artifact) => artifact.origin.pokieVersion));
+        const seenVersions = new Set(records.map((record) => record.origin.pokieVersion));
         seenVersions.forEach((actualVersion) => {
             const comparison = compareSemverLite(actualVersion, minVersion);
             if (comparison === undefined) {
@@ -202,12 +202,12 @@ export class ExternalExportCompatibilityValidator<T extends string | number = st
         });
     }
 
-    private validateSymbolAlphabet(target: ExternalExportTarget<T>, artifacts: readonly RoundRecord<T>[], issues: ValidationIssue[]): void {
+    private validateSymbolAlphabet(target: ExternalExportTarget<T>, records: readonly RoundRecord<T>[], issues: ValidationIssue[]): void {
         if (target.requirements.symbolAlphabet !== "numeric") {
             return;
         }
 
-        if (artifacts.some((artifact) => hasNonNumericSymbol(artifact))) {
+        if (records.some((record) => hasNonNumericSymbol(record))) {
             issues.push({
                 code: "external-deployment-symbol-alphabet-invalid",
                 severity: "error",
@@ -217,9 +217,9 @@ export class ExternalExportCompatibilityValidator<T extends string | number = st
         }
     }
 
-    private validateFeatureCapabilities(target: ExternalExportTarget<T>, artifacts: readonly RoundRecord<T>[], issues: ValidationIssue[]): void {
-        const usesFeatureEvents = artifacts.some(
-            (artifact) => (artifact.featureEvents?.length ?? 0) > 0 || artifact.steps.some((step) => (step.featureEvents?.length ?? 0) > 0),
+    private validateFeatureCapabilities(target: ExternalExportTarget<T>, records: readonly RoundRecord<T>[], issues: ValidationIssue[]): void {
+        const usesFeatureEvents = records.some(
+            (record) => (record.featureEvents?.length ?? 0) > 0 || record.steps.some((step) => (step.featureEvents?.length ?? 0) > 0),
         );
         if (usesFeatureEvents && !target.capabilities.includes(ROUND_RECORD_FEATURE_EVENTS_CAPABILITY)) {
             issues.push({
@@ -230,7 +230,7 @@ export class ExternalExportCompatibilityValidator<T extends string | number = st
             });
         }
 
-        const usesDebugMetadata = artifacts.some((artifact) => artifact.debug !== undefined || artifact.steps.some((step) => step.debug !== undefined));
+        const usesDebugMetadata = records.some((record) => record.debug !== undefined || record.steps.some((step) => step.debug !== undefined));
         if (usesDebugMetadata && !target.capabilities.includes(ROUND_RECORD_DEBUG_METADATA_CAPABILITY)) {
             issues.push({
                 code: "external-deployment-debug-metadata-unsupported",

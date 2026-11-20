@@ -61,7 +61,7 @@ function hashModeIndex(index: OutcomeLibraryFolderModeIndex): string {
 // index (see "Pinned-snapshot sampling" below) — the exact same selection/verification algorithms the
 // pre-generated runtime and OutcomeLibraryFolderReader themselves use, just invoked directly against a snapshot
 // this class captured itself, rather than through a wrapper that would re-read the index on every call. Refuses
-// to write anything (the same "no partial artifact" guarantee OutcomeLibraryFolderWriter and StakeEngineExporter
+// to write anything (the same "no partial output" guarantee OutcomeLibraryFolderWriter and StakeEngineExporter
 // already carry) if the source bundle itself doesn't deep-validate cleanly — evidence built on top of a library
 // that doesn't even validate against its own rules can't be trusted either.
 //

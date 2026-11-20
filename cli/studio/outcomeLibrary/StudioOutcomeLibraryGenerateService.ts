@@ -62,8 +62,8 @@ function toNumberApprox(value: number | string): number {
 }
 
 // Service methods remain callable by existing in-process users that supplied
-// the pre-PC-09 validated shape directly. HTTP validation always fills the
-// canonical fields; this adapter is deliberately the one compatibility seam.
+// the older validated shape directly. HTTP validation always fills the
+// regular fields; this adapter is deliberately the one compatibility seam.
 function resolveGeneration(request: {generation?: "default" | "exact" | "sampled" | "capped"; sampled?: {sampleSize: bigint; seed: string}; capped?: {sampleSize: bigint; seed: string}; bounded?: {sampleSize: bigint; seed: string}}): "default" | "exact" | "sampled" | "capped" {
     if (request.generation !== undefined) return request.generation;
     if (request.sampled !== undefined) return "sampled";

@@ -4,7 +4,7 @@ import path from "path";
 import {GameBlueprintValidator, PackageBlueprintExtraction} from "@fromstan/pokie";
 import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
 import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
-import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT, writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT, writeDescriptorPackage} from "../../contracts/fixtures/PackageExtractionFixture.js";
 
 describe("canonical package extraction CLI", () => {
     let restoreTemporaryDirectory: () => void;

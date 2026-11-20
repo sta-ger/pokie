@@ -178,12 +178,12 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
                 continue;
             }
 
-            const artifactIssues = roundRecordValidator.validate(outcome.record);
-            if (artifactIssues.length > 0) {
+            const recordIssues = roundRecordValidator.validate(outcome.record);
+            if (recordIssues.length > 0) {
                 issues.push({
                     code: "outcome-library-folder-write-record-invalid",
                     severity: "error",
-                    message: `mode "${modeName}": outcome "${outcome.id}" has an invalid record: ${artifactIssues.map((issue) => issue.code).join(", ")}.`,
+                    message: `mode "${modeName}": outcome "${outcome.id}" has an invalid record: ${recordIssues.map((issue) => issue.code).join(", ")}.`,
                     details: {modeName, id: outcome.id},
                 });
                 continue;

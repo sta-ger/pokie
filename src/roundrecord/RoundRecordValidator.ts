@@ -85,7 +85,7 @@ implements ValidationRule<RoundRecord<T>> {
         if (artifact && typeof artifact === "object" && "hash" in artifact) {
             const {hash, ...content} = artifact as RoundRecord<T> & {hash: unknown};
             if (typeof hash !== "string" || !(/^sha256:[a-f0-9]{64}$/).test(hash) || hash !== computeRoundRecordHash(content)) {
-                issues.push({code: "round-record-hash-invalid", severity: "error", message: "hash is malformed or differs from canonical artifact content."});
+                issues.push({code: "round-record-hash-invalid", severity: "error", message: "hash is malformed or differs from the round record content."});
             }
         }
 

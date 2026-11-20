@@ -17,7 +17,7 @@ export type AtomicExternalExportWriteResult = {
 };
 
 // The atomic counterpart to writeExternalExportFilesToDirectory — what
-// LocalFileExternalExportRuntimeConnector actually calls. Builds the entire artifact set into a fresh
+// LocalFileExternalExportRuntimeConnector actually calls. Builds the entire file set into a fresh
 // temporary sibling directory first (never touching outDir itself), and only swaps it into place (a directory
 // rename) once every file has been written successfully — the exact same publish strategy
 // StakeEngineExporter.exportToDirectory uses for its own output directory, applied here to an arbitrary
@@ -39,7 +39,7 @@ export type AtomicExternalExportWriteResult = {
 // specific write/rename failing, the same reason StakeEngineExporter's own constructor accepts injectable
 // writeFile/renameDirectory/removeDirectory.
 export function atomicallyWriteExternalExportFilesToDirectory(
-    artifacts: readonly ExternalGeneratedFile[],
+    files: readonly ExternalGeneratedFile[],
     outDir: string,
     dependencies: AtomicExternalExportWriteDependencies = {},
 ): AtomicExternalExportWriteResult {
@@ -60,7 +60,7 @@ export function atomicallyWriteExternalExportFilesToDirectory(
     let writtenUnderTemp: readonly string[];
     try {
         fs.mkdirSync(tempDir, {recursive: true});
-        writtenUnderTemp = writeExternalExportFilesToDirectory(artifacts, tempDir, writeFile);
+        writtenUnderTemp = writeExternalExportFilesToDirectory(files, tempDir, writeFile);
     } catch (error) {
         removeBestEffort(tempDir);
         throw error;
@@ -105,7 +105,7 @@ function swapDirectoryIntoPlace(
         } catch (restoreError) {
             removeBestEffort(tempDir);
             throw new Error(
-                `Failed to publish external deployment artifacts to "${outDir}", and failed to restore the previous directory afterward: ` +
+                `Failed to publish external deployment files to "${outDir}", and failed to restore the previous directory afterward: ` +
                     `${publishError instanceof Error ? publishError.message : String(publishError)}; restore failure: ` +
                     `${restoreError instanceof Error ? restoreError.message : String(restoreError)}. The previous directory's contents are ` +
                     `still intact at "${stalePath}" — rename it back to "${outDir}" by hand.`,

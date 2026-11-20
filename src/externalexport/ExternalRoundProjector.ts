@@ -12,5 +12,5 @@ import type {RoundRecord} from "../roundrecord/RoundRecord.js";
 // generation step: whatever a projector returns is by construction consistent with the RoundRecord it was
 // given, so a generator that goes through it can never silently disagree with the canonical record.
 export interface ExternalRoundProjector<T extends string | number = string> {
-    project(artifact: RoundRecord<T>): JsonObject;
+    project(record: RoundRecord<T>): JsonObject;
 }

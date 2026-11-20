@@ -1,5 +1,5 @@
 import {stageCompiledTestRuntime} from "../testUtils/stageCompiledTestRuntime.js";
-import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../contracts/fixtures/PackageExtractionFixture.js";
 import {loadPokieGame, loadPokieGameRuntime, readPokiePackageConfig, releasePokieGame, resolvePokieGameDependencyRoots} from "@fromstan/pokie";
 import fs from "fs";
 import {createRequire} from "module";

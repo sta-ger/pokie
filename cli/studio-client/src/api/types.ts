@@ -1099,10 +1099,10 @@ export type StudioDeploymentModeInput = {
     librarySelector: OutcomeLibrarySelector;
 };
 
-// One generated artifact as sent back from POST /api/project/deployment/runs — see
-// cli/studio/deployment/StudioDeploymentArtifactView.ts's own doc comment: `content` is always a
+// One generated file as sent back from POST /api/project/deployment/runs — see
+// cli/studio/deployment/StudioDeploymentFileView.ts's own doc comment: `content` is always a
 // plain string, decoded server-side.
-export type StudioDeploymentArtifactView = {
+export type StudioDeploymentFileView = {
     relativePath: string;
     content: string;
 };
@@ -1111,7 +1111,7 @@ export type StudioDeploymentArtifactView = {
 // own doc comment. Computed server-side (see computeDeploymentStages) — never re-derived here from
 // which of the other StudioDeploymentRunView fields happen to be present.
 export type StudioDeploymentStageSummary = {
-    key: "descriptor" | "compatibility" | "projection" | "generation" | "artifactValidation" | "diagnostic" | "delivery";
+    key: "descriptor" | "compatibility" | "projection" | "generation" | "fileValidation" | "diagnostic" | "delivery";
     label: string;
     status: "ok" | "error" | "skipped";
     issues: ValidationIssue[];
@@ -1131,10 +1131,10 @@ export type StudioDeploymentRunView = {
     compatibilityIssues: ValidationIssue[];
     projectionIssues: ValidationIssue[];
     generation?: {
-        artifacts: StudioDeploymentArtifactView[];
+        files: StudioDeploymentFileView[];
         issues: ValidationIssue[];
     };
-    artifactIssues: ValidationIssue[];
+    fileIssues: ValidationIssue[];
     diagnostic?: {ok: boolean; checks: {name: string; ok: boolean; message?: string}[]};
     delivery?: {delivered: boolean; details?: Record<string, unknown>; issues?: ValidationIssue[]};
 };

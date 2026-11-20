@@ -68,6 +68,6 @@ export type PokieSessionState = {
     roundRecord?: RoundRecord;
     // Present only when capturePolicy.mode === "full" but roundRecord above could not be built —
     // e.g. the session doesn't implement the VideoSlotSessionHandling shape buildRoundRecordFromSession
-    // requires. An honest diagnostic of *why* no artifact exists, never a fabricated/placeholder one.
+    // requires. An honest diagnostic of *why* no round record exists, never a fabricated/placeholder one.
     roundRecordUnavailableReason?: string;
 };

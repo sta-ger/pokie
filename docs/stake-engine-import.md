@@ -194,7 +194,7 @@ Two layers, mirroring the exporter's own "validate everything before building" d
 | `stakeengine-import-books-missing` / `stakeengine-import-books-unreadable` / `stakeengine-import-books-invalid-zstd` | a mode's books file is absent / couldn't be read / isn't a valid zstd frame |
 | `stakeengine-import-csv-malformed-row` | a CSV row does not have exactly three comma-separated fields (invalid field values have specific diagnostics) |
 | `stakeengine-import-books-invalid-json-line` / `stakeengine-import-books-malformed-line` | a decompressed books line isn't parseable JSON at all, vs. parses but has the wrong shape — reported as two distinct codes rather than collapsed into one |
-| `stakeengine-import-outcome-id-not-integer` | a CSV row's or book line's `id` isn't a canonical non-negative safe integer |
+| `stakeengine-import-outcome-id-not-integer` | a CSV row's or book line's `id` isn't a plain non-negative safe integer |
 | `stakeengine-import-outcome-weight-not-positive-integer` | a CSV row's `weight` isn't a positive UInt64 decimal integer |
 | `stakeengine-import-outcome-payout-multiplier-not-safe-integer` | a CSV/book `payoutMultiplier` isn't a safe integer |
 | `stakeengine-import-exact-payload` | informational: weights/total exceed native numeric library limits; exact Stake payload interchange is used |

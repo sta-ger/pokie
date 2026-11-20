@@ -69,7 +69,7 @@ type MaterializedMarker = {readonly cacheKey: string};
 type LockHolder = {readonly pid: number; readonly token?: string};
 
 // The concrete ProjectPreparing for "blueprint" (and, trivially, "tsPackage") PokieProjects -- the
-// implementation ProjectPreparing.ts was left contract-only in P3-POLISH-02. Turns a blueprint source
+// implementation ProjectPreparing.ts was left interface-only. Turns a blueprint source
 // file into the exact same real, loadable runtime "pokie build" itself produces (GamePackageGenerator -- never
 // a simplified/in-memory blueprint interpreter), then a real "npm install" so its "require(\"pokie\")" actually
 // resolves, then verifies it the same way "pokie validate" does (PokieGamePackageValidator) -- so a caller

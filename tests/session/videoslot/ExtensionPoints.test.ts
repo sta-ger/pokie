@@ -38,8 +38,8 @@ import {
 
 import * as api from "@fromstan/pokie";
 
-import {legacyComposedGame, legacyCompositions} from "../../v2/fixtures/LegacyComposedGame.js";
-import {legacyFractionalGame} from "../../v2/fixtures/LegacyFractionalGame.js";
+import {legacyComposedGame, legacyCompositions} from "../../contracts/fixtures/LegacyComposedGame.js";
+import {legacyFractionalGame} from "../../contracts/fixtures/LegacyFractionalGame.js";
 
 describe("ExtensionPoints", () => {
     test.each(legacyCompositions)("preserves custom decorator execution and live-only capture in %s", composition => {

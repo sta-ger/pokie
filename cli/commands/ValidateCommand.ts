@@ -497,7 +497,7 @@ export class ValidateCommand implements CliCommandHandling {
         return {
             code: issue.code,
             severity: issue.severity,
-            message: `The outcome-library artifact at "${location}" ${problem}`,
+            message: `The outcome-library build output at "${location}" ${problem}`,
             path: location,
             suggestion: `Repair ${location} to match the outcome-library bundle format, then run validate again.`,
         };
@@ -590,8 +590,8 @@ export class ValidateCommand implements CliCommandHandling {
         if (report.wasm !== undefined) {
             console.log(`  wasm ABI        ${report.wasm.abiVersion} (${report.wasm.compatibility})`);
             console.log(`  integrity       ${report.wasm.integrity}`);
-            console.log(`  host bindings   rng=${report.wasm.hostRequirements.rng}, services=${report.wasm.hostRequirements.services.length === 0 ? "none" : report.wasm.hostRequirements.services.join(", ")}`);
-            console.log(`  capabilities    ${report.wasm.capabilities.length === 0 ? "none" : report.wasm.capabilities.join(", ")}`);
+            console.log(`  host requires   rng=${report.wasm.hostRequirements.rng}, services=${report.wasm.hostRequirements.services.length === 0 ? "none" : report.wasm.hostRequirements.services.join(", ")}`);
+            console.log(`  supported actions ${report.wasm.capabilities.length === 0 ? "none" : report.wasm.capabilities.join(", ")}`);
         }
 
         if (report.errors.length > 0) {

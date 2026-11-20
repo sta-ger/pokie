@@ -49,8 +49,8 @@ import {SymbolPresentation} from "../common/SymbolPresentation";
 // reachable only through the standalone `pokie edit` CLI wizard, never through Studio. FreeGamesFieldset
 // is wired into this tab's own existing Edit/Save/Cancel-per-section, single-whole-blueprint-write flow
 // (the same one PaytableEditor/BetsList already use) -- not a second, competing editor or mutation path
-// the way the old, deleted MechanicsEditorTab (its own separate apply/commit/publish backend, removed
-// outright in P4-POLISH-03) was. "Limits" stays read-only: it isn't a stored GameBlueprint field at all,
+// the way the old, deleted MechanicsEditorTab (its own separate apply/commit/publish backend) was.
+// "Limits" stays read-only: it isn't a stored GameBlueprint field at all,
 // only a derived min/max of Bets & Modes' own `availableBets` (see GameModelLimits's own doc comment) --
 // there is no separate field to edit, so LimitsSection below says so truthfully instead of inventing one.
 //

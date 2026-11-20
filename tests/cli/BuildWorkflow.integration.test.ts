@@ -1,5 +1,5 @@
 import {expectInconclusiveBuildValidation} from "../testUtils/expectInconclusiveBuildValidation.js";
-import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../contracts/fixtures/PackageExtractionFixture.js";
 import {loadPokieGame, PokieClientServer, PokieClientServerHandling, PokieDevServer, PokieDevServerHandling, ReplayDescriptor, SimulationReport} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";

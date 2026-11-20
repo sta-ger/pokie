@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-// Reports whether "dir" looks like a Stake Engine outcome artifacts directory worth attempting to read via
+// Reports whether "dir" looks like a Stake Engine outcome directory worth attempting to read via
 // StakeEngineOutcomeSourceReader -- deliberately much looser than isRecognizedStakeEngineExportDirectory (which
 // requires a pokie-info.json this standalone pipeline never looks for): only "index.json exists, is valid
 // JSON, and has a non-empty modes array" is checked here, the minimum shape Stake's own schema always requires.

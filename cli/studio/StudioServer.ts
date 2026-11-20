@@ -2597,7 +2597,7 @@ export class StudioServer implements StudioServerHandling {
             game: {id: manifest.component.id, name: manifest.component.id, version: manifest.component.version},
             errors: [],
             warnings: [],
-            information: [{code: "wasm-integrity-compatibility", severity: "info", message: "Verified module SHA-256 and byte count, embedded descriptor and configuration hash, manifest shape, runtime version, ABI, serialization and host bindings. This validates artifact integrity and compatibility; it does not certify game mathematics."}],
+            information: [{code: "wasm-integrity-compatibility", severity: "info", message: "Verified module SHA-256 and byte count, embedded descriptor and configuration hash, manifest shape, runtime version, ABI, serialization and host requirements. This validates artifact integrity and compatibility; it does not certify game mathematics."}],
             suggestions: [],
         };
     }
@@ -2986,7 +2986,7 @@ export class StudioServer implements StudioServerHandling {
             descriptorIssues: [],
             compatibilityIssues: [],
             projectionIssues: [],
-            artifactIssues: [],
+            fileIssues: [],
         };
     }
 

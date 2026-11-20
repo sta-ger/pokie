@@ -13,6 +13,6 @@ export function buildLogicalRoundRecord(round: LogicalRound, template: RoundReco
         betMode: round.mode ?? template.betMode, totalWin: round.totalWin, payoutMultiplier: round.totalStake > 0 ? round.totalWin / round.totalStake : 0,
         steps, screen: last.screen, ...(last.sequenceSelections ? {sequenceSelections: last.sequenceSelections} : {}), wins: steps.flatMap(s => s.wins), featureEvents: steps.flatMap(s => s.featureEvents ?? [])});
     const invalid = new RoundRecordValidator().validate(candidate);
-    if (invalid.length) throw new Error(`Invalid logical artifact: ${JSON.stringify(invalid)}`);
+    if (invalid.length) throw new Error(`Invalid logical round record: ${JSON.stringify(invalid)}`);
     return deepFreeze(candidate);
 }

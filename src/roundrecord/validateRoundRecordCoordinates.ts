@@ -9,7 +9,7 @@ export function validateRoundRecordCoordinates<T extends string | number>(step: 
     }
     const projection = step.geometry && new ScreenProjection(step.geometry);
     if (projection) {
-        if (!step.generatedScreen) throw new Error("Coordinate artifact requires its generated screen.");
+        if (!step.generatedScreen) throw new Error("Coordinate record requires its generated screen.");
         const expected = projection.project(step.generatedScreen, "visible");
         projection.assertMatrix(step.screen, "visible");
         if (JSON.stringify(expected) !== JSON.stringify(step.screen)) throw new Error("Artifact viewport differs from generated screen projection.");

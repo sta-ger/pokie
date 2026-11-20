@@ -35,7 +35,7 @@ export function SimulationAnalyticsDisplay({analytics: a}: {analytics?: FeatureA
                         a.lifecycle[name].incomplete, ratio(a.lifecycle[name].averageDuration), ratio(a.lifecycle[name].averageWin)])} />
                 {supported.filter(name => a.features[name].entries === 0).map(name => <Text size="sm" key={name}>{name}: configured and supported, no entries seen; zero does not prove absence or exact feature RTP.</Text>)}
                 {supported.length === 0 && <Text size="sm">No configured features support stage tracking.</Text>}
-                <Text size="sm">Lifecycle unavailable or feature not configured: {FEATURE_NAMES.filter(name => !supported.includes(name)).join(", ") || "none"}.</Text>
+                <Text size="sm">Status unavailable or feature not configured: {FEATURE_NAMES.filter(name => !supported.includes(name)).join(", ") || "none"}.</Text>
             </>}
         <Text size="sm" mt="md">Feature stages wins can overlap; do not sum them as additive payouts. Base/feature/jackpot/unavailable partitions are additive; bet modes are a separate dimension.</Text>
         <AnalyticsTable label="Payout attribution" headers={["Partition", "RTP contribution / actual charged stake", "Payout share / total win"]}
@@ -67,10 +67,10 @@ export function SimulationAnalyticsDisplay({analytics: a}: {analytics?: FeatureA
                 rows={Object.entries(a.betModeContribution).map(([name, c]) => [name, ratio(c.rtp), ratio(c.payoutShare)])} />
             {Object.keys(a.betModeContribution).length === 0 && <Text size="sm">No bet mode attribution observed.</Text>}
         </AdvancedDisclosure>
-        <AdvancedDisclosure label="canonical hits and components">
+        <AdvancedDisclosure label="hits and components">
             {!a.envelope.components ? <Text size="sm">Symbol, line and scatter hit counts are not available for this report.</Text> : <>
                 <Text size="sm">Hits are counted once per accepted subround; symbols that merely land on screen are not hits.</Text>
-                <AnalyticsTable label="Canonical hit rates" headers={["Kind", "ID", "Hits / accepted subrounds"]}
+                <AnalyticsTable label="Hit rates" headers={["Kind", "ID", "Hits / accepted subrounds"]}
                     rows={Object.entries(a.hitRates).flatMap(([kind, group]) => Object.keys(group).length
                         ? Object.entries(group).map(([id, r]) => [kind, id, ratio(r)]) : [[kind, "No hits", `0 / ${a.subrounds} = 0`]])} />
                 <AnalyticsTable label="Component statistics" headers={["Type", "ID", "Symbol", "Samples", "Occurrences", "Amount (currency)"]}
@@ -78,8 +78,8 @@ export function SimulationAnalyticsDisplay({analytics: a}: {analytics?: FeatureA
                 {Object.keys(a.components).length === 0 && <Text size="sm">No components observed.</Text>}
             </>}
         </AdvancedDisclosure>
-        <AdvancedDisclosure label="analytics provenance">
-            <AnalyticsTable label="Analytics provenance" headers={["Field", "Value"]} rows={[
+        <AdvancedDisclosure label="analytics origin">
+            <AnalyticsTable label="Analytics origin" headers={["Field", "Value"]} rows={[
                 ["Model", a.envelope.modelId ?? "unavailable"], ["Schema", a.envelope.schemaVersion], ["Policy", a.envelope.policy],
             ]} />
         </AdvancedDisclosure>

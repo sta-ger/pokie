@@ -1,4 +1,4 @@
-import {featureAnalyticsReport, aggregate, corpus} from "../v2/fixtures/FeatureAnalyticsFixture.js";
+import {featureAnalyticsReport, aggregate, corpus} from "../contracts/fixtures/FeatureAnalyticsFixture.js";
 import {SimulationReport, SimulationReportDiffer} from "@fromstan/pokie";
 
 const reproducibility = {

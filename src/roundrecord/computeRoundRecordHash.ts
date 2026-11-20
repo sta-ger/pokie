@@ -7,9 +7,9 @@ import type {RoundRecord} from "./RoundRecord.js";
 // hash and its own JSON projection can never silently disagree on what counts as "valid" or how it's ordered.
 // Fails fast (propagates InvalidJsonValueError) on anything that isn't valid canonical JSON, same as the
 // projector — a RoundRecord built via buildRoundRecord is already guaranteed JSON-safe, so this only
-// actually throws for a hand-crafted artifact that bypassed that guarantee.
+// actually throws for a hand-crafted record that bypassed that guarantee.
 export function computeRoundRecordHash<T extends string | number = string>(
-    artifact: RoundRecord<T>,
+    record: RoundRecord<T>,
 ): string {
-    return `sha256:${sha256(JSON.stringify(toCanonicalJson(artifact)))}`;
+    return `sha256:${sha256(JSON.stringify(toCanonicalJson(record)))}`;
 }

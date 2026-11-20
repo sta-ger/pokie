@@ -467,7 +467,7 @@ export class BuildCommand implements CliCommandHandling {
         let lastMessage: string | undefined;
         const cancel = (): void => {
             if (!controller.signal.aborted) {
-                console.log("Cancelling artifact build…");
+                console.log("Cancelling build…");
                 controller.abort();
             }
         };
@@ -480,7 +480,7 @@ export class BuildCommand implements CliCommandHandling {
                         const count = progress.preflight?.estimatedItemCount;
                         const bytes = progress.preflight?.estimatedBytes;
                         console.log(
-                            `Build preflight: ${count !== undefined ? `${count} estimated item(s)` : "item count unavailable"}` +
+                            `Build check: ${count !== undefined ? `${count} estimated item(s)` : "item count unavailable"}` +
                                 `${bytes !== undefined ? `, ${bytes} estimated bytes` : ""}` +
                                 `${progress.preflight?.complexityWarning ? `. Warning: ${progress.preflight.complexityWarning}` : ""}`,
                         );
@@ -492,7 +492,7 @@ export class BuildCommand implements CliCommandHandling {
                                 `${progress.completed !== undefined ? ` (${progress.completed}${progress.total !== undefined ? `/${progress.total}` : ""}${progress.unit === undefined ? "" : ` ${progress.unit}`})` : ""}`,
                         );
                     }
-                    if (progress.status === "cancelled") console.log("Artifact build cancelled.");
+                    if (progress.status === "cancelled") console.log("Build cancelled.");
                 },
             });
         } finally {
@@ -544,7 +544,7 @@ export class BuildCommand implements CliCommandHandling {
             if (step.conversionEvidencePath !== undefined) console.log(`  conversion evidence ${step.conversionEvidencePath}`);
         }
         if (plan.steps.some((step) => step.kind === "importParWorkbook")) {
-            console.log("  evidence eligibility determined by durable PAR conversion facts and Meta/hash provenance");
+            console.log("  evidence eligibility determined by durable PAR conversion facts and Meta/hash origin");
         }
         if (plan.packageExtraction) {
             this.printExtraction(plan.packageExtraction);

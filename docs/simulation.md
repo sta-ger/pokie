@@ -706,7 +706,7 @@ observed monetary totals and the analytics subround metrics.
  awards, then base components. A purchase's executed free spin is feature win.
  Collection and weighted awards and released free-game banks are never added a
  second time. Components retain identity, occurrences, samples and amount;
- source artifacts retain their original components and metadata unchanged.
+ source outputs retain their original components and metadata unchanged.
  Bet mode is a separate dimension. Each dimension reports RTP contribution
  (amount / actual charged stake) and payout share (amount / total observed win).
 - Symbol, line and scatter hits are component presence per accepted

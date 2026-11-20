@@ -36,7 +36,7 @@ type ModeIndexEntry = {
 // disk) — LocalFileExternalExportRuntimeConnector is what actually persists the result.
 export class LocalJsonExternalFileGenerator implements ExternalFileGenerator {
     public generate(modes: readonly ExternalExportProjectedModeInput[]): ExternalFileGenerationResult {
-        const artifacts: ExternalGeneratedFile[] = [];
+        const files: ExternalGeneratedFile[] = [];
         const indexEntries: ModeIndexEntry[] = [];
 
         modes.forEach((mode) => {
@@ -45,7 +45,7 @@ export class LocalJsonExternalFileGenerator implements ExternalFileGenerator {
 
             mode.outcomes.forEach((outcome) => {
                 const outcomeFile = `${encodeLocalExternalDeploymentPathSegment(outcome.id)}.json`;
-                artifacts.push({
+                files.push({
                     relativePath: `${modeDirectory}/${outcomeFile}`,
                     content: `${JSON.stringify(outcome.projected, null, 4)}\n`,
                 });
@@ -62,11 +62,11 @@ export class LocalJsonExternalFileGenerator implements ExternalFileGenerator {
             });
         });
 
-        artifacts.push({
+        files.push({
             relativePath: "index.json",
             content: `${JSON.stringify({modes: indexEntries}, null, 4)}\n`,
         });
 
-        return {artifacts, issues: []};
+        return {files, issues: []};
     }
 }

@@ -3,7 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {ExternalExportModeInput, ExternalExportService, ExternalExportTargetRegistry, createLocalJsonExternalExportTarget} from "@fromstan/pokie";
-import {externalAdapterTestLibrary} from "./ExternalAdapterTestFixtures.js";
+import {externalExportTestLibrary} from "./ExternalExportTestFixtures.js";
 
 function sha256Hex(raw: string): string {
     return crypto.createHash("sha256").update(raw, "utf8").digest("hex");
@@ -22,7 +22,7 @@ describe("createLocalJsonExternalExportTarget (end-to-end SDK pipeline via Exter
     let outDir: string;
 
     beforeEach(() => {
-        outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-externaladapter-test-"));
+        outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-external-export-test-"));
     });
 
     afterEach(() => {
@@ -35,13 +35,13 @@ describe("createLocalJsonExternalExportTarget (end-to-end SDK pipeline via Exter
         registry.register(target);
         expect(registry.get("local-json-example")).toBe(target);
 
-        const modes: ExternalExportModeInput[] = [{modeName: "base", library: externalAdapterTestLibrary({libraryId: "lib"})}];
+        const modes: ExternalExportModeInput[] = [{modeName: "base", library: externalExportTestLibrary({libraryId: "lib"})}];
         const result = await new ExternalExportService().deploy(target, modes);
 
         expect(result.descriptorIssues).toEqual([]);
         expect(result.compatibilityIssues).toEqual([]);
         expect(result.generation?.issues).toEqual([]);
-        expect(result.artifactIssues).toEqual([]);
+        expect(result.fileIssues).toEqual([]);
         expect(result.diagnostic?.ok).toBe(true);
         expect(result.delivery?.delivered).toBe(true);
 
@@ -68,8 +68,8 @@ describe("createLocalJsonExternalExportTarget (end-to-end SDK pipeline via Exter
     it("does not call the generator or write anything when compatibility validation fails", async () => {
         const target = {...createLocalJsonExternalExportTarget({outDir}), capabilities: []};
         const modes: ExternalExportModeInput[] = [
-            {modeName: "base", library: externalAdapterTestLibrary({libraryId: "lib-1"})},
-            {modeName: "bonus", library: externalAdapterTestLibrary({libraryId: "lib-2"})},
+            {modeName: "base", library: externalExportTestLibrary({libraryId: "lib-1"})},
+            {modeName: "bonus", library: externalExportTestLibrary({libraryId: "lib-2"})},
         ];
 
         const result = await new ExternalExportService().deploy(target, modes);
@@ -87,7 +87,7 @@ describe("createLocalJsonExternalExportTarget (end-to-end SDK pipeline via Exter
     });
 
     it("diagnoses a writable outDir as ok even when several directory levels are missing", async () => {
-        const parent = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-externaladapter-nested-outdir-"));
+        const parent = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-external-export-nested-outdir-"));
         try {
             // Nothing below `parent` exists yet — the diagnostic must walk up past both missing levels
             // to find `parent` itself (the nearest existing, writable ancestor) rather than only ever
@@ -104,13 +104,13 @@ describe("createLocalJsonExternalExportTarget (end-to-end SDK pipeline via Exter
     });
 
     it("diagnoses a non-writable output directory as failing and skips delivery entirely", async () => {
-        const unwritableParent = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-externaladapter-unwritable-"));
+        const unwritableParent = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-external-export-unwritable-"));
         const nestedOutDir = path.join(unwritableParent, "does-not-exist-yet");
         fs.chmodSync(unwritableParent, 0o500);
 
         try {
             const target = createLocalJsonExternalExportTarget({outDir: nestedOutDir});
-            const modes: ExternalExportModeInput[] = [{modeName: "base", library: externalAdapterTestLibrary({libraryId: "lib"})}];
+            const modes: ExternalExportModeInput[] = [{modeName: "base", library: externalExportTestLibrary({libraryId: "lib"})}];
             const result = await new ExternalExportService().deploy(target, modes);
 
             expect(result.diagnostic?.ok).toBe(false);
@@ -123,7 +123,7 @@ describe("createLocalJsonExternalExportTarget (end-to-end SDK pipeline via Exter
 
     it("encodes an unsafe modeName/outcome id into safe deterministic paths and preserves the raw ids in index.json", async () => {
         const target = createLocalJsonExternalExportTarget({outDir});
-        const library = externalAdapterTestLibrary({libraryId: "unsafe-lib"});
+        const library = externalExportTestLibrary({libraryId: "unsafe-lib"});
         const unsafeLibrary = {
             ...library,
             outcomes: [{...library.outcomes[0], id: "../../etc/passwd"}, library.outcomes[1]],
@@ -132,7 +132,7 @@ describe("createLocalJsonExternalExportTarget (end-to-end SDK pipeline via Exter
 
         const result = await new ExternalExportService().deploy(target, modes);
 
-        expect(result.artifactIssues).toEqual([]);
+        expect(result.fileIssues).toEqual([]);
         expect(result.delivery?.delivered).toBe(true);
 
         const modeDirectory = sha256Hex("../escape");

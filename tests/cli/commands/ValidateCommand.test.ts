@@ -1,6 +1,6 @@
-import {weightedBlueprint} from "../../v2/fixtures/WeightedWholeSequenceGame.js";
+import {weightedBlueprint} from "../../contracts/fixtures/WeightedWholeSequenceGame.js";
 import {OutcomeLibraryFolderModeIndex, OutcomeLibraryFolderWriter, PokieGamePackageValidating, PokieGamePackageValidationReport, PokieGamePackageValidator, resolvePokieGameDependencyRoots} from "@fromstan/pokie";
-import {createPackageExtractionTestEnvironment} from "../../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment} from "../../contracts/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -293,7 +293,7 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
         expect(report.errors[0]).toMatchObject({
             code: "outcome-library-folder-manifest-invalid-json",
             path: "index.json",
-            message: 'The outcome-library artifact at "index.json" is not valid JSON.',
+            message: 'The outcome-library build output at "index.json" is not valid JSON.',
             suggestion: "Repair index.json to match the outcome-library bundle format, then run validate again.",
         });
     });
@@ -318,7 +318,7 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
                     code: "outcome-library-folder-mode-index-invalid-json",
                     severity: "error",
                     path: "index_base.json",
-                    message: 'The outcome-library artifact at "index_base.json" is not valid JSON.',
+                    message: 'The outcome-library build output at "index_base.json" is not valid JSON.',
                     suggestion: "Repair index_base.json to match the outcome-library bundle format, then run validate again.",
                 },
             ]),
@@ -489,7 +489,7 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
             code: "outcome-library-folder-manifest-missing",
             severity: "error",
             path: "index.json",
-            message: 'The outcome-library artifact at "index.json" is missing.',
+            message: 'The outcome-library build output at "index.json" is missing.',
             suggestion: "Repair index.json to match the outcome-library bundle format, then run validate again.",
         });
     });
@@ -793,7 +793,7 @@ it.each([false, true])("retains unsupported-source cancellation and observable c
 
 it("rejects mixed source revisions during structural package validation and permits retry", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "validate-revision-"));
-    const {writeDescriptorPackage} = await import("../../v2/fixtures/PackageExtractionFixture.js");
+    const {writeDescriptorPackage} = await import("../../contracts/fixtures/PackageExtractionFixture.js");
     const source = writeDescriptorPackage(root);
     const file = path.join(source, "index.js");
     const log = jest.spyOn(console, "log").mockImplementation(() => undefined);

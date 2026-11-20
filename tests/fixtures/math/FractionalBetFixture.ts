@@ -46,7 +46,7 @@ export function fractionalBetSession(bets = FRACTIONAL_BET_STAKES): VideoSlotSes
     return new VideoSlotSession(config, new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator("0")));
 }
 
-/** Observed on the unmodified P9 baseline, seed STRING "0", after constructor draws. */
+/** Observed on the unmodified baseline, seed STRING "0", after constructor draws. */
 export const FRACTIONAL_MIXED_CONTINUATION = [
     {screen: [["B"], ["B"], ["B"]], rngState: 3289482349},
     {screen: [["B"], ["A"], ["A"]], rngState: 194245196},

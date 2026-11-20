@@ -1,4 +1,4 @@
-import {weightedBlueprint} from "../../v2/fixtures/WeightedWholeSequenceGame.js";
+import {weightedBlueprint} from "../../contracts/fixtures/WeightedWholeSequenceGame.js";
 import fs from "fs";
 import os from "os";
 import path from "path";

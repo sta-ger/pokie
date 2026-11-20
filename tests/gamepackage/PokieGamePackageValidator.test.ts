@@ -1,6 +1,6 @@
 import {PokieGamePackageValidator} from "@fromstan/pokie";
 import path from "path";
-import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment} from "../contracts/fixtures/PackageExtractionFixture.js";
 
 let disposeRuntimeStorage: () => void;
 beforeAll(() => {

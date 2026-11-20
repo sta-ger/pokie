@@ -92,7 +92,7 @@ const USAGE =
     "Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] " +
     `[--mode <betModeId>|${ALL_MODES}] [--out <file>] [--format json] ` +
     "[--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]\n" +
-    "   or: pokie sim <artifact.wasm> --rounds <number> --workers 1 --seed <string> [--format json]";
+    "   or: pokie sim <game.wasm> --rounds <number> --workers 1 --seed <string> [--format json]";
 
 export class SimCommand implements CliCommandHandling {
     private readonly loadGame: (packageRoot: string) => Promise<PokieGame>;

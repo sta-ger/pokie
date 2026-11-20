@@ -45,7 +45,7 @@ type ReplayOutcomeSourceFn = (project: PokieProject, modeName: string, seed: str
 const USAGE =
     "Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--mode <betModeId>] [--out <file>] [--format json]\n" +
     "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]\n" +
-    "   or: pokie replay <artifact.wasm> --round <number> --seed <string> [--out <file>]";
+    "   or: pokie replay <game.wasm> --round <number> --seed <string> [--out <file>]";
 
 export class ReplayCommand implements CliCommandHandling {
     private readonly loadGame: (packageRoot: string) => Promise<PokieGame>;

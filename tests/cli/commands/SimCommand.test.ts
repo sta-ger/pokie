@@ -1,4 +1,4 @@
-import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../../contracts/fixtures/PackageExtractionFixture.js";
 import {
     BetMode,
     GamePackageGenerator,
@@ -1276,7 +1276,7 @@ describe("SimCommand runtime package materialization boundary", () => {
     });
 });
 
-// Proves P3-POLISH-21's own sim-side outcome-source boundary: a resolved "outcomeLibrary" project is routed
+// Proves the sim-side outcome-source boundary: a resolved "outcomeLibrary" project is routed
 // through the canonical outcome-source selector/session path (simulateOutcomeSourceProject) instead of
 // resolveRuntimePackageRoot/loadGame/ParallelSimulationRunner, while a resolved "stakeAdapter" project surfaces
 // the same structured missing-capability diagnostic every other unsupported-operation attempt does -- and never

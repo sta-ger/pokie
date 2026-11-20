@@ -1,7 +1,7 @@
 import type {ExternalExportCapability, ExternalExportRequirements} from "@fromstan/pokie";
 
 // GET /api/project/deployment/targets' own DTO — one row per registered ExternalExportTarget.
-// Deliberately omits roundProjector/artifactGenerator/artifactValidator/runtimeAdapter/diagnostic:
+// Deliberately omits roundProjector/fileGenerator/fileValidator/runtimeConnector/diagnostic:
 // those are live collaborator instances (functions), never JSON-safe and never meaningful to a
 // browser client — only a target's own declared identity/contract is ever surfaced here.
 export type StudioDeploymentTargetSummary = {

@@ -101,7 +101,7 @@ export function RoundSummary({
 
                 {/* Structured win rows, state snapshots and raw feature payloads are inspection data,
                     not a second player screen.  Keep them behind this explicit disclosure; the
-                    canonical player above already owns the player-facing win/highlight, payline and
+                    player above already owns the player-facing win/highlight, payline and
                     feature-counter presentation. */}
                 <details onToggle={(event) => setArtifactInspectorOpen(event.currentTarget.open)}>
                     <summary>Inspect round record</summary>

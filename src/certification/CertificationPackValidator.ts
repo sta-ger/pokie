@@ -112,7 +112,7 @@ export class CertificationPackValidator implements CertificationPackValidating {
             const presentation = manifest.presentation;
             if (Object.keys(presentation).sort().join(",") !== "formats,template,templateArtifactHash,templateHash") throw new Error("Unknown pack presentation fields.");
             validateCertificationPackTemplate(presentation.template);
-            if (presentation.templateArtifactHash !== null && !(/^sha256:[a-f0-9]{64}$/).test(presentation.templateArtifactHash)) throw new Error("Invalid template raw artifact identity.");
+            if (presentation.templateArtifactHash !== null && !(/^sha256:[a-f0-9]{64}$/).test(presentation.templateArtifactHash)) throw new Error("Invalid template raw content identity.");
             if (packHash(presentation.template) !== presentation.templateHash || !Array.isArray(presentation.formats) || !presentation.formats.length || new Set(presentation.formats).size !== presentation.formats.length) throw new Error("Invalid template identity or formats.");
             for (const format of presentation.formats) {
                 checkCancellation(signal);

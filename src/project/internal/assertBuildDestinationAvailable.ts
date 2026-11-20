@@ -28,7 +28,7 @@ export function assertBuildDestinationAvailable(destinationPath: string, kind: "
 
     if (fs.readdirSync(destinationPath).length > 0) {
         throw new BuildConflictError(
-            `"${destinationPath}" already exists and is not empty. "pokie build" always writes a brand-new artifact into a missing or empty directory -- choose a different --out path or remove it first.`,
+            `"${destinationPath}" already exists and is not empty. "pokie build" always writes a brand-new output into a missing or empty directory -- choose a different --out path or remove it first.`,
         );
     }
 }

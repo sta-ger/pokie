@@ -1,6 +1,6 @@
 import type {
     OutcomeLibrarySelector,
-    StudioDeploymentArtifactView,
+    StudioDeploymentFileView,
     StudioDeploymentModeInput,
     StudioDeploymentRunView,
     StudioDeploymentStageSummary,
@@ -307,10 +307,10 @@ export function computeDeploymentConfigureBlockers(rows: readonly StudioDeployme
 // LOCAL_JSON_EXAMPLE_TARGET_ID) writes to a known, project-relative local path via
 // atomicallyWriteExternalExportFilesToDirectory's own documented temp-directory/atomic-swap/
 // best-effort-cleanup contract, so that exact destination and lifecycle is rendered here rather than
-// asserted away as opaque; any other, third-party target's own runtimeAdapter genuinely isn't
+// asserted away as opaque; any other, third-party target's own runtimeConnector genuinely isn't
 // introspectable client-side (see StudioDeploymentTargetSummary's own doc comment), so this says so
 // honestly instead of inventing a location or a temp-file story the target may not even have. Either way,
-// a deployment preflight (publish: false) never calls that destination's own runtimeAdapter at all (see
+// a deployment preflight (publish: false) never calls that destination's own runtimeConnector at all (see
 // StudioDeploymentService.run()'s own doc comment) -- nothing is written, locally or remotely, so this
 // never claims a mutation that didn't happen.
 export function describeDeploymentPreflightArtifactNote(target: StudioDeploymentTargetSummary): string {
@@ -331,7 +331,7 @@ export function describeDeploymentPreflightArtifactNote(target: StudioDeployment
               `and the leftover folder's own path is reported so it can be removed by hand.`
             : `Destination: a real Deploy sends these exact artifacts to "${target.id}"'s own registered ` +
               `destination. This UI can't confirm whether that's a local path, a remote endpoint, or a registry, ` +
-              `or whether it uses a temporary file along the way -- a third-party target's own runtimeAdapter is ` +
+              `or whether it uses a temporary file along the way -- a third-party target's own runtimeConnector is ` +
               `never introspectable client-side, only its declared id/requirements/capabilities are.`;
 
     const nonMutation =
@@ -347,7 +347,7 @@ export type DeploymentRunResultView = {
     readonly plan?: StudioDeploymentRunView["plan"];
     readonly error?: string;
     readonly stages: readonly StudioDeploymentStageSummary[];
-    readonly artifacts: readonly StudioDeploymentArtifactView[];
+    readonly files: readonly StudioDeploymentFileView[];
     // True only once every stage that ran reported no error — mirrors what the "Deploy"/"Preview"
     // button's own success feedback should say, without dom.ts having to re-derive it from `stages`.
     readonly ok: boolean;
@@ -360,7 +360,7 @@ export function describeDeploymentRunResult(view: StudioDeploymentRunView): Depl
         ...(view.plan === undefined ? {} : {plan: view.plan}),
         ...(view.error === undefined ? {} : {error: view.error}),
         stages: view.stages,
-        artifacts: view.generation?.artifacts ?? [],
+        files: view.generation?.files ?? [],
         ok: view.status !== "unavailable" && view.status !== "conflict" && view.stages.every((stage) => stage.status !== "error"),
         publish: view.publish,
         delivered: view.delivery?.delivered,
@@ -373,7 +373,7 @@ export function describeDeploymentRunResult(view: StudioDeploymentRunView): Depl
 // kind mirrors what each stage actually represents (see computeDeploymentStages's own doc comment):
 //   - "descriptor"/"compatibility" failing means the target itself rejected this content before doing
 //     any work -- "incompatible", the Check-compatibility step's own blocked state.
-//   - "projection"/"generation"/"artifactValidation" failing means the content (an outcome library, or
+//   - "projection"/"generation"/"fileValidation" failing means the content (an outcome library, or
 //     what the generator produced from it) didn't validate against the target's own shape -- fixable by
 //     editing a mode's library path, not by picking a different target -- "validation-failure".
 //   - "diagnostic"/"delivery" failing means the target/transport itself couldn't be reached or written to
@@ -384,7 +384,7 @@ export function describeDeploymentRunResult(view: StudioDeploymentRunView): Depl
 export type DeploymentOutcomeKind = "success" | "partial" | "incompatible" | "validation-failure" | "transport-failure";
 
 const INCOMPATIBLE_STAGE_KEYS: readonly StudioDeploymentStageSummary["key"][] = ["descriptor", "compatibility"];
-const VALIDATION_FAILURE_STAGE_KEYS: readonly StudioDeploymentStageSummary["key"][] = ["projection", "generation", "artifactValidation"];
+const VALIDATION_FAILURE_STAGE_KEYS: readonly StudioDeploymentStageSummary["key"][] = ["projection", "generation", "fileValidation"];
 const TRANSPORT_FAILURE_STAGE_KEYS: readonly StudioDeploymentStageSummary["key"][] = ["diagnostic", "delivery"];
 
 export function describeDeploymentOutcome(view: DeploymentRunResultView): DeploymentOutcomeKind {

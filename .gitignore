@@ -5,3 +5,7 @@ coverage
 node_modules
 .DS_Store
 *.tgz
+*.log
+*.tsbuildinfo
+docs/evidence/
+docs/phase*/

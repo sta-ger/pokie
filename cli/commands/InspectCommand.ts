@@ -137,13 +137,13 @@ export class InspectCommand implements CliCommandHandling {
         }
 
         const {manifest} = manifestRead;
-        console.log("\nDeclared component manifest:");
+        console.log("\nDeclared component info:");
         console.log(`  component id     ${manifest.component.id}`);
         console.log(`  component version ${manifest.component.version}`);
         console.log(`  schema version   ${manifest.schemaVersion}`);
         console.log(`  serialization    session=${manifest.serialization.session}, play=${manifest.serialization.play}, state=${manifest.serialization.state}`);
-        console.log(`  host bindings    rng=${manifest.host.rng}, services=${manifest.host.services.length === 0 ? "none" : manifest.host.services.join(", ")}`);
-        console.log(`  capabilities     ${manifest.capabilities.length === 0 ? "none" : manifest.capabilities.join(", ")}`);
+        console.log(`  host requires    rng=${manifest.host.rng}, services=${manifest.host.services.length === 0 ? "none" : manifest.host.services.join(", ")}`);
+        console.log(`  supported actions ${manifest.capabilities.length === 0 ? "none" : manifest.capabilities.join(", ")}`);
         if (manifest.artifact === undefined) {
             console.log("  runtime          legacy sidecar-only component (inspection-only)");
         } else {
@@ -151,10 +151,10 @@ export class InspectCommand implements CliCommandHandling {
                 ...(project.capabilities.includes(WASM_RUNTIME_PLAY_CAPABILITY) ? ["play"] : []),
                 ...(project.capabilities.includes(WASM_RUNTIME_REPLAY_CAPABILITY) ? ["replay"] : []),
             ];
-            console.log(`  runtime          canonical ABI ${manifest.artifact.abiVersion}; canonical ABI operations: ${declaredOperations.length === 0 ? "metadata only" : declaredOperations.join(", ")}`);
+            console.log(`  runtime          ABI ${manifest.artifact.abiVersion}; ABI operations: ${declaredOperations.length === 0 ? "metadata only" : declaredOperations.join(", ")}`);
             console.log("  compatibility    compatible with this POKIE WASM runtime");
             console.log(`  integrity        ${manifest.artifact.sha256} (${manifest.artifact.bytes} bytes)`);
-            console.log(`  adapter          ${manifest.artifact.adapter}`);
+            console.log(`  connector        ${manifest.artifact.adapter}`);
         }
         return manifest;
     }

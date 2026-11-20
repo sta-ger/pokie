@@ -863,12 +863,12 @@ export class OutcomeLibraryFolderValidator<T extends string | number = string> i
                     continue;
                 }
 
-                const artifactIssues = this.roundRecordValidator.validate(outcome.record as never);
-                if (artifactIssues.length > 0) {
+                const recordIssues = this.roundRecordValidator.validate(outcome.record as never);
+                if (recordIssues.length > 0) {
                     issues.push({
                         code: "outcome-library-folder-outcomes-record-invalid",
                         severity: "error",
-                        message: `mode "${modeName}": outcome "${outcome.id}" has an invalid record: ${artifactIssues.map((issue) => issue.code).join(", ")}.`,
+                        message: `mode "${modeName}": outcome "${outcome.id}" has an invalid record: ${recordIssues.map((issue) => issue.code).join(", ")}.`,
                         details: {modeName, id: outcome.id},
                     });
                     sawError = true;

@@ -18,7 +18,7 @@ export type LocalJsonExternalExportTargetOptions = {
 // The SDK's one simple, ready-to-run example target — writes one pretty-printed JSON file per outcome plus an
 // index.json to a local directory (see LocalJsonExternalFileGenerator/LocalFileExternalExportRuntimeConnector).
 // It exists to exercise every piece of this SDK end to end (registration, compatibility validation, generation,
-// artifact validation, diagnostics, delivery) against a real, runnable target — not as a template for a
+// file validation, diagnostics, delivery) against a real, runnable target — not as a template for a
 // specific external RGS/aggregator format, and not a private integration for any of them (see
 // ExternalExportRuntimeConnector's own doc comment on that being out of scope for this package).
 //
@@ -26,7 +26,7 @@ export type LocalJsonExternalExportTargetOptions = {
 // since its own JSON projection has no reason to reject any of them — a real target should only declare the
 // capabilities its own format genuinely supports.
 //
-// Has no "artifactValidator" of its own — StandardExternalFileValidator's generic checks are already
+// Has no "fileValidator" of its own — StandardExternalFileValidator's generic checks are already
 // everything this target's output needs, and ExternalExportService always runs that validator regardless
 // (see that class's own doc comment), so declaring it again here would just duplicate every issue it reports.
 export function createLocalJsonExternalExportTarget<T extends string | number = string>(
@@ -40,8 +40,8 @@ export function createLocalJsonExternalExportTarget<T extends string | number = 
         requirements: {requiresHomogeneousProvenance: true},
         capabilities: [ROUND_RECORD_FEATURE_EVENTS_CAPABILITY, ROUND_RECORD_DEBUG_METADATA_CAPABILITY, MULTI_MODE_DEPLOYMENT_CAPABILITY],
         roundProjector,
-        artifactGenerator: new LocalJsonExternalFileGenerator(),
-        runtimeAdapter: new LocalFileExternalExportRuntimeConnector(options.outDir),
+        fileGenerator: new LocalJsonExternalFileGenerator(),
+        runtimeConnector: new LocalFileExternalExportRuntimeConnector(options.outDir),
         diagnostic: new LocalExternalExportDiagnostic(options.outDir),
     };
 }

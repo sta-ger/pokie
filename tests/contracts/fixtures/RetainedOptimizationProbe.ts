@@ -20,7 +20,7 @@ const retainedRequest = (): OptimizationRequest => ({
 /** Same retained workload and assertions, in an ordinary Node host instead of Jest's VM. */
 export async function runRetainedOptimization(directory: string, phase: "search" | "apply"): Promise<void> {
     const source = path.join(directory, "blueprint.json");
-    const fixture = fs.readFileSync(path.resolve("tests/v2/fixtures/retained-optimization.blueprint.json"));
+    const fixture = fs.readFileSync(path.resolve("tests/contracts/fixtures/retained-optimization.blueprint.json"));
     if (phase === "search") fs.writeFileSync(source, fixture);
     expect(fs.readFileSync(source)).toEqual(fixture);
     const fixtureHash = createHash("sha256").update(fixture).digest("hex");

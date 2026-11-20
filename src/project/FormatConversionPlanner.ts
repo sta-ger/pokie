@@ -578,15 +578,15 @@ export class FormatConversionPlanner {
                 ],
             };
         }
-        let detail = `A ${sourceKind} artifact cannot yield a runnable POKIE game.`;
+        let detail = `A ${sourceKind} project cannot yield a runnable POKIE game.`;
         if (sourceKind === "outcomeLibrary") {
             detail = "An Outcome Library has native sampling and exact replay paths, but does not retain executable game logic.";
         } else if (sourceKind === "stakeAdapter") {
-            detail = "A Stake Engine export is an exchange artifact and does not retain an executable game runtime.";
+            detail = "A Stake Engine export is an exchange format and does not retain an executable game runtime.";
         } else if (sourceKind === "wasm") {
             detail = describeWasmRuntimeBoundary();
         }
-        return unavailable("unsupported-boundary", detail, sourceKind === "wasm" ? describeWasmRecovery() : "Use the original Blueprint or POKIE package, or choose the artifact's native supported operation.");
+        return unavailable("unsupported-boundary", detail, sourceKind === "wasm" ? describeWasmRecovery() : "Use the original Blueprint or POKIE package, or choose the source's native supported operation.");
     }
 
     /**
@@ -688,7 +688,7 @@ export class FormatConversionPlanner {
             return unavailable(
                 "missing-capability",
                 `This ${source.kind} was recognized without the required "${requiredCapability}" import capability.`,
-                "Resolve the original artifact again and retry the import.",
+                "Resolve the original source again and retry the import.",
             );
         }
         return {
@@ -820,7 +820,7 @@ export class FormatConversionPlanner {
         ) {
             return unavailable(
                 "unrecognized-source",
-                "This Studio source is not an independently recognized POKIE artifact and cannot be used for conversion planning.",
+                "This Studio source is not an independently recognized POKIE project and cannot be used for conversion planning.",
                 "Open or generate a recognized POKIE Outcome Library bundle, then retry the action.",
             );
         }
@@ -830,7 +830,7 @@ export class FormatConversionPlanner {
             return unavailable(
                 "missing-capability",
                 `This ${sourceKind} was recognized without the required "${requiredCapability}" capability for ${targetKind}.`,
-                "Resolve the original artifact again, or use a source whose verified capabilities include the required conversion edge.",
+                "Resolve the original source again, or use a source whose verified supported actions include the required conversion edge.",
             );
         }
 

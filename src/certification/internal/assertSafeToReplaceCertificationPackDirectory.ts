@@ -9,5 +9,5 @@ export function assertSafeToReplaceCertificationPackDirectory(outDir: string): v
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
         throw error;
     }
-    if (destination.isSymbolicLink() || !destination.isDirectory() || fs.readdirSync(outDir).length) throw new Error(`"${outDir}" already exists and is not an empty physical directory. Choose a new or empty --out directory; existing evidence and user artifacts are never replaced.`);
+    if (destination.isSymbolicLink() || !destination.isDirectory() || fs.readdirSync(outDir).length) throw new Error(`"${outDir}" already exists and is not an empty physical directory. Choose a new or empty --out directory; existing evidence and user files are never replaced.`);
 }

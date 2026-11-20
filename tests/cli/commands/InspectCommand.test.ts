@@ -5,7 +5,7 @@ import os from "os";
 import path from "path";
 import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
 import {InspectCommand} from "../../../cli/commands/InspectCommand.js";
-import {createPackageExtractionTestEnvironment} from "../../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment} from "../../contracts/fixtures/PackageExtractionFixture.js";
 
 let restoreTemporaryDirectory: () => void;
 beforeAll(() => {
@@ -318,13 +318,13 @@ describe("InspectCommand (integration, real GamePackageInspector)", () => {
             expect(await new InspectCommand().run([wasmPath])).toBe(0);
 
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
-            expect(printed).toContain("Declared component manifest:");
+            expect(printed).toContain("Declared component info:");
             expect(printed).toContain("component id     sample-component");
             expect(printed).toContain("component version 0.1.0");
             expect(printed).toContain("schema version   1.0.0");
             expect(printed).toContain("session=pokie.session.v1, play=pokie.play.v1, state=pokie.state.v1");
             expect(printed).toContain("rng=pokie.rng.v1, services=pokie.clock.v1");
-            expect(printed).toContain("capabilities     pokie.round.play.v1");
+            expect(printed).toContain("supported actions pokie.round.play.v1");
             expect(printed).not.toContain("Available next actions:");
             expect(printed).not.toContain("pokie inspect");
         } finally {

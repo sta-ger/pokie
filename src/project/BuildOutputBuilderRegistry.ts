@@ -66,7 +66,7 @@ export function assertPreparedOutputDestinationAvailable(
     assertBuildDestinationAvailable(destinationPath, kind);
 }
 
-// Which PokieOperation actually produces each OutputFormat as a brand-new artifact -- "build" writes a
+// Which PokieOperation actually produces each OutputFormat as a brand-new output -- "build" writes a
 // tsPackage, "outcomeLibrary.build" writes an outcomeLibrary bundle, "stakeEngine.export" writes a stakeAdapter
 // export, and "par.export" writes a parWorkbook file. Every other
 // PokieOperation (sim, replay, validate, ...) reads an already-built project rather than producing a new
@@ -86,7 +86,7 @@ const TARGET_OPERATION: Readonly<Record<OutputFormat, PokieOperation>> = {
 // than being left for a reader to infer from an empty/narrow "supportedSources" array alone.
 const UNSUPPORTED_NOTES: Readonly<Record<OutputFormat, readonly string[]>> = {
     blueprint: [
-        "Imports a PAR workbook or extracts a package public effective-model descriptor into a separate Blueprint with field-level evidence. Partial or unsupported models cannot build artifacts; arbitrary code losslessness is not promised.",
+        "Imports a PAR workbook or extracts a package public effective-model descriptor into a separate Blueprint with field-level evidence. Partial or unsupported models cannot build outputs; arbitrary code losslessness is not promised.",
     ],
     tsPackage: [
         "Builds a runnable package from a GameBlueprint, imported PAR model or complete public package descriptor.",
@@ -102,8 +102,8 @@ const UNSUPPORTED_NOTES: Readonly<Record<OutputFormat, readonly string[]>> = {
     ],
     parWorkbook: [
         "Exports a Game Blueprint to a PAR workbook snapshot, preserving exact and weighted whole-sequence reels " +
-            "and materializing generated/per-symbol sources as diagnosed deterministic snapshots, or republishes an existing " +
-            "PAR workbook; it uses complete public package descriptors through Blueprint and does not recover a model from outcome artifacts.",
+            "and writing generated/per-symbol sources as diagnosed deterministic snapshots, or republishes an existing " +
+            "PAR workbook; it uses complete public package descriptors through Blueprint and does not recover a model from outcome libraries.",
     ],
     wasm: [
         WASM_PRODUCT_CONTRACT.executionBoundary,
@@ -934,7 +934,7 @@ export class BuildOutputBuilderRegistry {
     private assertExecutablePlan(plan: FormatConversionPlan): void {
         if (plan.status === "planned") return;
         const diagnostic = plan.diagnostic;
-        if (diagnostic === undefined) throw new Error("Artifact conversion could not be planned.");
+        if (diagnostic === undefined) throw new Error("Output conversion could not be planned.");
         const compatibility = describeFormatConversionPlanDiagnostic(plan);
         throw new Error(`${diagnostic.message} Next: ${diagnostic.recovery}${compatibility === undefined ? "" : `\n${compatibility}`}`);
     }
@@ -1049,11 +1049,11 @@ export class BuildOutputBuilderRegistry {
         // Resolver-owned projects retain compatibility metadata such as a
         // library config hash, but that metadata alone cannot notice a
         // changed manifest or index which still advertises the same game.
-        // Rebind every resolved artifact tree that supplied an input hash
+        // Rebind every resolved source tree that supplied an input hash
         // before any writer is allowed to publish.
         const preparedInputBindingHash = plan.source.configurationProvenance?.inputBindingHash;
         if (preparedInputBindingHash !== undefined && computeProjectInputBindingHash(source) !== preparedInputBindingHash) {
-            throw new Error("The source artifact bytes changed after this conversion was prepared; prepare a new plan before executing it.");
+            throw new Error("The source bytes changed after this conversion was prepared; prepare a new plan before executing it.");
         }
         // Resolved Blueprint/package provenance is computed from the runnable
         // source, rather than copied from the project wrapper. Re-prepare it

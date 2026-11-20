@@ -1,4 +1,4 @@
-import {existingMechanicsBlueprint, generatedMechanicsGame, mechanicsSession} from "../../../v2/fixtures/ExistingMechanicsGame.js";
+import {existingMechanicsBlueprint, generatedMechanicsGame, mechanicsSession} from "../../../contracts/fixtures/ExistingMechanicsGame.js";
 import {
     AUTHORED_MECHANIC_CATALOG, observeVideoSlotFeatures,
     AccumulatingJackpotPool,

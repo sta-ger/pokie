@@ -49,7 +49,7 @@ function ReelStripFieldset({reelIndex, strip, symbols, mutate, artwork}: {reelIn
             <QuickActions>
                 <Select
                     searchable
-                    placeholder="Choose canonical symbol"
+                    placeholder="Choose symbol"
                     aria-label={`Symbol picker for reel ${reelIndex + 1}`}
                     data={symbols}
                     value={newSymbolId}

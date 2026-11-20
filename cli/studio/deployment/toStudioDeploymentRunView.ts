@@ -4,7 +4,7 @@ import type {StudioDeploymentRunView} from "./StudioDeploymentRunView.js";
 
 // The one conversion point from ExternalExportService's own ExternalExportResult to the plain
 // JSON DTO an API response actually sends. Every field here is copied straight from `result` — the
-// only real transforms are content-decoding each generated artifact's own `content` (string | Buffer)
+// only real transforms are content-decoding each generated file's own `content` (string | Buffer)
 // into a plain string, and computing `stages` (see computeDeploymentStages). This function never
 // re-derives, re-checks, or second-guesses anything ExternalExportService already computed — see
 // StudioDeploymentService's own doc comment for why that matters.
@@ -22,12 +22,12 @@ export function toStudioDeploymentRunView(result: ExternalExportResult, targetId
                 ? undefined
                 : {
                     issues: result.generation.issues,
-                    artifacts: result.generation.artifacts.map((artifact) => ({
-                        relativePath: artifact.relativePath,
-                        content: typeof artifact.content === "string" ? artifact.content : artifact.content.toString("utf8"),
+                    files: result.generation.files.map((file) => ({
+                        relativePath: file.relativePath,
+                        content: typeof file.content === "string" ? file.content : file.content.toString("utf8"),
                     })),
                 },
-        artifactIssues: result.artifactIssues,
+        fileIssues: result.fileIssues,
         diagnostic: result.diagnostic,
         delivery: result.delivery,
     };

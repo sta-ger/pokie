@@ -39,7 +39,7 @@ export function expectRareMetrics(metrics: {rtp: number; hitFrequency: number; m
 }
 
 export async function withRareStakeDirectory(run: (dir: string) => Promise<void>): Promise<void> {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-p9-03-"));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stake-probability-"));
     const dir = path.join(root, "stake");
     try {
         writeRareStakeDirectory(dir);

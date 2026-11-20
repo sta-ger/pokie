@@ -142,14 +142,14 @@ export function buildWeightedOutcomeLibrary<T extends string | number = string>(
             );
         }
 
-        const artifactIssues = [
+        const recordIssues = [
             ...roundRecordValidator.validate(input.record),
             ...(extraRecordValidator?.validate(input.record) ?? []),
         ];
-        if (artifactIssues.length > 0) {
+        if (recordIssues.length > 0) {
             throw new WeightedOutcomeLibraryBuildError(
                 "weighted-outcome-record-invalid",
-                `outcome "${input.id}" has an invalid record: ${artifactIssues.map((issue) => issue.code).join(", ")}.`,
+                `outcome "${input.id}" has an invalid record: ${recordIssues.map((issue) => issue.code).join(", ")}.`,
             );
         }
 

@@ -70,18 +70,18 @@ export class ExternalExportTargetDescriptorValidator<T extends string | number =
                 message: `Target "${id}" roundProjector must implement a "project" method.`,
             });
         }
-        if (!isFunction((target.artifactGenerator as Loose<{generate: unknown}> | undefined)?.generate)) {
+        if (!isFunction((target.fileGenerator as Loose<{generate: unknown}> | undefined)?.generate)) {
             issues.push({
-                code: "external-deployment-target-artifact-generator-invalid",
+                code: "external-deployment-target-file-generator-invalid",
                 severity: "error",
-                message: `Target "${id}" artifactGenerator must implement a "generate" method.`,
+                message: `Target "${id}" fileGenerator must implement a "generate" method.`,
             });
         }
-        if (target.artifactValidator !== undefined && !isFunction((target.artifactValidator as Loose<{validate: unknown}>).validate)) {
+        if (target.fileValidator !== undefined && !isFunction((target.fileValidator as Loose<{validate: unknown}>).validate)) {
             issues.push({
-                code: "external-deployment-target-artifact-validator-invalid",
+                code: "external-deployment-target-file-validator-invalid",
                 severity: "error",
-                message: `Target "${id}" artifactValidator, when present, must implement a "validate" method.`,
+                message: `Target "${id}" fileValidator, when present, must implement a "validate" method.`,
             });
         }
         if (target.diagnostic !== undefined && !isFunction((target.diagnostic as Loose<{diagnose: unknown}>).diagnose)) {
@@ -91,11 +91,11 @@ export class ExternalExportTargetDescriptorValidator<T extends string | number =
                 message: `Target "${id}" diagnostic, when present, must implement a "diagnose" method.`,
             });
         }
-        if (target.runtimeAdapter !== undefined && !isFunction((target.runtimeAdapter as Loose<{deliver: unknown}>).deliver)) {
+        if (target.runtimeConnector !== undefined && !isFunction((target.runtimeConnector as Loose<{deliver: unknown}>).deliver)) {
             issues.push({
-                code: "external-deployment-target-runtime-adapter-invalid",
+                code: "external-deployment-target-runtime-connector-invalid",
                 severity: "error",
-                message: `Target "${id}" runtimeAdapter, when present, must implement a "deliver" method.`,
+                message: `Target "${id}" runtimeConnector, when present, must implement a "deliver" method.`,
             });
         }
 

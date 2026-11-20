@@ -30,23 +30,23 @@ function isUnsafeRelativePath(relativePath: string): boolean {
 // for free unless it supplies its own, and ExternalExportService always runs it regardless (see that
 // class's own doc comment). Checks two things, in order:
 //
-//   1. That "result" itself is even shaped like an ExternalFileGenerationResult at all — "artifacts" and
+//   1. That "result" itself is even shaped like an ExternalFileGenerationResult at all — "files" and
 //      "issues" must both be arrays, since a badly-written custom ExternalFileGenerator's return value is
 //      only ever *documented* to have this shape, never structurally guaranteed once it's already reached this
 //      validator as an arbitrary runtime value. A result that fails this check is reported as a single
 //      structural issue and nothing further is checked (there's no array to iterate).
-//   2. For every artifact that does exist: that "relativePath" is a string and "content" is a string or Buffer
+//   2. For every file that does exist: that "relativePath" is a string and "content" is a string or Buffer
 //      (again, checked before anything else touches them — reading `.length` off a non-string/non-Buffer
 //      "content", or passing a non-string "relativePath" to a `path.*` function, would otherwise throw), and
 //      only once both hold: that "relativePath" is a safe relative path (no absolute path, no ".."-escape — see
 //      writeExternalExportFilesToDirectory, which enforces the same rule at write time), that no two
-//      artifacts share a "relativePath" (exactly or only differing by case — the same duplicate/case-collision
+//      files share a "relativePath" (exactly or only differing by case — the same duplicate/case-collision
 //      concern ExternalExportTargetRegistry applies to target ids and StakeEngineExportValidator applies to
-//      mode names), that "content" is non-empty, and that a ".json"-named artifact's content actually parses.
+//      mode names), that "content" is non-empty, and that a ".json"-named file's content actually parses.
 //
 // Never throws: validate() wraps everything in a catch-all, so a result so malformed it defeats even the shape
 // checks above still comes back as a single error-severity ValidationIssue, not an exception. A target with
-// format-specific invariants beyond these (e.g. "every path listed in the index file must exist in the artifact
+// format-specific invariants beyond these (e.g. "every path listed in the index file must exist in the file
 // set") should implement its own ExternalFileValidator for those — additively, alongside this one, never
 // instead of it.
 export class StandardExternalFileValidator implements ExternalFileValidator {
@@ -56,7 +56,7 @@ export class StandardExternalFileValidator implements ExternalFileValidator {
         } catch (error) {
             return [
                 {
-                    code: "external-artifact-generation-result-malformed",
+                    code: "external-file-generation-result-malformed",
                     severity: "error",
                     message: `ExternalFileGenerationResult could not be validated: ${error instanceof Error ? error.message : String(error)}`,
                 },
@@ -70,78 +70,78 @@ export class StandardExternalFileValidator implements ExternalFileValidator {
         if (!isPlainObject(result)) {
             return [
                 {
-                    code: "external-artifact-generation-result-invalid",
+                    code: "external-file-generation-result-invalid",
                     severity: "error",
                     message: `ExternalFileGenerationResult must be an object, got ${JSON.stringify(result) ?? String(result)}.`,
                 },
             ];
         }
 
-        if (!Array.isArray(result.artifacts)) {
+        if (!Array.isArray(result.files)) {
             issues.push({
-                code: "external-artifact-generation-result-invalid",
+                code: "external-file-generation-result-invalid",
                 severity: "error",
-                message: `ExternalFileGenerationResult.artifacts must be an array, got ${typeof result.artifacts}.`,
+                message: `ExternalFileGenerationResult.files must be an array, got ${typeof result.files}.`,
             });
         }
         if (!Array.isArray(result.issues)) {
             issues.push({
-                code: "external-artifact-generation-result-invalid",
+                code: "external-file-generation-result-invalid",
                 severity: "error",
                 message: `ExternalFileGenerationResult.issues must be an array, got ${typeof result.issues}.`,
             });
         }
-        if (!Array.isArray(result.artifacts)) {
+        if (!Array.isArray(result.files)) {
             return issues;
         }
 
         const seenPaths = new Map<string, string>(); // lowercase relativePath -> original relativePath
-        (result.artifacts as readonly unknown[]).forEach((rawArtifact: unknown, index: number) => {
-            this.validateArtifact(rawArtifact, index, seenPaths, issues);
+        (result.files as readonly unknown[]).forEach((rawFile: unknown, index: number) => {
+            this.validateFile(rawFile, index, seenPaths, issues);
         });
 
         return issues;
     }
 
-    private validateArtifact(rawArtifact: unknown, index: number, seenPaths: Map<string, string>, issues: ValidationIssue[]): void {
-        if (!isPlainObject(rawArtifact)) {
+    private validateFile(rawFile: unknown, index: number, seenPaths: Map<string, string>, issues: ValidationIssue[]): void {
+        if (!isPlainObject(rawFile)) {
             issues.push({
-                code: "external-artifact-shape-invalid",
+                code: "external-file-shape-invalid",
                 severity: "error",
-                message: `artifact at position ${index} must be an object, got ${JSON.stringify(rawArtifact) ?? String(rawArtifact)}.`,
+                message: `file at position ${index} must be an object, got ${JSON.stringify(rawFile) ?? String(rawFile)}.`,
                 details: {index},
             });
             return;
         }
 
-        const artifact = rawArtifact as Loose<ExternalGeneratedFile>;
-        const hasSafePath = this.validateRelativePath(artifact.relativePath, index, seenPaths, issues);
-        const hasValidContent = this.validateContentType(artifact.content, artifact.relativePath, index, issues);
+        const file = rawFile as Loose<ExternalGeneratedFile>;
+        const hasSafePath = this.validateRelativePath(file.relativePath, index, seenPaths, issues);
+        const hasValidContent = this.validateContentType(file.content, file.relativePath, index, issues);
 
         if (!hasValidContent) {
             return;
         }
-        const content = artifact.content as string | Buffer;
+        const content = file.content as string | Buffer;
 
         if (content.length === 0) {
             issues.push({
-                code: "external-artifact-content-empty",
+                code: "external-file-content-empty",
                 severity: "error",
-                message: `artifact at position ${index}${hasSafePath ? ` ("${String(artifact.relativePath)}")` : ""} has empty content.`,
-                details: {index, relativePath: artifact.relativePath},
+                message: `file at position ${index}${hasSafePath ? ` ("${String(file.relativePath)}")` : ""} has empty content.`,
+                details: {index, relativePath: file.relativePath},
             });
         }
 
-        if (hasSafePath && (artifact.relativePath as string).toLowerCase().endsWith(".json")) {
+        if (hasSafePath && (file.relativePath as string).toLowerCase().endsWith(".json")) {
             const text = typeof content === "string" ? content : content.toString("utf8");
             try {
                 JSON.parse(text);
             } catch (error) {
                 issues.push({
-                    code: "external-artifact-json-invalid",
+                    code: "external-file-json-invalid",
                     severity: "error",
-                    message: `artifact "${String(artifact.relativePath)}" is named as JSON but does not parse: ${error instanceof Error ? error.message : String(error)}`,
-                    details: {relativePath: artifact.relativePath},
+                    message: `file "${String(file.relativePath)}" is named as JSON but does not parse: ${error instanceof Error ? error.message : String(error)}`,
+                    details: {relativePath: file.relativePath},
                 });
             }
         }
@@ -153,9 +153,9 @@ export class StandardExternalFileValidator implements ExternalFileValidator {
     private validateRelativePath(relativePath: unknown, index: number, seenPaths: Map<string, string>, issues: ValidationIssue[]): boolean {
         if (typeof relativePath !== "string") {
             issues.push({
-                code: "external-artifact-relative-path-invalid",
+                code: "external-file-relative-path-invalid",
                 severity: "error",
-                message: `artifact at position ${index} has a non-string relativePath (${JSON.stringify(relativePath) ?? String(relativePath)}).`,
+                message: `file at position ${index} has a non-string relativePath (${JSON.stringify(relativePath) ?? String(relativePath)}).`,
                 details: {index},
             });
             return false;
@@ -163,9 +163,9 @@ export class StandardExternalFileValidator implements ExternalFileValidator {
 
         if (isUnsafeRelativePath(relativePath)) {
             issues.push({
-                code: "external-artifact-path-unsafe",
+                code: "external-file-path-unsafe",
                 severity: "error",
-                message: `artifact at position ${index} has an unsafe relativePath (${JSON.stringify(relativePath)}); it must be a non-empty relative path that never escapes its own root via "..".`,
+                message: `file at position ${index} has an unsafe relativePath (${JSON.stringify(relativePath)}); it must be a non-empty relative path that never escapes its own root via "..".`,
                 details: {index, relativePath},
             });
             return false;
@@ -179,14 +179,14 @@ export class StandardExternalFileValidator implements ExternalFileValidator {
         }
         if (existing === relativePath) {
             issues.push({
-                code: "external-artifact-duplicate-path",
+                code: "external-file-duplicate-path",
                 severity: "error",
-                message: `relativePath "${relativePath}" is produced by more than one artifact.`,
+                message: `relativePath "${relativePath}" is produced by more than one file.`,
                 details: {relativePath},
             });
         } else {
             issues.push({
-                code: "external-artifact-path-case-collision",
+                code: "external-file-path-case-collision",
                 severity: "error",
                 message: `relativePath "${relativePath}" differs only in case from relativePath "${existing}"; these would write the same file on a case-insensitive filesystem.`,
                 details: {relativePath, collidesWith: existing},
@@ -200,9 +200,9 @@ export class StandardExternalFileValidator implements ExternalFileValidator {
             return true;
         }
         issues.push({
-            code: "external-artifact-content-type-invalid",
+            code: "external-file-content-type-invalid",
             severity: "error",
-            message: `artifact at position ${index}${typeof relativePath === "string" ? ` ("${relativePath}")` : ""} has invalid content (must be a string or Buffer, got ${typeof content}).`,
+            message: `file at position ${index}${typeof relativePath === "string" ? ` ("${relativePath}")` : ""} has invalid content (must be a string or Buffer, got ${typeof content}).`,
             details: {index, relativePath},
         });
         return false;

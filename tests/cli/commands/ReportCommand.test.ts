@@ -1,5 +1,5 @@
 import {buildSourceOutcomeLibraryFolder} from "../../certification/CertificationPackTestFixtures.js";
-import {aggregate, featureAnalyticsReport} from "../../v2/fixtures/FeatureAnalyticsFixture.js";
+import {aggregate, featureAnalyticsReport} from "../../contracts/fixtures/FeatureAnalyticsFixture.js";
 import {withRareStakeDirectory, expectRareMetrics} from "../../stakeengine/standalone/StakeProbabilityTestFixtures.js";
 import {
     CertificationPackBuilder,
@@ -24,7 +24,7 @@ import path from "path";
 import zlib from "zlib";
 import {ReportCommand} from "../../../cli/commands/ReportCommand.js";
 import {SimCommand} from "../../../cli/commands/SimCommand.js";
-import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../../contracts/fixtures/PackageExtractionFixture.js";
 import {buildOutcomeLibraryFolderModeInput} from "../../weightedoutcome/folder/OutcomeLibraryFolderTestFixtures.js";
 
 const report: SimulationReport = {
@@ -483,7 +483,7 @@ describe("ReportCommand resolved-project boundary", () => {
     });
 });
 
-// Proves the P3-POLISH-21 routing: a mistakenly-given target that resolves to an "outcomeLibrary"/
+// Proves the command routing: a mistakenly-given target that resolves to an "outcomeLibrary"/
 // "stakeAdapter" project is analyzed through its own canonical outcome-source reader and rendered directly --
 // never told to "run pokie sim" first, since neither project type ever gains RUNTIME_EXECUTE_CAPABILITY.
 describe("ReportCommand outcome-source project routing", () => {

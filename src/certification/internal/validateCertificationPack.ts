@@ -25,7 +25,7 @@ export function validateCertificationPack(value: unknown, manifest: Certificatio
     closed(value.reproduction, ["selection", "runtime", "recordings", "commands", "variableMetadata"]);
     closed(value.support, ["notice", "coverage", "limitations", "sdk", "fairness", "yaml"]);
     const d = value as unknown as CertificationPack;
-    if (![manifest.pokieVersion, manifest.recordPokieVersion].every(version => typeof version === "string" && version === version.trim() && (/^(?:1\.3|2\.0)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/).test(version))) throw new Error("Unsupported pack producer/artifact runtime; pack v1 supports POKIE 2.0.x (and retained 1.3.x evidence) only. Rebuild with a compatible runtime; do not relabel artifact provenance.");
+    if (![manifest.pokieVersion, manifest.recordPokieVersion].every(version => typeof version === "string" && version === version.trim() && (/^(?:1\.3|2\.0)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/).test(version))) throw new Error("Unsupported pack producer/build runtime; pack v1 supports POKIE 2.0.x (and retained 1.3.x evidence) only. Rebuild with a compatible runtime; do not relabel source origin.");
     const source = d.identity.sourceLibraryIndex;
     if (source.schemaVersion !== 1) throw new Error("Unsupported retained source-bundle manifest version; expected 1.");
     if (source.configHash !== manifest.configHash || source.recordPokieVersion !== manifest.recordPokieVersion || packHash(source.game) !== packHash(manifest.game)) throw new Error("Contradictory retained source provenance.");
@@ -40,14 +40,14 @@ export function validateCertificationPack(value: unknown, manifest: Certificatio
         hash(d.identity.modelHash);
         hash(d.identity.modelArtifactHash);
 
-    } else if (d.identity.modelArtifactHash !== null) throw new Error("Model artifact without model identity.");
-    if (d.identity.modelHash !== null && d.identity.modelHash !== manifest.configHash) throw new Error("Pack model differs from artifact configHash.");
+    } else if (d.identity.modelArtifactHash !== null) throw new Error("Model output without model identity.");
+    if (d.identity.modelHash !== null && d.identity.modelHash !== manifest.configHash) throw new Error("Pack model differs from output configHash.");
     if (d.rules.definition === null) {
         if (d.rules.status !== "unavailable" || d.identity.modelHash !== null || d.support.coverage !== "unavailable" || d.validation.model !== "unavailable") throw new Error("Unavailable model was presented as supported.");
     } else {
         const definition = d.rules.definition;
         closed(definition, ["identity", "support", "fields", "diagnostics", "limits", ...(definition.authored === undefined ? [] : ["authored"]), ...(definition.effective === undefined ? [] : ["effective"]), ...(definition.advanced === undefined ? [] : ["advanced"])]);
-        if (definition.identity.revision !== d.identity.modelHash) throw new Error("Model definition revision differs from artifact identity.");
+        if (definition.identity.revision !== d.identity.modelHash) throw new Error("Model definition revision differs from output identity.");
         if (d.rules.status !== "available" || !d.identity.modelHash || !["complete", "partial"].includes(definition.support) || d.support.coverage !== (definition.support === "complete" ? "complete" : "partial") || d.validation.model !== "advanced-declared-model") throw new Error("Invalid model support disclosure.");
         if (definition.identity.descriptorVersion !== 1 || definition.identity.blueprintSchemaVersion !== 1) throw new Error("Unsupported model descriptor/Blueprint version.");
         if (definition.advanced && (definition.advanced.schemaVersion !== 1 || definition.advanced.scope !== "declared-model" || !["declarative-runtime-contract", "unverified"].includes(definition.advanced.executableFidelity))) throw new Error("Incompatible advanced validation schema/fidelity scope.");

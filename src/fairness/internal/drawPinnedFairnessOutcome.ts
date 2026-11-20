@@ -48,7 +48,7 @@ export type PinnedFairnessDraw<T extends string | number = string> = {
 // like libraryHash, which a hand-tampered index could leave stale while its entries were rewritten underneath it.
 // Any difference from the first hash throws FairnessBundleDriftError: the snapshot this selection/read was
 // computed against no longer reflects the live bundle, so nothing built or verified from it can be trusted either
-// (the same "no partial artifact" discipline CertificationPackBuilder's own snapshot-consistency check
+// (the same "no partial output" discipline CertificationPackBuilder's own snapshot-consistency check
 // follows, just synchronous and single-outcome rather than deferred to just-before-publish). The second read
 // isn't independently re-validated by validatePinnedFairnessModeIndex: its content is only ever used to compute
 // a hash for comparison, and a hash match with the already-validated first read implies matching (and therefore

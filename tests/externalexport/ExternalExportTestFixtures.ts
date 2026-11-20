@@ -9,7 +9,7 @@ import {
     buildWeightedOutcomeLibrary,
 } from "@fromstan/pokie";
 
-export const externalAdapterTestProvenance: RoundRecordOrigin = {
+export const externalExportTestOrigin: RoundRecordOrigin = {
     game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     pokieVersion: "1.3.0",
 };
@@ -26,24 +26,24 @@ function numericWinEvaluationResultFor(totalWin: number): WinEvaluationResult<nu
         : new WinEvaluationResult<number>({valueWins: [new ValueWinComponent<number>(new WinningValue<number>(1, [[0, 0]], totalWin))]});
 }
 
-// A plain, string-symbol, single-step artifact with no feature events/debug — the baseline every capability
+// A plain, string-symbol, single-step record with no feature events/debug — the baseline every capability
 // test starts from before toggling one specific thing on.
-export function externalAdapterArtifact(options: {roundId: string; totalWin: number; stake: number; betMode?: string; pokieVersion?: string}): RoundRecord<string> {
+export function externalExportRecord(options: {roundId: string; totalWin: number; stake: number; betMode?: string; pokieVersion?: string}): RoundRecord<string> {
     return buildRoundRecord({
         roundId: options.roundId,
-        origin: options.pokieVersion !== undefined ? {...externalAdapterTestProvenance, pokieVersion: options.pokieVersion} : externalAdapterTestProvenance,
+        origin: options.pokieVersion !== undefined ? {...externalExportTestOrigin, pokieVersion: options.pokieVersion} : externalExportTestOrigin,
         betMode: options.betMode ?? "base",
         stake: options.stake,
         steps: [{screen: [["A"]], winEvaluationResult: winEvaluationResultFor(options.totalWin)}],
     });
 }
 
-// Same as externalAdapterArtifact, but carries a round-level feature event — used to exercise
+// Same as externalExportRecord, but carries a round-level feature event — used to exercise
 // ROUND_RECORD_FEATURE_EVENTS_CAPABILITY gating.
-export function externalAdapterArtifactWithFeatureEvent(options: {roundId: string; totalWin: number; stake: number}): RoundRecord<string> {
+export function externalExportRecordWithFeatureEvent(options: {roundId: string; totalWin: number; stake: number}): RoundRecord<string> {
     return buildRoundRecord({
         roundId: options.roundId,
-        origin: externalAdapterTestProvenance,
+        origin: externalExportTestOrigin,
         betMode: "base",
         stake: options.stake,
         steps: [{screen: [["A"]], winEvaluationResult: winEvaluationResultFor(options.totalWin)}],
@@ -51,12 +51,12 @@ export function externalAdapterArtifactWithFeatureEvent(options: {roundId: strin
     });
 }
 
-// Same as externalAdapterArtifact, but carries round-level debug metadata — used to exercise
+// Same as externalExportRecord, but carries round-level debug metadata — used to exercise
 // ROUND_RECORD_DEBUG_METADATA_CAPABILITY gating.
-export function externalAdapterArtifactWithDebug(options: {roundId: string; totalWin: number; stake: number}): RoundRecord<string> {
+export function externalExportRecordWithDebug(options: {roundId: string; totalWin: number; stake: number}): RoundRecord<string> {
     return buildRoundRecord({
         roundId: options.roundId,
-        origin: externalAdapterTestProvenance,
+        origin: externalExportTestOrigin,
         betMode: "base",
         stake: options.stake,
         steps: [{screen: [["A"]], winEvaluationResult: winEvaluationResultFor(options.totalWin)}],
@@ -64,11 +64,11 @@ export function externalAdapterArtifactWithDebug(options: {roundId: string; tota
     });
 }
 
-// A numeric-symbol artifact — used to exercise a target's requirements.symbolAlphabet: "numeric".
-export function numericExternalAdapterArtifact(options: {roundId: string; totalWin: number; stake: number}): RoundRecord<number> {
+// A numeric-symbol record — used to exercise a target's requirements.symbolAlphabet: "numeric".
+export function numericExternalExportRecord(options: {roundId: string; totalWin: number; stake: number}): RoundRecord<number> {
     return buildRoundRecord<number>({
         roundId: options.roundId,
-        origin: externalAdapterTestProvenance,
+        origin: externalExportTestOrigin,
         betMode: "base",
         stake: options.stake,
         steps: [{screen: [[1]], winEvaluationResult: numericWinEvaluationResultFor(options.totalWin)}],
@@ -77,13 +77,13 @@ export function numericExternalAdapterArtifact(options: {roundId: string; totalW
 
 // A small, hand-computable single-mode library: a loss and a plain win — enough for compatibility/generation
 // tests that don't care about exact payout math.
-export function externalAdapterTestLibrary(options: {libraryId: string; betMode?: string; stake?: number}): WeightedOutcomeLibrary<string> {
+export function externalExportTestLibrary(options: {libraryId: string; betMode?: string; stake?: number}): WeightedOutcomeLibrary<string> {
     const stake = options.stake ?? 1;
     return buildWeightedOutcomeLibrary({
         libraryId: options.libraryId,
         outcomes: [
-            {id: "loss", weight: 9, record: externalAdapterArtifact({roundId: `${options.libraryId}-0`, totalWin: 0, stake, betMode: options.betMode})},
-            {id: "win", weight: 1, record: externalAdapterArtifact({roundId: `${options.libraryId}-1`, totalWin: stake * 2, stake, betMode: options.betMode})},
+            {id: "loss", weight: 9, record: externalExportRecord({roundId: `${options.libraryId}-0`, totalWin: 0, stake, betMode: options.betMode})},
+            {id: "win", weight: 1, record: externalExportRecord({roundId: `${options.libraryId}-1`, totalWin: stake * 2, stake, betMode: options.betMode})},
         ],
     });
 }

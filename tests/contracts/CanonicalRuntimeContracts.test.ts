@@ -94,7 +94,7 @@ describe("canonical runtime contracts", () => {
     it("validates independently loaded host/game instances in both directions before publication and recovery", () => {
         const runtime = emitPublicRuntime();
         try {
-            const probe = fs.readFileSync(path.join(root, "tests/v2/fixtures/PublicRuntimeBoundaryProbe.ts"), "utf8");
+            const probe = fs.readFileSync(path.join(root, "tests/contracts/fixtures/PublicRuntimeBoundaryProbe.ts"), "utf8");
             fs.writeFileSync(path.join(runtime.directory, "probe.mjs"), ts.transpileModule(probe, {
                 compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022},
             }).outputText);
@@ -1555,7 +1555,7 @@ describe("canonical runtime contracts", () => {
             const program = ts.createProgram(parsed.fileNames, {...parsed.options, declaration: true, emitDeclarationOnly: true, rootDir: path.join(root, "src"), outDir: path.join(packageRoot, "dist/esm")});
             expect(ts.getPreEmitDiagnostics(program).map(d => ts.flattenDiagnosticMessageText(d.messageText, "\n"))).toEqual([]);
             expect(program.emit().emitSkipped).toBe(false);
-            const fixture = fs.readFileSync(path.join(root, "tests/v2/fixtures/RuntimeExtension.ts"), "utf8");
+            const fixture = fs.readFileSync(path.join(root, "tests/contracts/fixtures/RuntimeExtension.ts"), "utf8");
             for (const extension of ["mts", "cts"]) {
                 const file = path.join(directory, `consumer.${extension}`);
                 fs.writeFileSync(file, fixture);

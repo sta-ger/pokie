@@ -91,7 +91,7 @@ const SOURCE_EMPTY_PROMPT: Record<FindMethod, string> = {
 // Short labels for the run result's own "Reproducibility" row -- distinct wording (never the exact
 // COMPARISON_BANNER title RoundRecordInspector renders for the same comparison, which stays the
 // authoritative detail view just below) so the two never collide as duplicate text in the same page.
-// Only "Replay Artifact" ever has a known prior result to compare against at all (see reproduceTarget's
+// Only "Replay record" ever has a known prior result to compare against at all (see reproduceTarget's
 // own doc comment) -- every other source's run is honestly "not verified" rather than silently omitting
 // the row.
 const COMPARISON_STATUS_LABEL: Record<ReplayComparisonView["status"], string> = {
@@ -136,7 +136,7 @@ function downloadJsonBlob(filename: string, data: unknown): void {
 
 // Replay has no single sequential order shared by every source, so this doesn't use a Stepper (the
 // previous design's Find -> Load -> Reproduce -> Inspect -> Export pages). "Session Spin" is already
-// a recorded result with nothing to reproduce; "Replay Artifact" adds a validate-then-optionally-
+// a recorded result with nothing to reproduce; "Replay record" adds a validate-then-optionally-
 // reproduce gate the other three don't have; "Recreate from seed"/"Recent Simulation" are fresh
 // attempts with no prior result to compare against at all. Forcing all four through the same five-page
 // sequence meant most sources skipped or faked pages that didn't apply to them (a permanently-
@@ -208,7 +208,7 @@ export function ReplayTab({
     // outcomeLibraryModes doc comment. Undefined for an ordinary game-backed project. Only "Recreate
     // from seed" shows a picker for it (see the modeField below) -- "Recent Simulation" instead reuses
     // whichever mode the picked simulation entry itself already sampled (its own recorded provenance,
-    // never re-picked), and "Session Spin"/"Replay Artifact" never reach the outcome-library draw path
+    // never re-picked), and "Session Spin"/"Replay record" never reach the outcome-library draw path
     // at all.
     availableModes?: string[];
     /** Immutable request retained by a terminal common job, restored for an explicit replay. */
@@ -349,7 +349,7 @@ export function ReplayTab({
     }
 
     // `resultReady` distinguishes "just configured/validated, nothing reproduced yet" (false --
-    // Recreate from seed/Recent Simulation loading a target, Replay Artifact validating) from "already has
+    // Recreate from seed/Recent Simulation loading a target, Replay record validating) from "already has
     // a concrete result to show" (true -- only the Recent Replays "Inspect" shortcut, which loads a
     // completed result directly with no reproduce step at all). It doubles as the initial value of
     // `jobLoaded`: false correctly means this fresh target has no job of its own yet (any progress/
@@ -379,7 +379,7 @@ export function ReplayTab({
     // without going through Load -- the round/seed of the result itself.
     const target = pending ?? (result ? {round: result.round, seed: result.seed ?? undefined, modeName: result.modeName} : undefined);
 
-    // Only a "Replay Artifact" record (pasted or picked from Recent Replays) carries known
+    // Only a "Replay record" record (pasted or picked from Recent Replays) carries known
     // seed/provenance to check up front — Recreate from seed/Recent Simulation are fresh attempts that never
     // claim to reproduce one *specific* prior result, and Session Spin has nothing to reproduce at all.
     const artifactReproducibility =
@@ -398,7 +398,7 @@ export function ReplayTab({
     }
     const reproduceDisabled = (findMethod === "artifact" && artifactReproducibility?.status === "blocked") ||
         (findMethod === "simulation" && (selectedSimEntry === undefined || simulationUnavailableReason !== undefined));
-    // What the run result's own "Reproducibility" row (below) reports -- only "Replay Artifact" ever
+    // What the run result's own "Reproducibility" row (below) reports -- only "Replay record" ever
     // has a known prior result loaded to actually compare a fresh run against (`comparison`, built from
     // `expected`); Recreate from seed/Recent Simulation are always a fresh forward replay with nothing to
     // compare, so their honest status is "not verified", never a guessed match/mismatch.
@@ -463,7 +463,7 @@ export function ReplayTab({
                 fullWidth={isPhoneWidth}
                 data={[
                     {label: "Recreate from seed", value: "seedRound"},
-                    {label: "Replay Artifact", value: "artifact"},
+                    {label: "Replay record", value: "artifact"},
                     {label: "Session Spin", value: "spin"},
                     {label: "Recent Simulation", value: "simulation"},
                 ]}
@@ -831,7 +831,7 @@ export function ReplayTab({
                             {selectedSpin.debug?.artifact ? (
                                 // A complete RoundRecord was captured for this exact spin (see
                                 // StudioPlayService.buildSessionView) -- the same
-                                // inspector Replay Artifact/Recreate from seed/Recent Simulation results already use,
+                                // inspector Replay record/Recreate from seed/Recent Simulation results already use,
                                 // so a recorded spin is inspected the identical way rather than through a bespoke
                                 // raw-JSON view. `credits` is passed through separately since it's a wallet/session
                                 // concept RoundRecord itself never carries.
@@ -868,7 +868,7 @@ export function ReplayTab({
                             ) : (
                                 <div>
                                     {selectedSpin.debug?.artifactUnavailableReason && (
-                                        <Alert color="yellow" variant="light" title="Round artifact unavailable" mb="sm">
+                                        <Alert color="yellow" variant="light" title="Round record unavailable" mb="sm">
                                             <Text size="sm">{selectedSpin.debug.artifactUnavailableReason}</Text>
                                         </Alert>
                                     )}
@@ -991,7 +991,7 @@ export function ReplayTab({
                         <div data-pokie-lifecycle-result="replay-artifact" data-pokie-lifecycle-result-control="replay-artifact-load" data-pokie-lifecycle-terminal={expected.status}
                             data-pokie-lifecycle-artifact-round={expected.status === "loaded" ? expected.round : undefined}
                             data-pokie-lifecycle-artifact-seed={expected.status === "loaded" ? expected.seed ?? "" : undefined}>
-                            {expected.status === "loading" && <LoadingState label="Validating artifact…" />}
+                            {expected.status === "loading" && <LoadingState label="Validating round record…" />}
                             {expected.status === "error" && <ErrorState message={expected.message} />}
                             {expected.status === "loaded" && (
                                 <div>
@@ -1081,7 +1081,7 @@ export function ReplayTab({
                                             setJobLoaded(true);
                                         }}
                                     >
-                                        {/* Only "Replay Artifact" ever names one specific recorded round this run
+                                        {/* Only the "Replay record" source ever names one specific recorded round this run
                                             claims to reproduce -- Recreate from seed/Recent Simulation are always a
                                             fresh parameterized run with no recorded round behind it (see
                                             runReproducibilityLabel's own doc comment), so "Reproduce" would overstate

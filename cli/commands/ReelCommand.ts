@@ -268,7 +268,7 @@ export class ReelCommand implements CliCommandHandling {
             console.log(JSON.stringify({blueprintPath, written: true, out: outPath, reelCount}, null, 4));
         } else {
             console.log(`Reel strip generation for "${blueprintPath}"`);
-            console.log(`Materialized ${reelCount} reel(s) into "${outPath}" -- "reelStripGeneration" removed, "reelStrips" is now literal.`);
+            console.log(`Wrote ${reelCount} reel(s) into "${outPath}" -- "reelStripGeneration" removed, "reelStrips" is now literal.`);
         }
         return 0;
     }

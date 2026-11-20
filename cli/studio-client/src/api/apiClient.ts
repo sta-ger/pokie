@@ -1045,7 +1045,7 @@ export async function getDeploymentBuildModes(fetchImpl: FetchLike): Promise<Stu
 
 // "publish: false" (the default) runs compatibility-check + preview only — see
 // StudioDeploymentService.run()'s own doc comment for why this is the exact same call as a real
-// deploy, just against a target with its own runtimeAdapter stripped, never a second/different
+// deploy, just against a target with its own runtimeConnector stripped, never a second/different
 // pipeline. Never throws for a domain-level pipeline failure (incompatible content, a failed
 // projector, an unreachable output directory, ...) — that's carried in the returned DTO's own
 // stage-by-stage issue arrays, same "only a malformed request throws" convention every other
@@ -1081,8 +1081,8 @@ export type OutcomeLibraryGenerationPreflightOptions = {
     maxOutcomeSpaceSize?: string;
     generation?: "default" | "exact" | "sampled" | "capped";
     sample?: {sampleSize: string; seed: string};
-    // Compatibility aliases accepted by the server for saved pre-PC-09
-    // requests. New callers should use generation/sample.
+    // Compatibility aliases accepted by the server for older saved requests.
+    // New callers should use generation/sample.
     sampled?: {sampleSize: string; seed: string};
     bounded?: {sampleSize: string; seed: string};
 };
@@ -1394,7 +1394,7 @@ export async function exportStakeEngine(
     return (await response.json()) as StudioStakeEngineExportView;
 }
 
-// The Build/Export tab's own "Build artifact" group -- every BuildOutputBuilderRegistry target, each already
+// The Build/Export tab's own "Build output" group -- every BuildOutputBuilderRegistry target, each already
 // marked `supported` against the active project's own resolved ProjectType (see
 // StudioBuildService.listTargets's own doc comment).
 export async function listArtifactTargets(fetchImpl: FetchLike, signal?: AbortSignal): Promise<StudioOutputFormatView[]> {

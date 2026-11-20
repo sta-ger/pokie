@@ -68,7 +68,7 @@ symbols, 1024 paylines, 65536 stops per reel, 262144 total arithmetic stops and
 limit; exhaustion fails and rolls back rather than truncating a distribution.
 The 64 KiB small-build limit is not a size promise for every supported model.
 
-Blueprint is canonical. Supported PAR intermediates and complete declared package
+Blueprint is the source of truth. Supported PAR intermediates and complete declared package
 models use model-preserving extraction; absence of Node builtins is advisory and
 never proves arbitrary TypeScript fidelity. Publication stages the sidecar and
 publishes the module last, with owned-file cleanup on cancellation/failure.

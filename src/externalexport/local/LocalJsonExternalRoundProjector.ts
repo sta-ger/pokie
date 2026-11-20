@@ -11,7 +11,7 @@ import type {ExternalRoundProjector} from "../ExternalRoundProjector.js";
 export class LocalJsonExternalRoundProjector<T extends string | number = string> implements ExternalRoundProjector<T> {
     private readonly inner = new PokieJsonRoundRecordProjector<T>();
 
-    public project(artifact: RoundRecord<T>): JsonObject {
-        return (artifact.geometry || artifact.steps.some(step => step.geometry) ? new PublicRoundRecordProjector<T>().project(artifact) : this.inner.project(artifact)) as unknown as JsonObject;
+    public project(record: RoundRecord<T>): JsonObject {
+        return (record.geometry || record.steps.some(step => step.geometry) ? new PublicRoundRecordProjector<T>().project(record) : this.inner.project(record)) as unknown as JsonObject;
     }
 }

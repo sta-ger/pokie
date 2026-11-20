@@ -190,10 +190,10 @@ function validateAuditStructure(value: unknown, game?: PokieGame): void {
         if (command.continuation && (delivery.before.logicalRound?.id !== command.continuation.roundId || delivery.before.logicalRound.deliveryCursor !== command.continuation.cursor)) throw new AuditReplayError("audit-order", `${path}.command.continuation`, "Continuation does not name recorded progress.");
         if (delivery.artifact) {
             const {hash: artifactHash, ...artifact} = delivery.artifact;
-            if (artifactHash !== computeRoundRecordHash(artifact)) throw new AuditReplayError("audit-artifact", `${path}.artifact.hash`, "Invalid artifact digest.");
+            if (artifactHash !== computeRoundRecordHash(artifact)) throw new AuditReplayError("audit-artifact", `${path}.artifact.hash`, "Invalid round record digest.");
             const issue = new RoundRecordValidator().validate(artifact)[0];
             if (issue) throw new AuditReplayError("audit-artifact", `${path}.artifact${issue.path ? `.${issue.path}` : ""}`, issue.message);
-            if (artifact.origin.game.id !== r.game.id || artifact.origin.configHash !== r.identity.modelHash) throw new AuditReplayError("audit-identity", `${path}.artifact.origin`, "Artifact model differs from audit model.");
+            if (artifact.origin.game.id !== r.game.id || artifact.origin.configHash !== r.identity.modelHash) throw new AuditReplayError("audit-identity", `${path}.artifact.origin`, "Round record model differs from audit model.");
         }
         if (delivery.result.credits !== delivery.after.credits || (delivery.result.logicalRound && canonical(delivery.result.logicalRound) !== canonical(delivery.after.logicalRound))) throw new AuditReplayError("audit-state", `${path}.result`, "Result and executable boundary disagree.");
         if (delivery.disposition.walletPayout !== undefined) {

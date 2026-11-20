@@ -4,11 +4,11 @@ import type {ExternalExportDeliveryResult} from "./ExternalExportDeliveryResult.
 import type {ExternalExportDiagnosticReport} from "./ExternalExportDiagnosticReport.js";
 
 // What one ExternalExportService.deploy() call returns — the full record of how far the pipeline
-// (descriptor validation -> compatibility -> projection -> generation -> artifact validation -> optional
+// (descriptor validation -> compatibility -> projection -> generation -> file validation -> optional
 // diagnostic -> optional delivery) got, and why. Every stage after the first one that reported an error-severity
 // issue is simply absent (`undefined`) rather than populated with empty placeholder data, so "did generation
 // even run" is always answerable by checking `generation !== undefined`, never by inspecting whether some
-// nested array happens to be empty (an empty "artifacts"/"issues" array is itself a perfectly valid, meaningful
+// nested array happens to be empty (an empty "files"/"issues" array is itself a perfectly valid, meaningful
 // result of a stage that *did* run).
 //
 // "projectionIssues" covers the stage where ExternalExportService runs every RoundRecord through
@@ -20,7 +20,7 @@ export type ExternalExportResult = {
     readonly compatibilityIssues: readonly ValidationIssue[];
     readonly projectionIssues: readonly ValidationIssue[];
     readonly generation?: ExternalFileGenerationResult;
-    readonly artifactIssues: readonly ValidationIssue[];
+    readonly fileIssues: readonly ValidationIssue[];
     readonly diagnostic?: ExternalExportDiagnosticReport;
     readonly delivery?: ExternalExportDeliveryResult;
 };

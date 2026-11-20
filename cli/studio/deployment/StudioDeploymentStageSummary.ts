@@ -6,7 +6,7 @@ export type StudioDeploymentStageKey =
     | "compatibility"
     | "projection"
     | "generation"
-    | "artifactValidation"
+    | "fileValidation"
     | "diagnostic"
     | "delivery";
 

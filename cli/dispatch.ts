@@ -108,7 +108,7 @@ export async function dispatch(commands: CliCommandHandling[], argv: string[], v
         // above -- printed here, after it and clearly labeled, so the human explanation always leads and
         // the technical output stays a secondary, skippable block rather than the first thing a reader
         // hits. Both error types share this same "details" convention (see their own doc comments) --
-        // Blueprint materialization and "pokie init" share one dependency-install mechanism
+        // Blueprint preparation and "pokie init" share one dependency-install mechanism
         // (withLocalPokieInstall), so their failures are surfaced identically here too.
         if ((error instanceof BlueprintPreparationError || error instanceof GamePackagePreparationError) && error.details !== undefined) {
             console.error(`\nnpm output:\n${error.details}`);

@@ -350,7 +350,7 @@ Preview `pokie build PACKAGE --target blueprint --dry-run`; explicitly save usin
 without `--dry-run`, optionally with `--out FILE`. Studio exposes this through Build/Export's **Save
 Blueprint** and **Open as Project**, with the reviewed preview bound to its save job. Source/destination
 changes require a fresh preview. Outputs must be new files; publication stages Blueprint and evidence
-and rolls back operation-owned artifacts on failure, cancellation or failed Studio registration.
+and rolls back operation-owned outputs on failure, cancellation or failed Studio registration.
 
 The companion `FILE.conversion-evidence.json` has `schemaVersion: 1`, `kind: "package-extraction"`,
 `sourceBindingHash`, `extractedBlueprintHash` and the full `extraction` result. Studio registration

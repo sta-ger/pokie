@@ -21,7 +21,7 @@ export type RoundRecordCaptureRequest = {
     origin: RoundRecordOrigin;
     betMode?: string;
     stake?: number;
-    // The operation that produced this round (e.g. "spin") — carried into the built artifact's own
+    // The operation that produced this round (e.g. "spin") — carried into the built round record's own
     // `debug` bag (see buildFullRoundRecord below), since RoundRecord itself has no dedicated field
     // for "what command ran this".
     command?: string;
@@ -52,7 +52,7 @@ export type RoundRecordCaptureRequest = {
 // buildRoundRecordFromSession) as `roundRecord` — but only when `roundRecordRequest` was actually
 // supplied (a caller must have a roundId/origin to give it) AND `session` has the
 // VideoSlotSessionHandling shape buildRoundRecordFromSession requires. Either gap is recorded as
-// `roundRecordUnavailableReason` — an honest diagnostic, never a fabricated artifact — so a reader can
+// `roundRecordUnavailableReason` — an honest diagnostic, never a fabricated round record — so a reader can
 // tell "this round genuinely has no RoundRecord" apart from "something went wrong capturing one".
 export function captureRoundPokieSessionState(
     context: PokieGameContext | undefined,

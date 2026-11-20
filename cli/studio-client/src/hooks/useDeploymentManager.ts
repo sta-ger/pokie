@@ -49,14 +49,14 @@ export function useDeploymentManager() {
     const [runResult, setRunResult] = useState<DeploymentRunResultView>();
     const [runError, setRunError] = useState<string>();
     const [runLoading, setRunLoading] = useState(false);
-    const [selectedArtifactPath, setSelectedArtifactPath] = useState<string>();
+    const [selectedFilePath, setSelectedFilePath] = useState<string>();
     const trackerRef = useRef(new DeploymentRunTracker());
 
     const invalidate = useCallback(() => {
         trackerRef.current.invalidate();
         setRunResult(undefined);
         setRunError(undefined);
-        setSelectedArtifactPath(undefined);
+        setSelectedFilePath(undefined);
         setRunLoading(trackerRef.current.isRunInFlight());
     }, []);
 
@@ -241,7 +241,7 @@ export function useDeploymentManager() {
                 selectedTargetRef.current = targetOverride;
                 setSelectedTarget(targetOverride);
             }
-            setSelectedArtifactPath(undefined);
+            setSelectedFilePath(undefined);
             // A fresh run is exactly what clears "outdated" -- whatever it lands on (success or failure) is
             // itself the up to date answer for the *current* Configure-step inputs, not a stale one.
             setPreflightOutdated(false);
@@ -270,7 +270,7 @@ export function useDeploymentManager() {
                     const described = describeDeploymentRunResult(view);
                     setRunResult(described);
                     setRunError(undefined);
-                    setSelectedArtifactPath(described.artifacts[0]?.relativePath);
+                    setSelectedFilePath(described.files[0]?.relativePath);
                 })
                 .catch((error: unknown) => {
                     trackerRef.current.endRun();
@@ -293,12 +293,12 @@ export function useDeploymentManager() {
         runError,
         runLoading,
         preflightOutdated,
-        selectedArtifactPath,
+        selectedFilePath,
         refreshTargets,
         refreshProjectModes,
         selectTarget,
         run,
-        selectArtifact: setSelectedArtifactPath,
+        selectFile: setSelectedFilePath,
         resetForProjectSwitch,
     };
 }

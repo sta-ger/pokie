@@ -59,7 +59,7 @@ evaluates payouts through the shared WASM kernel from host draws. Stops use a bo
 the host owns RNG continuation, ledger and IO. Feature-aware components support declared launch
 mechanics, weighted whole-sequence reels, geometry and bet modes through the shared session interfaces.
 Support remains composition-specific: opaque custom code/services and conflicting feature combinations
-fail check; execution supported action alone does not grant optimizer tuning trusted source. Blueprint is canonical;
+fail validation; execution support alone does not make a package a trusted optimizer tuning source. Blueprint is the source of truth;
 PAR and complete declared package models use model-preserving
 extraction, without compiling arbitrary TypeScript behavior. See [execution, identity and resource limits](wasm-compatibility-boundary.md).
 
@@ -1403,7 +1403,7 @@ per-mode summary (RTP, hit frequency, and standard deviation). `--format json` i
 
 ## Diffing Stake Engine outcome directories: `pokie diff <leftPath> <rightPath>`
 
-Reads and analyzes two Stake Engine outcome directories with the same canonical-reader pipeline `pokie report` uses,
+Reads and analyzes two Stake Engine outcome directories with the same reader pipeline `pokie report` uses,
 then diffs the two resulting analyses mode-by-mode: added/removed modes, every scalar metric (`rtp`,
 `hitFrequency`, `variance`,...), event classification categories, and the payout distribution. See
 [Diffing two analyses](stake-engine-standalone.md#diffing-two-analyses) for the full shape and why it never
@@ -1609,7 +1609,7 @@ pokie fairness commit seed-commitment.json --client-seed player-seed --nonce 0 -
 Options:
 
 - `--client-seed <seed>` — **required.** The player-supplied client seed.
-- `--nonce <n>` — **required.** A canonical non-negative decimal integer string (`"0"`, `"1"`, `"2"`,... — the
+- `--nonce <n>` — **required.** A plain non-negative decimal integer string (`"0"`, `"1"`, `"2"`,... — the
  same `"0"|[1-9]\d*"` rule `docs/stake-engine-export.md`'s own outcome-id parsing already uses), no larger than
  `Number.MAX_SAFE_INTEGER`. Rejects a leading zero/sign, a decimal point, scientific notation (`"1e3"`), and
  hexadecimal notation (`"0x10"`) — all of which `Number(...)` alone would otherwise silently accept.
@@ -1776,7 +1776,7 @@ Loads a [game package](game-packages.md) with `loadPokieGame` and runs an [aggre
 (`AggregateSimulationRunner`) against it, then reports RTP/hit-frequency/max-win statistics.
 
 The positional also accepts a Blueprint, a native Outcome Library (with `--mode`), or a WASM
-artifact. See the [WASM quick start](#wasm-quick-start) for the seeded single-worker comparison with replay.
+build. See the [WASM quick start](#wasm-quick-start) for the seeded single-worker comparison with replay.
 
 ```
 pokie sim./sample-slot --rounds 10000 --seed demo --out report.json
@@ -2330,7 +2330,7 @@ This is the first foundation for POKIE replay — it does not (yet) reconstruct 
 [Limitations](#limitations) below.
 
 The positional also accepts a Blueprint, a native Outcome Library (with `--mode`), or a WASM
-artifact. WASM replay is deterministic and includes cumulative totals and portable continuation
+build. WASM replay is deterministic and includes cumulative totals and portable continuation
 state where supported; the package limitations below apply to the package path. See the
 [WASM quick start](#wasm-quick-start) for matching seeds and round counts.
 
@@ -3586,7 +3586,7 @@ grouped by kind (`ExportDeployTargets.ts`):
 
 - **Outcome libraries** — one configurable generator for runnable designs/packages, with exact, sampled, or
  capped sampling where supported. This advanced action is optional: the Stake Engine export card plans
- compatible outcome-library reuse or generation automatically. Existing outcome artifacts instead offer
+ compatible outcome-library reuse or generation automatically. Existing outcome libraries instead offer
  republishing through their Build output card; they do not promise reconstruction of a game model.
 - **Build output** — runs the project through `pokie`'s own `BuildOutputBuilderRegistry`, the exact same
  `pokie build <project> --target <target>` conversions the CLI itself offers, including Stake Engine export
@@ -3611,13 +3611,13 @@ grouped by kind (`ExportDeployTargets.ts`):
  appends another mode row for a multi-mode deployment (only accepted by a target that declares the `multiMode`
  supported action). **Check & Preview** and **Publish** are not two different pipelines — both call the exact same
  `ExternalExportService.deploy()`, against the exact same target, differing in exactly one thing: Preview
- strips the target's own `runtimeAdapter` first, so the SDK's own existing "only call `runtimeAdapter.deliver()`
+ strips the target's own `runtimeConnector` first, so the SDK's own existing "only call `runtimeConnector.deliver()`
  when the target declares one" behavior means nothing is ever written anywhere; Publish keeps it (behind a
  confirmation prompt, since it writes files). Either way, the response is rendered **stage by stage** — target
- descriptor, compatibility, round view, output generation, output validation, target diagnostic, and
+ descriptor, compatibility, round projection, output generation, output validation, target diagnostic, and
  delivery — each shown as ok/error/skipped, with every stage's own `ValidationIssue`s listed underneath it; a
  stage is "skipped" exactly when `ExternalExportService` itself never ran it (an earlier stage already
- failed), never inferred any other way by the client. **Generated artifacts** lists every file the run produced;
+ failed), never inferred any other way by the client. **Generated files** lists every file the run produced;
  clicking one shows its own textual content (already returned as part of the run's own response — no second
  request) — so a preview's own output can be read in full *before* anything is ever published.
 
@@ -3813,7 +3813,7 @@ client, even for a load/validation failure.
  project-contained `librarySelector` interface as Studio Stake export: `json` selects a raw library file, `folder`
  selects a named mode from a Outcome library folder, and `stakeengine` selects a named mode from a Stake
  Engine export. `publish` defaults to `false` — a side-effect-free preview, since the target's own
- `runtimeAdapter` is stripped before `deploy()` is called; `true` keeps it, so a successful run actually
+ `runtimeConnector` is stripped before `deploy()` is called; `true` keeps it, so a successful run actually
  publishes. `400 {"error": "..."}` for a structurally malformed request (`targetId`, an explicitly supplied
  empty `modes` list, duplicate/missing mode names, malformed `librarySelector`, or non-boolean `publish`). The
  service then reports selector containment, mode/provenance, source-read, compatibility and target failures in
@@ -4015,7 +4015,7 @@ pokie build ./custom-package --target blueprint --out ./editable.json
 
 The default output is `blueprint.json` beside the source package. Preview prints source identity,
 extraction status, every supplied exact/inferred/defaulted/unsupported field and its trusted source,
-diagnostics, comparison limits and the game design/audit evidence paths. It publishes no artifacts.
+diagnostics, comparison limits and the game design/audit evidence paths. It writes no outputs.
 Inferred fields are displayed only if the shared extraction result supplies them. Extraction reads
 executable public descriptors; metadata inspection and opening a package do not convert it.
 Partial, malformed, legacy and unsupported custom mechanics cannot be saved as complete models.
@@ -4024,7 +4024,7 @@ Explicit build creates an editable validated Blueprint and a version-1
 `editable.json.conversion-evidence.json` companion. Both paths must be absent; directories, source
 aliases and occupied companions are rejected. Preparation-to-publication source/model drift,
 publication races, extraction failure and cancellation preserve competing files and remove only
-operation-owned artifacts. SIGINT waits for descriptor settlement and snapshot release.
+operation-owned outputs. SIGINT waits for descriptor settlement and snapshot release.
 
 Studio clients preview with `POST /api/project/build/preview` (`target: "blueprint"`, optional
 `outDir`). For a package, pass its returned `preparedOperationId` and the same destination to

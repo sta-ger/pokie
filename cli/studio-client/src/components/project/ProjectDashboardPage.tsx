@@ -1025,7 +1025,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                 })
                 .catch((error: unknown) => {
                     if (requestId === expectedReplayRequestIdRef.current) {
-                        setExpectedReplay({status: "error", message: describeReplayActionError("The pasted artifact", errorMessage(error))});
+                        setExpectedReplay({status: "error", message: describeReplayActionError("The pasted record", errorMessage(error))});
                     }
                 });
         },

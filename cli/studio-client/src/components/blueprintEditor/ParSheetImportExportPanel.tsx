@@ -62,11 +62,11 @@ function parSheetExportDefaultPath(blueprintPath: string | undefined): string | 
     return `${dir}${base}.par.xlsx`;
 }
 
-// Guided Import -> Diagnose & map -> Preview canonical model -> Apply/Export workflow, built entirely on
+// Guided Import -> Diagnose & map -> Preview model -> Apply/Export workflow, built entirely on
 // the same Studio API/pokie services "pokie par import"/"pokie par export" themselves use (see
 // StudioBlueprintService.importParSheet()/exportParSheet()) -- no spreadsheet parsing, column mapping, or
 // blueprint-shape math is reimplemented here; every diagnostic/summary shown is exactly what those
-// services already computed. "Preview canonical model" specifically reuses previewBlueprintBuild/
+// services already computed. "Preview model" specifically reuses previewBlueprintBuild/
 // BuildPreviewDisplay (the same summary the Home nav's own Build-from-Blueprint flow shows) rather than
 // inventing a second "what does this blueprint contain" computation.
 //
@@ -111,7 +111,7 @@ export function ParSheetImportExportPanel({
     const confirm = useConfirm();
     const [activeStep, setActiveStep] = useState(0);
 
-    // ---- Preview canonical model state (declared ahead of Import below since invalidateImport/
+    // ---- Preview model state (declared ahead of Import below since invalidateImport/
     // runImportFor both need to invalidate a stale preview the moment the import it was built from
     // changes) ----
     const [buildPreview, setBuildPreview] = useState<BuildPreviewView>({status: "idle"});
@@ -216,7 +216,7 @@ export function ParSheetImportExportPanel({
     const importOutcome = importResult ? describeParSheetImportOutcome(importResult) : undefined;
     const diagnoseReachable = importView.status !== "idle" && importView.status !== "loading";
 
-    // ---- Preview canonical model (reuses the exact same previewBlueprintBuild/BuildPreviewDisplay the
+    // ---- Preview model (reuses the exact same previewBlueprintBuild/BuildPreviewDisplay the
     // Home nav's own Build-from-Blueprint flow already shows; state/invalidatePreview declared above,
     // ahead of Import) ----
     function runCanonicalPreview(): void {
@@ -328,19 +328,19 @@ export function ParSheetImportExportPanel({
             <Text size="sm" c="dimmed" mb="sm">
                 {allowExport
                     ? "Import an existing PAR sheet (.xlsx) into a POKIE game design, or export the current design through POKIE's PAR sheet services."
-                    : "Import an existing PAR sheet (.xlsx) through POKIE’s PAR sheet services. Import and preview read the workbook; Apply updates this draft. Save the design before building artifacts in its workspace."}
+                    : "Import an existing PAR sheet (.xlsx) through POKIE’s PAR sheet services. Import and preview read the workbook; Apply updates this draft. Save the design before building outputs in its workspace."}
             </Text>
 
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
                 <Stepper.Step label="Import" description="Read a PAR sheet" aria-current={activeStep === 0 ? "step" : undefined} />
                 <Stepper.Step
                     label="Diagnose & map"
-                    description="Issues & provenance"
+                    description="Issues & origin"
                     disabled={!diagnoseReachable}
                     aria-current={activeStep === 1 ? "step" : undefined}
                 />
                 <Stepper.Step
-                    label="Preview canonical model"
+                    label="Preview model"
                     description="What it becomes"
                     disabled={!previewReachable}
                     aria-current={activeStep === 2 ? "step" : undefined}
@@ -387,7 +387,7 @@ export function ParSheetImportExportPanel({
                             informationTitle="Verified integrity"
                         />
 
-                        <PageSection legend="Provenance / source">
+                        <PageSection legend="Origin / source">
                             <Text size="sm">{describeParSheetProvenanceSummary(importResult.provenance)}</Text>
                         </PageSection>
 
@@ -417,7 +417,7 @@ export function ParSheetImportExportPanel({
                     <div>
                         <QuickActions>
                             <Button onClick={runCanonicalPreview} loading={buildPreview.status === "loading"}>
-                                Preview canonical model
+                                Preview model
                             </Button>
                         </QuickActions>
                         <BuildPreviewDisplay view={buildPreview} />

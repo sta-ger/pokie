@@ -1,5 +1,5 @@
 import * as authored from "../../../src/generated/createAuthoredSession.js";
-import {optimizationBlueprint} from "../../v2/fixtures/OptimizationFixture.js";
+import {optimizationBlueprint} from "../../contracts/fixtures/OptimizationFixture.js";
 import {
     GameSessionHandling,
     ParallelSimulationRunner,
@@ -15,11 +15,11 @@ import {
     SimulationReportBuilder,
     resolvePokieGameDependencyRoots,
 } from "@fromstan/pokie";
-import {weightedBlueprint, weightedGame} from "../../v2/fixtures/WeightedWholeSequenceGame.js";
+import {weightedBlueprint, weightedGame} from "../../contracts/fixtures/WeightedWholeSequenceGame.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {createPackageExtractionTestEnvironment} from "../../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment} from "../../contracts/fixtures/PackageExtractionFixture.js";
 
 let restoreTemporaryDirectory: () => void;
 beforeAll(() => {

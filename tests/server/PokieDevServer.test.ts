@@ -1,6 +1,6 @@
-import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
-import {transactionalRoundGame} from "../v2/fixtures/TransactionalRoundGame.js";
-import {emitPublicRuntime} from "../v2/helpers/publicRuntime.js";
+import {createPackageExtractionTestEnvironment} from "../contracts/fixtures/PackageExtractionFixture.js";
+import {transactionalRoundGame} from "../contracts/fixtures/TransactionalRoundGame.js";
+import {emitPublicRuntime} from "../contracts/helpers/publicRuntime.js";
 import {
     BuildableFromSessionState,
     captureInitialPokieSessionState,
@@ -36,7 +36,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 
-import {legacyCompositions} from "../v2/fixtures/LegacyComposedGame.js";
+import {legacyCompositions} from "../contracts/fixtures/LegacyComposedGame.js";
 
 let restoreRuntimeEnvironment: () => void;
 const fixtureGames: PokieGame[] = [];

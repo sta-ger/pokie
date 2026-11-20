@@ -55,6 +55,6 @@ export function describeOutcomeLibraryGenerationTerminalOutcome(result: {
     if (result.status === "conflict") return "The project, configuration, destination, or bound check changed before publication. Refresh the check, review the destination, then generate again.";
     if (result.status === "generation-error") return describeOutcomeLibraryGenerationErrorExplanation(result.code ?? "");
     if (result.status === "invalid") return "The generated bundle did not pass validation. Review the game configuration and generate again.";
-    if (result.status === "cancelled") return result.recovery ?? "Generation was cancelled safely. Resume the exact checkpoint only after reloading the unchanged project and preflight.";
+    if (result.status === "cancelled") return result.recovery ?? "Generation was cancelled safely. Resume the exact checkpoint only after reloading the unchanged project and check.";
     return "The project could not be loaded for outcome-library generation. Reopen or rebuild the project, then refresh the check.";
 }

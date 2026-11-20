@@ -1,5 +1,5 @@
 // What an ExternalExportTarget needs from whatever content (ExternalExportModeInput[]) is being
-// deployed to it, checked by ExternalExportCompatibilityValidator before any artifact is generated. All
+// deployed to it, checked by ExternalExportCompatibilityValidator before any file is generated. All
 // fields are optional and default to the most permissive reading (no minimum version, any symbol alphabet, no
 // cross-mode homogeneity requirement) when omitted, the same "opt-in, permissive by default" convention as
 // ExternalExportTarget's own optional collaborators.

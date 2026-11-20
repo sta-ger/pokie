@@ -74,7 +74,7 @@ describe("browser-safe WASM runtime API", () => {
 });
 
 it("continues a declarative bonus through portable JSON restore and independent operation declarations", async () => {
-    const {weightedBonusBlueprint} = await import("../v2/fixtures/WeightedBonusGame.js");
+    const {weightedBonusBlueprint} = await import("../contracts/fixtures/WeightedBonusGame.js");
     const blueprint = weightedBonusBlueprint();
     blueprint.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
     const fixture = createCanonicalWasmFixture({blueprint});

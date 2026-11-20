@@ -1,8 +1,8 @@
 import {resolvePokieGameDependencyRoots} from "../../src/gamepackage/resolvePokieGameEntryModule.js";
-import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
-import {existingMechanicsBlueprint} from "../v2/fixtures/ExistingMechanicsGame.js";
-import {emitPublicRuntime} from "../v2/helpers/publicRuntime.js";
-import {weightedBlueprint} from "../v2/fixtures/WeightedWholeSequenceGame.js";
+import {createPackageExtractionTestEnvironment} from "../contracts/fixtures/PackageExtractionFixture.js";
+import {existingMechanicsBlueprint} from "../contracts/fixtures/ExistingMechanicsGame.js";
+import {emitPublicRuntime} from "../contracts/helpers/publicRuntime.js";
+import {weightedBlueprint} from "../contracts/fixtures/WeightedWholeSequenceGame.js";
 import {authoritativePaytableBlueprint, type AuthoredAwardCase} from "../fixtures/math/AuthoritativePaytableFixture.js";
 import {FRACTIONAL_BET_STAKES, FRACTIONAL_MIXED_CONTINUATION, fractionalBetBlueprint, amountTolerance, screenMultiplier} from "../fixtures/math/FractionalBetFixture.js";
 import ts from "typescript";

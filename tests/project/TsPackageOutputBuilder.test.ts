@@ -2,7 +2,7 @@ import {authoritativePaytableBlueprint, type AuthoredAwardCase} from "../fixture
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment} from "../contracts/fixtures/PackageExtractionFixture.js";
 import {
     BuildConflictError,
     BuildCancelledError,

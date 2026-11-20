@@ -905,7 +905,7 @@ export class StakeEngineCommand implements CliCommandHandling {
     // read/parse ..." framing and no CONFIG_HINT, unlike every other error loadDescriptor's own checks
     // below already produce) in the same clean, POKIE-authored convention loadGameBlueprint/DiffCommand/
     // ParSheetImporter already use, so a missing/corrupt file -- the single most likely real mistake here
-    // -- never leaks a raw runtime error straight to the user (real finding, P5-POLISH-20 audit).
+    // -- never leaks a raw runtime error straight to the user (a finding from an earlier audit).
     private loadJsonChecked(filePath: string, description: string): unknown {
         try {
             return this.loadJson(filePath);
