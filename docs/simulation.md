@@ -23,7 +23,7 @@ supported actions remain unavailable rather than observed zero. See the
 Ordinary simulation reports support JSON, Markdown and HTML. Certification certification packs separately
 support JSON, console text, Markdown, HTML and local selectable-text PDF through
 [`pokie report`](cli.md#pokie-report-simulationreportjson); this does not add PDF output to ordinary simulation
-or outcome-analysis reports. See [certification pack preparation](certification-pack.md). Dossier preparation
+or outcome-analysis reports. See [certification pack preparation](certification-pack.md). Certification pack preparation
 does not establish regulatory certification. PAR workbook exchange is a separate model format.
 YAML authoring and certification pack YAML output remain unimplemented.
 
@@ -781,6 +781,6 @@ A normal-approximation 95% interval is an empirical estimate. Adaptive precision
 Native sampled outcome-library outputs keep their library origin and statistics and now also project the ordinary saved simulation report. `pokie report` accepts both that view and the older sampled shape. These sampled estimates are separate from static outcome-source analysis. Flattened round-record events cannot prove status; ordinary amount-only WASM builds supply amount-only samples, and custom sessions may lack status or component data. Unassignable money stays in `unavailable` without losing total-win accounting.
 
 
-## Dossier preparation
+## Certification pack preparation
 
 Assessment certification packs attach canonical schema-1 simulation reports and reproduce seeded mathematics through the same runner, preserving CI availability, worker seed strategy, feature attribution, logical/subround populations and per-mode denominators. Outcome-source views label `reproducibility.libraryHash` separately from runtime `configHash`. Exact library distributions do not create sampled CIs or prove full model coverage. See [certification pack reproduction](certification-pack.md).

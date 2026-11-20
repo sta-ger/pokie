@@ -59,7 +59,7 @@ re-export keeps the server's byte-bound import history across restart; unprepare
 ineligible import cannot restore a lossless claim. Import and re-export do not implicitly save the
 draft.
 
-## Dossier preparation
+## Certification pack preparation
 
 certification pack preparation adds versioned certification pack sections through the existing builder/verifier,
 trusted model rules and field coverage, statistics and executable audit replay when

@@ -132,5 +132,5 @@ at the server boundary, including locks and constraints.
 
 Output format, preview and package Game Model requests retain their executor
 promise after an HTTP disconnect until owned runtime/worker cleanup completes.
-Project close/switch and Studio shutdown cancel and await these preflights;
+Project close/switch and Studio shutdown cancel and await these checks;
 a closed response alone does not establish that their resources drained.

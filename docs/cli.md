@@ -1329,7 +1329,7 @@ Options:
 - `--out <dir>` — where to write the export (default: `<config.json>`'s directory plus `/stakeAdapter`).
 - `--dry-run` — validate the connector source and destination without writing anything.
 
-Preflights the entire export before writing anything — on any error-level `ValidationIssue` (see
+Checks the entire export before writing anything — on any error-level `ValidationIssue` (see
 [Stake Engine Export](stake-engine-export.md#validation)), nothing is written and the exit code is non-zero.
 Every `payoutMultiplier`/amount is converted into Stake's own integer unit convention (`ratio * cost * 100`,
 never rounded — see [Stake unit conversion](stake-engine-export.md#stake-unit-conversion--explicit-never-rounded))

@@ -254,7 +254,7 @@ if (issues.some((issue) => issue.severity === "error")) {
 
 generated coordinates and the separate PublicRoundRecordProjector: see the coordinate interface and connector support matrix.
 
-### Retained logical rounds
+### Saved logical rounds
 
 Explicit logical delivery retains each evaluated result before another subround
 can overwrite the live session's output. `buildLogicalRoundRecord(round,

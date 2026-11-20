@@ -259,7 +259,7 @@ await wallet.setBalance(id, session.getCreditsAmount());
 await repository.save(id, captureInitialPokieSessionState(
  context, session, game.getSessionSerializer?.(), false, game,
 ));
-// A fresh handler needs no retained session or priming.
+// A fresh handler needs no saved session or priming.
 const runtime = new SpinCommandHandler(game, repository, wallet);
 const result = await runtime.execute({kind: "spin", sessionId: id, expectedVersion: 1});
 if (result.status === "played") {
@@ -287,7 +287,7 @@ the explicit transactional round store below provides local reference atomicity.
 For unchanged packages, the live snapshot policy is captured separately for every built-in composition
 node at `primeSession()`. A custom decorator inside free-game or bet-mode sessions may have no codec or
 an opaque legacy capture. The outer feature counters and selected modes still receive validation, and
-complete built-in descendants cannot become partial because their parent is live-only. Retained current,
+complete built-in descendants cannot become partial because their parent is live-only. Saved current,
 previous, cached and captured results use this same policy. Without the trusted live object, these
 undeclared compositions reject restoration before constructing a replacement or writing recovery data.
 

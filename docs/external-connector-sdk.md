@@ -401,4 +401,4 @@ they do not establish either product. See the reviewed status register.
 
 ## Certification pack preparation
 
-Dossier preparation does not infer SDK acceptance from file identity. The current certification pack explicitly marks SDK evidence unavailable. A local versioned SDK diagnostic and target supported actions are engineering compatibility evidence, never provider acceptance or regulatory approval. See [certification pack boundaries](certification-pack.md).
+Certification pack preparation does not infer SDK acceptance from file identity. The current certification pack explicitly marks SDK evidence unavailable. A local versioned SDK diagnostic and target supported actions are engineering compatibility evidence, never provider acceptance or regulatory approval. See [certification pack boundaries](certification-pack.md).

@@ -163,7 +163,7 @@ last accepted sample. Conserving their sum is insufficient: changing
 `0/2` to `1/1` against an unchanged entry sample is corrupt state. Explicit
 logical delivery checks the last mathematical subround's event;
 ordinary delivery checks the saved serialized bounded-mechanic sample
-(or full-capture artifact). Retained copies must agree. These checks precede
+(or full-capture artifact). Saved copies must agree. These checks precede
 fresh session creation, RNG advancement and repository/wallet effects.
 
 For direct weighted-bonus sessions, a fresh `implicit:N` request must exceed
