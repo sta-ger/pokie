@@ -95,7 +95,7 @@ async function terminateProcessTree(pid: number | undefined): Promise<void> {
     await waitForProcessGroupTermination(pid);
 }
 
-// Real npm install/build execution, injected as GamePackagePreparer's own runCommand so tests can
+// Real npm install/build execution, injected as InitCommand's own runCommand so tests can
 // assert exactly which commands would run (and in what order) without actually invoking npm.
 export const runPackageCommand: PackageCommandRunning = (command, args, cwd, options = {}) =>
     new Promise<PackageCommandResult>((resolve, reject) => {
@@ -292,7 +292,7 @@ function restorePersistedPackageLock(cwd: string, originalPackageJson: PackageJs
 // dependency closure to this exact running installation's already-resolved copies
 // (withLocalPokieDependencyClosure) -- the one shared mechanism every real "npm install" this repo's
 // tooling runs against a staged/generated package goes through (BlueprintProjectPreparer's staging
-// installs in production; GamePackagePreparer's own real create -> install -> build lifecycle in its own
+// installs in production; `pokie init`'s real merge -> install -> build lifecycle in its own
 // integration tests, via tests/testUtils/offlinePokieDependencyOverride.ts's localPokieDependencyRunner)
 // so it never has to ask a registry for this exact running POKIE installation, published or not, nor for
 // any of its own dependencies. Deliberately

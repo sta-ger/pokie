@@ -19,10 +19,6 @@
 //
 // Studio mounts this module's own DOM entrypoint directly, via refs (CanonicalPlayerView), rather than
 // re-implementing the same grid/highlight rendering as a themed React/Mantine table -- so the *rendering*
-// itself, not just the highlight derivation, is one shared implementation, proven by
-// tests/cli/client/player/renderPlayer.test.ts's "canonical player fixture round parity" suite and
-// tests/cli/studio-client/src/components/project/ProjectDashboardPage.playWorkflow.test.tsx's own
-// "canonical player parity" suite (through Play's real session/spin workflow) both asserting on the exact
-// same ".player-grid"/[data-cell] DOM output renderReelsGrid produces.
+// itself, not just the highlight derivation, is one shared implementation.
 export * from "./renderPlayer.js";
 export * from "./videoSlotRoundView.js";

@@ -8,7 +8,7 @@ import {
 } from "./videoSlotRoundView.js";
 
 // DOM presentation of an already-derived view (see videoSlotRoundView.ts). No decision-making about
-// what a response means lives here; renderPlayer.test.ts covers the shared DOM and layout contract.
+// what a response means lives here; this module owns the shared DOM and layout contract.
 
 type CellElement = HTMLElement & {baseColor: string};
 

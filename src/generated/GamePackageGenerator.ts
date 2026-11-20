@@ -53,7 +53,7 @@ export class GamePackageGenerator implements GamePackageGenerating {
     // the generation API.
     //
     // Writes the exact same canonical package file set "pokie create"/"pokie init" (via
-    // GamePackagePreparer's full create -> install -> build -> verify lifecycle) produces --
+    // pokie init's full merge -> install -> build -> verify lifecycle) produces --
     // package.json (via the shared buildPackageJsonPatch, so main/exports/pokie.entry/scripts.build
     // always agree with "dist/index.js", same as that lifecycle's own package.json), package-lock.json,
     // tsconfig.json (via the shared renderTsconfig), README.md, and a single entry module written both

@@ -14,9 +14,8 @@ import {StudioProjectOpeningCancelledError} from "./StudioProjectOpeningCancelle
 
 // The file name FileStudioProjectRegistry's persisted registry lives under, inside whatever app-data
 // directory PokiePathResolver.resolveAppDataDirectory() resolves -- shared between
-// createDefaultStudioProjectRegistrationService below and any test that needs to point at the exact same
-// production location (see tests/cli/studio/FileStudioProjectRegistry.test.ts), so the two can never
-// silently drift apart.
+// createDefaultStudioProjectRegistrationService below and any caller that needs to point at the exact
+// same production location, so the two can never silently drift apart.
 export const PROJECT_REGISTRY_FILE_NAME = "projects.json";
 
 // The registry backend a real Studio runtime (StudioServer) composes StudioProjectRegistrationService

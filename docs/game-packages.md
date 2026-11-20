@@ -73,11 +73,11 @@ field:
 ## Preparing a package end-to-end
 
 Writing the TypeScript source is only the first step — a package isn't loadable until its dependencies are
-installed and it's been compiled. The CLI-internal `GamePackagePreparer` (`cli/prepare/GamePackagePreparer.ts`)
-carries a target directory through that whole status in one call: **create** the scaffold (package.json,
-tsconfig.json, README.md, src/index.ts), **install** its dependencies (`npm install`, producing
-package-lock.json), **build** it (`npm run build`, producing dist/index.js), then **verify** the result actually
-loads as a valid `PokieGame` (via `PokieGamePackageValidating`). Each phase's failure is reported as a
+installed and it's been compiled. `pokie init` carries a target directory through that whole status in one
+call: **merge** the scaffold into the directory (package.json, tsconfig.json, README.md, src/index.ts, keeping
+any file that already exists), **install** its dependencies (`npm install`, producing package-lock.json),
+**build** it (`npm run build`, producing dist/index.js), then **verify** the result actually loads as a valid
+`PokieGame` (via `PokieGamePackageValidating`). Each phase's failure is reported as a
 `GamePackagePreparationError` naming which phase failed and a concrete recovery step — never a bare non-zero
 exit code or a raw underlying error with nothing else to go on.
 
@@ -112,18 +112,14 @@ requires the caller to install an available runtime. Generated imports remain `@
 
 ### Retrying a failed preparation
 
-A failed `dependencies`/`build`/`verify` phase leaves the scaffold on disk instead of cleaning it up. Calling
-`prepare()` again with the same `parentDir`/`name` is the supported way to retry: `GamePackagePreparer` writes a
-`.pokie-prepare-state.json` marker into the project root after `create` and after every later phase it completes,
-and reads it back at the start of the next `prepare()` call. When that marker is present, `create` is skipped
-entirely (the scaffold it already wrote is reused as-is) and only the phases that hadn't completed yet run —
-`install` is never repeated once `dependencies` is recorded done, and `build` is never repeated once `build` is.
-The marker is deleted once `verify` succeeds, so a finished package carries no trace of it.
+A failed `dependencies`/`build`/`verify` phase leaves the scaffold on disk instead of cleaning it up. Re-running
+`pokie init <directory>` is the supported way to retry: the merger updates package.json, skips every source file
+that already exists, and then runs the install/build/verify phases again. Nothing is rolled back, so a package
+that already built successfully can be inspected or fixed in place before retrying.
 
-A directory that already exists but carries no marker — a stray, pre-existing, or hand-created directory this
-tool never touched — still fails `create` with its original "already exists" error, exactly as before. Retry only
-ever resumes a directory `GamePackagePreparer` itself created, so it can never silently overwrite anyone else's
-files.
+A directory that already exists but does not look like a POKIE package still needs `--yes` before anything is
+touched. Existing `src/index.ts` and other source files are never overwritten, and conflicting POKIE-owned
+package.json fields are reported instead of being replaced.
 
 ## The entry module
 

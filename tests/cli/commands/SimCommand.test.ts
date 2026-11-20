@@ -343,9 +343,7 @@ describe("SimCommand", () => {
     // rather than throwing — not exercisable here since that default only ever resolves inside a real
     // built dist/ tree, which ts-jest's source-only module resolution doesn't provide (and can't even
     // attempt the dynamic import at all without extra Jest configuration). See the npm tarball smoke
-    // test (tests/packaging/npmPackSmoke.test.ts) for the real, end-to-end verification of that path,
-    // and SimCommand.realWorkers.test.ts (using TEST_WORKER_ENTRY_URL) for workers>1 exercised via
-    // an explicit override instead.
+    // test (tests/packaging/npmPackSmoke.test.ts) for the real, end-to-end verification of that path.
 
     it("loads the game via the injected loader and plays the requested number of rounds", async () => {
         const game = createFakeGame(manifest);

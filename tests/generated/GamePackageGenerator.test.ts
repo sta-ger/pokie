@@ -486,7 +486,7 @@ describe("GamePackageGenerator", () => {
         expect(packageLock.packages[""].devDependencies).toEqual(pkg.devDependencies);
     });
 
-    it("agrees with GamePackageCreator's ('pokie create') own package.json/tsconfig.json contract for the same pokie version, and reproduces the same required package file set its own 'create' phase (plus GamePackagePreparer's README.md) writes", () => {
+    it("agrees with GamePackageCreator's ('pokie create') own package.json/tsconfig.json contract for the same pokie version, and reproduces the same required package file set its own 'create' phase (plus pokie init's README.md) writes", () => {
         const pokieVersion = "1.3.0";
         const generator = new GamePackageGenerator(pokieVersion);
         const creator = new GamePackageCreator(pokieVersion);
@@ -514,10 +514,10 @@ describe("GamePackageGenerator", () => {
         const createdTsconfig = JSON.parse(fs.readFileSync(path.join(created.projectRoot, "tsconfig.json"), "utf-8"));
         expect(builtTsconfig).toEqual(createdTsconfig);
 
-        // GamePackagePreparer's own "create" phase (see its runCreatePhase) always writes README.md
-        // right after GamePackageCreator.create() itself returns -- reproduced here without a real npm
-        // install/build (already covered end-to-end by GamePackagePreparer.integration.test.ts's real,
-        // subprocess-driven lifecycle). Every BUILT_PACKAGE_FILES entry that doesn't require an actual
+        // pokie init's merge phase always writes README.md right after GamePackageCreator.create()
+        // itself returns -- reproduced here without a real npm install/build (already covered end-to-end
+        // by tests/cli/InitCommandWorkflow.integration.test.ts's real, subprocess-driven lifecycle).
+        // Every BUILT_PACKAGE_FILES entry that doesn't require an actual
         // "npm install"/"npm run build" to exist (package-lock.json, dist/index.js) must already be
         // exactly what that create phase produces too.
         const createPhaseFiles = [...created.createdFiles, "README.md"];

@@ -56,7 +56,7 @@ export type CommanderErrorMessages = {
 const FLAG_PATTERN = /'(--?[^'\s]+)/;
 
 // Turns a thrown CommanderError (or, for a custom argument/option parser's own validation failure,
-// the plain Error it already threw with its own exact message — see e.g. NameCommand's --count
+// the plain Error it already threw with its own exact message — see e.g. a --count option's own
 // parser) into the Error a command's run() re-throws. A CommanderError code this command didn't
 // supply a message for (or any non-Commander error) passes through with Commander's own message
 // untouched, rather than being swallowed.

@@ -8,9 +8,8 @@ import {PackageCommandResult, PackageCommandRunning, withLocalPokieInstall} from
 export const REPO_ROOT = path.join(__dirname, "..", "..");
 
 // Shared by every test that runs a real, uninjected PackageCommandRunning ("npm install" for real) against a
-// package this repo's own tooling just scaffolded/generated -- e.g. GamePackagePreparer.integration.test.ts
-// (a hand-editable scaffold) and BlueprintProjectPreparer.integration.test.ts (a blueprint-generated
-// package). Real `npm install` calls are slow and, without this override, would also reach the public
+// package this repo's own tooling just scaffolded/generated -- e.g. tests/cli/InitCommandWorkflow.integration.test.ts
+// (a hand-editable scaffold). Real `npm install` calls are slow and, without this override, would also reach the public
 // registry for "pokie" itself, "typescript", and every one of this checkout's own transitive dependencies
 // (including nested dependencies of packages such as "@xlvane/exceljs") -- exactly the
 // kind of fetch a network-restricted CI sandbox can't complete. Redirecting all of them to this checkout's own

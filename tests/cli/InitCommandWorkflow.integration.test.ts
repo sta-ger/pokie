@@ -172,10 +172,9 @@ describe("CLI workflow (integration): pokie init (in-place, non-interactive) pro
 //
 // "9.9.9" -- a version string indistinguishable from a real, already-published release -- is deliberately
 // never an obviously-unpublished prerelease tag: this proves the mechanism resolves "pokie" locally
-// because it always does, never because the version merely looks unpublishable (see
-// BlueprintProjectPreparer.offline.integration.test.ts's own UNPUBLISHED_POKIE_VERSION doc comment
-// for the same point made about Blueprint materialization). Once "pokie" is genuinely published, the very
-// same mechanism resolves identically against a real registry-installed copy's own root.
+// because it always does, never because the version merely looks unpublishable. Once "pokie" is
+// genuinely published, the very same mechanism resolves identically against a real registry-installed
+// copy's own root.
 //
 // Real `npm link`/`npm install`/`npm run build` calls are slow, hence "pokie-integration" (see this
 // file's own doc comment above).

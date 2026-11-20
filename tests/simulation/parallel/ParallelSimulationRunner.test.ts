@@ -259,8 +259,7 @@ describe("ParallelSimulationRunner (workers=1, in-process)", () => {
 // workers>1 tests below all inject a fake SimulationWorkerCoordinator (via createWorkerCoordinator) to
 // exercise ParallelSimulationRunner's own orchestration logic (round splitting, seed derivation,
 // progress aggregation, error/signal propagation) without spawning a single real OS thread — real
-// worker threads are covered by tests/simulation/parallel/simulationWorkerEntry.test.ts (the worker
-// entry point in isolation) and the npm tarball smoke test (tests/packaging/npmPackSmoke.test.ts),
+// worker threads are covered by the npm tarball smoke test (tests/packaging/npmPackSmoke.test.ts),
 // which is also the one place that exercises ParallelSimulationRunner's own *default* worker entry
 // resolution for real — that default only ever resolves to a real file inside an actual built dist/
 // tree (see src/simulation/parallel/internal/defaultWorkerEntryUrl.ts), which ts-jest's source-only

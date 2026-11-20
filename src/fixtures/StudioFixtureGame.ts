@@ -20,9 +20,8 @@ import {Paytable} from "../session/videoslot/paytable/Paytable.js";
 import {VideoSlotWinCalculator} from "../session/videoslot/wincalculator/VideoSlotWinCalculator.js";
 import type {VideoSlotWinCalculating} from "../session/videoslot/wincalculator/VideoSlotWinCalculating.js";
 
-// This is intentionally a public, small fixture contract: Studio's package fixture and the isolated
-// examples consumer both construct this exact game. Keeping it here prevents the Studio and
-// examples consumers from accidentally pairing two look-alike free-games implementations.
+// This is intentionally a public, small fixture contract: consumers that need a known-good
+// free-games game construct this exact implementation instead of pairing two look-alike ones.
 export const STUDIO_FIXTURE_GAME_ID = "studio-fixture-game";
 export const STUDIO_FIXTURE_SEED = "fixture-round";
 

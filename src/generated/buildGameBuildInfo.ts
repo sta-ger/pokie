@@ -5,7 +5,7 @@ import type {GameBuildInfoReelStripGeneration} from "./GameBuildInfoReelStripGen
 
 // The fixed set of paths (relative to the package root) that GamePackageGenerator writes on every
 // run — the exact same canonical package file set "pokie create"/"pokie init" produce via
-// GamePackagePreparer's own create -> install -> build -> verify lifecycle (see the shared
+// pokie init's own merge -> install -> build -> verify lifecycle (see the shared
 // buildPackageJsonPatch/renderTsconfig in src/gamepackage), just written directly rather than
 // requiring a real "npm install"/"npm run build" for the output to already be immediately usable —
 // see GamePackageGenerator's own doc comment. Also the default for buildGameBuildInfo's own

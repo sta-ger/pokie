@@ -39,7 +39,7 @@ function executionOptions(options: AbortSignal | StudioCertificationExecutionOpt
 }
 
 // The Certification tab, built directly on top of pokie's own CertificationPackBuilder /
-// OutcomeLibraryFolderValidator (see docs/certification-pack-bundle.md) -- this class never samples
+// OutcomeLibraryFolderValidator (see docs/certification-pack.md) -- this class never samples
 // a round, computes a hash, or re-implements the builder's own "no partial bundle"/self-validation
 // contracts; it only resolves a request's paths against the active project's root (the same
 // resolveProjectDirectory containment check every other project-scoped Studio service already uses) and

@@ -7,5 +7,3 @@ node_modules
 *.tgz
 *.log
 *.tsbuildinfo
-docs/evidence/
-docs/phase*/

@@ -394,8 +394,8 @@ export type StudioNativePickerResultView =
 // doc comment.
 export type StudioDefaultLocationView = {status: "valid"; directory: string; source: "documents" | "home"} | {status: "unavailable"};
 
-// POST /api/home/fs/open-folder's own DTO — see cli/studio/home/StudioOpenFolderView.ts's own doc
-// comment.
+// POST /api/home/fs/open-folder's own DTO. "unavailable" covers a non-loopback caller; "error" covers
+// a path that does not resolve to an existing directory.
 export type StudioOpenFolderView = {status: "ok"} | {status: "unavailable"; reason: string} | {status: "error"; message: string};
 
 // POST /api/home/fs/reveal-path mirrors open-folder, but accepts a file as well. The host opens the

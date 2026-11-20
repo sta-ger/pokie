@@ -12,7 +12,7 @@ export function renderTsconfig(): string {
                     skipLibCheck: true,
                     forceConsistentCasingInFileNames: true,
                     // A failed "npm run build" (tsc exits non-zero) must never leave a stale/partial
-                    // dist/index.js on disk -- GamePackagePreparer's retry semantics rely on "build"
+                    // dist/index.js on disk -- pokie init's retry semantics rely on "build"
                     // failing cleanly with no dist output at all.
                     noEmitOnError: true,
                 },
