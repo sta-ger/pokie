@@ -209,7 +209,7 @@ Example `roundPayload` for a two-step cascade:
 
 Everything documented above — `getInitialData()`/`getRoundData()`'s output, on every serializer in this file — is
 **public, client-safe data**: it's what `pokie serve` sends by default (see
-[`pokie serve` → Public vs. internal/debug responses](cli.md#public-vs-internal-debug-responses)). `GameSessionSerializing`
+[`pokie serve` → Public vs. internal/debug responses](cli.md#public-vs-internaldebug-responses)). `GameSessionSerializing`
 additionally has two optional, feature-detected methods for data that should never reach a client by default —
 RNG seeds, individual reel stops, evaluator traces, anything worth inspecting locally but not worth shipping:
 

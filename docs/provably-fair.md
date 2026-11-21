@@ -158,7 +158,7 @@ accordingly.
  built/verified from a snapshot caught changing mid-draw.
 
 This is the same "Pinned-snapshot sampling" + "Snapshot consistency" discipline
-[`CertificationPackBuilder`](certification-pack.md#pinned-snapshot-sampling) already
+[`CertificationPackBuilder`](certification-pack.md#prepare-and-reproduce) already
 follows, just for one single outcome rather than a whole sampled sequence, and checked synchronously around one
 draw rather than deferred to just-before-publish. A folder that briefly changes and is then restored to its exact
 original bytes *before* a build/verify call ever runs leaves that call entirely unaffected — only drift observed

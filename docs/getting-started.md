@@ -27,7 +27,7 @@ editable; an exported game package is read-only in Studio. Keep the design for l
 
 POKIE serves developers and game-math authors; Studio provides a local authoring and testing path. It
 does not provide mathematical certification or a casino backend. Delivering a game to an operator
-requires developer integration. See the [CLI reference](cli.md#pokie-projectroot) for launch and build
+requires developer integration. See the [CLI reference](cli.md#pokie) for launch and build
 commands.
 
 ## The seven objects

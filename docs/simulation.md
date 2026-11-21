@@ -22,12 +22,12 @@ supported actions remain unavailable rather than observed zero. See the
 
 Ordinary simulation reports support JSON, Markdown and HTML. Certification certification packs separately
 support JSON, console text, Markdown, HTML and local selectable-text PDF through
-[`pokie report`](cli.md#pokie-report-simulationreportjson); this does not add PDF output to ordinary simulation
+[`pokie report`](cli.md#pokie-report-projectorsimulationreportjson); this does not add PDF output to ordinary simulation
 or outcome-analysis reports. See [certification pack preparation](certification-pack.md). Certification pack preparation
 does not establish regulatory certification. PAR workbook exchange is a separate model format.
 YAML authoring and certification pack YAML output remain unimplemented.
 
-[definition comparison](math-modeling.md#canonical-definition-comparison) reads trusted
+[definition comparison](math-modeling.md#definition-comparison) reads trusted
 Blueprint, package descriptor, PAR and WASM models through the shared CLI/Studio differ. Statistical
 report and Outcome Library/Stake aggregate comparisons remain separate workflows. Partial models retain
 limits; matching observed totals cannot prove definition equality or arbitrary custom-code behavior.

@@ -1865,7 +1865,7 @@ The JSON report shape:
 
 `reproducibility`, `warnings`, and `recommendations` are **optional** fields —
 a `sim.json` produced by an older `pokie` (or handwritten JSON without them) still validates and renders fine with
-[`pokie report`](#pokie-report-simulationreportjson), it just won't have these sections. `pokie sim` itself always
+[`pokie report`](#pokie-report-projectorsimulationreportjson), it just won't have these sections. `pokie sim` itself always
 populates all three on every report it produces.
 
 `breakdown` is optional: a feature-level RTP breakdown split by
@@ -1959,7 +1959,7 @@ surfaced straight from the same `SimulationStatistics` the run already computed,
  **There is deliberately no combined/blended RTP, totalBet, or any other "overall across modes" figure anywhere
  on this shape.** Without knowing real traffic/player-selection weights (what share of players actually pick each
  mode), any single blended number would be a made-up average, not a real statistic — compare modes side by side
- instead (see [`pokie report`](#pokie-report-simulationreportjson) below), or compute a real weighted figure
+ instead (see [`pokie report`](#pokie-report-projectorsimulationreportjson) below), or compute a real weighted figure
  yourself once you have real weights. The console summary for `--mode all` prints each mode's own summary block
  separately, headed `=== Mode: <id> ===` — never one combined block.
 
@@ -2202,7 +2202,7 @@ Every numeric field is a `{left, right, delta, percentDelta}` tuple — `percent
 
 `breakdown` is only populated when **both** reports have one — an older report (or one from a game whose session
 doesn't support round categorization) is never diffed against a newer one's breakdown, it's simply left out, same
-as [`pokie report`](#pokie-report-simulationreportjson) simply omits the **Breakdown** section for such a report.
+as [`pokie report`](#pokie-report-projectorsimulationreportjson) simply omits the **Breakdown** section for such a report.
 Categories are the union of both sides' `components` keys, in the same stable order `pokie sim`/`report` use
 (`"base"` first, then alphabetically) — so an added or removed category slots into the same position it would if
 it had always been there, rather than showing up at the end.
@@ -2316,7 +2316,7 @@ Failure modes:
 
 - Missing `<leftProjectOrReportJson>`/`<rightProjectOrReportJson>`, an unknown option, or an invalid `--format`/`--out` value throw
  a `Usage: pokie diff...` error.
-- Each report path is read/parsed/validated the same way as [`pokie report`](#pokie-report-simulationreportjson) —
+- Each report path is read/parsed/validated the same way as [`pokie report`](#pokie-report-projectorsimulationreportjson) —
  the same "could not read"/"not valid JSON"/"does not look like a pokie sim report" errors apply to either side.
 - Diffing a `SimulationReport` against a `SimulationReportSet` (one single-mode, one multi-mode) throws
  `Cannot diff a single-mode pokie sim report against a multi-mode report set...`.
@@ -3468,7 +3468,7 @@ starting another simulation from a different tab.
 The detail view offers three downloads — **Download JSON**, **Download Markdown**, **Download HTML** — plain links
 to `GET /api/project/reports/:id/download?format=...` (see below); the browser's own save dialog handles the rest,
 no client-side blob handling needed. Markdown/HTML are rendered with the exact same
-`MarkdownSimulationReportRenderer`/`HtmlSimulationReportRenderer` [`pokie report`](#pokie-report-simulationreportjson)
+`MarkdownSimulationReportRenderer`/`HtmlSimulationReportRenderer` [`pokie report`](#pokie-report-projectorsimulationreportjson)
 uses — Studio never spawns `pokie report` as a subprocess, and never reimplements its formatting.
 
 Only **completed** simulations ever appear in the list — a failed/cancelled job has no report to show, though it's
@@ -3852,7 +3852,7 @@ Each step builds on the same `<packageRoot>`:
 - [`validate`](#pokie-validate-project) accepts Blueprint JSON directly for structural design checks, as well as
  prepared packages and supported outputs. The runtime commands in this package walkthrough use the built package.
 - [`sim --out`](#pokie-sim-packageroot) produces the JSON report that
- [`report`](#pokie-report-simulationreportjson) renders and [`diff`](#pokie-diff-leftprojectorreportjson-rightprojectorreportjson)
+ [`report`](#pokie-report-projectorsimulationreportjson) renders and [`diff`](#pokie-diff-leftprojectorreportjson-rightprojectorreportjson)
  compares — run `sim` twice (before/after a config change, same `--seed`) to get two reports worth diffing.
 - [`replay`](#pokie-replay-packageroot) is independent of `sim`'s output files, but reproducibility across all
  three of `sim`/`diff`/`replay` depends on the same caveat: the game package must actually thread `context.seed`
