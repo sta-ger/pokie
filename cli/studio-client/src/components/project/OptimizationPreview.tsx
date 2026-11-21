@@ -30,6 +30,19 @@ export function OptimizationPreview({evidence}: {evidence: OptimizationEvidence}
                     </tr>;
                 })}</tbody>
             </table>
+            {evidence.strategy === "exact-finite-v1" && evidence.evaluations !== undefined && evidence.evaluations.length > 0 && (
+                <table aria-label="Candidate measurements">
+                    <thead><tr>{["Candidate", "Parameters", "Measured", "Verdict"].map(label => <th key={label}>{label}</th>)}</tr></thead>
+                    <tbody>{evidence.evaluations.map((evaluation, index) => <tr key={index}>
+                        <td>{index + 1}</td>
+                        <td>{Object.entries(evaluation.parameters).map(([path, value]) => `${path}=${String(value)}`).join(", ")}</td>
+                        <td>{evaluation.measured === undefined
+                            ? "Not measured"
+                            : evaluation.measured.map((value, targetIndex) => `${request.targets[targetIndex]?.metric ?? `metric ${targetIndex + 1}`}: ${value}`).join("; ")}</td>
+                        <td>{evaluation.verdict}</td>
+                    </tr>)}</tbody>
+                </table>
+            )}
             <p>Limits: {request.policy.strategy}; candidate limit {request.policy.budget}; maximum native population {request.policy.maxOutcomes}.</p>
             {request.policy.sampling && <p>Sampling limits: search limit {request.policy.sampling.searchBudget}; validation samples {request.policy.sampling.assessmentSamples}; minimum samples {request.policy.sampling.minSamples}; minimum event count {request.policy.sampling.minEventCount}; workers {request.policy.sampling.workers}.</p>}
             <p>Tunables: {request.policy.tunables.map(field => `${field.path}: ${field.values.join(", ")}`).join("; ")}</p>

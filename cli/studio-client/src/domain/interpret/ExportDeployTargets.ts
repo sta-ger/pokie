@@ -1,5 +1,5 @@
 import {WASM_EXECUTION_BOUNDARY} from "../../../../../src/wasm/PokieWasmRuntimeApi";
-import type {StudioFormatConversionPlan, StudioOutputFormat, StudioOutputFormatView, StudioDeploymentTargetSummary} from "../../api/types";
+import type {StudioFormatConversionPlan, StudioOutputFormat, StudioOutputFormatView, StudioDeploymentTargetSummary, StudioOutcomeLibraryRegistryView} from "../../api/types";
 import {describeTargetCapability, describeTargetRequirements, LOCAL_JSON_EXAMPLE_TARGET_ID} from "./Deployment";
 
 // Build/Export, the packed browser proof, and the controller handoff all use
@@ -190,6 +190,40 @@ const OUTCOME_LIBRARY_CARD: ExportDeployTargetCard = {
     compatibility: "A generated library is available to compatible advanced delivery workflows; Stake can also generate one as part of its own project goal.",
     transaction: OUTCOME_LIBRARY_TRANSACTION,
 };
+
+// The Outcome Library card keeps its last completed generation in browser state. That result is a
+// point-in-time bundle: after the saved design changes, the card must stop presenting its old RTP as a
+// current answer. The server's own registry already classifies each mode against the currently loaded
+// build (see StudioOutcomeLibraryRegistryView), so this only maps that classification into the card's
+// display language. "unknown" means the registry has no matching entry yet (older server, a failed
+// registry read, or a custom bundle it did not index) -- never claim a library is current without proof.
+export type OutcomeLibraryFreshness = {status: "unknown" | "current" | "stale" | "wrong"; reason?: string};
+
+export function describeOutcomeLibraryFreshness(
+    completed: {libraryDir: string; modeName: string} | undefined,
+    registry: StudioOutcomeLibraryRegistryView | undefined,
+): OutcomeLibraryFreshness {
+    if (completed === undefined || registry === undefined || registry.status !== "ok" || registry.buildStatus === "missing") {
+        return {status: "unknown"};
+    }
+    const entry = registry.modes.find((mode) => mode.modeName === completed.modeName && mode.libraryDir === completed.libraryDir);
+    if (entry === undefined) {
+        return {status: "unknown"};
+    }
+    if (entry.buildStatus === "compatible") {
+        return {status: "current"};
+    }
+    if (entry.buildStatus === "stale") {
+        return {
+            status: "stale",
+            reason: "This Outcome Library was generated from an earlier saved design. Regenerate it before using its RTP or outcomes for the current design.",
+        };
+    }
+    return {
+        status: "wrong",
+        reason: "This Outcome Library belongs to a different game. Regenerate it for this project before using its results.",
+    };
+}
 
 // Every registered target still standing once the SDK's own local-json-example demo has been filtered out
 // (see describeExportDeployTargetCards below) is inherently "remote" from this Studio's own point of

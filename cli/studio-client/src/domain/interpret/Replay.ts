@@ -757,13 +757,16 @@ export function describeReplayCapabilities(input: {
     // Only ever meaningful for "artifact" -- the other three sources have no prior-recorded-artifact
     // gate to check (see describeReplayReproducibility's own doc comment).
     reproducibility?: ReplayReproducibilityGate;
+    // A recorded audit replays its exact captured commands; it does not need a seed, so its "ready"
+    // explanation must not claim a seeded forward replay.
+    auditRecording?: boolean;
     hasComparisonTarget: boolean;
     comparison?: ReplayComparisonView;
     canExport: boolean;
 }): ReplayCapabilitiesView {
     return {
         inspectable: describeInspectableCapability(input.hasResult),
-        reproducible: describeReproducibleCapability(input.source, input.reproducibility),
+        reproducible: describeReproducibleCapability(input.source, input.reproducibility, input.auditRecording),
         comparable: describeComparableCapability(input.source, input.hasComparisonTarget, input.comparison),
         exportable: describeExportableCapability(input.canExport),
     };
@@ -778,6 +781,7 @@ function describeInspectableCapability(hasResult: boolean): ReplayCapability {
 function describeReproducibleCapability(
     source: "seedRound" | "artifact" | "spin" | "simulation",
     reproducibility: ReplayReproducibilityGate | undefined,
+    auditRecording?: boolean,
 ): ReplayCapability {
     if (source === "spin") {
         return {status: "unavailable", reason: "This is a live spin's actual recorded result -- there's nothing to reproduce it against."};
@@ -786,7 +790,12 @@ function describeReproducibleCapability(
         return {status: "available", reason: "Ready -- plays a fresh session forward from round 1 using the configured seed."};
     }
     if (reproducibility === undefined || reproducibility.status === "ready") {
-        return {status: "available", reason: "Ready -- plays a fresh session forward from round 1 using the recorded seed."};
+        return {
+            status: "available",
+            reason: auditRecording
+                ? "Ready -- replays the recorded audit commands exactly; no seed is needed."
+                : "Ready -- plays a fresh session forward from round 1 using the recorded seed.",
+        };
     }
     if (reproducibility.status === "bestEffort") {
         return {status: "bestEffort", reason: reproducibility.reason};
@@ -1038,6 +1047,7 @@ function describeLoadedArtifact(
             source: "artifact",
             hasResult: true,
             reproducibility,
+            auditRecording: expected.recording?.audit !== undefined,
             hasComparisonTarget: expected.artifact !== undefined,
             comparison,
             canExport,

@@ -13,7 +13,12 @@ export class AnalysisBudget {
         const proposed = options.limits;
         if (proposed !== undefined && (!proposed || typeof proposed !== "object" || Array.isArray(proposed) || ![Object.prototype, null].includes(Reflect.getPrototypeOf(proposed)))) throw new Error("Invalid analysis limits: expected a plain options object.");
         if (proposed && Reflect.ownKeys(proposed).some(key => typeof key !== "string" || !("value" in Reflect.getOwnPropertyDescriptor(proposed, key)!))) throw new Error("Invalid analysis limits: accessors and symbol keys are unsupported.");
-        this.limits = {inputNodes: 100000, outcomes: 1000, outcomeCells: 100000, states: 1000, transitions: 10000, depth: 256, evidenceNodes: 10000, yieldEvery: 128, ...proposed};
+        // Defaults must cover an ordinary 5×3, three-line game: its 3,125 reel-stop combinations need
+        // more than the original 1,000-outcome/10,000-transition budgets once every declared bet is
+        // checked, which made a small, completely analyzable model report "inconclusive". The higher
+        // caps still bound the work (and remain overridable), but let a complete analysis finish in a
+        // few seconds instead of exhausting the budget before the first pass.
+        this.limits = {inputNodes: 100000, outcomes: 100000, outcomeCells: 1000000, states: 100000, transitions: 10000000, depth: 256, evidenceNodes: 10000, yieldEvery: 128, ...proposed};
         for (const [key, value] of Object.entries(this.limits)) {
             if (!Reflect.apply(Object.prototype.hasOwnProperty, this.work, [key]) || !Number.isSafeInteger(value) || value < 1 || value > 10000000) throw new Error(`Invalid analysis limit ${key}: expected an integer in [1, 10000000].`);
         }

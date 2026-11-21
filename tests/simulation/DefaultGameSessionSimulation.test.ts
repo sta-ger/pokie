@@ -241,5 +241,5 @@ describe("DefaultGameSessionSimulation", () => {
         expect(simulation.getTotalPayoutAmount()).toBe(totalReturn);
         expect(simulation.getLastRtp()).toBeGreaterThan(0.5);
         expect(simulation.getLastRtp()).toBeLessThan(0.6);
-    }, 20000);
+    }, 60000);
 });

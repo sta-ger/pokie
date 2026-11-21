@@ -1,6 +1,6 @@
 import {PackageExtractionDiagnostics} from "./PackageExtractionDiagnostics";
 import {useCallback, useEffect, useId, useRef, useState} from "react";
-import {Badge, Button, Group, List, Text, TextInput} from "@mantine/core";
+import {Alert, Badge, Button, Group, List, Text, TextInput} from "@mantine/core";
 import {
     activateArtifactBuild,
     cancelArtifactBuild,
@@ -8,6 +8,7 @@ import {
     cancelOutcomeLibraryGeneration,
     estimateOutcomeLibraryGeneration,
     getOutcomeLibraryGenerationJob,
+    getOutcomeLibraryRegistry,
     listOutcomeLibraryGenerationJobs,
     getArtifactBuild,
     listArtifactTargets,
@@ -32,6 +33,7 @@ import type {
     StudioOutcomeLibraryGenerateResultView,
     StudioOutcomeLibraryGenerateJobView,
     StudioOutcomeLibraryGenerateEstimateView,
+    StudioOutcomeLibraryRegistryView,
     StudioProjectCapability,
     StudioJobView,
 } from "../../api/types";
@@ -39,9 +41,11 @@ import {useStudioApi} from "../../context/StudioApiProvider";
 import {
     describeArtifactBuildTargetCards,
     describeExportDeployTargetCards,
+    describeOutcomeLibraryFreshness,
     OUTCOME_LIBRARY_TRANSACTION,
     type ExportDeployTargetCard,
     type ExportDeployTargetKind,
+    type OutcomeLibraryFreshness,
 } from "../../domain/interpret/ExportDeployTargets";
 import {errorMessage} from "../../domain/errorMessage";
 import {describeProjectActionError} from "../../domain/projectActionError";
@@ -323,6 +327,7 @@ function TargetCard({
     recoveryRequest,
     defaultModeName,
     outcomeLibraryRun,
+    outcomeLibraryFreshness,
     outcomeLibraryPreflight,
     onGenerateOutcomeLibrary,
     onCancelOutcomeLibrary,
@@ -351,6 +356,7 @@ function TargetCard({
     recoveryRequest?: Readonly<Record<string, unknown>>;
     defaultModeName: string;
     outcomeLibraryRun: OutcomeLibraryRunView;
+    outcomeLibraryFreshness: OutcomeLibraryFreshness;
     outcomeLibraryPreflight: OutcomeLibraryPreflightView;
     onGenerateOutcomeLibrary: () => void;
     onCancelOutcomeLibrary: () => void;
@@ -385,8 +391,11 @@ function TargetCard({
     if (card.kind === "outcomeLibrary") {
         hasOperation = outcomeLibraryRun.status !== "idle";
         operationPending = ["starting", "running"].includes(outcomeLibraryRun.status);
-        if (outcomeLibraryRun.status === "ok") summaryStatus = "Completed";
-        else if (outcomeLibraryRun.status === "cancelled") summaryStatus = "Cancelled";
+        if (outcomeLibraryRun.status === "ok") {
+            if (outcomeLibraryFreshness.status === "stale") summaryStatus = "Stale";
+            else if (outcomeLibraryFreshness.status === "wrong") summaryStatus = "Wrong build";
+            else summaryStatus = "Completed";
+        } else if (outcomeLibraryRun.status === "cancelled") summaryStatus = "Cancelled";
         else if (hasOperation) summaryStatus = "Needs attention";
     } else if (card.kind === "buildArtifact") {
         hasOperation = artifactBuildRun.status !== "idle";
@@ -654,6 +663,11 @@ function TargetCard({
                                     {" "}(RTP {(outcomeLibraryRun.result.mode.rtp * 100).toFixed(2)}%) into{" "}
                                     {outcomeLibraryRun.result.libraryDir}.
                                 </Text>
+                                {(outcomeLibraryFreshness.status === "stale" || outcomeLibraryFreshness.status === "wrong") && (
+                                    <Alert color="yellow" variant="light" title={outcomeLibraryFreshness.status === "stale" ? "Outcome Library is stale" : "Outcome Library belongs to another game"} mt="xs">
+                                        <Text size="sm">{outcomeLibraryFreshness.reason}</Text>
+                                    </Alert>
+                                )}
                                 <Text size="xs" c="dimmed">Final size: {outcomeLibraryRun.result.byteSize === undefined ? "unknown" : `${outcomeLibraryRun.result.byteSize.toLocaleString()} bytes`}
                                     {outcomeLibraryRun.durationMs === undefined ? "" : ` · Duration: ${outcomeLibraryRun.durationMs}ms`}.</Text>
                                 <QuickActions>
@@ -1149,6 +1163,25 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
     const defaultModeName = resolveDefaultModeName(deployment.projectModesView);
 
     const [outcomeLibraryRun, setOutcomeLibraryRun] = useState<OutcomeLibraryRunView>({status: "idle"});
+    // A completed generation is a point-in-time bundle, not a live view of the saved design. The
+    // registry's compatibility classification is the authority on whether that exact bundle still
+    // matches the current build; refresh it on mount (tab switches remount this tab) and after a new
+    // generation completes, so an edited paytable can never leave an old RTP looking current.
+    const [outcomeLibraryRegistry, setOutcomeLibraryRegistry] = useState<StudioOutcomeLibraryRegistryView>();
+    const outcomeLibraryRegistryRequestId = useRef(0);
+    const refreshOutcomeLibraryRegistry = useCallback(() => {
+        const requestId = ++outcomeLibraryRegistryRequestId.current;
+        getOutcomeLibraryRegistry(fetchImpl)
+            .then((registry) => {
+                if (requestId === outcomeLibraryRegistryRequestId.current) setOutcomeLibraryRegistry(registry);
+            })
+            .catch(() => {
+                if (requestId === outcomeLibraryRegistryRequestId.current) setOutcomeLibraryRegistry(undefined);
+            });
+    }, [fetchImpl]);
+    useEffect(() => {
+        refreshOutcomeLibraryRegistry();
+    }, [refreshOutcomeLibraryRegistry]);
     // Keep a failed poll tied to the last durable state rather than flattening
     // a missing response, server failure, and slow job into one timeout.
     const lastObservedOutcomeLibraryJob = useRef<StudioOutcomeLibraryGenerateJobView | undefined>(undefined);
@@ -1288,6 +1321,12 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
     const artifactTargets = artifactTargetsView.status === "loaded" ? artifactTargetsView.targets : undefined;
     const artifactCards = describeArtifactBuildTargetCards(artifactTargetsView.targets ?? []);
     const cards = [...describeExportDeployTargetCards(deploymentTargets, artifactTargetsView.targets ?? []), ...artifactCards];
+    const outcomeLibraryFreshness = describeOutcomeLibraryFreshness(
+        outcomeLibraryRun.status === "ok"
+            ? {libraryDir: outcomeLibraryRun.result.libraryDir, modeName: outcomeLibraryRun.result.mode.modeName}
+            : undefined,
+        outcomeLibraryRegistry,
+    );
     const outcomeGeneratorVisible = cards.some((card) => card.kind === "outcomeLibrary" && card.supported);
     useEffect(() => {
         // A hidden/unavailable generator cannot replace the common durable job receipt.
@@ -1605,6 +1644,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                     setOutcomeLibraryPreflight({status: "loading"});
                     setOutcomeLibraryPreflightRevision((revision) => revision + 1);
                     deployment.refreshProjectModes();
+                    refreshOutcomeLibraryRegistry();
                     // The generated bundle is now canonical project state.
                     // Re-preflight every registry-backed artifact card so the
                     // visible Stake handoff owns an operation prepared from
@@ -1919,6 +1959,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                                             recoveryRequest={recoveryRequested ? recoveryRequest : undefined}
                                             defaultModeName={defaultModeName}
                                             outcomeLibraryRun={outcomeLibraryRun}
+                                            outcomeLibraryFreshness={outcomeLibraryFreshness}
                                             outcomeLibraryPreflight={outcomeLibraryPreflight}
                                             onGenerateOutcomeLibrary={handleGenerateOutcomeLibrary}
                                             onCancelOutcomeLibrary={handleCancelOutcomeLibrary}

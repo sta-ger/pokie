@@ -930,6 +930,22 @@ export class StudioPlayService {
             view.availableSymbols = availableSymbols;
         }
 
+        // Feature-detect the shared scenario controls before the user can launch one. Without this,
+        // "Find free games" stayed enabled for an ordinary game with no free-games mechanics; clicking
+        // it created a doomed durable job whose recovery text ("cannot resume after restart") was the
+        // only thing shown, even though nothing had restarted. A present key disables that control and
+        // explains why; Spin remains available.
+        const scenarioCapabilities: NonNullable<StudioRuntimeSessionView["scenarioCapabilities"]> = {};
+        if (!this.supportsSymbolWinSearch(session)) {
+            scenarioCapabilities.findSymbolWin = "This game doesn't report per-symbol win details, so Find symbol win isn't available for it.";
+        }
+        if (!this.supportsFreeGamesSearch(session)) {
+            scenarioCapabilities.findFreeGames = "This game doesn't support free games, so Find free games isn't available for it.";
+        }
+        if (Object.keys(scenarioCapabilities).length > 0) {
+            view.scenarioCapabilities = {...view.scenarioCapabilities, ...scenarioCapabilities};
+        }
+
         const debugData =
             state.initialDebugPayload !== undefined || state.roundDebugPayload !== undefined
                 ? {...state.initialDebugPayload, ...state.roundDebugPayload}
