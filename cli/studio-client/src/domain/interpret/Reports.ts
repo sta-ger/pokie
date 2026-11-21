@@ -11,3 +11,11 @@ export type ReportListView = {status: "empty"} | {status: "loaded"; entries: Stu
 export function describeReportsList(entries: StudioSimulationReportListEntry[]): ReportListView {
     return entries.length === 0 ? {status: "empty"} : {status: "loaded", entries};
 }
+
+/** Enough identity to pick the intended comparison target: round count and seed matter as much as time. */
+export function describeReportListEntry(entry: StudioSimulationReportListEntry): string {
+    const rounds = entry.actualRounds ?? entry.requestedRounds;
+    const seed = entry.seed === undefined || entry.seed.trim().length === 0 ? "no seed" : entry.seed;
+    const mode = entry.modeName === undefined ? "" : ` — mode ${entry.modeName}`;
+    return `${entry.game.id} v${entry.game.version} — ${rounds} rounds — seed ${seed}${mode} — ${new Date(entry.startedAt).toLocaleString()}`;
+}

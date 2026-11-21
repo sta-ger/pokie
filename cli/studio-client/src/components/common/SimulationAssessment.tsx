@@ -1,8 +1,9 @@
 import {Alert, List, Table, Text} from "@mantine/core";
 import {IconAlertTriangle} from "@tabler/icons-react";
-import {describeSimulationDiagnostics} from "../../../../../src/reporting/describeSimulationDiagnostics";
+import {describeSimulationDiagnostics, describeSimulationPrecision} from "../../../../../src/reporting/describeSimulationDiagnostics";
 import type {SingleSimulationReportView} from "../../domain/interpret/Simulation";
 import {formatConfidenceInterval} from "../../domain/interpret/formatConfidenceInterval";
+import {describeStudioSimulationRecommendation} from "../../domain/simulationRecommendations";
 import {AdvancedDisclosure} from "./AdvancedDisclosure";
 
 // Both result views read the same persisted assessment. Keep warnings and the
@@ -15,7 +16,7 @@ export function SimulationAssessment({view, compact = false}: {view: SingleSimul
         <div className="studio-simulation-assessment">
             <section aria-label="Precision and convergence" className="studio-simulation-precision">
                 <Text component="h3" size="sm" fw={600}>Precision and convergence</Text>
-                <Text size="sm">{view.rounds} usable samples · {view.diagnostics?.precision ?? "Precision unavailable (legacy report)"}</Text>
+                <Text size="sm">{view.rounds} usable samples · {view.diagnostics ? describeSimulationPrecision(view.diagnostics.precision) : "Precision unavailable (legacy report)"}</Text>
                 <Table withRowBorders={false} aria-label="Confidence intervals" className="studio-simulation-intervals">
                     <Table.Tbody>
                         <Table.Tr>
@@ -23,7 +24,7 @@ export function SimulationAssessment({view, compact = false}: {view: SingleSimul
                             <Table.Td>{compact ? `RTP 95% CI: ${formatConfidenceInterval(view.rtpConfidenceInterval95)}` : formatConfidenceInterval(view.rtpConfidenceInterval95)}</Table.Td>
                         </Table.Tr>
                         {!compact && <Table.Tr>
-                            <Table.Th scope="row">Average payout 95% confidence interval</Table.Th>
+                            <Table.Th scope="row">Average payout (× bet) 95% confidence interval</Table.Th>
                             <Table.Td>{formatConfidenceInterval(view.averagePayoutConfidenceInterval95, "payout")}</Table.Td>
                         </Table.Tr>}
                     </Table.Tbody>
@@ -47,7 +48,7 @@ export function SimulationAssessment({view, compact = false}: {view: SingleSimul
                 <AdvancedDisclosure label="recommendations and limits">
                     {view.recommendations.length > 0 && <>
                         <Text size="sm" fw={600}>Recommendations</Text>
-                        <List size="sm">{view.recommendations.map((line, index) => <List.Item key={index}>{line}</List.Item>)}</List>
+                        <List size="sm">{view.recommendations.map((line, index) => <List.Item key={index}>{describeStudioSimulationRecommendation(line)}</List.Item>)}</List>
                     </>}
                     <Text size="sm" fw={600} mt="sm">Interpretation and coverage</Text>
                     <Text size="sm">{describeSimulationDiagnostics(view, false)[2]}</Text>

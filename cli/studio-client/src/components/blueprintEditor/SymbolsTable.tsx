@@ -1,4 +1,5 @@
 import {Button, Checkbox, Group, Table, Text, TextInput} from "@mantine/core";
+import {notifications} from "@mantine/notifications";
 import {useState} from "react";
 import {importSymbolArtwork, pickNativePath} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -19,6 +20,7 @@ export function SymbolsTable({blueprint, mutate}: {blueprint: Record<string, unk
     const scatters = asStringList(blueprint.scatters);
     const [newSymbolId, setNewSymbolId] = useState("");
     const [diagnostic, setDiagnostic] = useState<string>();
+    const [renameRevision, setRenameRevision] = useState(0);
     const [artworkBrowserSymbolId, setArtworkBrowserSymbolId] = useState<string>();
     const artwork = symbolArtworkFromBlueprint(blueprint);
 
@@ -83,6 +85,7 @@ export function SymbolsTable({blueprint, mutate}: {blueprint: Record<string, unk
                             <Table.Tr key={index}>
                                 <Table.Td>
                                     <BufferedTextInput
+                                        key={`${index}-${renameRevision}`}
                                         label={`Symbol ${index + 1} id`}
                                         value={symbolId}
                                         onCommit={(value) => {
@@ -91,6 +94,16 @@ export function SymbolsTable({blueprint, mutate}: {blueprint: Record<string, unk
                                                 problem = renameSymbol(b, symbolId, value);
                                             });
                                             setDiagnostic(problem);
+                                            if (problem !== undefined) {
+                                                // Remount the buffered field so a rejected rename snaps back to the
+                                                // persisted id instead of leaving the invalid text looking applied.
+                                                setRenameRevision((revision) => revision + 1);
+                                                notifications.show({
+                                                    color: "red",
+                                                    title: "Symbol rename not applied",
+                                                    message: problem,
+                                                });
+                                            }
                                         }}
                                     />
                                 </Table.Td>

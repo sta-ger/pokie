@@ -3,7 +3,7 @@ import {useForm} from "@mantine/form";
 import {useDisclosure} from "@mantine/hooks";
 import {useEffect, useLayoutEffect, useRef, useState} from "react";
 import type {StudioSimulationReportListEntry} from "../../api/types";
-import type {ReportListView} from "../../domain/interpret/Reports";
+import {describeReportListEntry, type ReportListView} from "../../domain/interpret/Reports";
 import type {SimulationProgressView, SimulationReportView} from "../../domain/interpret/Simulation";
 import {describeProjectActionError} from "../../domain/projectActionError";
 import {getSimulationRoundsError, MAX_STUDIO_SIMULATION_ROUNDS} from "../../domain/simulationRounds";
@@ -451,7 +451,7 @@ export function SimulationTab({
                                                         onClick={() => onCompare(entry)}
                                                         style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
                                                     >
-                                                        {entry.game.id} v{entry.game.version} — {new Date(entry.startedAt).toLocaleString()}
+                                                        {describeReportListEntry(entry)}
                                                     </Anchor>
                                                 </List.Item>
                                             ))}

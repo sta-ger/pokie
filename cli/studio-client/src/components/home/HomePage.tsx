@@ -104,7 +104,11 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
     const designRef = useRef<HTMLDivElement>(null);
     const projectsRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
-        (activeTab === "design" ? designRef : projectsRef).current?.focus();
+        // Focus moves into the selected Home region for keyboard/screen-reader orientation, but it must
+        // not drag the page down on first load. The explicit scroll-to-top keeps the page header and the
+        // "Design Your Game" intro visible when this route is opened fresh.
+        window.scrollTo(0, 0);
+        (activeTab === "design" ? designRef : projectsRef).current?.focus({preventScroll: true});
     }, [activeTab]);
 
     const [projectRegistryVersion, setProjectRegistryVersion] = useState(0);

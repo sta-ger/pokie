@@ -68,6 +68,9 @@ export function BlueprintLoadSaveControls({
             <Button variant="default" onClick={() => onSave(savePath)} loading={saveView.status === "loading"}>
                 Save
             </Button>
+            <Text size="xs" c="dimmed" style={{flexBasis: "100%"}}>
+                These are file tools for a Blueprint JSON copy. Create game stores the managed project under your POKIE Projects folder.
+            </Text>
         </QuickActions>
     );
 

@@ -1,4 +1,4 @@
-import {describeSimulationDiagnostics} from "../../../../../src/reporting/describeSimulationDiagnostics";
+import {describeSimulationDiagnostics, describeSimulationPrecision, describeSimulationStopReason} from "../../../../../src/reporting/describeSimulationDiagnostics";
 import {describeWeightedBonusCoverage} from "../../../../../src/session/videoslot/authored/WeightedBonus";
 import {describeSequenceVariantCoverage} from "../../../../../src/session/videoslot/combinations/WeightedSequenceVariant";
 import {Table, Text} from "@mantine/core";
@@ -37,7 +37,7 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                             <Table.Td>{view.volatility === undefined ? "—" : view.volatility.toFixed(2)}</Table.Td>
                         </Table.Tr>
                         <Table.Tr>
-                            <Table.Th scope="row">Max win</Table.Th>
+                            <Table.Th scope="row">Max win (× bet)</Table.Th>
                             <Table.Td>{view.maxWin.toFixed(2)}</Table.Td>
                         </Table.Tr>
                     </Table.Tbody>
@@ -49,12 +49,12 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                             <Table.Td>{view.maxWinFrequency === undefined ? "—" : `${(view.maxWinFrequency * 100).toFixed(4)}%`}</Table.Td>
                         </Table.Tr>
                         <Table.Tr>
-                            <Table.Th>Average payout</Table.Th>
+                            <Table.Th>Average payout (× bet)</Table.Th>
                             <Table.Td>{view.averagePayout === undefined ? "—" : view.averagePayout.toFixed(2)}</Table.Td>
                         </Table.Tr>
                         <Table.Tr>
                             <Table.Th>Stop reason</Table.Th>
-                            <Table.Td>{view.stopReason ?? "Fixed requested rounds"}</Table.Td>
+                            <Table.Td>{view.stopReason === undefined ? "requested rounds completed" : describeSimulationStopReason(view.stopReason)}</Table.Td>
                         </Table.Tr>
                         <Table.Tr>
                             <Table.Th>Duration</Table.Th>
@@ -98,7 +98,7 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                             </>
                         )}
                         {view.diagnostics && <>
-                            <Table.Tr><Table.Th>Precision</Table.Th><Table.Td>{view.diagnostics.precision}</Table.Td></Table.Tr>
+                            <Table.Tr><Table.Th>Precision</Table.Th><Table.Td>{describeSimulationPrecision(view.diagnostics.precision)}</Table.Td></Table.Tr>
                             <Table.Tr><Table.Th>Diagnostic usable samples</Table.Th><Table.Td>{view.diagnostics.samples} ({view.diagnostics.sampleUnit})</Table.Td></Table.Tr>
                             <Table.Tr><Table.Th>Merged interval half-width (RTP units)</Table.Th><Table.Td>{view.diagnostics.achievedRtpHalfWidth ?? "unavailable"}</Table.Td></Table.Tr>
                         </>}
@@ -148,7 +148,7 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                                         <Table.Th>RTP</Table.Th>
                                         <Table.Th>Contribution</Table.Th>
                                         <Table.Th>Hit freq.</Table.Th>
-                                        <Table.Th>Max win</Table.Th>
+                                        <Table.Th>Max win (× bet)</Table.Th>
                                     </Table.Tr>
                                 </Table.Thead>
                                 <Table.Tbody>

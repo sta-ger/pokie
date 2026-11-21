@@ -1923,6 +1923,25 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             ) : (
                 GROUP_ORDER.map((kind) => {
                     const groupCards = cards.filter((card) => card.kind === kind);
+                    const generatedLibrary = outcomeLibraryRun.status === "ok" ? outcomeLibraryRun.result : undefined;
+                    const emptyGroup = kind === "outcomeLibrary" && generatedLibrary !== undefined
+                        ? (
+                            <div>
+                                <Text size="sm">An outcome library was generated for this project.</Text>
+                                <QuickActions>
+                                    <Button size="xs" onClick={() => {
+                                        openAndNavigate(generatedLibrary.libraryDir).catch((error: unknown) => setArtifactActionError(errorMessage(error)));
+                                    }}>
+                                        Open generated outcome library
+                                    </Button>
+                                </QuickActions>
+                            </div>
+                        )
+                        : (
+                            <EmptyState message={kind === "outcomeLibrary"
+                                ? "No outcome library generator is offered for this project. A library generated earlier can be opened from Projects."
+                                : "Nothing in this group yet."} />
+                        );
                     return (
                         <PageSection key={kind} legend={GROUP_LABELS[kind].legend}>
                             <Text size="sm" c="dimmed" mb="sm">
@@ -1933,9 +1952,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                                     ? <LoadingState label="Discovering output formats…" />
                                     : <ErrorState message={artifactTargetsView.message} />
                             )}
-                            {(kind === "remoteDeployment" || artifactTargetsView.status === "loaded" || artifactTargetsView.targets !== undefined && groupCards.length > 0) && (groupCards.length === 0 ? (
-                                <EmptyState message="Nothing in this group yet." />
-                            ) : (
+                            {(kind === "remoteDeployment" || artifactTargetsView.status === "loaded" || artifactTargetsView.targets !== undefined && groupCards.length > 0) && (groupCards.length === 0 ? emptyGroup : (
                                 groupCards.map((card) => {
                                     const artifactBuildRun: ArtifactBuildRunView =
                                         (card.artifactTarget !== undefined ? artifactBuildRuns[card.artifactTarget] : undefined) ?? {status: "idle"};

@@ -71,7 +71,7 @@ export default {
             moduleFileExtensions: ["ts", "js"],
             transform: sourceTestTransform,
             moduleNameMapper: sourceTestModuleNameMapper,
-            testPathIgnorePatterns: ["/node_modules/", "/tests/packaging/", ...integrationTestPathIgnorePatterns],
+            testPathIgnorePatterns: ["/node_modules/", "/tests/packaging/", "/tests/e2e/", ...integrationTestPathIgnorePatterns],
         },
         {
             displayName: "pokie-examples",

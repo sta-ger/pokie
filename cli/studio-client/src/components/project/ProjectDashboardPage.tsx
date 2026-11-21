@@ -1266,8 +1266,11 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const panelRef = useRef<HTMLDivElement>(null);
     const focusedTabRef = useRef<ProjectTab | undefined>(undefined);
     useEffect(() => {
+        window.scrollTo(0, 0);
+    }, [activeTab]);
+    useEffect(() => {
         if (panelRef.current === null) return;
-        if (focusedTabRef.current !== activeTab || document.activeElement === document.body) panelRef.current.focus();
+        if (focusedTabRef.current !== activeTab || document.activeElement === document.body) panelRef.current.focus({preventScroll: true});
         focusedTabRef.current = activeTab;
     }, [activeTab, header.status]);
 

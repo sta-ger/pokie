@@ -13,6 +13,16 @@ import {useStudioApi} from "../../context/StudioApiProvider";
 import type {useProjectJobs} from "../../hooks/useProjectJobs";
 import {validateOptimizationRequest} from "../../../../../src/optimization/validateOptimizationRequest";
 
+const OPTIMIZATION_STATUS_LABEL: Record<StudioJobView["status"], string> = {
+    queued: "Queued",
+    running: "Running",
+    cancelling: "Cancelling",
+    completed: "Completed",
+    failed: "Failed",
+    cancelled: "Cancelled",
+    "recovery-required": "Recovery required",
+};
+
 const initialRequest: StudioOptimizationRequest = {
     targets: [{metric: "rtp", unit: "ratio", value: 0.95, tolerance: {kind: "absolute", value: 0.001}}],
     policy: {
@@ -180,11 +190,37 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
         }
     };
     const unreportedProgress = active ? "Preparing optimization; waiting for execution progress." : "No execution progress recorded.";
+    const isMeasuredProgressValue = (value: number | string): boolean => typeof value === "number" || (/^[0-9]+$/).test(value);
+    let jobStatusLine: string | undefined;
+    if (job !== undefined) {
+        const label = OPTIMIZATION_STATUS_LABEL[job.status] ?? job.status;
+        jobStatusLine = `${stale ? "Historical optimization — " : ""}${label}`;
+        if (active) {
+            const progress = job.progress;
+            if (progress !== undefined && isMeasuredProgressValue(progress.current) && isMeasuredProgressValue(progress.total)) {
+                jobStatusLine += `: ${progress.current} / ${progress.total} ${progress.unit} ${progress.stage}${progress.message ? ` · ${progress.message}` : ""}`;
+            } else if (progress !== undefined) {
+                // Finalization/cancellation phases can carry non-numeric sentinels. Name the phase instead of
+                // printing "indeterminate / indeterminate work".
+                jobStatusLine += `: ${progress.stage}${progress.message ? ` · ${progress.message}` : ""}`;
+            } else {
+                jobStatusLine += `: ${unreportedProgress}`;
+            }
+        } else if (job.status === "completed") {
+            jobStatusLine += " — review the verdict below.";
+        } else {
+            jobStatusLine += ".";
+        }
+    }
     return (
         <Stack mt="lg">
             <Title order={3}>Optimize math</Title>
             <Text size="sm">
                 Review the targets and changes, then explicitly apply authored Blueprint/PAR/declared package parameters or save a same-type artifact to a new destination.
+            </Text>
+            <Text size="sm" c="dimmed">
+                This policy is a technical document. Check tuning support to see which fields this project can tune; the example below targets the starter game&apos;s
+                <Code> /paytable/A/3</Code> and usually needs replacing for another design.
             </Text>
             <Textarea
                 label="Math targets and optimization policy (JSON)"
@@ -235,14 +271,7 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
                     Cancel optimization
                 </Button>
             )}
-            {job && (
-                <Text role="status">
-                    {stale && "Historical optimization — "}{job.status}: {job.progress ? <>
-                        {job.progress.current} / {job.progress.total} {job.progress.unit} {job.progress.stage}
-                        {job.progress.message && ` · ${job.progress.message}`}
-                    </> : unreportedProgress}
-                </Text>
-            )}
+            {jobStatusLine !== undefined && <Text role="status">{jobStatusLine}</Text>}
             {stale && <Alert color="yellow" role="alert">
                 Stale optimization result — the saved design changed. Check tuning support and run a new optimization for the current design. Retained evidence remains available as history.
                 {retainedResult && <details><summary>Historical optimization details</summary><Code block>{JSON.stringify(retainedResult, null, 2)}</Code></details>}

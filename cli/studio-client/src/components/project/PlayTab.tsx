@@ -2,6 +2,7 @@ import {Button, Select, Text, TextInput} from "@mantine/core";
 import {ReactNode, useEffect, useMemo, useState} from "react";
 import {deriveAvailableBetModeIds, deriveAvailableBets, deriveBetModeId} from "../../../../client/player";
 import {describeRuntimeActionError} from "../../domain/runtimeActionError";
+import {formatCount} from "../../domain/formatCount";
 import type {PlaySessionView} from "../../hooks/usePlaySession";
 import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
@@ -161,7 +162,7 @@ export function PlayTab({
                 <Text size="sm" c="dimmed" mb="sm">
                     Play prepares this game for a real round and creates a session in Studio. Nothing else needs to be set up.
                 </Text>
-                {activeSession?.logicalRound && <Text size="sm">Round {activeSession.logicalRound.status}: {activeSession.logicalRound.mathematicalCursor} subrounds, {activeSession.logicalRound.cursor} deliveries, stake {activeSession.logicalRound.totalStake}, payout {activeSession.logicalRound.totalPayout}</Text>}
+                {activeSession?.logicalRound && <Text size="sm">Round {activeSession.logicalRound.status}: {formatCount(activeSession.logicalRound.mathematicalCursor, "subround")}, {formatCount(activeSession.logicalRound.cursor, "delivery", "deliveries")}, stake {activeSession.logicalRound.totalStake}, payout {activeSession.logicalRound.totalPayout}</Text>}
                 {loading && <LoadingState label="Starting…" />}
                 {errorNotice}
                 <PageSection legend="Play session">
@@ -234,7 +235,7 @@ export function PlayTab({
                     </Button>
                 </QuickActions>
                 {errorNotice}
-                {activeSession?.logicalRound && <Text size="sm">Round {activeSession.logicalRound.status}: {activeSession.logicalRound.mathematicalCursor} subrounds, {activeSession.logicalRound.cursor} deliveries, stake {activeSession.logicalRound.totalStake}, payout {activeSession.logicalRound.totalPayout}</Text>}
+                {activeSession?.logicalRound && <Text size="sm">Round {activeSession.logicalRound.status}: {formatCount(activeSession.logicalRound.mathematicalCursor, "subround")}, {formatCount(activeSession.logicalRound.cursor, "delivery", "deliveries")}, stake {activeSession.logicalRound.totalStake}, payout {activeSession.logicalRound.totalPayout}</Text>}
                 {loading && <LoadingState label="Spinning…" />}
                 {(!loading || playedRound !== undefined) && roundResult}
             </PageSection>
