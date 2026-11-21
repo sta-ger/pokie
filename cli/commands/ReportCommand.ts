@@ -1,4 +1,3 @@
-import {validateSimulationReportExtensions} from "../../src/reporting/validateSimulationReportExtensions.js";
 import {projectOutcomeSourceSimulationReport} from "../../src/reporting/projectOutcomeSourceSimulationReport.js";
 import type {OutcomeSourceSimulationReport} from "../../src/project/simulateOutcomeSourceProject.js";
 import {Command} from "commander";
@@ -27,6 +26,7 @@ import fs from "fs";
 import path from "path";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {isSimulationReport as isCoreSimulationReport} from "./internal/isSimulationReport.js";
 import {renderOutcomeSourceHtml, renderOutcomeSourceMarkdown} from "./internal/renderOutcomeSourceReport.js";
 import {writeOutputFileAtomically} from "./internal/writeOutputFile.js";
 
@@ -357,47 +357,23 @@ export class ReportCommand implements CliCommandHandling {
     }
 
     private isSimulationReport(value: unknown): value is SimulationReport {
-        if (typeof value !== "object" || value === null) {
-            return false;
-        }
-
-        validateSimulationReportExtensions(value as Record<string, unknown>);
-        const candidate = value as Partial<SimulationReport>;
-        const game = candidate.game as Partial<SimulationReport["game"]> | undefined;
-
-        return (
-            typeof game === "object" &&
-            game !== null &&
-            typeof game.id === "string" &&
-            typeof game.name === "string" &&
-            typeof game.version === "string" &&
-            typeof candidate.requestedRounds === "number" &&
-            typeof candidate.rounds === "number" &&
-            (candidate.seed === null || typeof candidate.seed === "string") &&
-            typeof candidate.totalBet === "number" &&
-            typeof candidate.totalWin === "number" &&
-            typeof candidate.rtp === "number" &&
-            typeof candidate.hitFrequency === "number" &&
-            typeof candidate.maxWin === "number" &&
-            typeof candidate.durationMs === "number" &&
-            typeof candidate.spinsPerSecond === "number" &&
-            this.hasStringList(candidate.warnings) &&
-            this.hasStringList(candidate.recommendations) &&
-            this.hasReproducibility(candidate.reproducibility) &&
-            this.hasNumericOption(candidate.workers) &&
-            this.hasStringOption(candidate.betMode) &&
-            this.hasNumericOption(candidate.targetRtp) &&
-            this.hasNumericOption(candidate.rtpDeviation) &&
-            this.hasNumericOption(candidate.averageBet) &&
-            this.hasNumericOption(candidate.averagePayout) &&
-            this.hasNumericOption(candidate.volatility) &&
-            this.hasNumericOption(candidate.maxWinFrequency) &&
-            this.hasStringOption(candidate.stopReason) &&
-            this.hasPayoutHistogram(candidate.payoutHistogram) &&
-            this.hasBreakdown(candidate.breakdown) &&
-            this.hasJackpot(candidate.jackpot) &&
-            this.hasConvergence(candidate.convergence)
-        );
+        return isCoreSimulationReport(value) &&
+            this.hasStringList(value.warnings) &&
+            this.hasStringList(value.recommendations) &&
+            this.hasReproducibility(value.reproducibility) &&
+            this.hasNumericOption(value.workers) &&
+            this.hasStringOption(value.betMode) &&
+            this.hasNumericOption(value.targetRtp) &&
+            this.hasNumericOption(value.rtpDeviation) &&
+            this.hasNumericOption(value.averageBet) &&
+            this.hasNumericOption(value.averagePayout) &&
+            this.hasNumericOption(value.volatility) &&
+            this.hasNumericOption(value.maxWinFrequency) &&
+            this.hasStringOption(value.stopReason) &&
+            this.hasPayoutHistogram(value.payoutHistogram) &&
+            this.hasBreakdown(value.breakdown) &&
+            this.hasJackpot(value.jackpot) &&
+            this.hasConvergence(value.convergence);
     }
 
     private hasStringList(value: unknown): boolean {

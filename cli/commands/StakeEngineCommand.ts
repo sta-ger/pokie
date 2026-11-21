@@ -43,6 +43,7 @@ import {
     capturePublishDirectoryOwnership,
 } from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {canonicalPlannedPath} from "./internal/canonicalPlannedPath.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE =
@@ -724,8 +725,8 @@ export class StakeEngineCommand implements CliCommandHandling {
             return;
         }
 
-        const outputPath = this.canonicalPlannedPath(options.out);
-        const inputDirectory = [options.leftStakeDir, options.rightStakeDir].find((stakeDir) => this.isPathWithin(outputPath, this.canonicalPlannedPath(stakeDir)));
+        const outputPath = canonicalPlannedPath(options.out);
+        const inputDirectory = [options.leftStakeDir, options.rightStakeDir].find((stakeDir) => this.isPathWithin(outputPath, canonicalPlannedPath(stakeDir)));
         if (inputDirectory !== undefined) {
             throw new Error(newOutputPathMessage(options.out, `it is inside input directory "${inputDirectory}"`));
         }
@@ -741,30 +742,6 @@ export class StakeEngineCommand implements CliCommandHandling {
             );
         }
         throw new Error(newOutputPathMessage(options.out, "that destination already exists"));
-    }
-
-    private canonicalPlannedPath(file: string): string {
-        const resolved = path.resolve(file);
-        let existingAncestor = resolved;
-        const missingParts: string[] = [];
-        let reachedRoot = false;
-        while (!reachedRoot) {
-            try {
-                return path.join(fs.realpathSync(existingAncestor), ...missingParts.reverse());
-            } catch (error) {
-                if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-                    return resolved;
-                }
-                const parent = path.dirname(existingAncestor);
-                if (parent === existingAncestor) {
-                    reachedRoot = true;
-                    continue;
-                }
-                missingParts.push(path.basename(existingAncestor));
-                existingAncestor = parent;
-            }
-        }
-        return resolved;
     }
 
     private isPathWithin(candidate: string, directory: string): boolean {

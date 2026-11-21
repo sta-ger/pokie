@@ -23,11 +23,11 @@ export function isSimulationReportSet(value: unknown): value is SimulationReport
         typeof candidate.modes === "object" &&
         candidate.modes !== null &&
         Object.keys(candidate.modes).length > 0 &&
-        Object.values(candidate.modes).every(isSimulationReportCore)
+        Object.values(candidate.modes).every(isSimulationReport)
     );
 }
 
-function isSimulationReportCore(value: unknown): boolean {
+export function isSimulationReport(value: unknown): boolean {
     if (typeof value !== "object" || value === null) {
         return false;
     }

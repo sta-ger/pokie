@@ -45,6 +45,7 @@ import {toStudioSimulationJobView} from "./toStudioSimulationJobView.js";
 import {validateSimulationConvergence, type ValidatedSimulationRequest} from "./validateSimulationRequest.js";
 import {StudioJobService} from "../jobs/StudioJobService.js";
 import type {StudioJobView} from "../jobs/StudioJobView.js";
+import {PendingExecutions} from "../PendingExecutions.js";
 
 const DEFAULT_CHUNK_SIZE = 1000;
 
@@ -70,8 +71,7 @@ export type GetSimulationReportResult =
 export class StudioSimulationService {
     private readonly activeExecutions = new Set<string>();
     private readonly pendingTerminals = new Map<string, StudioSimulationJobRecord["status"]>();
-    private readonly executionFailures: unknown[] = [];
-    private readonly pendingExecutions = new Set<Promise<void>>();
+    private readonly pendingExecutions = new PendingExecutions();
     private readonly repository: StudioSimulationRepository;
     private readonly loadGame: typeof loadPokieGame;
     private readonly reportBuilder: SimulationReportBuilding;
@@ -220,7 +220,7 @@ export class StudioSimulationService {
         const execution = Promise.resolve().then(() => this.run(record))
             .catch((error: unknown) => this.failExecution(record, error))
             .then(() => this.publishPendingTerminal(record));
-        this.trackExecution(execution);
+        this.pendingExecutions.track(execution);
 
         return {status: "created", job: this.toJobView(record)};
     }
@@ -276,8 +276,7 @@ export class StudioSimulationService {
         for (const record of this.repository.listActive()) {
             this.cancelActiveRecord(record);
         }
-        await Promise.allSettled([...this.pendingExecutions]);
-        if (this.executionFailures.length > 0) throw this.executionFailures[0];
+        await this.pendingExecutions.settle();
     }
 
     // Same reasoning as cancelAll(), scoped to one project — called from StudioServer whenever Studio
@@ -682,19 +681,8 @@ export class StudioSimulationService {
     // computation finished. Retain the error for shutdown so no graceful
     // marker can claim that these resources were drained.
     private failExecution(record: StudioSimulationJobRecord, error: unknown): void {
-        this.executionFailures.push(error);
+        this.pendingExecutions.recordFailure(error);
         this.fail(record, new Error(`Simulation cleanup could not be confirmed: ${error instanceof Error ? error.message : String(error)}. Inspect retained resources and restart Studio before retrying.`));
-    }
-
-    private trackExecution(execution: Promise<void>): void {
-        this.pendingExecutions.add(execution);
-        execution.then(
-            () => this.pendingExecutions.delete(execution),
-            (error: unknown) => {
-                this.executionFailures.push(error);
-                this.pendingExecutions.delete(execution);
-            },
-        );
     }
 
     private fail(record: StudioSimulationJobRecord, error: unknown): void {

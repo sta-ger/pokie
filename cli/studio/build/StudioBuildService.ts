@@ -38,6 +38,7 @@ import {resolveStudioProjectSource} from "./StudioFormatConversionPlanningServic
 import {StudioJobService} from "../jobs/StudioJobService.js";
 import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";
 import type {StudioJobView} from "../jobs/StudioJobView.js";
+import {PendingExecutions} from "../PendingExecutions.js";
 
 export type StudioBuildStartResult =
     | {status: "created"; job: StudioBuildJobView}
@@ -105,8 +106,7 @@ function resolveDefaultDestination(rootPath: string, target: OutputFormat): stri
 // still supports its explicit per-mode Outcome Library input flow, but it must not become a hidden
 // prerequisite for this project-goal action.
 export class StudioBuildService {
-    private readonly executionFailures: unknown[] = [];
-    private readonly pendingExecutions = new Set<Promise<void>>();
+    private readonly pendingExecutions = new PendingExecutions();
     private readonly registry: BuildOutputBuilderRegistry;
     private readonly stakeProjection: StakeProjectionExportService;
     private readonly resolveProject: ProjectResolving;
@@ -570,19 +570,7 @@ export class StudioBuildService {
             }
         }
         await this.preflight?.cancelAll();
-        await Promise.allSettled([...this.pendingExecutions]);
-        if (this.executionFailures.length > 0) throw this.executionFailures[0];
-    }
-
-    private trackExecution(execution: Promise<void>): void {
-        this.pendingExecutions.add(execution);
-        execution.then(
-            () => this.pendingExecutions.delete(execution),
-            (error: unknown) => {
-                this.executionFailures.push(error);
-                this.pendingExecutions.delete(execution);
-            },
-        );
+        await this.pendingExecutions.settle();
     }
 
     private startOperation(
@@ -632,7 +620,7 @@ export class StudioBuildService {
     private executeRecord(record: StudioBuildJobRecord): void {
         if (record.executionStarted || (record.status !== "queued" && record.status !== "running")) return;
         record.executionStarted = true;
-        this.trackExecution(Promise.resolve().then(() => this.run(record, record.outDir)));
+        this.pendingExecutions.track(Promise.resolve().then(() => this.run(record, record.outDir)));
     }
 
     private async run(record: StudioBuildJobRecord, outDir: string | undefined): Promise<void> {

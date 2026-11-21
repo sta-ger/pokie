@@ -1,6 +1,5 @@
 import {compareMathDefinitions} from "../../src/diff/MathDefinitionSourceReader.js";
 import type {MathDefinitionDiff} from "../../src/diff/MathDefinitionDiff.js";
-import {validateSimulationReportExtensions} from "../../src/reporting/validateSimulationReportExtensions.js";
 import {Command} from "commander";
 import {
     diffOutcomeSourceProjects,
@@ -22,7 +21,9 @@ import fs from "fs";
 import path from "path";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOperationError.js";
+import {canonicalPlannedPath} from "./internal/canonicalPlannedPath.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {isSimulationReport} from "./internal/isSimulationReport.js";
 import {renderOutcomeSourceProjectDiff} from "./internal/renderOutcomeSourceProjectDiff.js";
 
 type DiffFormat = "summary" | "json";
@@ -318,9 +319,9 @@ export class DiffCommand implements CliCommandHandling {
             return;
         }
 
-        const outputPath = this.canonicalPlannedPath(options.out);
+        const outputPath = canonicalPlannedPath(options.out);
         const inputPath = [options.leftPath, options.rightPath]
-            .map((input) => this.canonicalPlannedPath(input))
+            .map((input) => canonicalPlannedPath(input))
             .find((input) => input === outputPath);
         if (inputPath !== undefined) {
             throw new Error(
@@ -331,7 +332,7 @@ export class DiffCommand implements CliCommandHandling {
 
         const inputDirectory = [options.leftPath, options.rightPath].find((input) => this.isDirectory(input) && this.isPathInside(
             outputPath,
-            this.canonicalPlannedPath(input),
+            canonicalPlannedPath(input),
         ));
         if (inputDirectory !== undefined) {
             throw new Error(
@@ -354,33 +355,6 @@ export class DiffCommand implements CliCommandHandling {
             `Cannot write diff to "${options.out}" because that destination already exists. ` +
             "Choose a new unused --out path, or inspect and remove the destination yourself before retrying.",
         );
-    }
-
-    // Resolve as much of a planned path as already exists. This follows a directory symlink even when
-    // its requested descendant has not been created yet, so an output cannot be smuggled into an input
-    // source through a symlink alias.
-    private canonicalPlannedPath(file: string): string {
-        const resolved = path.resolve(file);
-        let existingAncestor = resolved;
-        const missingParts: string[] = [];
-        let reachedRoot = false;
-        while (!reachedRoot) {
-            try {
-                return path.join(fs.realpathSync(existingAncestor), ...missingParts.reverse());
-            } catch (error) {
-                if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-                    return resolved;
-                }
-                const parent = path.dirname(existingAncestor);
-                if (parent === existingAncestor) {
-                    reachedRoot = true;
-                    continue;
-                }
-                missingParts.push(path.basename(existingAncestor));
-                existingAncestor = parent;
-            }
-        }
-        return resolved;
     }
 
     private isDirectory(file: string): boolean {
@@ -411,11 +385,11 @@ export class DiffCommand implements CliCommandHandling {
             throw new Error(`"${reportPath}" is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
         }
 
-        if (isSimulationReportSet(parsed) && Object.values(parsed.modes).every(report => this.isSimulationReport(report))) {
+        if (isSimulationReportSet(parsed) && Object.values(parsed.modes).every(isSimulationReport)) {
             return parsed;
         }
 
-        if (!this.isSimulationReport(parsed)) {
+        if (!isSimulationReport(parsed)) {
             throw new Error(
                 `"${reportPath}" does not look like a pokie sim report (expected fields like "game", "rtp", "rounds"). ` +
                     `Generate one with "pokie sim <packageRoot> --out ${reportPath}".`,
@@ -423,34 +397,6 @@ export class DiffCommand implements CliCommandHandling {
         }
 
         return parsed;
-    }
-
-    private isSimulationReport(value: unknown): value is SimulationReport {
-        if (typeof value !== "object" || value === null) {
-            return false;
-        }
-
-        validateSimulationReportExtensions(value as Record<string, unknown>);
-        const candidate = value as Partial<SimulationReport>;
-        const game = candidate.game as Partial<SimulationReport["game"]> | undefined;
-
-        return (
-            typeof game === "object" &&
-            game !== null &&
-            typeof game.id === "string" &&
-            typeof game.name === "string" &&
-            typeof game.version === "string" &&
-            typeof candidate.requestedRounds === "number" &&
-            typeof candidate.rounds === "number" &&
-            (candidate.seed === null || typeof candidate.seed === "string") &&
-            typeof candidate.totalBet === "number" &&
-            typeof candidate.totalWin === "number" &&
-            typeof candidate.rtp === "number" &&
-            typeof candidate.hitFrequency === "number" &&
-            typeof candidate.maxWin === "number" &&
-            typeof candidate.durationMs === "number" &&
-            typeof candidate.spinsPerSecond === "number"
-        );
     }
 
     private printSetSummary(setDiff: SimulationReportSetDiff): void {
