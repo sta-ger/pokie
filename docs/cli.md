@@ -902,6 +902,10 @@ their economics (paying from 2-of-a-kind, much bigger multipliers) are legitimat
  line-pay symbols start at 3-of-a-kind; paying from 2 hits very often and inflates hit frequency and RTP.
 - **Missing base payout** (`blueprint-paytable-missing-base-payout`) — payouts defined only for 4/5-of-a-kind but
  not 3, when `reels` is at least 3.
+- **Unreachable match count** (`blueprint-paytable-unreachable-match`) — a payout asks for more consecutive reels
+ than the authored `reelStrips`/literal `reelStripGeneration` can supply — e.g. `paytable.A.3` exists while `A`
+ appears only on reels 1–2. The row can never win; add the symbol to the required strips or remove the row. The
+ check is skipped when wilds or mechanics are declared, since those can create or complete additional matches.
 - **Generous entry-tier payout** (`blueprint-paytable-generous-entry-payout`) — a symbol's lowest configured
  match-count pays more than 10x bet, unusually generous for what's normally the most frequently-hit tier.
 - **No low/high-pay tiering** (`blueprint-paytable-no-tiering`) — every symbol with a payout tops out at the exact

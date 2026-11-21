@@ -2,6 +2,7 @@ import {GameBlueprint} from "../../src/generated/GameBlueprint.js";
 import {validateAuthoredMechanics} from "../../src/generated/validateAuthoredMechanics.js";
 import {boundedBlueprint} from "../contracts/fixtures/FeatureChainsGame.js";
 import {GameBlueprintValidator} from "../../src/generated/GameBlueprintValidator.js";
+import {createRecommendedBlueprint} from "../../cli/studio-client/src/domain/blueprintEditorState.js";
 
 function validBlueprint(): GameBlueprint {
     return {
@@ -603,6 +604,51 @@ describe("GameBlueprintValidator", () => {
         const issues = validator.validate(blueprint);
         expect(issues.find((issue) => issue.code === "blueprint-reelstrip-too-short")?.severity).toBe("warning");
         expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    });
+
+    it("warns about paytable match counts that the authored reel strips can never reach", () => {
+        const blueprint = validBlueprint();
+        Reflect.deleteProperty(blueprint, "wilds");
+        Reflect.deleteProperty(blueprint, "scatters");
+        blueprint.symbols = ["A", "K", "Q", "J"];
+        blueprint.paytable = {
+            A: {3: 5, 4: 10, 5: 20},
+            K: {3: 4, 4: 8, 5: 16},
+            Q: {3: 3, 4: 6, 5: 12},
+            J: {3: 2, 4: 4, 5: 8},
+        };
+        blueprint.reelStrips = [
+            ["A", "K", "Q", "J", "A", "K", "Q", "J"],
+            ["A", "K", "Q", "J", "A", "K", "Q", "J"],
+            ["K", "Q", "J", "K", "Q", "J", "K", "Q"],
+            ["K", "Q", "J", "K", "Q", "J", "K", "Q"],
+            ["J", "J", "Q", "J", "J", "Q", "J", "J"],
+        ];
+
+        const issues = validator.validate(blueprint);
+        const unreachable = issues.filter((issue) => issue.code === "blueprint-paytable-unreachable-match");
+        expect(unreachable.map((issue) => issue.path)).toEqual(["paytable.A.3", "paytable.A.4", "paytable.A.5", "paytable.K.5"]);
+        expect(unreachable.every((issue) => issue.severity === "warning")).toBe(true);
+        expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    });
+
+    it("does not claim a match count is unreachable when a wild can complete the line", () => {
+        const blueprint = validBlueprint();
+        blueprint.reelStrips = [
+            ["A", "K", "Q", "J", "W", "S"],
+            ["A", "K", "Q", "J", "W", "S"],
+            ["K", "Q", "J", "W", "S"],
+            ["K", "Q", "J", "W", "S"],
+            ["K", "Q", "J", "W", "S"],
+        ];
+
+        expect(codesOf(validator.validate(blueprint))).not.toContain("blueprint-paytable-unreachable-match");
+    });
+
+    it("keeps the Studio starter warning-free and makes every authored payout reachable", () => {
+        const issues = validator.validate(createRecommendedBlueprint() as unknown as GameBlueprint);
+
+        expect(issues).toEqual([]);
     });
 
     it("flags a paytable/wild/scatter symbol that never appears in explicit reelStrips", () => {

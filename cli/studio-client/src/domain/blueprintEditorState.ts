@@ -31,16 +31,19 @@ const STARTER_BLUEPRINT: Record<string, unknown> = {
     availableBets: [1],
 };
 
-// The first-class Project creation default.  Unlike STARTER_BLUEPRINT (which intentionally remains
+// The first-class Project creation default. Unlike STARTER_BLUEPRINT (which intentionally remains
 // blank for the explicit Blank choice), this is a complete playable model: paylines, symbols,
 // paytable, bets and literal, already-materialized reels are all present before a creator changes
 // anything. Keeping the reels literal makes this first project ready for Play/Simulation without a
-// separate reel-generation step. Keep the exact stop space small enough that this deliberately
-// no-configuration starter can also finish Build/Export's synchronous outcome-library generation:
-// 4^5 = 1,024 raw stop combinations, so its synchronous first-click Generate action completes in
-// the Build/Export workflow rather than holding the page on a long exact enumeration. Across the
-// five literal strips the higher-paying symbols still occur less frequently than their lower-paying
-// peers, preserving the starter's warning-free payout/rarity model.
+// separate reel-generation step.
+//
+// Every paytable row is actually reachable: each of the five strips contains A, K, Q and J, so
+// 3/4/5-of-a-kind can occur for every symbol. The strips repeat J twice and A/K/Q once each, keeping
+// the low payer the most common symbol without tripping GameBlueprintValidator's dominant-symbol
+// heuristic. A/K/Q share the 5-of-a-kind top award (32x) while their 3/4 tiers differ, so the
+// paytable still has a low/high-pay shape; J remains the low payer. 5^5 = 3,125 raw stop combinations
+// keeps the starter's first outcome-library generation both exact and quick (unlike a silent
+// approximation). The resulting math is RTP 96.77%, hit frequency 24.80%, max win 38x bet.
 export function createRecommendedBlueprint(): Record<string, unknown> {
     return {
         info: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"},
@@ -54,17 +57,17 @@ export function createRecommendedBlueprint(): Record<string, unknown> {
             [2, 2, 2, 2, 2],
         ],
         paytable: {
-            A: {"3": 10, "4": 20, "5": 40},
-            K: {"3": 6, "4": 12, "5": 24},
-            Q: {"3": 4, "4": 8, "5": 16},
-            J: {"3": 2, "4": 4, "5": 8},
+            A: {"3": 8, "4": 16, "5": 32},
+            K: {"3": 6, "4": 12, "5": 32},
+            Q: {"3": 4, "4": 8, "5": 32},
+            J: {"3": 1, "4": 2, "5": 6},
         },
         reelStrips: [
-            ["A", "K", "Q", "J"],
-            ["A", "K", "Q", "J"],
-            ["K", "Q", "J", "J"],
-            ["K", "Q", "J", "J"],
-            ["Q", "Q", "J", "J"],
+            ["A", "K", "Q", "J", "J"],
+            ["K", "Q", "A", "J", "J"],
+            ["Q", "K", "J", "A", "J"],
+            ["K", "J", "Q", "A", "J"],
+            ["J", "Q", "K", "J", "A"],
         ],
     };
 }

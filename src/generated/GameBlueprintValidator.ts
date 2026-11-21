@@ -146,6 +146,17 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
 
         this.validateReachability(paytableSymbols, wilds, scatters, reelStripSymbols, reelStripGenerationSymbols, weightSymbols, issues);
         this.validateEverySymbolHasAPayout(symbolList, symbolsValid, paytableSymbols, wilds, scatters, issues);
+        this.validatePaytableMatchReachability(
+            b.paytable,
+            reelsValid ? Number(reels) : undefined,
+            wilds,
+            scatters,
+            isClustersWinModel,
+            b.mechanics,
+            b.reelStrips,
+            b.reelStripGeneration,
+            issues,
+        );
 
         const regularPayouts = this.validatePaytableQuality(b.paytable, wilds, scatters, maxMatchCount, isClustersWinModel, issues);
         this.validateWeightingQuality(b.reelStrips, b.reelStripGeneration, b.symbolWeights, wilds, scatters, regularPayouts, issues);
@@ -1453,6 +1464,110 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                 });
             }
         }
+    }
+
+    // A symbol can only win a line/ways payout if it can appear on every reel from the first one up
+    // to the paytable's match count. A 5x3 starter with A only on reels 1-2, for example, can carry
+    // authored A.3/A.4/A.5 rows that are mathematically impossible to hit -- and those dead rows then
+    // mislead every downstream optimizer/report that treats an authored payout as reachable. This
+    // check is deliberately conservative: wilds can substitute for any symbol and cluster wins are
+    // not left-to-right runs, so both cases are left to the stronger analyses rather than guessed at
+    // here.
+    private validatePaytableMatchReachability(
+        paytable: unknown,
+        reels: number | undefined,
+        wilds: string[],
+        scatters: string[],
+        isClustersWinModel: boolean,
+        mechanics: unknown,
+        reelStrips: unknown,
+        reelStripGeneration: unknown,
+        issues: ValidationIssue[],
+    ): void {
+        if (reels === undefined || isClustersWinModel || wilds.length > 0) {
+            return;
+        }
+        // Features can add, transform or persist symbols across reels. A purely static support read
+        // must not claim a payout is unreachable when a declared mechanic might create that line.
+        if (typeof mechanics === "object" && mechanics !== null && !Array.isArray(mechanics) && Object.keys(mechanics).length > 0) {
+            return;
+        }
+        if (typeof paytable !== "object" || paytable === null || Array.isArray(paytable)) {
+            return;
+        }
+        const supports = this.reelSupportSets(reelStrips, reelStripGeneration, reels);
+        if (supports === undefined) {
+            return;
+        }
+
+        const scatterSet = new Set(scatters);
+        for (const [symbolId, payouts] of Object.entries(paytable as Record<string, unknown>)) {
+            if (scatterSet.has(symbolId) || typeof payouts !== "object" || payouts === null || Array.isArray(payouts)) {
+                continue;
+            }
+            let maxConsecutive = 0;
+            while (maxConsecutive < reels && supports[maxConsecutive]?.has(symbolId)) {
+                maxConsecutive += 1;
+            }
+
+            for (const [times, multiplier] of Object.entries(payouts as Record<string, unknown>)) {
+                const matchCount = Number(times);
+                if (!Number.isInteger(matchCount) || matchCount < 2 || matchCount > reels) continue;
+                if (typeof multiplier !== "number" || !Number.isFinite(multiplier) || multiplier <= 0) continue;
+                if (matchCount <= maxConsecutive) continue;
+                issues.push({
+                    code: "blueprint-paytable-unreachable-match",
+                    severity: "warning",
+                    path: `paytable.${symbolId}.${times}`,
+                    message: `"paytable.${symbolId}.${times}" can never win: "${symbolId}" cannot appear on ${matchCount} consecutive reels from the left (the strips support at most ${maxConsecutive}).`,
+                    suggestion: `Add "${symbolId}" to the first ${matchCount} reel strips, or remove this impossible payout.`,
+                });
+            }
+        }
+    }
+
+    // Per-reel symbol support from whichever authored reel model is active. `symbolWeights` is
+    // intentionally not expanded here: it applies to every reel, so it cannot make a paytable row
+    // unreachable by match count (a symbol missing from the weights is already reported separately).
+    private reelSupportSets(reelStrips: unknown, reelStripGeneration: unknown, reels: number): Set<string>[] | undefined {
+        if (Array.isArray(reelStrips)) {
+            if (reelStrips.length < reels) return undefined;
+            const supports: Set<string>[] = [];
+            for (const strip of reelStrips.slice(0, reels)) {
+                if (!Array.isArray(strip) || !strip.every((symbol) => typeof symbol === "string")) return undefined;
+                supports.push(new Set(strip as string[]));
+            }
+            return supports;
+        }
+
+        if (Array.isArray(reelStripGeneration)) {
+            if (reelStripGeneration.length < reels) return undefined;
+            const supports: Set<string>[] = [];
+            for (const entry of reelStripGeneration.slice(0, reels)) {
+                if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return undefined;
+                const generated = entry as Record<string, unknown>;
+                if (generated.type === "literal") {
+                    if (!Array.isArray(generated.strip) || !generated.strip.every((symbol) => typeof symbol === "string")) return undefined;
+                    supports.push(new Set(generated.strip as string[]));
+                    continue;
+                }
+                if (generated.type === "generated") {
+                    const source = generated.symbolCounts ?? generated.symbolWeights;
+                    if (typeof source !== "object" || source === null || Array.isArray(source)) return undefined;
+                    const support = new Set<string>();
+                    for (const [symbolId, weight] of Object.entries(source as Record<string, unknown>)) {
+                        if (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0) return undefined;
+                        support.add(symbolId);
+                    }
+                    supports.push(support);
+                    continue;
+                }
+                return undefined;
+            }
+            return supports;
+        }
+
+        return undefined;
     }
 
     private validateEverySymbolHasAPayout(
