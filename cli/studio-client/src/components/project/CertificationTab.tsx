@@ -65,7 +65,7 @@ type DetectedBundleView = {status: "loading"} | {status: "found"; path: string} 
 const CERTIFICATION_STORAGE_PREFIX = "pokie-studio:certification:";
 
 type PackFields = {modelSource: string; reportFiles: string; replayFiles: string; templateFile: string; sourceRevision: string; candidateRevision: string; formats: string};
-const EMPTY_DOSSIER: PackFields = {modelSource: "", reportFiles: "", replayFiles: "", templateFile: "", sourceRevision: "", candidateRevision: "", formats: ""};
+const EMPTY_PACK_FIELDS: PackFields = {modelSource: "", reportFiles: "", replayFiles: "", templateFile: "", sourceRevision: "", candidateRevision: "", formats: ""};
 type PersistedCertificationFields = {libraryDir: string; outDir: string; modes: ModeFields[]; packFields?: PackFields};
 
 function certificationStorageKey(projectRoot: string | undefined): string {
@@ -94,7 +94,7 @@ function loadPersistedCertificationFields(projectRoot: string | undefined): Pers
         if (typeof parsed.libraryDir !== "string" || typeof parsed.outDir !== "string" || !Array.isArray(parsed.modes) || !parsed.modes.every(isPersistedModeFields)) {
             return undefined;
         }
-        return {libraryDir: parsed.libraryDir, outDir: parsed.outDir, modes: parsed.modes, packFields: parsed.packFields && Object.keys(EMPTY_DOSSIER).every(key => typeof Reflect.get(parsed.packFields!, key) === "string") ? parsed.packFields : undefined};
+        return {libraryDir: parsed.libraryDir, outDir: parsed.outDir, modes: parsed.modes, packFields: parsed.packFields && Object.keys(EMPTY_PACK_FIELDS).every(key => typeof Reflect.get(parsed.packFields!, key) === "string") ? parsed.packFields : undefined};
     } catch {
         return undefined;
     }
@@ -175,7 +175,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
     const [libraryDir, setBundleDir] = useState(() => persistedFields?.libraryDir ?? "");
     const [outDir, setOutDir] = useState(() => persistedFields?.outDir ?? "certification");
     const [modes, setModes] = useState<ModeFields[]>(() => persistedFields?.modes ?? [EMPTY_MODE]);
-    const [packFields, setPackFields] = useState<PackFields>(() => persistedFields?.packFields ?? EMPTY_DOSSIER);
+    const [packFields, setPackFields] = useState<PackFields>(() => persistedFields?.packFields ?? EMPTY_PACK_FIELDS);
     const [downloadError, setDownloadError] = useState("");
     function packConfiguration() {
         const list = (text: string) => text.split(",").map(file => file.trim()).filter(Boolean);
@@ -218,7 +218,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
         if (recoveredModes !== undefined) setModes(recoveredModes);
         const recoveredPack = recoveryRequest.pack as Record<string, unknown> | undefined;
         const recoveredOutput = recoveryRequest.output as Record<string, unknown> | undefined;
-        const fields: PackFields = {...EMPTY_DOSSIER};
+        const fields: PackFields = {...EMPTY_PACK_FIELDS};
         for (const key of ["modelSource", "sourceRevision", "candidateRevision"] as const) if (typeof recoveredPack?.[key] === "string") fields[key] = recoveredPack[key] as string;
         for (const key of ["reportFiles", "replayFiles"] as const) if (Array.isArray(recoveredPack?.[key])) fields[key] = (recoveredPack[key] as string[]).join(", ");
         if (typeof recoveredOutput?.templateFile === "string") fields.templateFile = recoveredOutput.templateFile;
@@ -316,7 +316,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
         clearPersistedCertificationFields(projectRoot);
         setBundleDir("");
         setOutDir("certification");
-        setPackFields(EMPTY_DOSSIER);
+        setPackFields(EMPTY_PACK_FIELDS);
         invalidateBuild();
         setModes([{...EMPTY_MODE}]);
         if (validateView.status !== "idle") {

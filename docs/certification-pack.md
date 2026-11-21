@@ -190,7 +190,7 @@ fairness. These separate interfaces must not be presented as certification trust
 Open the runtime package in Studio and choose **Certification**. Keep that package open: select its
 generated outcome-library folder (for example `outcomelibrary`) as the source, select `modelSource: "."`,
 and choose an explicit absolute, new or empty output folder outside that package, for example
-`/work/evidence/game-pack`. Certification remains available when a native outcome library is opened
+`/absolute/path/to/game-pack`. Certification remains available when a native outcome library is opened
 directly, but that folder is not an executable model: omit the model for visibly unavailable model
 evidence, or reopen its original package for model-bound rules. Studio never infers a parent package or
 substitutes one for the selected model. Relative outputs remain project-contained. Absolute output
