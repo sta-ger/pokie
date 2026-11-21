@@ -450,7 +450,7 @@ describe("WasmOutputBuilder", () => {
 });
 
 it.each(["hold-flat", "fixed-base", "accumulating-base"])("publishes canonical authored %s while preserving source", async id => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-v2c12-wasm-"));
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-wasm-output-"));
     try {
         const blueprint = existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!);
         const source = path.join(directory, "source.json");

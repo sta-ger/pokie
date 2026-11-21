@@ -288,7 +288,7 @@ describe("InitCommand", () => {
     // the real package.json rewrite production wires in (registerCliCommands.ts's
     // withLocalPokieInstall(pokiePackageRoot)) -- only that InitCommand calls its injected runCommand
     // with the right args. This exercises that real rewrite against a real, on-disk package.json,
-    // proving the two halves of P5PA-06's contract at once: the "npm install" InitCommand actually runs
+    // proving both halves of the local-install contract at once: the "npm install" InitCommand actually runs
     // sees a local `file:` resolution (so it never needs the registry for a possibly-unpublished
     // "pokie"), while the package.json left behind once "pokie init" succeeds carries none of that --
     // just the portable version range the scaffold originally had.

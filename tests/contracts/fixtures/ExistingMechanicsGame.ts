@@ -20,7 +20,7 @@ export function existingMechanicsBlueprint(row: typeof api.AUTHORED_MECHANIC_CAT
 /** Execute public generated runtime in memory; no private assembly or alternative math engine. */
 export function generatedMechanicsGame(blueprint: api.GameBlueprint, typed = false): api.PokieGame {
     const source = typed ? ts.transpileModule(api.renderBuiltGameModuleSource(blueprint, "1.3.0"), {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022}, reportDiagnostics: true}).outputText : api.renderBuiltGameModule(blueprint, "1.3.0");
-    const directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/v2c12-module-"));
+    const directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/generated-mechanics-"));
     const entry = path.join(directory, "index.cjs");
     fs.writeFileSync(entry, source);
     try {

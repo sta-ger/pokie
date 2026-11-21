@@ -11,7 +11,7 @@ export function emitPublicRuntime(options: {runtimeFilesOnly?: boolean; temporar
     const root = process.cwd();
     const temporaryRoot = options.temporaryRoot ?? path.join(root, "node_modules/.cache/pokie-tmp");
     fs.mkdirSync(temporaryRoot, {recursive: true});
-    const directory = fs.mkdtempSync(path.join(temporaryRoot, "v2c02-public-"));
+    const directory = fs.mkdtempSync(path.join(temporaryRoot, "pokie-public-runtime-"));
     try {
         stageCompiledTestRuntime(directory, options);
         // A second, independently staged copy preserves the public cross-instance boundary

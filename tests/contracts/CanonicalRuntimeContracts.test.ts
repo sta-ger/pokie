@@ -1541,11 +1541,11 @@ describe("canonical runtime contracts", () => {
     });
 
     it("strictly compiles real ESM and require() consumers against freshly emitted package declarations and export conditions", () => {
-        const directory = fs.mkdtempSync(path.join(root, "node_modules/.cache/pokie-tmp/v2c02-consumer-"));
+        const directory = fs.mkdtempSync(path.join(root, "node_modules/.cache/pokie-tmp/package-consumer-"));
         try {
             // Give the consumer its own package scope so NodeNext cannot self-reference
             // the enclosing checkout instead of the freshly emitted dependency below.
-            fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({name: "v2c02-consumer", private: true, type: "module"}));
+            fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({name: "package-consumer", private: true, type: "module"}));
             const packageRoot = path.join(directory, "node_modules/@fromstan/pokie");
             fs.mkdirSync(packageRoot, {recursive: true});
             const metadata = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));

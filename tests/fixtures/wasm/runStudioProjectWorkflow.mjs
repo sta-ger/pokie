@@ -12,7 +12,7 @@ assert(fs.existsSync(path.join(candidate, "dist/cli/pokie.js")), "The candidate 
 const {GamePackageGenerator, loadPokieGameRuntime, WasmOutputBuilder, PROJECT_TYPE_CAPABILITIES} = await import(pathToFileURL(path.join(candidate, "dist/esm/index.js")).href);
 const temporaryRoot = fileURLToPath(new URL("../../../node_modules/.cache/pokie-tmp/", import.meta.url));
 fs.mkdirSync(temporaryRoot, {recursive: true});
-const directory = fs.mkdtempSync(path.join(temporaryRoot, "v2c22-installed-workflow-"));
+const directory = fs.mkdtempSync(path.join(temporaryRoot, "pokie-installed-workflow-"));
 const blueprint = {
     info: {id: "wasm-project-workflow", name: "WASM project workflow", version: "1.0.0"},
     reels: 3, rows: 1, symbols: ["A", "B", "C"], wilds: [], scatters: [],
