@@ -579,7 +579,8 @@ export class ValidateCommand implements CliCommandHandling {
         }
         console.log(`  valid           ${report.valid ? "yes" : "no"} (structural/contract validation)`);
         if (report.advanced) {
-            console.log(`  advanced        ${report.advanced.status}: ${report.advanced.verdict} (${report.advanced.scope})`);
+            const advancedStatus = report.advanced.status === "budget-exhausted" ? "not finished (analysis limit reached)" : report.advanced.status;
+            console.log(`  advanced        ${advancedStatus}: ${report.advanced.verdict} (${report.advanced.scope})`);
             for (const check of report.advanced.checks) {
                 console.log(`  ${check.status} ${check.id} [${check.path}]: ${check.message}`);
                 if (check.evidence !== undefined) console.log(`    Witness: ${JSON.stringify(check.evidence)}`);

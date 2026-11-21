@@ -1,4 +1,5 @@
-import {List, Table, Text} from "@mantine/core";
+import {Alert, List, Table, Text} from "@mantine/core";
+import {IconAlertTriangle} from "@tabler/icons-react";
 import {describeSimulationDiagnostics} from "../../../../../src/reporting/describeSimulationDiagnostics";
 import type {SingleSimulationReportView} from "../../domain/interpret/Simulation";
 import {formatConfidenceInterval} from "../../domain/interpret/formatConfidenceInterval";
@@ -8,6 +9,8 @@ import {AdvancedDisclosure} from "./AdvancedDisclosure";
 // precision verdict beside the intervals; supporting advice is an explicit read.
 export function SimulationAssessment({view, compact = false}: {view: SingleSimulationReportView; compact?: boolean}) {
     const limitations = view.diagnostics?.coverageLimitations ?? [];
+    const rtpInterval = view.rtpConfidenceInterval95;
+    const roughEstimate = rtpInterval !== undefined && rtpInterval.high - rtpInterval.low > 0.02;
     return (
         <div className="studio-simulation-assessment">
             <section aria-label="Precision and convergence" className="studio-simulation-precision">
@@ -26,6 +29,14 @@ export function SimulationAssessment({view, compact = false}: {view: SingleSimul
                     </Table.Tbody>
                 </Table>
                 <Text size="sm" c="dimmed">Empirical estimates · exact RTP and unseen-event coverage are not established.</Text>
+                {roughEstimate && (
+                    <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title="Rough RTP estimate" mt="sm">
+                        <Text size="sm">
+                            This interval is wider than ±1 percentage point. Run more rounds, or generate an exact outcome library, before treating this RTP
+                            as final.
+                        </Text>
+                    </Alert>
+                )}
             </section>
             <section aria-label="Report notes" className="studio-simulation-notes" data-has-warnings={view.warnings.length > 0 || undefined}>
                 <Text component="h3" size="sm" fw={600}>{view.warnings.length > 0 ? `Warnings (${view.warnings.length})` : "Report notes"}</Text>

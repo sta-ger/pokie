@@ -27,6 +27,8 @@ const HOME_TABS: NavTabItem<HomeTab>[] = [
     {value: "projects", label: "Projects", auditControlId: "home-tab:projects", panelId: "home-projects-panel"},
 ];
 
+const FINISHED_HOME_JOB_STATUSES = new Set<StudioJobView["status"]>(["completed", "failed", "cancelled"]);
+
 function isHomeTab(value: string | undefined): value is HomeTab {
     return HOME_TABS.some((tab) => tab.value === value);
 }
@@ -172,27 +174,37 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
         }
     };
 
+    const renderHomeJob = (job: StudioJobView) => (
+        <JobCard key={job.id} job={job} cancellationPending={homeJobs.pendingIds.includes(job.id)} onCancel={homeJobs.cancel} onRecover={homeJobs.recover} onRecoveryAction={handleHomeRecoveryAction} onOpenOutput={(outputPath) => {
+            if (job.operation === "project-open-materialization") {
+                reopenProject(outputPath, job);
+                return;
+            }
+            openOutputFolder(fetchImpl, outputPath).then((result) => {
+                setJobOutputNotice(describeJobOutputAction(result, "Opened job output."));
+            }).catch(() => setJobOutputNotice("Couldn't open the job output."));
+        }} onRevealOutput={job.operation === "project-open-materialization" && jobOutputActionsUnavailableReason !== undefined ? undefined : (outputPath) => {
+            revealOutputPath(fetchImpl, outputPath).then((result) => {
+                setJobOutputNotice(describeJobOutputAction(result, "Revealed job output."));
+            }).catch(() => setJobOutputNotice("Couldn't reveal the job output."));
+        }} outputActionsUnavailableReason={job.operation === "project-open-materialization" ? undefined : jobOutputActionsUnavailableReason}
+        actionsDisabledReason={openingDisabledReason(job)} />
+    );
+    const activeHomeJobs = homeJobs.jobs.filter((job) => !FINISHED_HOME_JOB_STATUSES.has(job.status));
+    const finishedHomeJobs = homeJobs.jobs.filter((job) => FINISHED_HOME_JOB_STATUSES.has(job.status));
+
     const homeJobsPanel = homeJobs.discoveryStatus !== "pending" && homeJobs.jobs.length === 0 && homeJobs.connectionError === undefined && homeJobs.actionError === undefined ? undefined : (
         <Stack gap="xs" mt="lg" aria-label="Home jobs">
             <Title order={3}>Home jobs</Title>
-            <Text size="sm" c="dimmed">Retained Design and project-opening work stays visible on every Home section after a reload. Cancel active work or reconstruct a server-supported recovery.</Text>
+            <Text size="sm" c="dimmed">Retained Design and project-opening work stays visible on every Home section after a reload. Active work is shown first; finished jobs are collapsed below. Cancel active work or reconstruct a server-supported recovery.</Text>
             <JobObservationNotice discoveryStatus={homeJobs.discoveryStatus} connectionError={homeJobs.connectionError} actionError={homeJobs.actionError} onReattach={homeJobs.refresh} />
             {recoveryOpeningError !== undefined && <Alert role="alert" color="red">{recoveryOpeningError}</Alert>}
-            {homeJobs.jobs.map((job) =>
-                <JobCard key={job.id} job={job} cancellationPending={homeJobs.pendingIds.includes(job.id)} onCancel={homeJobs.cancel} onRecover={homeJobs.recover} onRecoveryAction={handleHomeRecoveryAction} onOpenOutput={(outputPath) => {
-                    if (job.operation === "project-open-materialization") {
-                        reopenProject(outputPath, job);
-                        return;
-                    }
-                    openOutputFolder(fetchImpl, outputPath).then((result) => {
-                        setJobOutputNotice(describeJobOutputAction(result, "Opened job output."));
-                    }).catch(() => setJobOutputNotice("Couldn't open the job output."));
-                }} onRevealOutput={job.operation === "project-open-materialization" && jobOutputActionsUnavailableReason !== undefined ? undefined : (outputPath) => {
-                    revealOutputPath(fetchImpl, outputPath).then((result) => {
-                        setJobOutputNotice(describeJobOutputAction(result, "Revealed job output."));
-                    }).catch(() => setJobOutputNotice("Couldn't reveal the job output."));
-                }} outputActionsUnavailableReason={job.operation === "project-open-materialization" ? undefined : jobOutputActionsUnavailableReason}
-                actionsDisabledReason={openingDisabledReason(job)} />,
+            {activeHomeJobs.map(renderHomeJob)}
+            {finishedHomeJobs.length > 0 && (
+                <details>
+                    <summary>Finished jobs ({finishedHomeJobs.length})</summary>
+                    {finishedHomeJobs.map(renderHomeJob)}
+                </details>
             )}
             {(recoveryOpeningError !== undefined || homeJobs.jobs.some((job) => job.result?.outputs?.some((output) => output.unavailableReason !== undefined))) &&
                 <Button variant="default" onClick={() => navigate("/home/projects")}>Find saved project in Projects</Button>}

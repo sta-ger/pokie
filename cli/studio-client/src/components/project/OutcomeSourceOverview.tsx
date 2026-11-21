@@ -65,6 +65,13 @@ export function OutcomeSourceOverview({header, onRoundRecorded}: {header: Outcom
                 <Badge color={report.descriptor.streaming ? "teal" : "gray"}>{report.descriptor.streaming ? "streaming reader" : "reads source fully"}</Badge>
             </Group>
 
+            <Alert color="blue" mt="sm" title="Fixed snapshot">
+                <Text size="sm">
+                    These outcomes were computed from one saved design. Editing the source paytable, reels or features later does not update this
+                    library — regenerate it before using these numbers for the changed design.
+                </Text>
+            </Alert>
+
             {report.descriptor.limitations.length > 0 && (
                 <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title="Reader limitations" mt="sm">
                     <ul style={{margin: 0, paddingLeft: "1.2rem"}}>

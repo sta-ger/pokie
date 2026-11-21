@@ -3,10 +3,18 @@ import type {AdvancedModelValidationReport} from "../../../../../src/validation/
 import {AdvancedDisclosure} from "./AdvancedDisclosure";
 import {IssueList} from "./IssueList";
 
+function describeAnalysisStatus(status: AdvancedModelValidationReport["status"]): string {
+    if (status === "budget-exhausted") return "not finished (analysis limit reached)";
+    return status;
+}
+
 export function AdvancedValidationPanel({report}: {report?: AdvancedModelValidationReport}) {
     if (!report) return null;
     return <div>
-        <Text fw={600}>Declared model analysis: {report.status} — {report.verdict}</Text>
+        <Text fw={600}>Advanced analysis: {describeAnalysisStatus(report.status)} — {report.verdict}</Text>
+        <Text size="sm" c="dimmed">
+            Optional check. Structural validation above is separate{report.status === "budget-exhausted" ? "; an unfinished analysis does not make this design invalid." : "."}
+        </Text>
         <AdvancedDisclosure label="model analysis details">
             <Text size="sm">Termination: {report.termination}. Executable fidelity: {report.executableFidelity}.</Text>
             <IssueList title="Advanced checks" issues={report.checks.map(check => ({code: check.id, path: check.path, message: `${check.status}: ${check.message}`, details: check.evidence === undefined ? undefined : {evidence: check.evidence}}))} />

@@ -141,7 +141,7 @@ body,
     color: light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3));
 }
 
-.studio-output-status:is([data-status="Needs attention"], [data-status="Destination conflict"]) {
+.studio-output-status:is([data-status="Needs attention"], [data-status="Already exists"]) {
     color: light-dark(var(--mantine-color-red-8), var(--mantine-color-red-3));
 }
 

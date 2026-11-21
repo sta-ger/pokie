@@ -248,7 +248,10 @@ export function NewBlueprintDialog({
                             <Button variant="default" aria-label="Generate random" onClick={() => setStep("random")}>
                                 Generate a game idea
                             </Button>
-                            <Text size="xs" c="dimmed">Create an editable sample game automatically. You can regenerate it until you like the direction.</Text>
+                            <Text size="xs" c="dimmed">
+                                Create an editable sample game automatically. You can regenerate it until you like the direction. Generated math is a
+                                structural starting point, not a tuned RTP — simulate it and use Optimize math before treating it as final.
+                            </Text>
                             <Button variant="default" onClick={() => setStep("load")}>
                                 Open a saved game design
                             </Button>

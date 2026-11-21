@@ -8,7 +8,7 @@ import {isRuntimePreparationDiagnostic} from "./runtimeActionError";
 // request-validation rejection (validateReplayRequest.ts's own hand-written round/seed messages, or the
 // inspect-artifact endpoint's "Request body must be a JSON object."), or an unknown/expired id (a replay
 // job that's aged out of the server's retention, or was deleted between listing and loading it).
-export type ReplayActionErrorReason = "network" | "schema" | "not-found" | "other";
+export type ReplayActionErrorReason = "network" | "schema" | "not-found" | "configuration" | "other";
 
 export function classifyReplayActionErrorReason(message: string): ReplayActionErrorReason {
     if ((/failed to fetch|networkerror|econnrefused|enotfound/i).test(message)) {
@@ -24,6 +24,9 @@ export function classifyReplayActionErrorReason(message: string): ReplayActionEr
     if ((/unknown replay id|no longer exists|not found/i).test(message)) {
         return "not-found";
     }
+    if ((/audit-identity|recorded value differs from selected authority|config(?:uration)? hash|model differs|different game configuration/i).test(message)) {
+        return "configuration";
+    }
     return "other";
 }
 
@@ -35,6 +38,10 @@ const REPLAY_ACTION_ISSUE_COPY: Record<ReplayActionErrorReason, (subject: string
     "not-found": (subject) => ({
         status: `${subject} could no longer be found.`,
         remediation: "It may have been deleted or aged out of the server's history -- refresh and try again.",
+    }),
+    configuration: (subject) => ({
+        status: `${subject} was recorded with a different game configuration.`,
+        remediation: "Open the design/version that produced this round, or record a new round against the current design.",
     }),
     other: (subject) => ({
         status: `${subject} couldn't be completed.`,

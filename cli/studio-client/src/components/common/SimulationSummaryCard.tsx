@@ -61,7 +61,7 @@ export function SimulationSummaryCard({outcome}: {outcome: SimulationOutcome}) {
                         <Table.Td>{(report.hitFrequency * 100).toFixed(2)}%</Table.Td>
                     </Table.Tr>
                     <Table.Tr>
-                        <Table.Th scope="row">Volatility</Table.Th>
+                        <Table.Th scope="row" title="Standard deviation of payout per paid round, in bet units.">Volatility</Table.Th>
                         <Table.Td>{report.volatility === undefined ? "—" : report.volatility.toFixed(2)}</Table.Td>
                     </Table.Tr>
                     <Table.Tr>

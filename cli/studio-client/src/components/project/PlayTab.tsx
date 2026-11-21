@@ -164,7 +164,7 @@ export function PlayTab({
                 {activeSession?.logicalRound && <Text size="sm">Round {activeSession.logicalRound.status}: {activeSession.logicalRound.mathematicalCursor} subrounds, {activeSession.logicalRound.cursor} deliveries, stake {activeSession.logicalRound.totalStake}, payout {activeSession.logicalRound.totalPayout}</Text>}
                 {loading && <LoadingState label="Starting…" />}
                 {errorNotice}
-                <PageSection legend="Start Play">
+                <PageSection legend="Play session">
                     {modeField}
                     {deliveryField}
                     <AdvancedDisclosure detail="seed">

@@ -18,7 +18,7 @@ export function PaytableView({paytable}: {paytable?: PaytableData}) {
     if (symbolIds.length === 0) {
         return (
             <Text size="sm" c="dimmed">
-                Paytable unavailable — this round&apos;s own artifact records its already-evaluated wins, not the game&apos;s payout table itself.
+                Paytable unavailable — this round&apos;s own artifact records its already-evaluated wins, not the game&apos;s payout table itself. Open the matching design in Game Model to inspect its paytable.
             </Text>
         );
     }

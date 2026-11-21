@@ -65,7 +65,11 @@ function ParConversionDiagnostics({report}: {report: StudioFormatConversionPlan[
     return <>
         <Text size="sm">PAR lossless eligible: {String(report.losslessEligible)}</Text>
         <IssueList title="PAR conversion diagnostics" issues={[...report.issues]} />
-        {report.facts.map((fact, index) => <Text size="sm" key={index}>{fact.kind}: {fact.code} — {fact.message}</Text>)}
+        {report.facts.length > 0 && (
+            <AdvancedDisclosure label="conversion evidence">
+                {report.facts.map((fact, index) => <Text size="sm" key={index}>{fact.kind}: {fact.code} — {fact.message}</Text>)}
+            </AdvancedDisclosure>
+        )}
     </>;
 }
 
@@ -391,7 +395,7 @@ function TargetCard({
         else if (artifactBuildRun.status === "error") summaryStatus = "Needs attention";
         else if (artifactBuildRun.status === "cancelled") summaryStatus = "Cancelled";
         else if (artifactPreview.status === "ok") summaryStatus = "Ready";
-        else if (artifactPreview.status === "conflict") summaryStatus = "Destination conflict";
+        else if (artifactPreview.status === "conflict") summaryStatus = "Already exists";
         else if (artifactPreview.status === "loading") summaryStatus = "Checking";
         else summaryStatus = "Needs attention";
     } else if (isActiveTarget) {
