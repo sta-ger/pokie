@@ -4,7 +4,7 @@
 // StudioFsBrowseService's own `StudioFsBrowseErrorReason` naming so a caller's remediation copy stays
 // consistent with PathInput's own resolved-path hint. `schema` covers the one category browse never
 // produces: a missing/malformed value rejected before any filesystem access is even attempted.
-export type PathActionErrorReason = "network" | "absent" | "permission" | "type" | "schema" | "other";
+export type PathActionErrorReason = "network" | "absent" | "permission" | "type" | "schema" | "destination" | "other";
 
 type PathActionIssue = {status: string; remediation: string};
 
@@ -24,6 +24,9 @@ export function classifyPathActionErrorReason(message: string): PathActionErrorR
     if ((/is required\.|must be a non-empty string|is not valid JSON|unexpected token .*json/i).test(message)) {
         return "schema";
     }
+    if ((/safe default project location|choose a destination directory explicitly/i).test(message)) {
+        return "destination";
+    }
     return "other";
 }
 
@@ -36,6 +39,10 @@ const PATH_ACTION_ISSUE_COPY: Record<PathActionErrorReason, (subject: string) =>
         remediation: "Check whether it should be a file or a folder, and try again.",
     }),
     schema: (subject) => ({status: `${subject} is missing or invalid.`, remediation: "Provide a valid value and try again."}),
+    destination: (subject) => ({
+        status: `${subject} needs a destination Studio can use.`,
+        remediation: "Choose a destination folder explicitly, or start Studio from a different folder and try again.",
+    }),
     other: (subject) => ({
         status: `${subject} could not be completed.`,
         remediation: "Try again. If it continues, choose the location again and retry.",

@@ -113,7 +113,12 @@ export class PokiePathResolver {
             platform: this.env.platform,
             allowedTemporaryRoot: baseDirectory,
         };
-        if (isUnsafeStartDirectory(base.directory, unsafeContext) || isUnsafeStartDirectory(directory, unsafeContext)) {
+        // Judge the destination the caller is about to receive, never the base it was derived from.
+        // A user who starts Studio from their Home directory has baseDirectory === cwd, but the
+        // returned path is a new child ("POKIE Projects/<name>"), not a silent fallback to cwd. The
+        // final-directory check below still rejects a destination that really is cwd, the install
+        // root, Studio's own directory, or a temp/cache location.
+        if (isUnsafeStartDirectory(directory, unsafeContext)) {
             return {
                 status: "unsafe-path",
                 message: `Could not determine a safe default project location (resolved to "${directory}"). Choose a destination directory explicitly.`,
