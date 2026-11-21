@@ -60,6 +60,7 @@ import path from "path";
 import {StudioBuildCheckWorker} from "./build/StudioBuildCheckWorker.js";
 import {StudioBuildCheckCleanupError} from "./build/StudioBuildChecking.js";
 import {StudioBuildService} from "./build/StudioBuildService.js";
+import {matchArtifactBuildJobRoute} from "./build/artifactBuildJobRoute.js";
 import {validateBuildRequest, BuildRequestInput} from "./build/validateBuildRequest.js";
 import {buildProjectGameModel} from "./blueprint/buildProjectGameModel.js";
 import {StudioBlueprintService} from "./blueprint/StudioBlueprintService.js";
@@ -1550,9 +1551,9 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const artifactBuildJobRoute = (/^\/api\/project\/artifacts\/build\/([^/]+)(?:\/(cancel|activate))?$/).exec(url.pathname);
-        if (artifactBuildJobRoute !== null) {
-            await this.handleArtifactBuildJob(method, res, artifactBuildJobRoute[1], artifactBuildJobRoute[2]);
+        const artifactBuildJobRoute = matchArtifactBuildJobRoute(url.pathname);
+        if (artifactBuildJobRoute !== undefined) {
+            await this.handleArtifactBuildJob(method, res, artifactBuildJobRoute.id, artifactBuildJobRoute.action);
             return;
         }
 
