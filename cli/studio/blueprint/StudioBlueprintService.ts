@@ -85,7 +85,7 @@ function isSafeSymbolArtworkReference(reference: string): boolean {
 }
 
 // saveManaged()'s own directory-name policy -- the blueprint's own info.id when it's already a
-// non-empty string (the same identifier GamePackageCreator/build already treat as this game's own
+// non-empty string (the same identifier GamePackageGenerator/build already treat as this game's own
 // identity), falling back to the fixed literal "blueprint" for a draft that hasn't set one yet (a blank
 // New-flow start, or a info.id GameBlueprintValidator would itself reject) rather than failing the
 // save outright -- PokiePathResolver.resolveIndependentProjectDirectory's own "invalid-name" outcome is

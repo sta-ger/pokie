@@ -4,7 +4,7 @@ import {execFileSync, spawnSync} from "node:child_process";
 import ts from "typescript";
 import {linkFixtureRuntime} from "../cli/fixtures/ensureFixturesCanRequirePokie.js";
 import {buildPackageJsonPatch} from "../../src/gamepackage/buildPackageJsonPatch.js";
-import {GamePackageCreator} from "../../cli/scaffold/GamePackageCreator.js";
+import {GamePackageMerger} from "../../cli/scaffold/GamePackageMerger.js";
 import {GamePackageGenerator} from "../../src/generated/GamePackageGenerator.js";
 import {renderBuiltGameModule} from "../../src/generated/renderBuiltGameModule.js";
 import {renderEntryModule} from "../../cli/scaffold/renderEntryModule.js";
@@ -115,7 +115,7 @@ describe("Package delivery identity", () => {
             fs.writeFileSync(path.join(directory, "fixtures/consumer.cjs"), "const runtime = require('@fromstan/pokie'); console.log(typeof runtime.loadPokieGameRuntime);");
             expect(execFileSync(process.execPath, [path.join(directory, "fixtures/consumer.cjs")], {encoding: "utf8"})).toBe("function\n");
             const manifest = {id: "private-slot", name: "Private slot", version: "0.1.0"};
-            const scaffold = new GamePackageCreator(metadata.version).create(directory, "private-slot");
+            const scaffold = new GamePackageMerger(metadata.version).merge(path.join(directory, "private-slot"));
             expect(JSON.parse(fs.readFileSync(path.join(scaffold.projectRoot, "package.json"), "utf8")).dependencies).toEqual({[identity]: `^${metadata.version}`});
             const blueprint = {info: manifest, reels: 2, rows: 1, symbols: ["A"], reelStrips: [["A"], ["A"]], paylines: [[0, 0]], paytable: {A: {2: 1}}};
             expect(renderBuiltGameModule(blueprint, metadata.version)).toContain(`require("${identity}")`);

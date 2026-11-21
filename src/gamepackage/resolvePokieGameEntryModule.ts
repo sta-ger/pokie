@@ -340,7 +340,7 @@ export async function resolvePokieGameEntryModule(
         );
     }
 
-    // A canonical package (as `pokie create` scaffolds one) compiles "src/**/*.ts" into a *separate*
+    // A canonical package (as `pokie init` scaffolds one) compiles "src/**/*.ts" into a *separate*
     // dist entry checked above via "npm run build" (tsc); a package without a "src" directory at all
     // (e.g. a hand-authored plain-JS entry, as several fixtures in this suite are) was never built
     // from TypeScript source in the first place, so there's nothing to compare it against here.

@@ -138,8 +138,8 @@ describe("DefaultSymbolsSequence", () => {
             expect(sequence.toArray()).not.toEqual(originalSequence);
         });
 
-        // Regression coverage for the fix in src/generated/renderBuiltGameModule.ts/renderSessionModule.ts:
-        // a generated package's own default reel-strip content used to be shuffled with unseeded
+        // Regression coverage for the fix in src/generated/renderBuiltGameModule.ts: a generated
+        // package's own default reel-strip content used to be shuffled with unseeded
         // Math.random() regardless of any session seed, so "same seed" never meant "same reel content" for
         // a blueprint without literal reelStrips. shuffle() now accepts an optional RandomNumberGenerating.
         it("produces the exact same order for the same rng seed, across independent SymbolsSequence instances", () => {

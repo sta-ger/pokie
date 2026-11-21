@@ -44,9 +44,8 @@ export type StudioServerOptions = {
     // Drives every Home nav flow (POST/GET /api/home/*: recent projects, create, init, build
     // preview/build, open) — see StudioHomeService. Required rather than defaulted: a default
     // instance would need a `pokie` version to embed into scaffolded/generated package.json files
-    // (see GamePackageCreator/GamePackageGenerator), and StudioServer has no business guessing one.
-    // StudioCommand always builds this with readOwnVersion() and passes it in — same reasoning as
-    // gamePackageCreator used to have before Home absorbed it.
+    // (see GamePackageMerger/GamePackageGenerator), and StudioServer has no business guessing one.
+    // StudioCommand always builds this with readOwnVersion() and passes it in.
     homeService: StudioHomeService;
     // Drives GET /api/home/fs/browse -- the "Browse" action on Home's project-creation path inputs
     // (Create/Init/Build from Blueprint). Defaults to a StudioFsBrowseService rooted at `studioRoot`,

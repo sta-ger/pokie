@@ -10,8 +10,8 @@ import {resolveReelStripGeneration} from "./resolveReelStripGeneration.js";
 // Renders the built game module in each of the two forms GamePackageGenerator writes on every run:
 // "dist/index.js" (plain CommonJS, immediately loadable with no separate compile step -- see
 // renderBuiltGameModule below) and "src/index.ts" (the same module, typed and re-compilable via the
-// package's own "tsconfig.json"/"npm run build", the exact same canonical shape "pokie create"/"pokie
-// init" scaffold -- see renderBuiltGameModuleSource below). Both share every line of actual game-
+// package's own "tsconfig.json"/"npm run build", the exact same canonical shape "pokie init"
+// scaffolds -- see renderBuiltGameModuleSource below). Both share every line of actual game-
 // assembly logic, the "@fromstan/pokie" runtime binding, and the final export statement (computed once here);
 // only a type-only import and a type annotation differ between them -- see the "typeImport"/
 // "blueprintDeclaration" split below.
@@ -378,8 +378,8 @@ ${createSessionBody}    },
 }
 
 // "dist/index.js": plain CommonJS, immediately loadable with no separate compile step -- unlike
-// "pokie create"/"pokie init" (which scaffold a TS project for a developer to hand-edit and compile
-// themselves), this is the file every other "pokie" command actually loads.
+// "pokie init" (which scaffolds a TS project for a developer to hand-edit and compile themselves),
+// this is the file every other "pokie" command actually loads.
 export function renderBuiltGameModule(blueprint: GameBlueprint, pokieVersion: string): string {
     return renderBuiltGameModuleImpl(blueprint, pokieVersion, "cjs");
 }

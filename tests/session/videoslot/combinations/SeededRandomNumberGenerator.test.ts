@@ -65,8 +65,8 @@ describe("SeededRandomNumberGenerator", () => {
     });
 
     // PokieGameContext.seed (see src/gamepackage/PokieGameContext.ts) is string | number -- a generated
-    // package's createSession(context) (renderBuiltGameModule.ts/renderSessionModule.ts) passes it
-    // straight through here, so a string seed must be just as reproducible as a numeric one.
+    // package's createSession(context) (renderBuiltGameModule.ts) passes it straight through here, so a
+    // string seed must be just as reproducible as a numeric one.
     test("a string seed produces the same sequence of draws across independent instances", () => {
         const drawsFrom = (seed: string): number[] => {
             const generator = new SeededRandomNumberGenerator(seed);

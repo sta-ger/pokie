@@ -6,7 +6,7 @@ import type {RandomNumberGenerating} from "./RandomNumberGenerating.js";
 // cryptographically secure and not a substitute for SecureRandomNumberGenerator in production.
 //
 // Accepts a string seed (e.g. PokieGameContext.seed, which is string | number — see
-// GamePackageGenerator/GamePackageCreator's generated createSession()) as well as a number: a string
+// GamePackageGenerator's generated createSession()) as well as a number: a string
 // is folded down to mulberry32's own 32-bit state via FNV-1a first, so the same string always yields
 // the same starting state.
 export class SeededRandomNumberGenerator implements RandomNumberGenerating {

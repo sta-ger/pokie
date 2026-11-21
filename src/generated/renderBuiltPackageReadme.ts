@@ -17,12 +17,11 @@ Run \`npm install && npm run build\` to compile \`src/index.ts\` yourself rather
 
 - \`package.json\` — name/version/description from the blueprint's \`manifest\`, a \`@fromstan/pokie\` dependency,
   and \`start\`/\`server\`/\`client\`/\`build\` scripts. \`pokie.entry\`/\`main\`/\`exports\` all point at
-  \`dist/index.js\`, the same entry path \`pokie create\`/\`pokie init\` packages compile their own
-  TypeScript source into.
+  \`dist/index.js\`, the same entry path \`pokie init\` packages compile their own TypeScript source into.
 - \`node_modules/@fromstan/pokie\` — when built with a local runtime, a link to that installation for
   immediate execution. This dependency directory is not a published package file.
-- \`package-lock.json\`/\`tsconfig.json\` — the same lockfile seed/compiler config \`pokie create\`/
-  \`pokie init\` write, so \`npm install && npm run build\` behaves identically here.
+- \`package-lock.json\`/\`tsconfig.json\` — the same lockfile seed/compiler config \`pokie init\` writes,
+  so \`npm install && npm run build\` behaves identically here.
 - \`src/index.ts\`/\`dist/index.js\` — the \`PokieGame\` implementation: a \`VideoSlotConfig\` assembled
   from the blueprint (reels, symbols, paytable, paylines, reel strips/weights), wrapped in a
   \`VideoSlotSession\`. Both files hold the exact same generated logic — \`dist/index.js\` is written

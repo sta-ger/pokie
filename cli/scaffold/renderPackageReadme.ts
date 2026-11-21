@@ -1,6 +1,6 @@
 import {PokieGameInfo} from "@fromstan/pokie";
 
-// A short orientation doc for a hand-editable POKIE game package (pokie create/pokie init) -- the
+// A short orientation doc for the hand-editable POKIE game package "pokie init" scaffolds -- the
 // hand-editable counterpart to renderGeneratedPackageReadme.ts, which documents the wholly-generated
 // "pokie build" package instead.
 export function renderPackageReadme(manifest: PokieGameInfo): string {

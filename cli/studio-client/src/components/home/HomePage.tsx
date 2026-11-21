@@ -47,8 +47,8 @@ function describeJobOutputAction(result: StudioOpenFolderView, success: string):
 // for a runnable package.
 //
 // "Advanced Tools" (hand-coded scaffold, init-in-place, build-from-an-existing-blueprint-file) has been
-// removed entirely -- those flows scaffolded/built via GamePackageCreator/GamePackageScaffolder/
-// GamePackageGenerator directly from Home, duplicating what the CLI itself already does better: run
+// removed entirely -- those flows scaffolded/built packages directly from Home, duplicating what the
+// CLI itself already does better: run
 // `pokie init [directory]` for a prepared, immediately valid package, or `pokie create [name]` for an
 // editable Blueprint Project. There used to be a second, independent, always-mounted
 // `<BlueprintEditorPage />` instance here too (the "raw"/non-guided Blueprint Editor) -- since HomePage

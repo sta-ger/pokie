@@ -3,7 +3,7 @@ import {deriveManifestDefaults} from "../scaffold/deriveManifestDefaults.js";
 
 // Shared by CreateCommand and InitCommand: turns a given "<name>" positional into the same
 // manifest.id/manifest.name a template blueprint's own default would otherwise carry, via the exact
-// name-derivation rules "pokie create"'s old hand-editable scaffold used (deriveManifestDefaults) --
+// name-derivation rules "pokie init" uses for its scaffold (deriveManifestDefaults) --
 // so a name that becomes a directory (InitCommand) or a default blueprint filename (CreateCommand)
 // always agrees with the manifest id it names. Undefined/blank leaves the template's own manifest
 // untouched, so both commands' name-less path stays exactly the template's own default.

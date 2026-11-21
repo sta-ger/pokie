@@ -32,7 +32,7 @@ import {
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {GamePackageCreator} from "../../cli/scaffold/GamePackageCreator.js";
+import {GamePackageMerger} from "../../cli/scaffold/GamePackageMerger.js";
 
 function buildBlueprint(overrides: Partial<GameBlueprint> = {}): GameBlueprint {
     return {
@@ -486,26 +486,26 @@ describe("GamePackageGenerator", () => {
         expect(packageLock.packages[""].devDependencies).toEqual(pkg.devDependencies);
     });
 
-    it("agrees with GamePackageCreator's ('pokie create') own package.json/tsconfig.json contract for the same pokie version, and reproduces the same required package file set its own 'create' phase (plus pokie init's README.md) writes", () => {
+    it("agrees with pokie init's own package.json/tsconfig.json contract for the same pokie version, and reproduces the same required package file set its merge phase writes", () => {
         const pokieVersion = "1.3.0";
         const generator = new GamePackageGenerator(pokieVersion);
-        const creator = new GamePackageCreator(pokieVersion);
+        const merger = new GamePackageMerger(pokieVersion);
 
         const built = generator.generate(buildBlueprint(), cwd);
-        const created = creator.create(cwd, "hand-authored-slot");
+        const created = merger.merge(path.join(cwd, "hand-authored-slot"));
 
         const builtPkg = JSON.parse(fs.readFileSync(path.join(built.projectRoot, "package.json"), "utf-8"));
         const createdPkg = JSON.parse(fs.readFileSync(path.join(created.projectRoot, "package.json"), "utf-8"));
 
         // Both go through the exact same shared buildPackageJsonPatch -- these fields must agree
         // regardless of how differently each package's own src/ content is produced (a single generated
-        // module here, a hand-editable multi-file scaffold there).
+        // module here, a hand-editable entry module there).
         expect(builtPkg.main).toBe(createdPkg.main);
         expect(builtPkg.exports).toBe(createdPkg.exports);
         expect(builtPkg.pokie).toEqual(createdPkg.pokie);
         expect(builtPkg.scripts).toEqual(createdPkg.scripts);
         expect(builtPkg.dependencies).toEqual(createdPkg.dependencies);
-        // "pokie build"'s own devDependencies is exactly "pokie create"'s, plus the @types/node this
+        // "pokie build"'s own devDependencies is exactly "pokie init"'s, plus the @types/node this
         // generator alone adds (see this generator's own DEFAULT_TYPES_NODE_VERSION doc comment) --
         // never a different typescript version, or a dropped/renamed key.
         expect(builtPkg.devDependencies).toEqual({...createdPkg.devDependencies, "@types/node": expect.any(String)});
@@ -514,13 +514,12 @@ describe("GamePackageGenerator", () => {
         const createdTsconfig = JSON.parse(fs.readFileSync(path.join(created.projectRoot, "tsconfig.json"), "utf-8"));
         expect(builtTsconfig).toEqual(createdTsconfig);
 
-        // pokie init's merge phase always writes README.md right after GamePackageCreator.create()
-        // itself returns -- reproduced here without a real npm install/build (already covered end-to-end
-        // by tests/cli/InitCommandWorkflow.integration.test.ts's real, subprocess-driven lifecycle).
-        // Every BUILT_PACKAGE_FILES entry that doesn't require an actual
-        // "npm install"/"npm run build" to exist (package-lock.json, dist/index.js) must already be
-        // exactly what that create phase produces too.
-        const createPhaseFiles = [...created.createdFiles, "README.md"];
+        // pokie init's merge phase writes its own README.md -- reproduced here without a real
+        // npm install/build (already covered end-to-end by tests/cli/InitCommandWorkflow.integration.test.ts's
+        // real, subprocess-driven lifecycle). Every BUILT_PACKAGE_FILES entry that doesn't require an
+        // actual "npm install"/"npm run build" to exist (package-lock.json, dist/index.js) must already
+        // be exactly what that merge phase produces too.
+        const createPhaseFiles = created.createdFiles;
         const requiresInstallOrBuild = ["package-lock.json", "dist/index.js"];
         for (const canonicalFile of BUILT_PACKAGE_FILES) {
             if (requiresInstallOrBuild.includes(canonicalFile)) {
