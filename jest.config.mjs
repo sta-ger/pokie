@@ -42,6 +42,13 @@ const sourceTestModuleNameMapper = {
 };
 
 const pokieExamplesModuleNameMapper = {
+    // The examples checkout still uses the pre-2.0 package name in its sources/tests. Map both
+    // spellings to this checkout so the release gate exercises the examples against the package it
+    // is actually shipping, instead of failing before any test runs.
+    "^pokie/client/player$": "<rootDir>/cli/client/player/index.ts",
+    "^pokie/browser$": "<rootDir>/src/browser.ts",
+    "^pokie/wasm$": "<rootDir>/src/wasm/browser.ts",
+    "^pokie$": "<rootDir>/src/index.ts",
     "^@fromstan/pokie/client/player$": "<rootDir>/cli/client/player/index.ts",
     "^@fromstan/pokie/browser$": "<rootDir>/src/browser.ts",
     "^@fromstan/pokie/wasm$": "<rootDir>/src/wasm/browser.ts",
