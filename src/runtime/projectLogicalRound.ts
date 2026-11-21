@@ -12,6 +12,6 @@ export function projectLogicalRound(round: LogicalRound) {
         totalStake: round.totalStake, totalWin: round.totalWin, totalPayout: round.totalPayout,
         subrounds: round.subrounds.map(s => ({id: s.id, index: s.index, stake: s.stake, win: s.win, payout: s.payout,
             credits: s.credits, ...(s.screen ? {screen: s.screen} : {}), ...(s.finalScreen ? {finalScreen: s.artifacts?.[0]?.geometry ? new ScreenProjection(s.artifacts[0].geometry).project(s.finalScreen, "visible") : s.finalScreen} : {}),
-            featureEvents: s.artifacts?.flatMap(a => (a.featureEvents ?? []).map(projectPublicFeatureEvent)) ?? []}))});
+            featureEvents: (s.artifacts?.flatMap(a => (a.featureEvents ?? []).map(projectPublicFeatureEvent)) ?? []) as import("../roundrecord/RoundRecordFeatureEvent.js").RoundRecordFeatureEvent[]}))});
 }
 export type LogicalRoundDelivery = ReturnType<typeof projectLogicalRound>;
