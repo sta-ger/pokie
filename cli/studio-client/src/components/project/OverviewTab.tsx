@@ -87,6 +87,7 @@ export function OverviewTab({
     onRevalidate,
     onOpenPlay,
     sourceRevision,
+    exactMathRefreshKey,
 }: {
     header: Extract<ProjectHeaderView, {status: "loaded"}>;
     validation: ProjectValidationView;
@@ -94,6 +95,8 @@ export function OverviewTab({
     onOpenPlay: () => void;
     /** Changes whenever an optimization commit changes the saved design, so exact math is refreshed. */
     sourceRevision?: string;
+    /** Monotonic local token for saves that cannot report a new source revision. */
+    exactMathRefreshKey?: number;
 }) {
     const editable = header.capabilities.includes(BLUEPRINT_BUILD_CAPABILITY);
     const playable = editable || header.capabilities.includes(RUNTIME_EXECUTE_CAPABILITY);
@@ -142,7 +145,7 @@ export function OverviewTab({
                 <ValidationDiagnostics view={validation} onRevalidate={onRevalidate} />
             </PageSection>
 
-            {header.type !== "wasm" && <ExactMathPanel projectRoot={header.projectRoot} sourceRevision={sourceRevision} />}
+            {header.type !== "wasm" && <ExactMathPanel projectRoot={header.projectRoot} sourceRevision={sourceRevision} refreshKey={exactMathRefreshKey} />}
         </div>
     );
 }

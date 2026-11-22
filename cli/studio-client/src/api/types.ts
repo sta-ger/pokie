@@ -756,6 +756,8 @@ export type StudioSimulationStatisticsView = {
 export type StudioSimulationReportDetail = {
     report: SimulationReport | SimulationReportSet;
     statistics?: StudioSimulationStatisticsView;
+    /** Authored source identity captured when this report's run was accepted. */
+    sourceRevision?: string;
 };
 
 export type StudioSimulationStatus = "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "recovery-required";
@@ -792,6 +794,8 @@ export type StudioSimulationReportListEntry = {
     id: string;
     status: "completed";
     game: {id: string; version: string};
+    /** Authored source identity captured when the run was accepted; absent for legacy jobs. */
+    sourceRevision?: string;
     requestedRounds: number;
     actualRounds?: number;
     sampling?: SimulationReport["sampling"];

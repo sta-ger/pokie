@@ -33,9 +33,18 @@ function describeWinSymbol(win: RoundRecordWin): string {
     return win.symbolId === undefined || win.symbolId === null ? "no symbol (aggregate win)" : String(win.symbolId);
 }
 
-function describeWinPositions(win: RoundRecordWin): string {
+/**
+ * Show what won, not just how many cells it covered: the round record's own [reel, row] pairs are
+ * already the authority here. The 0-based convention matches Game Model's own reel/row indexing and
+ * the Blueprint payline editor. Very large ways/cluster wins are abbreviated so one row cannot make
+ * the whole table unreadable; the raw round record still has every coordinate.
+ */
+export function describeWinPositions(win: RoundRecordWin): string {
     if (!isAggregateWin(win)) {
-        return String(win.winningPositions.length);
+        const total = win.winningPositions.length;
+        const shown = win.winningPositions.slice(0, 12).map(([reel, row]) => `${reel}:${row}`).join(", ");
+        const suffix = total > 12 ? ` … +${total - 12} more` : "";
+        return `${total} position${total === 1 ? "" : "s"}: ${shown}${suffix}`;
     }
     return win.metadata?.[STAKE_ENGINE_IMPORT_SYNTHETIC_METADATA_KEY] === true
         ? "unavailable — reconstructed from an imported round, per-position detail wasn't preserved"
@@ -64,7 +73,7 @@ export function RoundWinsTable({wins, stake}: {wins: readonly RoundRecordWin[]; 
                         <Table.Th>Type</Table.Th>
                         <Table.Th>Symbol</Table.Th>
                         <Table.Th>Amount</Table.Th>
-                        <Table.Th>Positions</Table.Th>
+                        <Table.Th>Positions (reel:row, 0-based)</Table.Th>
                         <Table.Th>Multiplier</Table.Th>
                     </Table.Tr>
                 </Table.Thead>

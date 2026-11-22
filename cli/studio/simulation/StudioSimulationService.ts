@@ -55,7 +55,7 @@ export type StudioSimulationStartResult =
     | {status: "unsupported"; message: string};
 
 export type GetSimulationReportResult =
-    | {status: "ok"; report: SimulationReport | SimulationReportSet; statistics?: StudioSimulationStatisticsView}
+    | {status: "ok"; report: SimulationReport | SimulationReportSet; statistics?: StudioSimulationStatisticsView; sourceRevision?: string}
     | {status: "not-found"}
     // Either not terminal yet (queued/running) or terminal without a report (failed/cancelled) —
     // `jobStatus` tells the caller which, so it can phrase a precise message either way.
@@ -329,13 +329,13 @@ export class StudioSimulationService {
         const record = this.repository.get(id);
         if (record?.projectRoot === projectRoot) {
             if (record.status !== "completed" || this.activeExecutions.has(id) || !record.report) return {status: "not-ready", jobStatus: record.status};
-            return {status: "ok", report: record.report, statistics: record.statistics};
+            return {status: "ok", report: record.report, statistics: record.statistics, ...(record.sourceRevision === undefined ? {} : {sourceRevision: record.sourceRevision})};
         }
         const job = this.jobService?.get(projectRoot, id);
         if (job?.operation !== "simulation") return {status: "not-found"};
         const report = reportFromDurableDetail(job);
         if (job.status !== "completed" || report === undefined) return {status: "not-ready", jobStatus: job.status};
-        return {status: "ok", report, statistics: statisticsFromDurableDetail(job)};
+        return {status: "ok", report, statistics: statisticsFromDurableDetail(job), ...(typeof job.request.sourceRevision === "string" ? {sourceRevision: job.request.sourceRevision} : {})};
     }
 
     private toReportListEntry(record: StudioSimulationJobRecord): StudioSimulationReportListEntry | undefined {
@@ -347,6 +347,7 @@ export class StudioSimulationService {
             id: record.id,
             status: "completed",
             game: {id: report.game.id, version: report.game.version},
+            ...(record.sourceRevision === undefined ? {} : {sourceRevision: record.sourceRevision}),
             requestedRounds: report.requestedRounds,
             convergence: record.convergence,
             modes: isSimulationReportSet(report) ? Object.fromEntries(Object.entries(report.modes).map(([id, mode]) => [id, {rounds: mode.rounds, betMode: mode.betMode}])) : undefined,
@@ -863,6 +864,7 @@ export class StudioSimulationService {
             id: job.id,
             status: "completed",
             game: {id: report.game.id, version: report.game.version},
+            ...(typeof job.request.sourceRevision === "string" ? {sourceRevision: job.request.sourceRevision} : {}),
             requestedRounds: report.requestedRounds,
             ...(job.request.convergence ? {convergence: job.request.convergence as StudioSimulationJobView["convergence"]} : {}),
             modes: isSimulationReportSet(report) ? Object.fromEntries(Object.entries(report.modes).map(([id, mode]) => [id, {rounds: mode.rounds, betMode: mode.betMode}])) : undefined,

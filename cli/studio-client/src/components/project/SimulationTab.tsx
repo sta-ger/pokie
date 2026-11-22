@@ -1,9 +1,9 @@
-import {Anchor, Button, Collapse, Group, List, NumberInput, Progress, Select, SimpleGrid, Stepper, Text, TextInput} from "@mantine/core";
+import {Alert, Anchor, Button, Collapse, Group, List, NumberInput, Progress, Select, SimpleGrid, Stepper, Table, Text, TextInput} from "@mantine/core";
 import {useForm} from "@mantine/form";
 import {useDisclosure} from "@mantine/hooks";
 import {useEffect, useLayoutEffect, useRef, useState} from "react";
 import type {StudioSimulationReportListEntry} from "../../api/types";
-import {describeReportListEntry, type ReportListView} from "../../domain/interpret/Reports";
+import {describeDesignCompatibility, describeReportListEntry, shortSourceRevision, type ReportListView} from "../../domain/interpret/Reports";
 import type {SimulationProgressView, SimulationReportView} from "../../domain/interpret/Simulation";
 import {describeProjectActionError} from "../../domain/projectActionError";
 import {getSimulationRoundsError, MAX_STUDIO_SIMULATION_ROUNDS} from "../../domain/simulationRounds";
@@ -24,7 +24,7 @@ export type ReportDetailState =
     | {status: "empty"}
     | {status: "loading"}
     | {status: "error"; message: string}
-    | {status: "loaded"; report: SimulationReportView};
+    | {status: "loaded"; report: SimulationReportView; sourceRevision?: string};
 
 // Matches SimulationReportBuilder.LOW_ROUNDS_WARNING_THRESHOLD (src/reporting/SimulationReportBuilder.ts)
 // so the out-of-the-box default never itself trips the "requested rounds is low" warning/recommendation.
@@ -37,6 +37,53 @@ function defaultWorkers(): number {
 }
 
 type FormValues = {rounds: number; seed: string; workers: number; modeName: string};
+
+function signed(value: number, digits: number, suffix: string): string {
+    return `${value >= 0 ? "+" : ""}${value.toFixed(digits)}${suffix}`;
+}
+
+/**
+ * A compact side-by-side delta table above the two full reports. Comparing two full report bodies
+ * makes the reader do the subtraction; a design change makes that subtraction meaningless, so the
+ * caller renders the compatibility warning separately and this table only reports the numbers it can
+ * honestly pair.
+ */
+function SimulationComparisonSummary({current, comparison}: {current: SimulationReportView; comparison: SimulationReportView}) {
+    if ("modes" in current || "modes" in comparison) {
+        return <Text size="sm" c="dimmed">Mode-set reports are compared per mode below.</Text>;
+    }
+    const rows = [
+        {label: "RTP", current: current.rtp * 100, comparison: comparison.rtp * 100, digits: 2, suffix: "%", unit: "pp", deltaDigits: 2},
+        {label: "Hit frequency", current: current.hitFrequency * 100, comparison: comparison.hitFrequency * 100, digits: 2, suffix: "%", unit: "pp", deltaDigits: 2},
+        ...(current.volatility === undefined || comparison.volatility === undefined ? [] : [
+            {label: "Volatility (std. deviation)", current: current.volatility, comparison: comparison.volatility, digits: 2, suffix: "", unit: "", deltaDigits: 2},
+        ]),
+        {label: "Max win (× bet)", current: current.maxWin, comparison: comparison.maxWin, digits: 2, suffix: "×", unit: "×", deltaDigits: 2},
+        {label: "Rounds", current: current.rounds, comparison: comparison.rounds, digits: 0, suffix: "", unit: " rounds", deltaDigits: 0},
+    ];
+    return (
+        <Table withRowBorders={false} mt="sm" aria-label="Simulation comparison metrics">
+            <Table.Thead>
+                <Table.Tr>
+                    <Table.Th>Metric</Table.Th>
+                    <Table.Th>This run</Table.Th>
+                    <Table.Th>Comparison</Table.Th>
+                    <Table.Th>Δ</Table.Th>
+                </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+                {rows.map((row) => (
+                    <Table.Tr key={row.label}>
+                        <Table.Th scope="row">{row.label}</Table.Th>
+                        <Table.Td>{row.current.toLocaleString("en-US", {minimumFractionDigits: row.digits, maximumFractionDigits: row.digits})}{row.suffix}</Table.Td>
+                        <Table.Td>{row.comparison.toLocaleString("en-US", {minimumFractionDigits: row.digits, maximumFractionDigits: row.digits})}{row.suffix}</Table.Td>
+                        <Table.Td>{signed(row.current - row.comparison, row.deltaDigits, row.unit)}</Table.Td>
+                    </Table.Tr>
+                ))}
+            </Table.Tbody>
+        </Table>
+    );
+}
 
 // The single Configure -> Run -> Review -> Export workflow, replacing the old separate Simulation and
 // Reports tabs. All data-fetching is still owned by ProjectDashboardPage (useSimulationPoll, the
@@ -463,7 +510,7 @@ export function SimulationTab({
 
                             {compareOpened && outcome.kind === "completed" && (
                                 <PageSection legend="Compare with another run">
-                                    <Text size="sm" c="dimmed">Comparison reports retain the design used for each original run; they may predate the current saved design.</Text>
+                                    <Text size="sm" c="dimmed">Comparison reports retain the design used for each original run. A design revision identifies the saved authored source, not merely the game id/version.</Text>
                                     {comparableEntries.length === 0 && <EmptyState message="No other completed runs yet to compare against." />}
                                     {comparableEntries.length > 0 && (
                                         <List listStyleType="none" spacing={4} mb="sm">
@@ -485,22 +532,43 @@ export function SimulationTab({
                                     {compareDetail.status === "error" && (
                                         <ErrorState message={describeProjectActionError("The comparison report", compareDetail.message)} />
                                     )}
-                                    {compareDetail.status === "loaded" && (
-                                        <SimpleGrid cols={{base: 1, md: 2}}>
-                                            <div>
-                                                <Text fw={600} size="sm" mb="xs">
-                                                    This run
-                                                </Text>
-                                                <SimulationReportDisplay view={outcome.report} />
-                                            </div>
-                                            <div>
-                                                <Text fw={600} size="sm" mb="xs">
-                                                    Comparison
-                                                </Text>
-                                                <SimulationReportDisplay view={compareDetail.report} />
-                                            </div>
-                                        </SimpleGrid>
-                                    )}
+                                    {compareDetail.status === "loaded" && (() => {
+                                        const currentRevision = reviewedDetail.status === "loaded" ? reviewedDetail.sourceRevision : undefined;
+                                        const comparisonRevision = compareDetail.sourceRevision;
+                                        const compatibility = describeDesignCompatibility(currentRevision, comparisonRevision);
+                                        const currentDesign = shortSourceRevision(currentRevision);
+                                        const comparisonDesign = shortSourceRevision(comparisonRevision);
+                                        let compatibilityMessage: string;
+                                        if (compatibility === "same") {
+                                            compatibilityMessage = `Both runs sampled the same saved design${currentDesign === undefined ? "" : ` (${currentDesign})`}.`;
+                                        } else if (compatibility === "different") {
+                                            compatibilityMessage = `These runs sampled different saved designs (${currentDesign ?? "unknown"} vs ${comparisonDesign ?? "unknown"}). RTP and other metric deltas describe different games and must not be read as a like-for-like change.`;
+                                        } else {
+                                            compatibilityMessage = "One or both reports predate design-revision tracking. Confirm that both runs used the same saved design before comparing their math.";
+                                        }
+                                        return (
+                                            <>
+                                                <Alert color={compatibility === "same" ? "blue" : "yellow"} mt="sm" mb="sm">
+                                                    {compatibilityMessage}
+                                                </Alert>
+                                                <SimulationComparisonSummary current={outcome.report} comparison={compareDetail.report} />
+                                                <SimpleGrid cols={{base: 1, md: 2}} mt="md">
+                                                    <div>
+                                                        <Text fw={600} size="sm" mb="xs">
+                                                            This run{currentDesign === undefined ? "" : ` · design ${currentDesign}`}
+                                                        </Text>
+                                                        <SimulationReportDisplay view={outcome.report} />
+                                                    </div>
+                                                    <div>
+                                                        <Text fw={600} size="sm" mb="xs">
+                                                            Comparison{comparisonDesign === undefined ? "" : ` · design ${comparisonDesign}`}
+                                                        </Text>
+                                                        <SimulationReportDisplay view={compareDetail.report} />
+                                                    </div>
+                                                </SimpleGrid>
+                                            </>
+                                        );
+                                    })()}
                                     {compareDetail.status !== "empty" && (
                                         <Button variant="subtle" size="xs" mt="sm" onClick={onClearCompare}>
                                             Clear comparison
@@ -618,6 +686,7 @@ export function SimulationTab({
                                             <Text size="sm" style={{overflowWrap: "anywhere"}}>
                                                 {entry.game.id} v{entry.game.version} — {entry.modeName ? `mode ${entry.modeName}, ` : ""}{entry.actualRounds ?? "per-mode"}/{entry.requestedRounds} rounds, RTP{" "}
                                                 {entry.rtp === undefined ? "per-mode" : `${(entry.rtp * 100).toFixed(2)}%`}, {new Date(entry.startedAt).toLocaleString()}
+                                                {shortSourceRevision(entry.sourceRevision) === undefined ? "" : `, design ${shortSourceRevision(entry.sourceRevision)}`}
                                                 {entry.hasWarnings ? " (has warnings)" : ""}
                                             </Text>
                                             <Button

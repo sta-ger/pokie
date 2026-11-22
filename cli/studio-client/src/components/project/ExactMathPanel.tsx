@@ -53,7 +53,7 @@ function jobError(job: StudioOutcomeLibraryGenerateJobView): string {
  * one-click generation when none exists. It never treats a sampled Simulation report as exact, and a
  * stale library is reported as stale rather than silently shown as current.
  */
-export function ExactMathPanel({projectRoot, sourceRevision}: {projectRoot: string; sourceRevision?: string}) {
+export function ExactMathPanel({projectRoot, sourceRevision, refreshKey}: {projectRoot: string; sourceRevision?: string; refreshKey?: number}) {
     const fetchImpl = useStudioApi();
     const [view, setView] = useState<StudioExactMathView | undefined>(undefined);
     const [loading, setLoading] = useState(true);
@@ -83,6 +83,9 @@ export function ExactMathPanel({projectRoot, sourceRevision}: {projectRoot: stri
     useEffect(() => {
         setJob(undefined);
         setNotice(undefined);
+        // A saved design change invalidates the exact numbers immediately. Clear the previous view
+        // while the fresh read runs instead of leaving an old RTP on screen until the request settles.
+        setView(undefined);
         load();
         const loadToken = loadGeneration;
         const pollToken = pollGeneration;
@@ -90,10 +93,11 @@ export function ExactMathPanel({projectRoot, sourceRevision}: {projectRoot: stri
             loadToken.current++;
             pollToken.current++;
         };
-        // sourceRevision is intentional: an applied optimization changes the saved design, and keeping
-        // an old exact result visible would falsely present it as current.
+        // sourceRevision/refreshKey are intentional: an applied optimization or Blueprint save changes
+        // the saved design, and keeping an old exact result visible would falsely present it as current.
+        // refreshKey also covers an apply whose new optimizer revision is not known to the client.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [fetchImpl, projectRoot, sourceRevision]);
+    }, [fetchImpl, projectRoot, sourceRevision, refreshKey]);
 
     const poll = async (id: string): Promise<void> => {
         const generation = ++pollGeneration.current;

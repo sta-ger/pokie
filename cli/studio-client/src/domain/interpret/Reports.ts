@@ -12,10 +12,24 @@ export function describeReportsList(entries: StudioSimulationReportListEntry[]):
     return entries.length === 0 ? {status: "empty"} : {status: "loaded", entries};
 }
 
-/** Enough identity to pick the intended comparison target: round count and seed matter as much as time. */
+/** A compact, human-readable form of the optimizer's authored-source hash. */
+export function shortSourceRevision(revision: string | undefined): string | undefined {
+    if (revision === undefined || revision.trim().length === 0) return undefined;
+    return revision.replace(/^sha256:/, "").slice(0, 12);
+}
+
+/** Whether two runs sampled the exact same saved authored design. */
+export function describeDesignCompatibility(current: string | undefined, comparison: string | undefined): "same" | "different" | "unknown" {
+    if (current === undefined || comparison === undefined) return "unknown";
+    return current === comparison ? "same" : "different";
+}
+
+/** Enough identity to pick the intended comparison target: design, round count and seed all matter. */
 export function describeReportListEntry(entry: StudioSimulationReportListEntry): string {
     const rounds = entry.actualRounds ?? entry.requestedRounds;
     const seed = entry.seed === undefined || entry.seed.trim().length === 0 ? "no seed" : entry.seed;
     const mode = entry.modeName === undefined ? "" : ` — mode ${entry.modeName}`;
-    return `${entry.game.id} v${entry.game.version} — ${rounds} rounds — seed ${seed}${mode} — ${new Date(entry.startedAt).toLocaleString()}`;
+    const revision = shortSourceRevision(entry.sourceRevision);
+    const design = revision === undefined ? " — design revision unavailable" : ` — design ${revision}`;
+    return `${entry.game.id} v${entry.game.version} — ${rounds} rounds — seed ${seed}${mode}${design} — ${new Date(entry.startedAt).toLocaleString()}`;
 }

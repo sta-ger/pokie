@@ -1,4 +1,4 @@
-import {describeReportListEntry} from "../../../cli/studio-client/src/domain/interpret/Reports.js";
+import {describeDesignCompatibility, describeReportListEntry, shortSourceRevision} from "../../../cli/studio-client/src/domain/interpret/Reports.js";
 import type {StudioSimulationReportListEntry} from "../../../cli/studio-client/src/api/types.js";
 
 function entry(overrides: Partial<StudioSimulationReportListEntry> = {}): StudioSimulationReportListEntry {
@@ -30,5 +30,13 @@ describe("describeReportListEntry", () => {
 
     it("includes the mode when the report has one", () => {
         expect(describeReportListEntry(entry({modeName: "base"}))).toContain("mode base");
+    });
+
+    it("distinguishes runs from different saved designs", () => {
+        expect(describeReportListEntry(entry({sourceRevision: "sha256:0123456789abcdef"}))).toContain("design 0123456789ab");
+        expect(describeDesignCompatibility("sha256:a", "sha256:a")).toBe("same");
+        expect(describeDesignCompatibility("sha256:a", "sha256:b")).toBe("different");
+        expect(describeDesignCompatibility(undefined, "sha256:b")).toBe("unknown");
+        expect(shortSourceRevision("sha256:0123456789abcdef")).toBe("0123456789ab");
     });
 });

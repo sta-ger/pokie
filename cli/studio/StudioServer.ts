@@ -3826,7 +3826,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: this.describeReportNotReady(id, result.jobStatus)});
             return;
         }
-        const detail: StudioSimulationReportDetail = {report: result.report, statistics: result.statistics};
+        const detail: StudioSimulationReportDetail = {report: result.report, statistics: result.statistics, ...(result.sourceRevision === undefined ? {} : {sourceRevision: result.sourceRevision})};
         this.sendJson(res, 200, detail);
     }
 

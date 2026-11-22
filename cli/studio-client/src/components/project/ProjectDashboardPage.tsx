@@ -781,7 +781,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             getReport(fetchImpl, id)
                 .then((detail) => {
                     if (requestId === reportRequestIdRef.current) {
-                        setReportDetail({status: "loaded", report: describeSimulationReport(detail.report, detail.statistics)});
+                        setReportDetail({status: "loaded", report: describeSimulationReport(detail.report, detail.statistics), ...(detail.sourceRevision === undefined ? {} : {sourceRevision: detail.sourceRevision})});
                     }
                 })
                 .catch((error: unknown) => {
@@ -854,7 +854,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             getReport(fetchImpl, entry.id)
                 .then((detail) => {
                     if (requestId === compareRequestIdRef.current) {
-                        setCompareDetail({status: "loaded", report: describeSimulationReport(detail.report, detail.statistics)});
+                        setCompareDetail({status: "loaded", report: describeSimulationReport(detail.report, detail.statistics), ...(detail.sourceRevision === undefined ? {} : {sourceRevision: detail.sourceRevision})});
                     }
                 })
                 .catch((error: unknown) => {
@@ -1160,12 +1160,18 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const [gameModelDirty, setGameModelDirty] = useState(false);
 
     const [optimizerSourceChange, setOptimizerSourceChange] = useState<{projectRoot: string; sourceRevision?: string}>();
+    // Optimization apply/undo does not currently report a new optimizer revision (its response is
+    // only the written path plus undo receipt). This monotonic token still forces Overview's exact
+    // math card to re-read immediately, instead of leaving an old compatible-looking RTP on screen
+    // until the page is reloaded.
+    const [exactMathRefreshKey, setExactMathRefreshKey] = useState(0);
 
     // Both in-place authoring surfaces change the source used by simulation and optimization.
     // Retire pending reads as well as the visible report, while leaving owned
     // jobs attached so saving during a run never removes its Cancel control.
     const handleBlueprintSaved = (sourceRevision?: string): void => {
         if (projectKey !== undefined) setOptimizerSourceChange({projectRoot: projectKey, sourceRevision});
+        setExactMathRefreshKey((value) => value + 1);
         simulation.invalidateResult();
         reportRequestIdRef.current++;
         compareRequestIdRef.current++;
@@ -1493,7 +1499,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         <>
                             {activeTab === "overview" && header.status === "loaded" && (
                                 <>
-                                    <OverviewTab header={header} validation={validation} onRevalidate={runValidate} onOpenPlay={() => setActiveTab("play")} sourceRevision={optimizerSourceChange?.projectRoot === header.projectRoot ? optimizerSourceChange.sourceRevision : undefined} />
+                                    <OverviewTab header={header} validation={validation} onRevalidate={runValidate} onOpenPlay={() => setActiveTab("play")} sourceRevision={optimizerSourceChange?.projectRoot === header.projectRoot ? optimizerSourceChange.sourceRevision : undefined} exactMathRefreshKey={exactMathRefreshKey} />
                                     {header.type === "wasm" && (
                                         <WasmManifestInspection
                                             projectRoot={header.projectRoot}

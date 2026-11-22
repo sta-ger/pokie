@@ -55,4 +55,6 @@ export type StudioSimulationReportDetail = {
     report: SimulationReport | SimulationReportSet;
     statistics?: StudioSimulationStatisticsView;
     observedPrefix?: import("../../../src/simulation/SimulationStatistics.js").SimulationStatistics;
+    /** Authored source identity captured when this report's run was accepted. */
+    sourceRevision?: string;
 };

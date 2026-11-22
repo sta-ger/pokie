@@ -393,7 +393,7 @@ export function renderLineDefinitionsList(listEl: HTMLElement, gridEl: HTMLEleme
     lines.forEach((line) => {
         addHoverRow(
             listEl,
-            `Line: ${line.lineId}`,
+            `Line ${line.lineId} · rows ${line.definition.join(" → ")}`,
             () => {
                 line.definition.forEach((rowIndex, reelIndex) => {
                     const cell = getCell(gridEl, reelIndex, rowIndex);

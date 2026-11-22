@@ -10,6 +10,13 @@ type PayoutBucket = {
 
 const INITIAL_ROWS = 12;
 
+/** "1 in N" reads badly when N rounds to 1 for a common outcome; keep precision near the mode. */
+function formatOneIn(probability: number): string {
+    if (!Number.isFinite(probability) || probability <= 0) return "—";
+    const inverse = 1 / probability;
+    return inverse < 10 ? inverse.toFixed(2) : Math.round(inverse).toLocaleString("en-US");
+}
+
 /**
  * Exact payout probability mass function. Distinct multipliers are never binned, so the table is the
  * complete distribution rather than a sampled histogram (see WeightedOutcomeLibraryAnalysis's own
@@ -42,7 +49,7 @@ export function ExactPayoutDistribution({buckets, label = "payout distribution"}
                             <Table.Tr key={bucket.payoutMultiplier}>
                                 <Table.Td>{formatAnalysisNumber(bucket.payoutMultiplier, 4)}</Table.Td>
                                 <Table.Td>{formatAnalysisNumber(probability * 100, 4)}%</Table.Td>
-                                <Table.Td>{Number.isFinite(probability) && probability > 0 ? Math.round(1 / probability).toLocaleString("en-US") : "—"}</Table.Td>
+                                <Table.Td>{formatOneIn(probability)}</Table.Td>
                             </Table.Tr>
                         );
                     })}

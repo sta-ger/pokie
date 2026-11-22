@@ -8,6 +8,7 @@ import {
     type GenericRoundRecordWin,
     type LineDefinitionView,
     type PaytableView as PaytableViewData,
+    type PlayerRoundElements,
 } from "../../../../client/player";
 import {useActiveSymbolArtwork} from "./SymbolPresentation";
 
@@ -76,13 +77,23 @@ export function CanonicalPlayerView({
     const displayedCoverage = logicalRound?.currentStep?.visibleRowCoverage ?? visibleRowCoverage;
     const artwork = useActiveSymbolArtwork();
     const playerRootRef = useRef<HTMLDivElement>(null);
+    // The player owns its own DOM contract. Rebuilding that skeleton on every Studio render would
+    // reset native <details> state (Paylines/Paytable) while the user is reading it, so mount the
+    // skeleton once per root and let renderPlayerRound update the existing elements in place.
+    const playerElementsRef = useRef<{root: HTMLDivElement; elements: PlayerRoundElements} | null>(null);
 
     useLayoutEffect(() => {
-        if (!playerRootRef.current) {
+        const root = playerRootRef.current;
+        if (!root) {
             return;
         }
         const highlights = deriveWinHighlightsFromRoundRecordWins(displayedWins ?? [], displayedScreen.length);
-        const elements = createPlayerRoundElements(playerRootRef.current);
+        let mounted = playerElementsRef.current;
+        if (mounted === null || mounted.root !== root) {
+            mounted = {root, elements: createPlayerRoundElements(root)};
+            playerElementsRef.current = mounted;
+        }
+        const elements = mounted.elements;
         if (logicalRound?.currentStep) {
             const winLabel = elements.totalWinRow?.querySelector("dt");
             const multiplierLabel = elements.payoutMultiplierRow?.querySelector("dt");

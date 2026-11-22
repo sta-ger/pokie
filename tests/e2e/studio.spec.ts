@@ -71,6 +71,38 @@ test.describe.serial("managed project labels", () => {
         await expect(page.getByRole("rowheader", {name: "Stop reason"}).locator("xpath=following-sibling::td[1]")).toHaveText(/requested rounds completed/i);
     });
 
+    test("simulation comparison shows the shared design and metric deltas", async ({page}) => {
+        await page.goto("/");
+        await page.getByRole("button", {name: "Simulation", exact: true}).click();
+        const loadedReports = page.getByText(/Loaded \d+ simulation reports?/);
+        const reportCount = async (): Promise<number> => {
+            const text = await loadedReports.first().textContent();
+            return Number(/\d+/.exec(text ?? "")?.[0] ?? 0);
+        };
+        const run = async (seed: string) => {
+            const before = await reportCount();
+            await page.getByRole("button", {name: "Change settings", exact: true}).click();
+            const advanced = page.getByRole("button", {name: "Show advanced details (seed, workers)"});
+            if (await advanced.isVisible().catch(() => false)) {
+                await advanced.click();
+            }
+            await page.getByLabel("Rounds *").fill("1000");
+            await page.getByLabel("Seed (optional)").fill(seed);
+            await page.getByRole("button", {name: "Run Simulation", exact: true}).click();
+            // The list count is a completion receipt for *this* run; a previous report's status text
+            // would otherwise satisfy a plain "Simulation completed" wait immediately.
+            await expect(page.getByText(new RegExp(`Loaded ${before + 1} simulation reports?`))).toBeVisible({timeout: 60_000});
+        };
+        await run("compare-a");
+        await run("compare-b");
+        await page.getByRole("button", {name: "Compare with another run", exact: true}).click();
+        await page.getByRole("button", {name: /seed compare-a/}).first().click();
+        await expect(page.getByText(/Both runs sampled the same saved design/)).toBeVisible({timeout: 20_000});
+        const table = page.getByRole("table", {name: "Simulation comparison metrics"});
+        await expect(table).toBeVisible();
+        await expect(table.getByRole("row", {name: /RTP/})).toContainText("%");
+    });
+
     test("Play uses singular round wording for a single step and one part", async ({page}) => {
         await page.goto("/");
         await page.getByRole("button", {name: "Play", exact: true}).click();
@@ -84,6 +116,42 @@ test.describe.serial("managed project labels", () => {
         await expect(page.getByText(/1 steps/)).toHaveCount(0);
     });
 
+    test("Play keeps paylines and paytable disclosures open while the round updates", async ({page}) => {
+        await page.goto("/");
+        await page.getByRole("button", {name: "Play", exact: true}).click();
+        const newSession = page.getByRole("button", {name: "New Play session"});
+        const spin = page.getByRole("button", {name: "Spin", exact: true});
+        await expect(newSession.or(spin)).toBeVisible({timeout: 60_000});
+        if (await newSession.isVisible()) {
+            await newSession.click();
+        }
+        await expect(spin).toBeVisible({timeout: 60_000});
+        await spin.click();
+        await expect(page.getByText(/Round completed: 1 step, 1 part/)).toBeVisible({timeout: 30_000});
+
+        const paytable = page.locator("details.player-paytable-details");
+        await expect(paytable).toBeVisible();
+        await paytable.locator("summary").click();
+        await expect(paytable).toHaveJSProperty("open", true);
+        await page.waitForTimeout(1500);
+        await expect(paytable).toHaveJSProperty("open", true);
+        await expect(paytable.getByRole("table")).toContainText("A");
+
+        const lines = page.locator("details.player-lines-details");
+        await expect(lines).toBeVisible();
+        await lines.locator("summary").click();
+        await expect(lines).toHaveJSProperty("open", true);
+        await page.waitForTimeout(1500);
+        await expect(lines).toHaveJSProperty("open", true);
+        await expect(lines).toContainText(/rows/);
+
+        await page.getByRole("button", {name: "Find any win", exact: true}).click();
+        await expect(page.getByText(/Round completed: 1 step, 1 part, stake \d+, payout [1-9]/)).toBeVisible({timeout: 30_000});
+        await page.locator("summary", {hasText: "Inspect round record"}).click();
+        await expect(page.getByRole("columnheader", {name: "Positions (reel:row, 0-based)"})).toBeVisible();
+        await expect(page.getByRole("cell", {name: /\d+:\d+/}).first()).toBeVisible();
+    });
+
     test("a completed optimization does not show indeterminate work", async ({page}) => {
         await page.goto("/");
         await page.getByRole("button", {name: "Check tuning support"}).click();
@@ -92,21 +160,6 @@ test.describe.serial("managed project labels", () => {
         await expect(page.getByText(/Verdict: (success|attained)/)).toBeVisible({timeout: 60_000});
         await expect(page.getByText(/indeterminate/)).toHaveCount(0);
         await expect(page.getByText(/Finalizing/)).toHaveCount(0);
-    });
-
-    test("apply asks for confirmation and undo restores the previous design values", async ({page}) => {
-        await page.goto("/");
-        await page.getByRole("button", {name: "Check tuning support"}).click();
-        await expect(page.getByText(/Supported finite same-type workflow/)).toBeVisible({timeout: 30_000});
-        await page.getByRole("button", {name: "Run optimization"}).click();
-        await expect(page.getByText(/Verdict: (success|attained)/)).toBeVisible({timeout: 60_000});
-        await expect(page.getByRole("button", {name: "Apply reviewed changes"})).toBeVisible({timeout: 30_000});
-        await page.getByRole("button", {name: "Apply reviewed changes"}).click();
-        await expect(page.getByRole("dialog")).toContainText("Apply these reviewed changes to the saved design?");
-        await page.locator("#optimization-apply-confirm").click();
-        await expect(page.getByText("Changes saved to the game design")).toBeVisible({timeout: 60_000});
-        await page.getByRole("button", {name: "Undo applied changes"}).click();
-        await expect(page.getByText(/Previous design values restored/)).toBeVisible({timeout: 60_000});
     });
 
     test("Overview computes exact math and exposes the complete payout distribution", async ({page}) => {
@@ -118,6 +171,25 @@ test.describe.serial("managed project labels", () => {
         await expect(page.getByRole("table", {name: "Exact payout distribution"})).toBeVisible();
         await page.getByRole("button", {name: /line and symbol contributions/}).click();
         await expect(page.getByRole("table", {name: "Exact line and symbol contributions"}).first()).toBeVisible();
+    });
+
+    test("apply asks for confirmation and marks the exact library stale immediately", async ({page}) => {
+        await page.goto("/");
+        await page.getByRole("button", {name: "Check tuning support"}).click();
+        await expect(page.getByText(/Supported finite same-type workflow/)).toBeVisible({timeout: 30_000});
+        await page.getByRole("button", {name: "Run optimization"}).click();
+        await expect(page.getByText(/Verdict: (success|attained)/)).toBeVisible({timeout: 60_000});
+        await expect(page.getByRole("button", {name: "Apply reviewed changes"})).toBeVisible({timeout: 30_000});
+        await page.getByRole("button", {name: "Apply reviewed changes"}).click();
+        await expect(page.getByRole("dialog")).toContainText("Apply these reviewed changes to the saved design?");
+        await page.locator("#optimization-apply-confirm").click();
+        await expect(page.getByText("Changes saved to the game design")).toBeVisible({timeout: 60_000});
+        // The exact library was computed above from the pre-apply design. Applying a new paytable
+        // must not leave those old numbers looking current until a manual reload.
+        await expect(page.getByText(/computed from a different saved design/)).toBeVisible({timeout: 30_000});
+        await expect(page.getByRole("button", {name: "Recompute exact math"}).first()).toBeVisible();
+        await page.getByRole("button", {name: "Undo applied changes"}).click();
+        await expect(page.getByText(/Previous design values restored/)).toBeVisible({timeout: 60_000});
     });
 
     test("a correctly scoped project URL restores the requested tab", async ({page}) => {

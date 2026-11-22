@@ -7,6 +7,8 @@ export type StudioSimulationReportListEntry = {
     id: string;
     status: "completed";
     game: {id: string; version: string};
+    /** Authored source identity captured when the run was accepted; absent for legacy jobs. */
+    sourceRevision?: string;
     requestedRounds: number;
     actualRounds?: number;
     sampling?: import("../../../src/reporting/SimulationReport.js").SimulationReport["sampling"];
