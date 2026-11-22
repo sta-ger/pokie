@@ -88,12 +88,34 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
         project: PokieProject,
         request: unknown,
     ): Promise<{supported: boolean; reason: string; adapter: string; writable?: string[]}> {
+        let validated: ReturnType<typeof validateOptimizationRequest>;
         try {
-            const validated = validateOptimizationRequest(request);
+            validated = validateOptimizationRequest(request);
             assertSampledTargets(validated);
             assertNoFilesystemAliases(project.rootPath);
             validateProtectedFiles(project, validated.policy, sourceInventory(project));
-            const adapter = await acquireOptimizationAdapter(project, validated.policy);
+        } catch (error) {
+            return {
+                supported: false,
+                reason: error instanceof Error ? error.message : String(error),
+                adapter: `${project.type}:v1`,
+            };
+        }
+        // Acquire the model before validating individual tunables so a UI can discover the adapter's
+        // writable fields even when its current draft guessed an unsupported path. Exposing this list
+        // grants no write authority: every run still validates paths and locks against the same model.
+        let adapter: Awaited<ReturnType<typeof acquireOptimizationAdapter>>;
+        try {
+            adapter = await acquireOptimizationAdapter(project, validated.policy);
+        } catch (error) {
+            return {
+                supported: false,
+                reason: error instanceof Error ? error.message : String(error),
+                adapter: `${project.type}:v1`,
+            };
+        }
+        const discovery = {adapter: `${project.type}:v1`, writable: adapter.writable};
+        try {
             checkPolicyPaths(adapter.model, validated.policy, adapter.writable);
             preflightConstraints(adapter.model, validated.policy);
             return {
@@ -101,14 +123,13 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                 reason: validated.policy.strategy === "seeded-search-v1"
                     ? "Supported bounded sampled same-type workflow; held-out confidence assessment determines attainment in the submitted population."
                     : "Supported finite same-type workflow; target authority is limited to the submitted scope.",
-                adapter: `${project.type}:v1`,
-                writable: adapter.writable,
+                ...discovery,
             };
         } catch (error) {
             return {
                 supported: false,
                 reason: error instanceof Error ? error.message : String(error),
-                adapter: `${project.type}:v1`,
+                ...discovery,
             };
         }
     }

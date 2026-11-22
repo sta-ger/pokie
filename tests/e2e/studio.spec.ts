@@ -31,6 +31,34 @@ test.describe.serial("managed project labels", () => {
         await expect(page.getByRole("button", {name: "Overview", exact: true})).toBeVisible({timeout: 90_000});
     });
 
+    test("optimization exposes a target and tunable fields without opening JSON", async ({page}) => {
+        await page.goto("/");
+        await expect(page.getByText("Math target", {exact: true})).toBeVisible({timeout: 60_000});
+        await expect(page.getByRole("combobox", {name: "Metric"})).toBeVisible();
+        await expect(page.getByText("Fields to tune", {exact: true})).toBeVisible();
+        const fieldTable = page.getByRole("table", {name: "Fields available for tuning"});
+        await expect(fieldTable.getByRole("checkbox").first()).toBeVisible();
+        await expect(page.getByLabel("Optimization request JSON")).toBeHidden();
+        await page.getByRole("button", {name: /expert JSON policy/}).click();
+        const jsonEditor = page.getByLabel("Optimization request JSON");
+        await expect(jsonEditor).toBeVisible();
+        const request = JSON.parse(await jsonEditor.inputValue()) as {targets: {value: number}[]};
+        request.targets[0].value = 0.96;
+        await jsonEditor.fill(JSON.stringify(request, null, 2));
+        await expect(page.getByRole("textbox", {name: /Target/})).toHaveValue(/96/);
+    });
+
+    test("an unsupported field still reveals the project's writable fields", async ({page}) => {
+        await page.goto("/");
+        await page.getByLabel("Another writable field").fill("/paytable/NOPE/3");
+        await page.getByRole("button", {name: "Add field"}).click();
+        await page.getByRole("button", {name: "Check tuning support"}).click();
+        await expect(page.getByText(/Unknown policy path/).first()).toBeVisible({timeout: 30_000});
+        await expect(page.getByText("/paytable/NOPE/3", {exact: false}).first()).toBeVisible();
+        await expect(page.getByText(/writable fields discovered/)).toBeVisible();
+        await expect(page.getByText(/does not list this field as writable/)).toBeVisible();
+    });
+
     test("simulation uses readable precision and stop-reason labels", async ({page}) => {
         await page.goto("/");
         await page.getByRole("button", {name: "Simulation", exact: true}).click();
@@ -61,7 +89,7 @@ test.describe.serial("managed project labels", () => {
         await page.getByRole("button", {name: "Check tuning support"}).click();
         await expect(page.getByText(/Supported finite same-type workflow/)).toBeVisible({timeout: 30_000});
         await page.getByRole("button", {name: "Run optimization"}).click();
-        await expect(page.getByText(/Verdict:/)).toBeVisible({timeout: 60_000});
+        await expect(page.getByText(/Verdict: (success|attained)/)).toBeVisible({timeout: 60_000});
         await expect(page.getByText(/indeterminate/)).toHaveCount(0);
         await expect(page.getByText(/Finalizing/)).toHaveCount(0);
     });
