@@ -968,34 +968,47 @@ export async function spinPlaySession(fetchImpl: FetchLike, sessionId: string, b
     return readPlaySpinResult(response);
 }
 
-// PlayTab's "Find any win" scenario control -- POST .../find-any-win, no body. Returns the exact same
-// PlaySpinResult shape spinPlaySession does (see StudioPlayService.findAnyWin()'s own doc comment: it's
-// the same authoritative spin() path underneath, just repeated server-side until a round actually wins),
-// so PlayTab renders whatever round comes back through the identical RoundSummary chain a plain Spin does.
-export async function findAnyWinPlaySession(fetchImpl: FetchLike, sessionId: string): Promise<PlaySpinResult> {
-    const response = await fetchImpl(`/api/project/play/sessions/${encodeURIComponent(sessionId)}/find-any-win`, {method: "POST"});
-    return readPlaySpinResult(response);
-}
-
-// PlayTab's "Find symbol win" scenario control -- POST .../find-symbol-win, body `{symbolId}` -- the
-// chooser's own currently-selected symbol, propagated straight through to the server (see
-// StudioPlayService.findSymbolWin()'s own doc comment).
-export async function findSymbolWinPlaySession(fetchImpl: FetchLike, sessionId: string, symbolId: string): Promise<PlaySpinResult> {
-    const response = await fetchImpl(`/api/project/play/sessions/${encodeURIComponent(sessionId)}/find-symbol-win`, {
+// PlayTab's "Find any win" scenario control -- POST .../find-any-win with the Play tab's own currently
+// selected bet/mode. Returns the exact same PlaySpinResult shape spinPlaySession does (see
+// StudioPlayService.findAnyWin()'s own doc comment: it's the same authoritative spin() path underneath,
+// just repeated server-side until a round actually wins), so PlayTab renders whatever round comes back
+// through the identical RoundSummary chain a plain Spin does.
+export async function findAnyWinPlaySession(fetchImpl: FetchLike, sessionId: string, bet?: number, mode?: string): Promise<PlaySpinResult> {
+    const response = await fetchImpl(`/api/project/play/sessions/${encodeURIComponent(sessionId)}/find-any-win`, {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({symbolId}),
+        ...(bet === undefined && mode === undefined ? {} : {
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({...(bet === undefined ? {} : {bet}), ...(mode === undefined ? {} : {mode})}),
+        }),
     });
     return readPlaySpinResult(response);
 }
 
-// PlayTab's "Find free games" scenario control -- POST .../find-free-games, no body. The canonical shared
-// "custom scenario" abstraction pokie-examples' own custom-scenario dropdown already uses for its "Free
-// games" entry (StudioPlayService.findFreeGames()'s own doc comment) -- same real, authoritative search-
-// server-side pattern as findAnyWinPlaySession above, so PlayTab renders whatever round comes back through
-// the identical RoundSummary chain a plain Spin does.
-export async function findFreeGamesPlaySession(fetchImpl: FetchLike, sessionId: string): Promise<PlaySpinResult> {
-    const response = await fetchImpl(`/api/project/play/sessions/${encodeURIComponent(sessionId)}/find-free-games`, {method: "POST"});
+// PlayTab's "Find symbol win" scenario control -- POST .../find-symbol-win, body `{symbolId, bet?, mode?}`
+// -- the chooser's own currently-selected symbol plus the Play tab's current bet/mode, propagated straight
+// through to the server (see StudioPlayService.findSymbolWin()'s own doc comment).
+export async function findSymbolWinPlaySession(fetchImpl: FetchLike, sessionId: string, symbolId: string, bet?: number, mode?: string): Promise<PlaySpinResult> {
+    const response = await fetchImpl(`/api/project/play/sessions/${encodeURIComponent(sessionId)}/find-symbol-win`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({symbolId, ...(bet === undefined ? {} : {bet}), ...(mode === undefined ? {} : {mode})}),
+    });
+    return readPlaySpinResult(response);
+}
+
+// PlayTab's "Find free games" scenario control -- POST .../find-free-games with the Play tab's own
+// currently selected bet/mode. The canonical shared "custom scenario" abstraction pokie-examples' own
+// custom-scenario dropdown already uses for its "Free games" entry (StudioPlayService.findFreeGames()'s
+// own doc comment) -- same real, authoritative search-server-side pattern as findAnyWinPlaySession above,
+// so PlayTab renders whatever round comes back through the identical RoundSummary chain a plain Spin does.
+export async function findFreeGamesPlaySession(fetchImpl: FetchLike, sessionId: string, bet?: number, mode?: string): Promise<PlaySpinResult> {
+    const response = await fetchImpl(`/api/project/play/sessions/${encodeURIComponent(sessionId)}/find-free-games`, {
+        method: "POST",
+        ...(bet === undefined && mode === undefined ? {} : {
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({...(bet === undefined ? {} : {bet}), ...(mode === undefined ? {} : {mode})}),
+        }),
+    });
     return readPlaySpinResult(response);
 }
 

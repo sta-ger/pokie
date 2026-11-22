@@ -131,6 +131,7 @@ import {validateProjectRelocationRequest, ProjectRelocationRequestInput} from ".
 import {validatePlaySessionRequest, PlaySessionRequestInput} from "./runtime/validatePlaySessionRequest.js";
 import {validatePlaySpinRequest, PlaySpinRequestInput} from "./runtime/validatePlaySpinRequest.js";
 import {validatePlayFindSymbolWinRequest, PlayFindSymbolWinRequestInput} from "./runtime/validatePlayFindSymbolWinRequest.js";
+import {validatePlayScenarioRequest, PlayScenarioRequestInput} from "./runtime/validatePlayScenarioRequest.js";
 import {buildSimulationReportDownload, isReportDownloadFormat} from "./simulation/buildSimulationReportDownload.js";
 import {StudioSimulationService} from "./simulation/StudioSimulationService.js";
 import type {StudioSimulationReportDetail} from "./simulation/StudioSimulationJobView.js";
@@ -1401,7 +1402,7 @@ export class StudioServer implements StudioServerHandling {
 
         const playFindAnyWinSessionId = this.matchPlayFindAnyWinRoute(url.pathname);
         if (playFindAnyWinSessionId !== undefined && method === "POST") {
-            await this.handlePlayFindAnyWin(res, playFindAnyWinSessionId);
+            await this.handlePlayFindAnyWin(req, res, playFindAnyWinSessionId);
             return;
         }
 
@@ -1413,7 +1414,7 @@ export class StudioServer implements StudioServerHandling {
 
         const playFindFreeGamesSessionId = this.matchPlayFindFreeGamesRoute(url.pathname);
         if (playFindFreeGamesSessionId !== undefined && method === "POST") {
-            await this.handlePlayFindFreeGames(res, playFindFreeGamesSessionId);
+            await this.handlePlayFindFreeGames(req, res, playFindFreeGamesSessionId);
             return;
         }
 
@@ -4215,36 +4216,45 @@ export class StudioServer implements StudioServerHandling {
         this.sendPlayErrorResult(res, sessionId, result);
     }
 
-    // PlayTab's "Find any win" scenario control -- POST /api/project/play/sessions/:id/find-any-win, no
-    // body. Same response shape/error handling as handlePlaySpin above (StudioPlayService.findAnyWin()
-    // returns the exact same StudioPlaySpinResult spin() does -- see its own doc comment), just repeating
-    // real spins server-side instead of stopping after exactly one.
-    private async handlePlayFindAnyWin(res: ServerResponse, sessionId: string): Promise<void> {
+    // PlayTab's "Find any win" scenario control -- POST /api/project/play/sessions/:id/find-any-win,
+    // body `{bet?, mode?}` carrying the Play tab's current selection. Same response shape/error handling
+    // as handlePlaySpin above (StudioPlayService.findAnyWin() returns the exact same
+    // StudioPlaySpinResult spin() does -- see its own doc comment), just repeating real spins server-side
+    // instead of stopping after exactly one.
+    private async handlePlayFindAnyWin(req: IncomingMessage, res: ServerResponse, sessionId: string): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
         if (this.rejectPlayDuringTransition(res)) return;
         if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
+        let validated;
+        try {
+            const body = await this.readJsonBody(req);
+            validated = validatePlayScenarioRequest((body ?? {}) as PlayScenarioRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
         if (this.rejectPlayDuringTransition(res)) return;
         const projectRoot = this.canonicalPathIdentity(this.currentContext.projectRoot);
         const recovery = {action: "new-session", reason: "Scenario search cannot resume after restart because settled wallet state belongs to its original Play session."} as const;
         const execution = await this.executeCommonOperation(
             res, {
-                projectId: projectRoot, operation: "play-find-any-win", request: {sessionId}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery,
+                projectId: projectRoot, operation: "play-find-any-win", request: {sessionId, ...validated}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery,
                 initialProgress: {stage: "Searching rounds", unit: "attempted spins", current: 0, total: "indeterminate", message: "Spinning until a winning round is settled."},
                 // Runtime failure codes distinguish session failures from the HTTP-only project guard.
                 // Preserve its normal result union for exact reattachment.
                 reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", error: "Scenario search is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
             },
-            ({signal, progress}) => this.playService.findAnyWin(sessionId, {signal, onProgress: (current, total) => progress({stage: "Searching rounds", unit: "attempted spins", current, total, message: "Waiting for a winning settled round."})}),
+            ({signal, progress}) => this.playService.findAnyWin(sessionId, {...validated, signal, onProgress: (current, total) => progress({stage: "Searching rounds", unit: "attempted spins", current, total, message: "Waiting for a winning settled round."})}),
             (result, cancelled) => {
                 if (cancelled || result.status === "cancelled") return {status: "cancelled", result: this.playCancellationResult(sessionId, "any-win", result.status === "cancelled" ? result.session : undefined), recovery};
-                if (result.status === "ok") return {status: "completed", result: {summary: "Play scenario search completed.", outputs: [{label: "Settled Play round"}], provenance: {game: result.session.game}, detail: {sessionId, scenario: "any-win", session: result.session}}};
+                if (result.status === "ok") return {status: "completed", result: {summary: "Play scenario search completed.", outputs: [{label: "Settled Play round"}], provenance: {game: result.session.game}, detail: {sessionId, scenario: "any-win", ...validated, session: result.session}}};
                 const error = result.status === "error" && result.code !== undefined ? `${result.code}: ${result.error}` : `Play scenario search ${result.status}.`;
                 return {status: "failed", error, recovery};
             },
-            (error, cancelled) => cancelled ? {status: "cancelled", result: {summary: "Scenario search stopped after its last settled round.", detail: {sessionId, scenario: "any-win"}}, recovery} : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
+            (error, cancelled) => cancelled ? {status: "cancelled", result: {summary: "Scenario search stopped after its last settled round.", detail: {sessionId, scenario: "any-win", ...validated}}, recovery} : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
         );
         if (execution === undefined) return;
         if (execution.value.status === "ok") this.sendJson(res, 200, {status: "ok", session: execution.value.session});
@@ -4276,18 +4286,18 @@ export class StudioServer implements StudioServerHandling {
         const recovery = {action: "new-session", reason: "Scenario search cannot resume after restart because settled wallet state belongs to its original Play session."} as const;
         const execution = await this.executeCommonOperation(
             res, {
-                projectId: projectRoot, operation: "play-find-symbol-win", request: {sessionId, symbolId: validated.symbolId}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery,
+                projectId: projectRoot, operation: "play-find-symbol-win", request: {sessionId, symbolId: validated.symbolId, ...(validated.bet === undefined ? {} : {bet: validated.bet}), ...(validated.mode === undefined ? {} : {mode: validated.mode})}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery,
                 initialProgress: {stage: "Searching rounds", unit: "attempted spins", current: 0, total: "indeterminate", message: "Spinning until the requested symbol win is settled."},
                 reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", error: "Scenario search is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
             },
-            ({signal, progress}) => this.playService.findSymbolWin(sessionId, validated.symbolId, {signal, onProgress: (current, total) => progress({stage: "Searching rounds", unit: "attempted spins", current, total, message: "Waiting for the requested symbol win."})}),
+            ({signal, progress}) => this.playService.findSymbolWin(sessionId, validated.symbolId, {...(validated.bet === undefined ? {} : {bet: validated.bet}), ...(validated.mode === undefined ? {} : {mode: validated.mode}), signal, onProgress: (current, total) => progress({stage: "Searching rounds", unit: "attempted spins", current, total, message: "Waiting for the requested symbol win."})}),
             (result, cancelled) => {
                 if (cancelled || result.status === "cancelled") return {status: "cancelled", result: this.playCancellationResult(sessionId, "symbol-win", result.status === "cancelled" ? result.session : undefined, validated.symbolId), recovery};
-                if (result.status === "ok") return {status: "completed", result: {summary: "Play scenario search completed.", outputs: [{label: "Settled Play round"}], provenance: {game: result.session.game}, detail: {sessionId, scenario: "symbol-win", symbolId: validated.symbolId, session: result.session}}};
+                if (result.status === "ok") return {status: "completed", result: {summary: "Play scenario search completed.", outputs: [{label: "Settled Play round"}], provenance: {game: result.session.game}, detail: {sessionId, scenario: "symbol-win", symbolId: validated.symbolId, ...(validated.bet === undefined ? {} : {bet: validated.bet}), ...(validated.mode === undefined ? {} : {mode: validated.mode}), session: result.session}}};
                 const error = result.status === "error" && result.code !== undefined ? `${result.code}: ${result.error}` : `Play scenario search ${result.status}.`;
                 return {status: "failed", error, recovery};
             },
-            (error, cancelled) => cancelled ? {status: "cancelled", result: {summary: "Scenario search stopped after its last settled round.", detail: {sessionId, scenario: "symbol-win", symbolId: validated.symbolId}}, recovery} : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
+            (error, cancelled) => cancelled ? {status: "cancelled", result: {summary: "Scenario search stopped after its last settled round.", detail: {sessionId, scenario: "symbol-win", symbolId: validated.symbolId, ...(validated.bet === undefined ? {} : {bet: validated.bet}), ...(validated.mode === undefined ? {} : {mode: validated.mode})}}, recovery} : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
         );
         if (execution === undefined) return;
         if (execution.value.status === "ok") this.sendJson(res, 200, {status: "ok", session: execution.value.session});
@@ -4295,33 +4305,42 @@ export class StudioServer implements StudioServerHandling {
     }
 
     // PlayTab's "Find free games" scenario control -- POST /api/project/play/sessions/:id/find-free-games,
-    // no body. Same response shape/error handling as handlePlayFindAnyWin above
-    // (StudioPlayService.findFreeGames() returns the exact same StudioPlaySpinResult spin() does -- see
-    // its own doc comment), just repeating real spins server-side until one actually triggers free games.
-    private async handlePlayFindFreeGames(res: ServerResponse, sessionId: string): Promise<void> {
+    // body `{bet?, mode?}` carrying the Play tab's current selection. Same response shape/error handling
+    // as handlePlayFindAnyWin above (StudioPlayService.findFreeGames() returns the exact same
+    // StudioPlaySpinResult spin() does -- see its own doc comment), just repeating real spins server-side
+    // until one actually triggers free games.
+    private async handlePlayFindFreeGames(req: IncomingMessage, res: ServerResponse, sessionId: string): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
         if (this.rejectPlayDuringTransition(res)) return;
         if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
+        let validated;
+        try {
+            const body = await this.readJsonBody(req);
+            validated = validatePlayScenarioRequest((body ?? {}) as PlayScenarioRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
         if (this.rejectPlayDuringTransition(res)) return;
         const projectRoot = this.canonicalPathIdentity(this.currentContext.projectRoot);
         const recovery = {action: "new-session", reason: "Scenario search cannot resume after restart because settled wallet state belongs to its original Play session."} as const;
         const execution = await this.executeCommonOperation(
             res, {
-                projectId: projectRoot, operation: "play-find-free-games", request: {sessionId}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery,
+                projectId: projectRoot, operation: "play-find-free-games", request: {sessionId, ...validated}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery,
                 initialProgress: {stage: "Searching rounds", unit: "attempted spins", current: 0, total: "indeterminate", message: "Spinning until a free-games round is settled."},
                 reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", error: "Scenario search is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
             },
-            ({signal, progress}) => this.playService.findFreeGames(sessionId, {signal, onProgress: (current, total) => progress({stage: "Searching rounds", unit: "attempted spins", current, total, message: "Waiting for a free-games settled round."})}),
+            ({signal, progress}) => this.playService.findFreeGames(sessionId, {...validated, signal, onProgress: (current, total) => progress({stage: "Searching rounds", unit: "attempted spins", current, total, message: "Waiting for a free-games settled round."})}),
             (result, cancelled) => {
                 if (cancelled || result.status === "cancelled") return {status: "cancelled", result: this.playCancellationResult(sessionId, "free-games", result.status === "cancelled" ? result.session : undefined), recovery};
-                if (result.status === "ok") return {status: "completed", result: {summary: "Play scenario search completed.", outputs: [{label: "Settled Play round"}], provenance: {game: result.session.game}, detail: {sessionId, scenario: "free-games", session: result.session}}};
+                if (result.status === "ok") return {status: "completed", result: {summary: "Play scenario search completed.", outputs: [{label: "Settled Play round"}], provenance: {game: result.session.game}, detail: {sessionId, scenario: "free-games", ...validated, session: result.session}}};
                 const error = result.status === "error" && result.code !== undefined ? `${result.code}: ${result.error}` : `Play scenario search ${result.status}.`;
                 return {status: "failed", error, recovery};
             },
-            (error, cancelled) => cancelled ? {status: "cancelled", result: {summary: "Scenario search stopped after its last settled round.", detail: {sessionId, scenario: "free-games"}}, recovery} : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
+            (error, cancelled) => cancelled ? {status: "cancelled", result: {summary: "Scenario search stopped after its last settled round.", detail: {sessionId, scenario: "free-games", ...validated}}, recovery} : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
         );
         if (execution === undefined) return;
         if (execution.value.status === "ok") this.sendJson(res, 200, {status: "ok", session: execution.value.session});

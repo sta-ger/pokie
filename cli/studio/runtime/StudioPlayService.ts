@@ -63,6 +63,10 @@ export type StudioPlaySessionOptions = {
     readonly signal?: AbortSignal;
     /** Called only after a real round has settled; optional for direct callers. */
     readonly onProgress?: (attemptedSpins: number, maximumSpins: number) => void;
+    /** Play tab's current bet/mode choice for a scenario search's real spins. */
+    readonly bet?: number;
+    /** Play tab's current bet-mode choice for a scenario search's real spins. */
+    readonly mode?: string;
 };
 export type StudioWasmRuntimeLoading = typeof loadPokieWasmFileRuntime;
 
@@ -392,9 +396,10 @@ export class StudioPlayService {
                 } else return {status: "error", retryDisposition: "rejected", error: error instanceof Error ? error.message : String(error)};
             }
         } else {
-            // These are submitted together with a manual Spin, so the canonical SpinCommandHandler
-            // applies them immediately before this exact round.  Scenario searches deliberately omit
-            // them: they continue from the session state the player already selected.
+            // These are submitted together with a manual Spin or a Play-tab scenario search, so the
+            // canonical SpinCommandHandler applies them immediately before this exact round. Scenario
+            // searches carry the Play tab's current bet/mode for every attempt; omitting them would let
+            // the displayed bet disagree with the settled round's own stake.
             if (operation !== undefined && operation !== "spin" && intent.delivery === undefined && typeof (active.session as {hasPendingLogicalRound?: () => boolean}).hasPendingLogicalRound === "function") {
                 const round = new SessionRuntime(active.session).getLogicalRound();
                 const requestId = crypto.randomUUID();
@@ -489,7 +494,7 @@ export class StudioPlayService {
             sessionId,
             "find-any-win",
             (session) => !new PlayUntilAnyWinStrategy().canPlayNextSimulationRound(session),
-            (artifact) => artifact.totalWin > 0, options.signal, options.onProgress,
+            (artifact) => artifact.totalWin > 0, options.signal, options.onProgress, options.bet, options.mode,
         );
     }
 
@@ -522,7 +527,7 @@ export class StudioPlayService {
             sessionId,
             "find-symbol-win",
             (session) => !new PlayUntilSymbolWinStrategy(symbolId).canPlayNextSimulationRound(session as unknown as VideoSlotSessionHandling<string>),
-            (artifact) => artifact.wins.some((win) => win.symbolId === symbolId), options.signal, options.onProgress,
+            (artifact) => artifact.wins.some((win) => win.symbolId === symbolId), options.signal, options.onProgress, options.bet, options.mode,
         );
     }
 
@@ -555,7 +560,7 @@ export class StudioPlayService {
             sessionId,
             "find-free-games",
             (session) => !new PlayFreeGamesStrategy().canPlayNextSimulationRound(session as unknown as VideoSlotWithFreeGamesSessionHandling),
-            (artifact) => (artifact.featureEvents ?? []).some((event) => event.type === "freeGamesTriggered"), options.signal, options.onProgress,
+            (artifact) => (artifact.featureEvents ?? []).some((event) => event.type === "freeGamesTriggered"), options.signal, options.onProgress, options.bet, options.mode,
         );
     }
 
@@ -725,6 +730,8 @@ export class StudioPlayService {
         matchesArtifact: (artifact: RoundRecordJson) => boolean,
         signal?: AbortSignal,
         onProgress?: (attemptedSpins: number, maximumSpins: number) => void,
+        bet?: number,
+        mode?: string,
     ): Promise<StudioPlaySpinResult> {
         let lastSettledSession: StudioRuntimeSessionView | undefined;
         for (let attempt = 0; attempt < this.maxFindScenarioSpins; attempt++) {
@@ -736,7 +743,7 @@ export class StudioPlayService {
                 return {status: "not-found"};
             }
 
-            const round = await this.spin(sessionId, operation, undefined, undefined, {}, signal);
+            const round = await this.spin(sessionId, operation, bet, mode, {}, signal);
             if (signal?.aborted) {
                 const settledSession = round.status === "ok" ? round.session : lastSettledSession;
                 return {status: "cancelled", ...(settledSession === undefined ? {} : {session: settledSession})};

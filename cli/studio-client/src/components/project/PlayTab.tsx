@@ -38,13 +38,13 @@ export function PlayTab({
     sessionId: string | undefined;
     onNewSession: (seed?: string, modeName?: string) => void;
     onSpin: (bet?: number, mode?: string, delivery?: "stepwise" | "composite") => void;
-    onFindAnyWin: () => void;
-    onFindSymbolWin: (symbolId: string) => void;
+    onFindAnyWin: (bet?: number, mode?: string) => void;
+    onFindSymbolWin: (symbolId: string, bet?: number, mode?: string) => void;
     // The canonical shared "custom scenario" control -- StudioPlayService.findFreeGames()'s own doc
     // comment. Always rendered, same as Find any win/Find symbol win: a game that doesn't support free
     // games reports that honestly once clicked (errorNotice below), rather than this tab guessing ahead
     // of time which games do.
-    onFindFreeGames: () => void;
+    onFindFreeGames: (bet?: number, mode?: string) => void;
     // The current project's own real outcome-library modes (see ProjectDashboardPage's own
     // outcomeLibraryModes doc comment) -- undefined for an ordinary game-backed project, which has no
     // notion of an outcome-library mode at all. When present, New session/Reset draw against whichever
@@ -272,7 +272,7 @@ export function PlayTab({
                     Scenario searches use real settled spins and leave their final round in this Play session.
                 </Text>
                 <QuickActions>
-                    <Button variant="default" loading={loading} disabled={findAnyWinReason !== undefined} title={findAnyWinReason} onClick={onFindAnyWin}>
+                    <Button variant="default" loading={loading} disabled={findAnyWinReason !== undefined} title={findAnyWinReason} onClick={() => onFindAnyWin(bet, mode)}>
                         Find any win
                     </Button>
                     <Button
@@ -280,11 +280,11 @@ export function PlayTab({
                         loading={loading}
                         disabled={findSymbolWinReason !== undefined || !selectedSymbol}
                         title={findSymbolWinReason}
-                        onClick={() => selectedSymbol !== null && onFindSymbolWin(selectedSymbol)}
+                        onClick={() => selectedSymbol !== null && onFindSymbolWin(selectedSymbol, bet, mode)}
                     >
                         Find symbol win
                     </Button>
-                    <Button variant="default" loading={loading} disabled={findFreeGamesReason !== undefined} title={findFreeGamesReason} onClick={onFindFreeGames}>
+                    <Button variant="default" loading={loading} disabled={findFreeGamesReason !== undefined} title={findFreeGamesReason} onClick={() => onFindFreeGames(bet, mode)}>
                         Find free games
                     </Button>
                 </QuickActions>

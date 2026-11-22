@@ -45,6 +45,48 @@ const OPTIMIZATION_STATUS_LABEL: Record<StudioJobView["status"], string> = {
 
 const MAX_SEARCH_BUDGET = 1_000_000;
 const MAX_EXACT_OUTCOMES = 1_000_000;
+const UNDO_TTL_MS = 15 * 60 * 1000;
+const UNDO_STORAGE_PREFIX = "pokie.optimization.undo.";
+
+type StoredUndo = {undoId: string; savedAt: number};
+
+function undoStorageKey(projectRoot: string): string {
+    return `${UNDO_STORAGE_PREFIX}${projectRoot}`;
+}
+
+function readStoredUndo(projectRoot: string): StoredUndo | undefined {
+    if (typeof sessionStorage === "undefined") return undefined;
+    try {
+        const raw = sessionStorage.getItem(undoStorageKey(projectRoot));
+        if (raw === null) return undefined;
+        const parsed = JSON.parse(raw) as Partial<StoredUndo>;
+        if (typeof parsed.undoId !== "string" || typeof parsed.savedAt !== "number" || Date.now() - parsed.savedAt > UNDO_TTL_MS) {
+            sessionStorage.removeItem(undoStorageKey(projectRoot));
+            return undefined;
+        }
+        return {undoId: parsed.undoId, savedAt: parsed.savedAt};
+    } catch {
+        return undefined;
+    }
+}
+
+function storeUndo(projectRoot: string, undoId: string): void {
+    if (typeof sessionStorage === "undefined") return;
+    try {
+        sessionStorage.setItem(undoStorageKey(projectRoot), JSON.stringify({undoId, savedAt: Date.now()} satisfies StoredUndo));
+    } catch {
+        // A browser with storage disabled still has the in-memory undo for this mounted panel.
+    }
+}
+
+function clearStoredUndo(projectRoot: string): void {
+    if (typeof sessionStorage === "undefined") return;
+    try {
+        sessionStorage.removeItem(undoStorageKey(projectRoot));
+    } catch {
+        // Nothing else to clear.
+    }
+}
 
 type OptimizationEvidence = NonNullable<StudioOptimizationResult["evidence"]>;
 
@@ -136,7 +178,7 @@ function TunableValuesInput({label, values, onCommit}: {
         <TextInput
             size="xs"
             aria-label={`Candidate values for ${label}`}
-            description="Comma-separated finite numbers."
+            description="Comma- or space-separated. Use a dot for decimals (8.5); a comma starts the next candidate."
             value={draft}
             error={error}
             onChange={(event) => {
@@ -179,7 +221,7 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
     const [destination, setDestination] = useState("");
     const [saved, setSaved] = useState<string>();
     const [applied, setApplied] = useState(false);
-    const [undo, setUndo] = useState<string>();
+    const [undo, setUndo] = useState<string | undefined>(() => readStoredUndo(projectRoot)?.undoId);
     const [undoNotice, setUndoNotice] = useState<string>();
     const [started, setStarted] = useState<StudioJobView>();
     const [fieldFilter, setFieldFilter] = useState("");
@@ -197,7 +239,7 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
             setStarted(undefined);
             setSaved(undefined);
             setError(undefined);
-            setUndo(undefined);
+            setUndo(readStoredUndo(projectRoot)?.undoId);
             setUndoNotice(undefined);
             setBusy(false);
             setFieldFilter("");
@@ -426,6 +468,8 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
                     if (kind === "apply") {
                         setApplied(true);
                         setUndo(value.undoId);
+                        if (value.undoId === undefined) clearStoredUndo(projectRoot);
+                        else storeUndo(projectRoot, value.undoId);
                         setUndoNotice(undefined);
                         setSupportSnapshot(undefined);
                         onApplied?.();
@@ -451,12 +495,18 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
             );
             setApplied(false);
             setUndo(undefined);
+            clearStoredUndo(projectRoot);
             setSupportSnapshot(undefined);
             setUndoNotice("Previous design values restored. Check tuning support and run a fresh optimization before applying again.");
             if (value.warning) setError(value.warning);
             onApplied?.();
         } catch (failure) {
-            setError(failure instanceof Error ? failure.message : String(failure));
+            const message = failure instanceof Error ? failure.message : String(failure);
+            setError(message);
+            if ((/no longer available|Source changed since the optimization|expires after 15 minutes/i).test(message)) {
+                setUndo(undefined);
+                clearStoredUndo(projectRoot);
+            }
         } finally {
             setBusy(false);
         }
@@ -828,6 +878,16 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
                 <div ref={resultRef}>
                     <Text fw={600}>Verdict: {result.status}</Text>
                     {result.candidate && !["success", "attained"].includes(result.status) && <Alert color="yellow">Best-so-far candidate; targets are not approved. Saving keeps this result.</Alert>}
+                    {["success", "attained"].includes(result.status) && result.evidence?.strategy === "exact-finite-v1" && (
+                        <Text size="xs" c="dimmed">
+                            Exact search selects the first candidate within the requested tolerance, in the listed order. Put preferred values first or tighten the tolerance to control which candidate is selected.
+                        </Text>
+                    )}
+                    {["infeasible", "exhausted"].includes(result.status) && result.evidence?.strategy === "exact-finite-v1" && (
+                        <Alert color="yellow" role="status">
+                            No candidate met the target. The evidence below lists every evaluated candidate’s exact value; widen the candidate values or tolerance, or add more fields to tune, then run again.
+                        </Alert>
+                    )}
                     {result.diagnostics.length > 0 && <Alert color="red" role="alert">{result.diagnostics.map((item) => `${item.path}: ${item.message}`).join("; ")}</Alert>}
                     {result.evidence && <OptimizationSummary evidence={result.evidence} />}
                     {result.evidence && (
@@ -864,7 +924,7 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
                     </Button>
                 </>
             )}
-            {(applied || Boolean(job?.result?.provenance?.authoredApply)) && undoNotice === undefined && (
+            {(applied || Boolean(job?.result?.provenance?.authoredApply) || undo !== undefined) && undoNotice === undefined && (
                 <Alert color="green" title="Changes saved to the game design">
                     <Text size="sm">The reviewed values are now part of the saved design. Check support and run a fresh preview before applying again.</Text>
                     {undo !== undefined && (
@@ -879,7 +939,7 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
                             >
                                 Undo applied changes
                             </Button>
-                            <Text size="xs" c="dimmed">Available until the source changes or Studio restarts (15 minutes).</Text>
+                            <Text size="xs" c="dimmed">Available for 15 minutes. Switching tabs keeps it; if the design source changed after applying, Undo will report that it is no longer valid.</Text>
                         </Group>
                     )}
                 </Alert>

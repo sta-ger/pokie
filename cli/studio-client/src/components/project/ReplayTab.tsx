@@ -584,8 +584,8 @@ export function ReplayTab({
                                         ) : (
                                             <List.Item key={entry.id}>
                                                 <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>
-                                                    {describeReplayEntryLabel(entry)} (reproduce
-                                                unavailable — no recorded seed; use Recent replays below to inspect it instead)
+                                                    {describeReplayEntryLabel(entry)} (seed replay unavailable —
+                                                no recorded seed; open the entry to inspect the recorded result)
                                                 </Text>
                                             </List.Item>
                                         ),
@@ -1328,7 +1328,7 @@ export function ReplayTab({
                                             </Anchor>
                                         ) : (
                                             <Text size="sm" c="dimmed">
-                                            Reproduce unavailable — no recorded seed
+                                            Seed replay unavailable — no recorded seed
                                             </Text>
                                         )}
                                     </Group>

@@ -9,6 +9,7 @@ type PayoutBucket = {
 };
 
 const INITIAL_ROWS = 12;
+const EXPAND_BY_DEFAULT_LIMIT = 50;
 
 /** "1 in N" reads badly when N rounds to 1 for a common outcome; keep precision near the mode. */
 function formatOneIn(probability: number): string {
@@ -24,15 +25,17 @@ function formatOneIn(probability: number): string {
  * canonical analysis.
  */
 export function ExactPayoutDistribution({buckets, label = "payout distribution"}: {buckets?: readonly PayoutBucket[]; label?: string}) {
-    const [expanded, setExpanded] = useState(false);
+    const [expanded, setExpanded] = useState(buckets !== undefined && buckets.length <= EXPAND_BY_DEFAULT_LIMIT);
     if (buckets === undefined || buckets.length === 0) return null;
     const visible = expanded ? buckets : buckets.slice(0, INITIAL_ROWS);
     const totalProbability = buckets.reduce((sum, bucket) => sum + Number(bucket.probability), 0);
+    const visibleProbability = visible.reduce((sum, bucket) => sum + Number(bucket.probability), 0);
     return (
         <AdvancedDisclosure label={label}>
             <Text size="sm" c="dimmed" mb="xs">
                 Exact probability mass function: one row per distinct payout multiplier, never a sampled histogram.
-                Probabilities sum to {formatAnalysisNumber(totalProbability * 100, 4)}%.
+                Probabilities across all {buckets.length} payouts sum to {formatAnalysisNumber(totalProbability * 100, 4)}%.
+                {visible.length < buckets.length && ` Showing ${visible.length} of ${buckets.length} rows (visible subtotal ${formatAnalysisNumber(visibleProbability * 100, 4)}%); expand to see every payout.`}
             </Text>
             <Table withRowBorders={false} aria-label="Exact payout distribution">
                 <Table.Thead>

@@ -71,13 +71,30 @@ test.describe.serial("managed project labels", () => {
         await expect(page.getByRole("rowheader", {name: "Stop reason"}).locator("xpath=following-sibling::td[1]")).toHaveText(/requested rounds completed/i);
     });
 
+    test("simulation rounds keep grouped thousands instead of silently dropping digits", async ({page}) => {
+        await page.goto("/");
+        await page.getByRole("button", {name: "Simulation", exact: true}).click();
+        const rounds = page.getByLabel("Rounds *");
+        const changeSettings = page.getByRole("button", {name: "Change settings", exact: true});
+        await expect(rounds.or(changeSettings)).toBeVisible({timeout: 60_000});
+        if (await changeSettings.isVisible()) {
+            await changeSettings.click();
+        }
+        await expect(rounds).toBeVisible({timeout: 30_000});
+        await rounds.click();
+        await rounds.press("Control+A");
+        await rounds.pressSequentially("10,000");
+        await rounds.press("Tab");
+        await expect(rounds).toHaveValue("10,000");
+    });
+
     test("simulation comparison shows the shared design and metric deltas", async ({page}) => {
         await page.goto("/");
         await page.getByRole("button", {name: "Simulation", exact: true}).click();
         const loadedReports = page.getByText(/Loaded \d+ simulation reports?/);
         const reportCount = async (): Promise<number> => {
             const text = await loadedReports.first().textContent();
-            return Number(/\d+/.exec(text ?? "")?.[0] ?? 0);
+            return Number((/\d+/).exec(text ?? "")?.[0] ?? 0);
         };
         const run = async (seed: string) => {
             const before = await reportCount();
@@ -152,6 +169,26 @@ test.describe.serial("managed project labels", () => {
         await expect(page.getByRole("cell", {name: /\d+:\d+/}).first()).toBeVisible();
     });
 
+    test("Find any win settles at the bet selected in Play", async ({page}) => {
+        await page.goto("/");
+        await page.getByRole("button", {name: "Play", exact: true}).click();
+        const newSession = page.getByRole("button", {name: "New Play session"});
+        const spin = page.getByRole("button", {name: "Spin", exact: true});
+        await expect(newSession.or(spin)).toBeVisible({timeout: 60_000});
+        if (await newSession.isVisible()) {
+            await newSession.click();
+        }
+        await expect(spin).toBeVisible({timeout: 60_000});
+        // One plain spin materializes the bet picker; then change the bet and search immediately. The
+        // scenario search must carry that selection instead of settling at the session's previous bet.
+        await spin.click();
+        await expect(page.getByText(/Round completed: 1 step, 1 part/)).toBeVisible({timeout: 30_000});
+        await page.getByRole("button", {name: "Select bet 5"}).click();
+        await page.getByRole("button", {name: "Find any win", exact: true}).click();
+        await expect(page.getByText(/Round completed: 1 step, 1 part, stake 5, payout [1-9]/)).toBeVisible({timeout: 60_000});
+        await expect(page.getByText("Bet: 5", {exact: true})).toBeVisible();
+    });
+
     test("a completed optimization does not show indeterminate work", async ({page}) => {
         await page.goto("/");
         await page.getByRole("button", {name: "Check tuning support"}).click();
@@ -168,7 +205,12 @@ test.describe.serial("managed project labels", () => {
         await page.getByRole("button", {name: /^Compute exact math$/}).click();
         await expect(page.getByText(/Exact, not sampled:/)).toBeVisible({timeout: 120_000});
         await page.getByRole("button", {name: /payout distribution/}).click();
-        await expect(page.getByRole("table", {name: "Exact payout distribution"})).toBeVisible();
+        const distribution = page.getByRole("table", {name: "Exact payout distribution"});
+        await expect(distribution).toBeVisible();
+        // The starter has 16 distinct payouts; the complete table is shown by default, so its rows plus
+        // the header add up to 17 and there is no hidden "Show all" remainder to explain away a short sum.
+        await expect(distribution.getByRole("row")).toHaveCount(17);
+        await expect(page.getByRole("button", {name: (/Show all \d+ payouts/)})).toHaveCount(0);
         await page.getByRole("button", {name: /line and symbol contributions/}).click();
         await expect(page.getByRole("table", {name: "Exact line and symbol contributions"}).first()).toBeVisible();
     });
@@ -184,6 +226,11 @@ test.describe.serial("managed project labels", () => {
         await expect(page.getByRole("dialog")).toContainText("Apply these reviewed changes to the saved design?");
         await page.locator("#optimization-apply-confirm").click();
         await expect(page.getByText("Changes saved to the game design")).toBeVisible({timeout: 60_000});
+        // Switching tabs unmounts the optimization panel, not the 15-minute server receipt. Undo must
+        // remain available when the designer comes back to inspect the applied values.
+        await page.getByRole("button", {name: "Game Model", exact: true}).click();
+        await page.getByRole("button", {name: "Overview", exact: true}).click();
+        await expect(page.getByRole("button", {name: "Undo applied changes"})).toBeVisible({timeout: 30_000});
         // The exact library was computed above from the pre-apply design. Applying a new paytable
         // must not leave those old numbers looking current until a manual reload.
         await expect(page.getByText(/computed from a different saved design/)).toBeVisible({timeout: 30_000});

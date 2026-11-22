@@ -155,17 +155,18 @@ export function usePlaySession(onRoundRecorded?: () => void) {
 
     // Studio Play's "Find any win" scenario control -- repeats real, authoritative spins server-side (see
     // StudioPlayService.findAnyWin()'s own doc comment) until one actually wins, then renders that round
-    // through the exact same RoundSummary chain a plain Spin does.
-    const findAnyWin = useCallback(() => {
-        runSpinAction("Find any win", (sid) => findAnyWinPlaySession(fetchImpl, sid));
+    // through the exact same RoundSummary chain a plain Spin does. The selected bet/mode travel with the
+    // search so its settled rounds use the same choice the player is looking at, not a stale session value.
+    const findAnyWin = useCallback((bet?: number, mode?: string) => {
+        runSpinAction("Find any win", (sid) => findAnyWinPlaySession(fetchImpl, sid, bet, mode));
     }, [runSpinAction, fetchImpl]);
 
     // Studio Play's "Find symbol win" scenario control -- same real, authoritative search as findAnyWin()
     // above, but for a specific symbol (PlayTab's own chooser), propagated straight through to
     // StudioPlayService.findSymbolWin().
     const findSymbolWin = useCallback(
-        (symbolId: string) => {
-            runSpinAction("Find symbol win", (sid) => findSymbolWinPlaySession(fetchImpl, sid, symbolId));
+        (symbolId: string, bet?: number, mode?: string) => {
+            runSpinAction("Find symbol win", (sid) => findSymbolWinPlaySession(fetchImpl, sid, symbolId, bet, mode));
         },
         [runSpinAction, fetchImpl],
     );
@@ -173,8 +174,8 @@ export function usePlaySession(onRoundRecorded?: () => void) {
     // Studio Play's "Find free games" scenario control -- the canonical shared "custom scenario"
     // abstraction (see StudioPlayService.findFreeGames()'s own doc comment); same real, authoritative
     // search as findAnyWin() above.
-    const findFreeGames = useCallback(() => {
-        runSpinAction("Find free games", (sid) => findFreeGamesPlaySession(fetchImpl, sid));
+    const findFreeGames = useCallback((bet?: number, mode?: string) => {
+        runSpinAction("Find free games", (sid) => findFreeGamesPlaySession(fetchImpl, sid, bet, mode));
     }, [runSpinAction, fetchImpl]);
 
     // Called from ProjectDashboardPage's own projectKey effect -- a genuinely different project must
