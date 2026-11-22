@@ -705,17 +705,19 @@ export function describeReplayEntryStatus(status: StudioReplayStatus): string {
 export function describeReplayEntryLabel(entry: StudioReplayListEntry): string {
     const status = entry.source === "outcome-source-sample" && entry.status === "completed"
         ? "Recorded draw" : describeReplayEntryStatus(entry.status);
-    const identity = `${entry.game?.id ?? "?"} round ${entry.round} — ${status}`;
-    // Older summaries may have no native classification. Still expose the retained inputs and
-    // record identity; never guess the library from the currently opened project.
-    let source = "Source not recorded";
+    const parts = [`${entry.game?.id ?? "?"} round ${entry.round} — ${status}`];
+    // Older summaries may have no native classification. Omit the field instead of claiming a
+    // concrete value was "not recorded" while the loaded record shows it.
     if (entry.outcomeSource !== undefined) {
-        source = `Library ${entry.outcomeSource.libraryId} (${entry.outcomeSource.libraryHash})`;
+        parts.push(`Library ${entry.outcomeSource.libraryId} (${entry.outcomeSource.libraryHash})`);
+        parts.push(`Outcome ${entry.outcomeSource.outcomeId}`);
     } else if (entry.source === "outcome-source-sample") {
-        source = "Outcome Library";
+        parts.push("Outcome Library");
     }
-    const outcome = entry.outcomeSource === undefined ? "" : ` · Outcome ${entry.outcomeSource.outcomeId}`;
-    return `${identity} · ${source} · Seed ${entry.seed ?? "not recorded"} · Mode ${entry.modeName ?? "not recorded"}${outcome} · ${entry.startedAt} · Record ${entry.id}`;
+    if (entry.seed !== undefined && entry.seed.trim().length > 0) parts.push(`Seed ${entry.seed}`);
+    if (entry.modeName !== undefined && entry.modeName.trim().length > 0) parts.push(`Mode ${entry.modeName}`);
+    parts.push(entry.startedAt, `Record ${entry.id}`);
+    return parts.join(" · ");
 }
 
 // Whether "Reproduce & compare" from this exact "Recent replays" entry can ever produce anything

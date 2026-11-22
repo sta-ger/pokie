@@ -62,6 +62,11 @@ export function formatOptimizationTolerance(target: OptimizationTarget, value: n
     return `${formatAnalysisNumber(value * option.scale, digits)}${option.toleranceSuffix}`;
 }
 
+/** A distance below the displayed precision is zero, not scientific notation in a human sentence. */
+export function formatOptimizationDistance(target: OptimizationTarget, distance: number, digits = 4): string {
+    return formatOptimizationMetricValue(target, Math.abs(distance) < 1e-9 ? 0 : distance, digits);
+}
+
 export type OptimizationEvaluationLike = {
     readonly measured?: readonly (number | string)[];
     readonly parameters?: Readonly<Record<string, unknown>>;

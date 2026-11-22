@@ -404,7 +404,7 @@ function TargetCard({
         else if (artifactBuildRun.status === "error") summaryStatus = "Needs attention";
         else if (artifactBuildRun.status === "cancelled") summaryStatus = "Cancelled";
         else if (artifactPreview.status === "ok") summaryStatus = "Ready";
-        else if (artifactPreview.status === "conflict") summaryStatus = "Already exists";
+        else if (artifactPreview.status === "conflict") summaryStatus = "Existing output";
         else if (artifactPreview.status === "loading") summaryStatus = "Checking";
         else summaryStatus = "Needs attention";
     } else if (isActiveTarget) {
@@ -784,7 +784,30 @@ function TargetCard({
                                 <ParConversionDiagnostics report={artifactPreview.result.plan?.parConversion} />
                                 {artifactPreview.result.plan?.preflight.losses.map((loss, index) => <Text key={index} size="sm" c="orange">Data boundary: {loss}</Text>)}
                                 {artifactPreview.result.plan?.steps.filter((step) => step.kind === "importParWorkbook").flatMap((step) => step.losses ?? []).map((loss, index) => <Text key={index} size="sm" c="orange">PAR import boundary: {loss}</Text>)}
-                                {artifactPreview.status === "conflict" && <ErrorState message="Destination unavailable. Choose a different destination; Build will not overwrite it." />}
+                                {artifactPreview.status === "conflict" && (
+                                    <div>
+                                        <ErrorState message="An output already exists at this destination. Choose a new destination; Build will not overwrite it." />
+                                        <Text className="studio-technical-text" size="sm" mt={4}>
+                                            Existing output: {artifactPreview.result.destination}
+                                        </Text>
+                                        <QuickActions>
+                                            <Button size="xs" variant="default" onClick={() => onCopyPath(artifactPreview.result.destination)}>
+                                                Copy path
+                                            </Button>
+                                            {!outputActionsUnavailable && (
+                                                <Button
+                                                    size="xs"
+                                                    variant="default"
+                                                    onClick={() => artifactPreview.result.destinationKind === "directory"
+                                                        ? onOpenFolder(artifactPreview.result.destination)
+                                                        : onRevealOutput(artifactPreview.result.destination)}
+                                                >
+                                                    {artifactPreview.result.destinationKind === "directory" ? "Open output folder" : "Reveal file"}
+                                                </Button>
+                                            )}
+                                        </QuickActions>
+                                    </div>
+                                )}
                             </div>
                         )}
                         {(artifactPreview.status === "unsupported" || artifactPreview.status === "error") && (

@@ -115,6 +115,13 @@ export function canonicalWinKind(kind: WinHighlightKind): WinHighlightKind {
 // Keeping their standard labels here prevents the Studio RoundRecord adapter
 // and the VideoSlot wire adapter from independently choosing visible semantics.
 // Unknown game-defined types intentionally retain the generic representation.
+// Blueprint/payline ids are 0-based, while the editor and player both present lines as "Line 1".
+// Numeric ids are translated for display; arbitrary game-defined ids are left untouched.
+function displayLineId(id: string): string {
+    const numeric = Number(id);
+    return Number.isSafeInteger(numeric) && numeric >= 0 ? String(numeric + 1) : id;
+}
+
 export function canonicalWinLabel(
     kind: WinHighlightKind,
     id: string,
@@ -124,7 +131,7 @@ export function canonicalWinLabel(
 ): string {
     switch (canonicalWinKind(kind)) {
         case "line":
-            return `Line: ${id}, win: ${winAmount}`;
+            return `Line: ${displayLineId(id)}, win: ${winAmount}`;
         case "scatter":
             return `Scatter: ${symbolId}, win: ${winAmount}`;
         case "cluster":

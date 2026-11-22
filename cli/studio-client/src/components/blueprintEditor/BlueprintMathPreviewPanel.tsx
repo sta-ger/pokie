@@ -87,7 +87,7 @@ export function BlueprintMathPreviewPanel({blueprint, revision}: {blueprint: unk
                     <SimpleGrid cols={{base: 2, md: 5}} spacing="sm" mt="sm">
                         <Metric label="Exact RTP" value={`${formatAnalysisNumber(state.view.analysis.rtp * 100, 4)}%`} />
                         <Metric label="Hit frequency" value={`${formatAnalysisNumber(state.view.analysis.hitFrequency * 100, 4)}%`} />
-                        <Metric label="Volatility (std. dev.)" value={formatAnalysisNumber(state.view.analysis.standardDeviation, 4)} />
+                        <Metric label="Volatility (σ, bet units)" value={formatAnalysisNumber(state.view.analysis.standardDeviation, 4)} />
                         <Metric label="Max win (× bet)" value={formatAnalysisNumber(state.view.analysis.maxWin / state.view.stake, 4)} />
                         <Metric label="Outcomes" value={state.view.outcomeCount.toLocaleString("en-US")} />
                     </SimpleGrid>

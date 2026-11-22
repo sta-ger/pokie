@@ -996,7 +996,7 @@ export function ReplayTab({
                             {expected.status === "loaded" && (
                                 <div>
                                     <Text size="sm" mb="xs">
-                                        Round {expected.round}, seed {expected.seed ?? "(none)"}.
+                                        Replay session round {expected.round}, seed {expected.seed ?? "(none)"}.
                                     </Text>
                                     {expected.artifactWarnings.length > 0 && (
                                         <List size="sm" mb="sm">
@@ -1041,7 +1041,7 @@ export function ReplayTab({
                     {(findMethod === "seedRound" || findMethod === "simulation") && target && (
                         <div>
                             <Text size="sm" mb={4}>
-                                Round {target.round}, seed {target.seed ?? "(none)"}
+                                Replay target round {target.round}, seed {target.seed ?? "(none)"}
                                 {target.modeName ? `, mode "${target.modeName}"` : ""}.
                             </Text>
                             {/* The pre-run summary: honest about what Reproduce below actually does (confirmed
@@ -1174,11 +1174,11 @@ export function ReplayTab({
                                             <Table.Td style={{overflowWrap: "anywhere"}}>{result.id}</Table.Td>
                                         </Table.Tr>
                                         <Table.Tr>
-                                            <Table.Th>Requested round</Table.Th>
+                                            <Table.Th>Replay round requested</Table.Th>
                                             <Table.Td>{reproduceTarget.round}</Table.Td>
                                         </Table.Tr>
                                         <Table.Tr>
-                                            <Table.Th>Actual round reached</Table.Th>
+                                            <Table.Th>Replay round reached</Table.Th>
                                             <Table.Td>{result.round}</Table.Td>
                                         </Table.Tr>
                                         <Table.Tr>

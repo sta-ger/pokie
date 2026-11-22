@@ -1,4 +1,4 @@
-import {Button, Group, Modal, NumberInput, SegmentedControl, Stack, Text, TextInput} from "@mantine/core";
+import {Button, Group, Modal, SegmentedControl, Stack, Text, TextInput} from "@mantine/core";
 import {useEffect, useRef, useState} from "react";
 import {generateRandomBlueprint} from "../../api/apiClient";
 import type {StudioBlueprintRandomView} from "../../api/types";
@@ -143,9 +143,17 @@ export function NewBlueprintDialog({
         }
     }, [step, loadView]);
 
+    const seedText = randomForm.seed.trim();
+    const seedIsInvalid = seedText.length > 0 && (!(/^\d+$/).test(seedText) || !Number.isSafeInteger(Number(seedText)));
+    const seedError = seedIsInvalid ? "Seed must be a whole number (digits only)." : undefined;
+
     const runGenerate = (mintFreshSeed: boolean): void => {
-        const seedText = mintFreshSeed ? "" : randomForm.seed.trim();
-        const seed = seedText.length > 0 ? Number(seedText) : undefined;
+        const requestedSeed = mintFreshSeed ? "" : randomForm.seed.trim();
+        if (!mintFreshSeed && requestedSeed.length > 0 && (!(/^\d+$/).test(requestedSeed) || !Number.isSafeInteger(Number(requestedSeed)))) {
+            setRandomView({status: "error", message: "Seed must be a whole number (digits only)."});
+            return;
+        }
+        const seed = requestedSeed.length > 0 ? Number(requestedSeed) : undefined;
         setRandomView({status: "loading"});
         generateRandomBlueprint(fetchImpl, {seed, preset: randomForm.preset, name: randomForm.name.trim() || undefined})
             .then((result) => {
@@ -263,14 +271,14 @@ export function NewBlueprintDialog({
                 {step === "random" && (
                     <Stack gap="sm">
                         <QuickActions>
-                            <NumberInput
+                            <TextInput
                                 ref={seedRef}
-                                label="Seed (optional)"
+                                label="Seed (whole number, optional)"
                                 placeholder="Random"
-                                allowDecimal={false}
-                                allowNegative={false}
+                                inputMode="numeric"
                                 value={randomForm.seed}
-                                onChange={(value) => setRandomForm((prev) => ({...prev, seed: value === "" ? "" : String(value)}))}
+                                error={seedError}
+                                onChange={(event) => setRandomForm((prev) => ({...prev, seed: event.currentTarget.value}))}
                             />
                             <SegmentedControl
                                 aria-label="Generated game style"
@@ -289,7 +297,7 @@ export function NewBlueprintDialog({
                                     setRandomForm((prev) => ({...prev, name}));
                                 }}
                             />
-                            <Button onClick={() => runGenerate(false)} loading={randomView.status === "loading"}>
+                            <Button onClick={() => runGenerate(false)} loading={randomView.status === "loading"} disabled={seedIsInvalid}>
                                 Generate
                             </Button>
                         </QuickActions>

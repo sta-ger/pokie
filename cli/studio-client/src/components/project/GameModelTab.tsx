@@ -155,7 +155,11 @@ export function GameModelTab({
 
     const refreshing = state.status === "loading" || (state.status === "loaded" && state.refreshing === true);
 
-    const isDirty = (editState.status === "editing" || editState.status === "saving") && (editor.state.revision !== editState.baselineRevision || sequenceDraftDirty);
+    // A save already in flight is a committed write, not an unsaved draft. Treating it as dirty made
+    // the navigation guard ask "Leave and lose them?" while Save was still running, even though the
+    // server write was already underway. Only a still-editing section with a revision past its
+    // baseline (or an unsaved sequence draft) is genuinely dirty.
+    const isDirty = editState.status === "editing" && (editor.state.revision !== editState.baselineRevision || sequenceDraftDirty);
 
     useEffect(() => {
         if (!retainedDraft && projectRoot !== undefined && (editState.status === "editing" || editState.status === "saving")

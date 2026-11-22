@@ -1,5 +1,5 @@
 import type {OptimizationEvidence} from "../../../../../src/optimization/OptimizationPolicy";
-import {describeTunablePath, formatOptimizationMetricValue, formatOptimizationTolerance, nearestOptimizationCandidate} from "../../domain/optimizationRequest";
+import {describeTunablePath, formatOptimizationDistance, formatOptimizationMetricValue, formatOptimizationTolerance, nearestOptimizationCandidate} from "../../domain/optimizationRequest";
 
 /** Measurements shown here come from the held-out assessment, never the search fitness. */
 export function OptimizationPreview({evidence}: {evidence: OptimizationEvidence}) {
@@ -55,7 +55,7 @@ export function OptimizationPreview({evidence}: {evidence: OptimizationEvidence}
                     Nearest evaluated candidate: #{nearest.index + 1}
                     {Object.keys(nearest.evaluation.parameters ?? {}).length === 0 ? "" : ` (${Object.entries(nearest.evaluation.parameters ?? {}).map(([path, value]) => `${describeTunablePath(path)}=${String(value)}`).join(", ")})`}
                     {" — "}{formatOptimizationMetricValue(firstTarget, nearest.measured)}
-                    {", miss "}{formatOptimizationMetricValue(firstTarget, nearest.distance)}
+                    {", miss "}{formatOptimizationDistance(firstTarget, nearest.distance)}
                 </p>
             )}
             <p>Limits: {request.policy.strategy}; candidate limit {request.policy.budget}; maximum native population {request.policy.maxOutcomes}.</p>

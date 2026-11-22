@@ -249,6 +249,17 @@ body,
     border-top: 1px solid var(--mantine-color-default-border);
 }
 
+.studio-finished-jobs {
+    margin-top: var(--mantine-spacing-xs);
+}
+
+.studio-finished-jobs > summary {
+    cursor: pointer;
+    padding-block: var(--mantine-spacing-xs);
+    color: var(--mantine-color-dimmed);
+    font-size: var(--mantine-font-size-sm);
+}
+
 .studio-run-reproduction dl {
     margin-block: var(--mantine-spacing-xs);
 }

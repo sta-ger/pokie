@@ -1268,6 +1268,12 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const visibleCommonJobs = activeTab === "exportDeploy"
         ? commonJobs.jobs.filter((job) => job.id !== featureOwnedOutcomeLibraryJobId)
         : commonJobs.jobs;
+    // Keep work that can still change or needs attention visible; tuck completed/cancelled receipts
+    // into one collapsed disclosure instead of stacking them under every tab.
+    const attentionCommonJobs = visibleCommonJobs.filter((job) =>
+        job.status === "queued" || job.status === "running" || job.status === "cancelling"
+        || job.status === "recovery-required" || job.status === "failed");
+    const finishedCommonJobs = visibleCommonJobs.filter((job) => !attentionCommonJobs.includes(job));
     const projectName = describeProjectName(header);
     useDocumentTitle(`${projectName} · ${activeTabLabel} · POKIE Studio`);
 
@@ -1402,6 +1408,16 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     if (activeTab === "simulation" && simulationRestorationMessage !== undefined) {
         navigationMessage = simulationRestorationMessage;
     }
+
+    const renderCommonJob = (job: StudioJobView) => {
+        // This is display-only guidance; retain the durable job, request,
+        // provenance and original report bytes unchanged.
+        const displayedJob = job.operation === "simulation" && job.result !== undefined &&
+            (!simulation.resultCurrent || job.id !== simulation.job?.id)
+            ? {...job, result: {...job.result, warnings: [...(job.result.warnings ?? []), "Historical simulation result — not validated against the current saved design. Run a new simulation for current results."]}}
+            : job;
+        return <JobCard job={displayedJob} cancellationPending={commonJobs.pendingIds.includes(job.id) || (job.id === simulation.currentJobId && simulation.cancellationRequested)} onCancel={(id) => id === simulation.currentJobId ? simulation.cancel() : commonJobs.cancel(id)} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={job.operation === "project-open-materialization" ? reopenJobProject : openJobOutput} onRevealOutput={job.operation === "project-open-materialization" && jobOutputActionsUnavailableReason !== undefined ? undefined : revealJobOutput} onInspectOutput={inspectJobOutput} outputActionsUnavailableReason={job.operation === "project-open-materialization" ? undefined : jobOutputActionsUnavailableReason} key={job.id} />;
+    };
 
     if (header.status === "empty") {
         return (
@@ -1684,15 +1700,15 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         <Stack gap="xs" mb="md" aria-labelledby="studio-operations-heading">
                             <Title id="studio-operations-heading" order={3}>Studio operations</Title>
                             <Text size="sm" c="dimmed">Current and saved work stays available here while you continue through this project.</Text>
-                            {visibleCommonJobs.map((job) => {
-                                // This is display-only guidance; retain the durable job, request,
-                                // provenance and original report bytes unchanged.
-                                const displayedJob = job.operation === "simulation" && job.result !== undefined &&
-                                    (!simulation.resultCurrent || job.id !== simulation.job?.id)
-                                    ? {...job, result: {...job.result, warnings: [...(job.result.warnings ?? []), "Historical simulation result — not validated against the current saved design. Run a new simulation for current results."]}}
-                                    : job;
-                                return <JobCard job={displayedJob} cancellationPending={commonJobs.pendingIds.includes(job.id) || (job.id === simulation.currentJobId && simulation.cancellationRequested)} onCancel={(id) => id === simulation.currentJobId ? simulation.cancel() : commonJobs.cancel(id)} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={job.operation === "project-open-materialization" ? reopenJobProject : openJobOutput} onRevealOutput={job.operation === "project-open-materialization" && jobOutputActionsUnavailableReason !== undefined ? undefined : revealJobOutput} onInspectOutput={inspectJobOutput} outputActionsUnavailableReason={job.operation === "project-open-materialization" ? undefined : jobOutputActionsUnavailableReason} key={job.id} />;
-                            })}
+                            {attentionCommonJobs.map(renderCommonJob)}
+                            {finishedCommonJobs.length > 0 && (
+                                <details className="studio-finished-jobs">
+                                    <summary>Finished operations ({finishedCommonJobs.length})</summary>
+                                    <Stack gap="xs" mt="xs">
+                                        {finishedCommonJobs.map(renderCommonJob)}
+                                    </Stack>
+                                </details>
+                            )}
                         </Stack>
                     )}
                     {jobProjectOpeningError !== undefined && <Alert role="alert" color="red">{jobProjectOpeningError}</Alert>}

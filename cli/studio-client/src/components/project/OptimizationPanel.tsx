@@ -21,6 +21,7 @@ import {
     defaultTargetForMetric,
     describeTunablePath,
     findOptimizationMetric,
+    formatOptimizationDistance,
     formatOptimizationMetricValue,
     formatOptimizationTolerance,
     formatTunableValues,
@@ -93,6 +94,23 @@ function clearStoredUndo(projectRoot: string): void {
 
 type OptimizationEvidence = NonNullable<StudioOptimizationResult["evidence"]>;
 
+// Infeasible exact searches still have a measured value for every evaluated candidate; the top-level
+// `measured` field only records the selected winner. Show the nearest measured value per target rather
+// than a misleading em dash, while keeping the per-candidate evidence below authoritative.
+function nearestMeasuredForTarget(evidence: OptimizationEvidence, targetIndex: number, requested: number): number | undefined {
+    let best: {value: number; distance: number} | undefined;
+    for (const evaluation of evidence.evaluations ?? []) {
+        const raw = evaluation.measured?.[targetIndex];
+        let value = Number.NaN;
+        if (typeof raw === "number") value = raw;
+        else if (typeof raw === "string") value = Number(raw);
+        if (!Number.isFinite(value)) continue;
+        const distance = Math.abs(value - requested);
+        if (best === undefined || distance < best.distance) best = {value, distance};
+    }
+    return best?.value;
+}
+
 function OptimizationSummary({evidence}: {evidence: OptimizationEvidence}) {
     const targets = evidence.request.targets;
     const measured = evidence.measured;
@@ -114,12 +132,13 @@ function OptimizationSummary({evidence}: {evidence: OptimizationEvidence}) {
                 <Table.Tbody>
                     {targets.map((target, index) => {
                         const option = findOptimizationMetric(target);
-                        const value = sampled ? evidence.stochastic?.assessment?.targets[index]?.estimate : measured?.[index];
+                        const assessed = sampled ? evidence.stochastic?.assessment?.targets[index]?.estimate : measured?.[index];
+                        const value = assessed ?? (sampled ? undefined : nearestMeasuredForTarget(evidence, index, target.value));
                         let allowance: number | undefined;
                         if (target.tolerance !== undefined) allowance = target.tolerance.kind === "relative" ? Math.abs(target.value) * target.tolerance.value : target.tolerance.value;
                         const attained = value !== undefined && allowance !== undefined ? Math.abs(value - target.value) <= allowance : undefined;
                         let attainedLabel = "—";
-                        if (attained !== undefined) attainedLabel = attained ? "attained" : "missed";
+                        if (value !== undefined) attainedLabel = attained === true ? "attained" : "missed";
                         return (
                             <Table.Tr key={index}>
                                 <Table.Td>{option?.label ?? target.metric}{target.event ? ` (${target.event})` : ""}</Table.Td>
@@ -139,7 +158,7 @@ function OptimizationSummary({evidence}: {evidence: OptimizationEvidence}) {
                     Nearest evaluated candidate: #{nearest.index + 1}
                     {Object.keys(nearest.evaluation.parameters ?? {}).length === 0 ? "" : ` (${Object.entries(nearest.evaluation.parameters ?? {}).map(([path, value]) => `${describeTunablePath(path)}=${String(value)}`).join(", ")})`}
                     {" — "}{formatOptimizationMetricValue(firstTarget, nearest.measured)}
-                    {", miss "}{formatOptimizationMetricValue(firstTarget, nearest.distance)}
+                    {", miss "}{formatOptimizationDistance(firstTarget, nearest.distance)}
                 </Alert>
             )}
             {evidence.diff !== undefined && evidence.diff.length > 0 && (

@@ -1,6 +1,7 @@
 import {
     buildDefaultOptimizationRequest,
     describeTunablePath,
+    formatOptimizationDistance,
     formatOptimizationMetricValue,
     formatOptimizationTolerance,
     formatTunableValues,
@@ -65,6 +66,8 @@ describe("optimization request helpers", () => {
         ]);
         expect(nearest).toMatchObject({index: 1, measured: 0.96768});
         expect(nearest?.distance).toBeCloseTo(0.00768, 12);
+        expect(formatOptimizationDistance(rtpTarget, 4.885e-13)).toBe("0.0000%");
+        expect(formatOptimizationDistance(rtpTarget, 0.00768)).toBe("0.7680%");
     });
 
     it("builds a default request around the first real paytable row", () => {

@@ -24,6 +24,7 @@ import type {
 import type {BlueprintValidationView} from "../../domain/interpret/BlueprintEditor";
 import {classifyIssuesBySection, crossFieldOnly, type BlueprintSectionId} from "../../domain/interpret/BlueprintSections";
 import type {BlueprintMutate, ReelGenerationModeDraftsRef, ReelStripGenerationDraftsRef} from "../../hooks/useBlueprintEditor";
+import {BlueprintMathPreviewPanel} from "../blueprintEditor/BlueprintMathPreviewPanel";
 import {BetsList} from "../blueprintEditor/BetsList";
 import {BetModesEditor} from "../blueprintEditor/BetModesEditor";
 import {FreeGamesFieldset} from "../blueprintEditor/FreeGamesFieldset";
@@ -931,6 +932,7 @@ export function GameModelSections({
                     <fieldset disabled={edit.saving} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
                         <SectionValidationIssues id="paytable" edit={edit} />
                         <PaytableEditor blueprint={edit.blueprint} mutate={edit.mutate} />
+                        <BlueprintMathPreviewPanel blueprint={edit.blueprint} revision={edit.revision} />
                     </fieldset>
                 ) : (
                     <PaytableSection section={projection.paytable} />

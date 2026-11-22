@@ -122,6 +122,12 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
 // making an unavailable output look as though Studio forgot to offer it.
 function unavailableReasonsForArtifactTarget(entry: StudioOutputFormatView, fallbackReason: string): readonly string[] {
     if (entry.supported) return [];
+    // The planner's generic "no conversion edge" wording is accurate but reads like a compiler error
+    // for the one case a non-programmer is most likely to hit: a Blueprint project trying to build a
+    // Blueprint. Say what that actually means and what to choose instead.
+    if (entry.target === "blueprint" && entry.plan?.source.kind === "blueprint") {
+        return ["This project is already an editable Game Blueprint. Use Game Model to edit it, or choose another output such as PAR sheet (.xlsx) or TypeScript Game Package."];
+    }
     if (entry.plan?.diagnostic !== undefined) return [entry.plan.diagnostic.message, entry.plan.diagnostic.recovery];
     if (entry.diagnostic !== undefined) return [entry.diagnostic];
     if (entry.unsupportedNotes.length > 0) return entry.unsupportedNotes;
