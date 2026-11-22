@@ -163,12 +163,21 @@ export function ExactMathPanel({projectRoot, sourceRevision, refreshKey}: {proje
 
     const active = job !== undefined && !isTerminal(job) && job.status !== "recovery-required";
     const progress = job?.progress;
+    const durable = job?.durableProgress;
     const elapsedMs = job?.durationMs ?? (job?.startedAt === undefined ? undefined : Date.now() - job.startedAt);
     const processedRaw = progress === undefined ? undefined : Number(progress.processedRawIndex);
     const totalRaw = progress === undefined ? undefined : Number(progress.progressTotal);
-    const estimate = active && processedRaw !== undefined && totalRaw !== undefined && elapsedMs !== undefined && processedRaw > 0 && totalRaw > processedRaw
-        ? formatElapsed((elapsedMs / processedRaw) * (totalRaw - processedRaw))
+    const durableCurrent = durable === undefined || durable.current === "indeterminate" ? undefined : Number(durable.current);
+    const durableTotal = durable === undefined || durable.total === "indeterminate" ? undefined : Number(durable.total);
+    const measuredCurrent = durableCurrent ?? processedRaw;
+    const measuredTotal = durableTotal ?? totalRaw;
+    const estimate = active && measuredCurrent !== undefined && measuredTotal !== undefined && elapsedMs !== undefined && measuredCurrent > 0 && measuredTotal > measuredCurrent
+        ? formatElapsed((elapsedMs / measuredCurrent) * (measuredTotal - measuredCurrent))
         : undefined;
+    const stageLabel = durable?.stage ?? STAGE_LABELS[job?.lifecycleStage ?? ""] ?? job?.lifecycleStage ?? "Working";
+    const progressLabel = measuredCurrent === undefined || measuredTotal === undefined
+        ? undefined
+        : `${measuredCurrent.toLocaleString("en-US")} / ${measuredTotal.toLocaleString("en-US")} ${durable?.unit ?? "combinations"}`;
 
     let body: React.ReactNode;
     if (loading && view === undefined) {
@@ -276,8 +285,8 @@ export function ExactMathPanel({projectRoot, sourceRevision, refreshKey}: {proje
             {active && (
                 <Alert color="blue" mb="sm" title="Generating exact outcomes">
                     <Text size="sm">
-                        {STAGE_LABELS[job.lifecycleStage ?? ""] ?? job.lifecycleStage ?? "Working"} · {formatElapsed(elapsedMs)} elapsed
-                        {progress === undefined ? "" : ` · ${Number(progress.processedRawIndex).toLocaleString("en-US")} / ${Number(progress.progressTotal).toLocaleString("en-US")} combinations`}
+                        {stageLabel} · {formatElapsed(elapsedMs)} elapsed
+                        {progressLabel === undefined ? "" : ` · ${progressLabel}`}
                         {estimate === undefined ? "" : ` · ETA ~${estimate}`}
                     </Text>
                     <Group mt="xs">

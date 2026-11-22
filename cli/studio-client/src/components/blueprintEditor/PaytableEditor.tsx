@@ -1,4 +1,4 @@
-import {Button, Group, NumberInput, Select, Table} from "@mantine/core";
+import {Button, Group, NumberInput, Select, Table, TextInput} from "@mantine/core";
 import {useEffect, useState} from "react";
 import {asStringList} from "../../domain/asStringList";
 import {duplicatePaytablePayout, removePaytablePayout, setPaytablePayout} from "../../domain/blueprintFormOps";
@@ -11,9 +11,10 @@ import {symbolArtworkFromBlueprint, SymbolPresentation} from "../common/SymbolPr
 
 type PaytableRow = {symbolId: string; matchCount: number; payout: number};
 
-// A payout field must stay editable while the user types, but a blank/text value may never be
-// committed as 0. Keep the draft local and only write a parsed, non-negative number on blur; an
-// invalid draft snaps back to the last saved value and stays visibly explained.
+// A payout field must stay editable while the user types, but a blank/text/negative value may never be
+// silently rewritten or committed as 0. A plain text field keeps the exact draft (including a leading
+// minus or an empty value), so parsePayoutInput can reject it visibly on blur instead of Mantine's
+// NumberInput sanitizing the evidence away before validation runs.
 function PayoutInput({label, value, onCommit}: {label: string; value: number; onCommit: (value: number) => void}) {
     const [draft, setDraft] = useState<number | string>(value);
     const [error, setError] = useState<string>();
@@ -25,13 +26,12 @@ function PayoutInput({label, value, onCommit}: {label: string; value: number; on
 
     return (
         <div>
-            <NumberInput
+            <TextInput
                 aria-label={label}
+                inputMode="decimal"
                 value={draft}
-                min={0}
-                allowNegative={false}
-                onChange={(input) => {
-                    setDraft(input);
+                onChange={(event) => {
+                    setDraft(event.currentTarget.value);
                     setError(undefined);
                 }}
                 onBlur={() => {
@@ -41,6 +41,9 @@ function PayoutInput({label, value, onCommit}: {label: string; value: number; on
                     if (parsed.error === undefined) {
                         onCommit(parsed.value);
                     }
+                }}
+                onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur();
                 }}
                 error={error}
             />

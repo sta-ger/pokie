@@ -35,6 +35,11 @@ import {
     generateWeightedOutcomeLibrary,
     prepareOutcomeLibraryGeneration,
     resolveOutcomeLibraryRuntimeModeIdentity,
+    createAuthoredPokieGame,
+    loadGameBlueprint,
+    ProjectTargetResolver,
+    type GameBlueprint,
+    type ProjectResolving,
 } from "@fromstan/pokie";
 import fs from "fs";
 import path from "path";
@@ -112,6 +117,21 @@ type StudioOutcomeLibraryPreflightSnapshot = {
     readonly validatedGame?: PokieGame;
 };
 
+type LoadedStudioGame = {
+    readonly game: PokieGame;
+    release(): Promise<void>;
+};
+
+// createAuthoredPokieGame() exposes the same authored runtime and exact-enumeration session as the
+// materialized package, but without copying and npm-installing a whole runtime package first. Keep the
+// fast path deliberately narrow: stateful mechanics whose forced enumeration is rejected by
+// createAuthoredSession() still fall back to the materialized package so their existing
+// unsupported/error path is preserved.
+function canUseAuthoredExactRuntime(blueprint: GameBlueprint): boolean {
+    if (blueprint.betModes !== undefined && blueprint.betModes.length > 0) return false;
+    return Object.entries(blueprint.mechanics ?? {}).every(([key, value]) => value === undefined || key === "freeGames");
+}
+
 // The Project Dashboard's Generate step (and Registry panel), built directly on top of the exact same
 // public generation service "pokie outcomelibrary generate"/"build" already drive
 // (generateExactWeightedOutcomeLibrary / estimateExactOutcomeSpaceSize / OutcomeLibraryFolderWriter) --
@@ -152,6 +172,8 @@ export class StudioOutcomeLibraryGenerateService {
     // Kept as a narrow port for existing in-process embeddings/tests; the
     // production default is the bundle format's canonical validator.
     private readonly validateExistingBundle: (libraryDir: string, deep: boolean) => Promise<readonly {readonly severity: string; readonly code: string; readonly message: string}[]>;
+    private readonly resolveProject: ProjectResolving;
+    private readonly loadAuthoredGame: (blueprint: GameBlueprint) => PokieGame;
     private readonly planner = new FormatConversionPlanner();
     private readonly preflightSnapshots = new Map<string, StudioOutcomeLibraryPreflightSnapshot>();
     private nextPreflightToken = 1;
@@ -178,6 +200,8 @@ export class StudioOutcomeLibraryGenerateService {
         planning: StudioFormatConversionPlanning = new StudioFormatConversionPlanningService(pokieVersion),
         validateExistingBundle: (libraryDir: string, deep: boolean) => Promise<readonly {readonly severity: string; readonly code: string; readonly message: string}[]> =
         (libraryDir, deep) => new OutcomeLibraryFolderValidator<string>().validate(libraryDir, {deep}),
+        resolveProject: ProjectResolving = new ProjectTargetResolver(),
+        loadAuthoredGame: (blueprint: GameBlueprint) => PokieGame = (blueprint) => createAuthoredPokieGame(blueprint),
     ) {
         this.pokieVersion = pokieVersion;
         this.loadGame = loadGame;
@@ -193,6 +217,8 @@ export class StudioOutcomeLibraryGenerateService {
         this.ensureDirectory = ensureDirectory;
         this.planning = planning;
         this.validateExistingBundle = validateExistingBundle;
+        this.resolveProject = resolveProject;
+        this.loadAuthoredGame = loadAuthoredGame;
     }
 
     /** Shared no-runtime boundary used before every retained generation phase. */
@@ -212,8 +238,10 @@ export class StudioOutcomeLibraryGenerateService {
             return {status: "load-error", error: wasmDiagnostic, plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
         let game: PokieGame;
+        let loadedGame: LoadedStudioGame | undefined;
         try {
-            game = await this.loadGame(this.runtimeSourcePath(projectRoot));
+            loadedGame = await this.loadGameForSource(projectRoot);
+            game = loadedGame.game;
         } catch (error) {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
@@ -319,7 +347,7 @@ export class StudioOutcomeLibraryGenerateService {
                 preflightToken,
             };
         } finally {
-            await releasePokieGame(game);
+            await loadedGame?.release();
         }
     }
 
@@ -391,7 +419,8 @@ export class StudioOutcomeLibraryGenerateService {
                 return "The source, configuration, destination, or generation settings changed after the check. Refresh the displayed check before generating.";
             }
             try {
-                const game = await this.loadBoundManagedBlueprint(snapshot);
+                const loaded = await this.loadBoundManagedBlueprint(snapshot);
+                const game = loaded.game;
                 try {
                     const preparedRequest = prepareOutcomeLibraryGeneration(this.createDomainRequest(
                         game,
@@ -410,7 +439,7 @@ export class StudioOutcomeLibraryGenerateService {
                     }
                     return undefined;
                 } finally {
-                    await releasePokieGame(game).catch(() => undefined);
+                    await loaded.release().catch(() => undefined);
                 }
             } catch {
                 return "The source, configuration, destination, or generation settings changed after the check. Refresh the displayed check before generating.";
@@ -494,18 +523,22 @@ export class StudioOutcomeLibraryGenerateService {
         if (request.preflightToken !== undefined && snapshot === undefined) return {status: "conflict", error: "The displayed generation check has expired. Refresh it before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         let game: PokieGame;
         let ownsGameLease = false;
+        let releaseGame: (() => Promise<void>) | undefined;
         let domainRequest: OutcomeLibraryGenerationRequest;
         let preparedRequest;
         try {
             if (snapshot?.plan.source.kind === "blueprint") {
                 if (snapshot.validatedGame === undefined) {
-                    game = await this.loadBoundManagedBlueprint(snapshot);
+                    const loaded = await this.loadBoundManagedBlueprint(snapshot);
+                    game = loaded.game;
+                    releaseGame = loaded.release;
                     ownsGameLease = true;
                 } else {
                     game = this.rebindManagedBlueprintRuntime(snapshot);
                 }
             } else {
                 game = await this.loadGame(this.runtimeSourcePath(projectRoot));
+                releaseGame = () => releasePokieGame(game);
                 ownsGameLease = true;
             }
         } catch (error) {
@@ -851,7 +884,7 @@ export class StudioOutcomeLibraryGenerateService {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan};
         }
         } finally {
-            if (ownsGameLease) await releasePokieGame(game).catch(() => undefined);
+            if (ownsGameLease) await (releaseGame ?? (() => releasePokieGame(game)))().catch(() => undefined);
         }
     }
 
@@ -869,8 +902,10 @@ export class StudioOutcomeLibraryGenerateService {
         const wasmDiagnostic = this.wasmBoundaryDiagnostic(projectRoot);
         if (wasmDiagnostic !== undefined) return {status: "load-error", error: wasmDiagnostic};
         let game: PokieGame;
+        let loadedGame: LoadedStudioGame;
         try {
-            game = await this.loadGame(this.runtimeSourcePath(projectRoot));
+            loadedGame = await this.loadGameForSource(projectRoot);
+            game = loadedGame.game;
         } catch (error) {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error)};
         }
@@ -961,7 +996,7 @@ export class StudioOutcomeLibraryGenerateService {
             })),
         };
         } finally {
-            await releasePokieGame(game).catch(() => undefined);
+            await loadedGame.release();
         }
     }
 
@@ -1045,19 +1080,68 @@ export class StudioOutcomeLibraryGenerateService {
         }
     }
 
-    private async loadBoundManagedBlueprint(snapshot: StudioOutcomeLibraryPreflightSnapshot): Promise<PokieGame> {
+    private async loadBoundManagedBlueprint(snapshot: StudioOutcomeLibraryPreflightSnapshot): Promise<LoadedStudioGame> {
         const canonicalLocation = snapshot.plan.source.canonicalLocation;
         if (canonicalLocation === undefined) {
             throw new Error("The prepared managed Blueprint source is no longer available. Refresh the displayed check before generating.");
         }
+        const authored = await this.tryLoadAuthoredBlueprintGame(canonicalLocation);
+        if (authored !== undefined) {
+            try {
+                this.assertManagedBlueprintBinding(snapshot, authored.game);
+                return authored;
+            } catch (error) {
+                await authored.release().catch(() => undefined);
+                throw error;
+            }
+        }
         const game = await this.loadGame(canonicalLocation);
         try {
             this.assertManagedBlueprintBinding(snapshot, game);
-            return game;
+            return {game, release: () => releasePokieGame(game)};
         } catch (error) {
             await releasePokieGame(game).catch(() => undefined);
             throw error;
         }
+    }
+
+    /**
+     * Exact-math reads only need an executable authored game. Building and npm-installing a full
+     * runtime package first adds tens of seconds for a small Blueprint (and repeats on every saved
+     * design change), so a supported Blueprint is loaded directly into the same authored runtime the
+     * draft/PAR analysis already uses. Anything outside that narrow forced-enumeration subset keeps
+     * the materialized-package path and its established diagnostics.
+     */
+    private async loadGameForSource(projectRoot: string): Promise<LoadedStudioGame> {
+        const sourcePath = this.runtimeSourcePath(projectRoot);
+        const authored = await this.tryLoadAuthoredBlueprintGame(sourcePath);
+        if (authored !== undefined) return authored;
+        const game = await this.loadGame(sourcePath);
+        return {game, release: () => releasePokieGame(game)};
+    }
+
+    private async tryLoadAuthoredBlueprintGame(sourcePath: string): Promise<LoadedStudioGame | undefined> {
+        let project;
+        try {
+            project = await this.resolveProject.resolve(sourcePath, {readConfigurationProvenance: false});
+        } catch {
+            return undefined;
+        }
+        if (project?.type !== "blueprint") return undefined;
+        let blueprint: GameBlueprint;
+        try {
+            blueprint = loadGameBlueprint(project.rootPath);
+        } catch {
+            return undefined;
+        }
+        if (!canUseAuthoredExactRuntime(blueprint)) return undefined;
+        const game = this.loadAuthoredGame(blueprint);
+        return {
+            game,
+            release: async () => {
+                await game.release?.();
+            },
+        };
     }
 
     private rebindManagedBlueprintRuntime(snapshot: StudioOutcomeLibraryPreflightSnapshot): PokieGame {

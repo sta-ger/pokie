@@ -115,6 +115,15 @@ describe("ParSheetExporter", () => {
         const summary = workbook.getWorksheet("MathSummary")!;
         expect(summary.getCell("A2").value).toBe("RTP");
         expect(Number(summary.getCell("B2").value)).toBeGreaterThanOrEqual(0);
+        const noteRow = Array.from({length: summary.rowCount}, (_, index) => index + 1)
+            .find((row) => summary.getCell(`A${row}`).value === "Note");
+        expect(noteRow).toBeDefined();
+        expect(String(summary.getCell(`B${noteRow!}`).value)).not.toContain("Nothing was saved");
+        const lineSheet = workbook.getWorksheet("LineContributions")!;
+        for (let row = 2; row <= lineSheet.rowCount; row++) {
+            expect(String(lineSheet.getCell(`A${row}`).value)).not.toBe("0");
+            expect(String(lineSheet.getCell(`B${row}`).value)).not.toMatch(/^Line 0\b/);
+        }
         expect(workbook.getWorksheet("WinEvents")!.getCell("A1").value).toBe("Kind");
         const imported = await new ParSheetImporter().importFromFile(filePath);
         expect(imported.issues.filter(issue => issue.severity === "error")).toEqual([]);

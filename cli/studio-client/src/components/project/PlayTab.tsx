@@ -194,6 +194,7 @@ export function PlayTab({
         activeSession !== undefined && (activeSession.debug?.artifact !== undefined || activeSession.debug?.artifactUnavailableReason !== undefined)
             ? activeSession
             : undefined;
+    const visibleScreen = activeSession === undefined ? [] : describeRuntimeScreen(activeSession.screen) ?? [];
     let roundResult: ReactNode;
     if (playedRound !== undefined) {
         roundResult = (
@@ -208,22 +209,24 @@ export function PlayTab({
             />
         );
     } else if (activeSession !== undefined) {
-        roundResult = (
-            <GameScreenView logicalRound={activeSession?.logicalRound}
-                sequenceSelections={activeSession.sequenceSelections} sequenceStatistics={activeSession.sequenceStatistics}
-                screen={describeRuntimeScreen(activeSession.screen) ?? []}
-                visibleRowCoverage={Array.isArray(activeSession.visibleRowCoverage) ? activeSession.visibleRowCoverage as number[] : undefined}
-                credits={activeSession.credits}
-                availableBets={availableBets}
-                currentBet={bet}
-                onSelectBet={(bet) => setSelectedBet(String(bet))}
-                availableModeIds={availableBetModes}
-                currentModeId={mode}
-                onSelectMode={setSelectedBetMode}
-            />
-        );
+        roundResult = visibleScreen.length === 0
+            ? <EmptyState message="No round played yet — Spin to play." />
+            : (
+                <GameScreenView logicalRound={activeSession?.logicalRound}
+                    sequenceSelections={activeSession.sequenceSelections} sequenceStatistics={activeSession.sequenceStatistics}
+                    screen={visibleScreen}
+                    visibleRowCoverage={Array.isArray(activeSession.visibleRowCoverage) ? activeSession.visibleRowCoverage as number[] : undefined}
+                    credits={activeSession.credits}
+                    availableBets={availableBets}
+                    currentBet={bet}
+                    onSelectBet={(bet) => setSelectedBet(String(bet))}
+                    availableModeIds={availableBetModes}
+                    currentModeId={mode}
+                    onSelectMode={setSelectedBetMode}
+                />
+            );
     } else {
-        roundResult = <EmptyState message="No round played yet -- Spin to play." />;
+        roundResult = <EmptyState message="No round played yet — Spin to play." />;
     }
 
     return (

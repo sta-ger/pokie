@@ -209,7 +209,7 @@ function toContributionTable(
     const entries: WeightedOutcomeWinContribution[] = [...tallies.entries()].map(([key, tally]) => {
         let label: string;
         if (kind === "line") {
-            const lineId = key.split(":")[1];
+            const lineId = displayLineNumber(key.split(":")[1] ?? key);
             label = tally.symbolId === undefined ? `Line ${lineId}` : `Line ${lineId} · ${tally.symbolId}`;
         } else {
             label = tally.symbolId ?? key.replace(/^symbol:/, "");
@@ -224,8 +224,26 @@ function toContributionTable(
             outcomeCount: tally.outcomeCount,
         };
     });
-    entries.sort((left, right) => right.rtpContribution - left.rtpContribution);
+    entries.sort((left, right) => right.rtpContribution - left.rtpContribution
+        || (kind === "line" ? compareLineContributions(left, right) : left.label.localeCompare(right.label)));
     return {entries: entries.slice(0, maxRows), truncated: entries.length > maxRows};
+}
+
+/**
+ * Round-record line ids are zero-based engine coordinates. Studio/PAR present paylines as the
+ * one-based "Line 1 / Line 2" labels a game author actually sees, so only the display label is
+ * translated here; the stable key and every contribution value remain unchanged.
+ */
+export function displayLineNumber(lineId: string): string {
+    const numeric = Number(lineId);
+    return Number.isInteger(numeric) && numeric >= 0 ? String(numeric + 1) : lineId;
+}
+
+function compareLineContributions(left: WeightedOutcomeWinContribution, right: WeightedOutcomeWinContribution): number {
+    const leftId = Number(left.key.split(":")[1]);
+    const rightId = Number(right.key.split(":")[1]);
+    if (Number.isInteger(leftId) && Number.isInteger(rightId) && leftId !== rightId) return leftId - rightId;
+    return left.label.localeCompare(right.label);
 }
 
 function toEventTable(tallies: ReadonlyMap<string, EventTally>, maxRows: number): WeightedOutcomeWinEventTable {

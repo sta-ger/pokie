@@ -1,6 +1,6 @@
 import {analyzeBlueprintMath, DEFAULT_BLUEPRINT_MATH_OUTCOME_CAP} from "../weightedoutcome/BlueprintMathAnalysis.js";
 import type {WeightedOutcomeLibraryAnalysis} from "../weightedoutcome/WeightedOutcomeLibraryAnalysis.js";
-import type {WeightedOutcomeWinAnalysis} from "../weightedoutcome/WeightedOutcomeWinAnalysis.js";
+import {displayLineNumber, type WeightedOutcomeWinAnalysis} from "../weightedoutcome/WeightedOutcomeWinAnalysis.js";
 import {PAR_SHEET_MATH_SHEET_NAMES} from "./ParSheetMathSheetNames.js";
 import type {SheetGrid} from "./SheetGrid.js";
 
@@ -55,7 +55,9 @@ export async function computeParSheetMathAnalysis(
         totalWeight: result.totalWeight,
         stake: result.stake,
         generatedAt: result.generatedAt,
-        ...(result.note === undefined ? {} : {note: result.note}),
+        // The draft preview's note says "nothing was saved" because it deliberately writes no project.
+        // This workbook, by contrast, is the saved artifact, so use a PAR-specific note instead.
+        note: `Exact enumeration of ${result.outcomeCount.toLocaleString("en-US")} outcomes.`,
     };
 }
 
@@ -108,7 +110,7 @@ export function buildParSheetMathSheets(math: ParSheetMathAnalysis): ParSheetMat
     const lineContributions: SheetGrid = [
         ["Line", "Label", "RTP contribution (%)", "Hit frequency (%)", "Outcomes"],
         ...wins.line.entries.map((entry) => [
-            entry.key.split(":")[1] ?? entry.key,
+            displayLineNumber(entry.key.split(":")[1] ?? entry.key),
             entry.label,
             round(entry.rtpContribution * 100),
             round(entry.hitFrequency * 100),

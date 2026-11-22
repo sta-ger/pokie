@@ -404,7 +404,7 @@ export function SimulationTab({
                     <QuickActions>
                         <NumberInput
                             label="Rounds"
-                            description={`1–${MAX_STUDIO_SIMULATION_ROUNDS.toLocaleString("en-US")} rounds per simulation.${lastRunHint}`}
+                            description={`1–${MAX_STUDIO_SIMULATION_ROUNDS.toLocaleString("en-US")} rounds per simulation. Whole numbers only.${lastRunHint}`}
                             min={1}
                             max={MAX_STUDIO_SIMULATION_ROUNDS}
                             clampBehavior="none"

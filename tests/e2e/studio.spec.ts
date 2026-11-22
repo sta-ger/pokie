@@ -47,6 +47,19 @@ test.describe.serial("managed project labels", () => {
         await expect(page.getByText("Line 3: 2 → 2 → 2 → 2 → 2")).toBeVisible();
     });
 
+    test("a negative payout is rejected visibly instead of changing its sign", async ({page}) => {
+        await page.goto("/");
+        await page.getByRole("button", {name: "Game Model", exact: true}).click();
+        await page.getByRole("button", {name: "Edit", exact: true}).nth(4).click();
+        const payout = page.getByRole("textbox", {name: "A x3 payout"});
+        const original = await payout.inputValue();
+        await payout.fill("-5");
+        await payout.press("Tab");
+        await expect(page.getByText("Payout cannot be negative. The previous value was kept.")).toBeVisible();
+        await expect(payout).toHaveValue(original);
+        await page.getByRole("button", {name: "Cancel", exact: true}).click();
+    });
+
     test("optimization exposes a target and tunable fields without opening JSON", async ({page}) => {
         await page.goto("/");
         await expect(page.getByText("Math target", {exact: true})).toBeVisible({timeout: 60_000});
@@ -148,6 +161,7 @@ test.describe.serial("managed project labels", () => {
         await newSession.click();
         const spin = page.getByRole("button", {name: "Spin", exact: true});
         await expect(spin).toBeVisible({timeout: 60_000});
+        await expect(page.getByText("No round played yet — Spin to play.")).toBeVisible();
         await spin.click();
         await expect(page.getByText(/Round completed: 1 step, 1 part/)).toBeVisible({timeout: 30_000});
         await expect(page.getByText(/1 steps/)).toHaveCount(0);
@@ -232,7 +246,10 @@ test.describe.serial("managed project labels", () => {
         await expect(distribution.getByRole("row")).toHaveCount(17);
         await expect(page.getByRole("button", {name: (/Show all \d+ payouts/)})).toHaveCount(0);
         await page.getByRole("button", {name: /line and symbol contributions/}).click();
-        await expect(page.getByRole("table", {name: "Exact line and symbol contributions"}).first()).toBeVisible();
+        const contributions = page.getByRole("table", {name: "Exact line and symbol contributions"}).first();
+        await expect(contributions).toBeVisible();
+        await expect(contributions).toContainText("Line 1");
+        await expect(contributions).not.toContainText("Line 0");
         await page.getByRole("button", {name: /win event probabilities/}).click();
         const events = page.getByRole("table", {name: "Exact win event probabilities"});
         await expect(events).toBeVisible();

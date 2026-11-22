@@ -306,16 +306,31 @@ export class StudioOutcomeLibraryGenerateJobService {
         record.status = "running";
         this.jobService?.markRunning(record.id);
         this.jobService?.progress(record.id, {stage: "Preflight", unit: "work", current: "indeterminate", total: "indeterminate", message: "Revalidating the prepared source, configuration, and destination."});
+        // Writing/analyzing emits one progress callback per outcome record. Persisting every one of
+        // those to the durable job file turns a sub-second bundle write into tens of seconds of disk
+        // churn while telling the reader nothing new. Keep the in-memory cursor exact, but publish at
+        // most four durable progress updates a second unless the stage changes or the stage completes.
+        let lastPublishedAt = 0;
+        let lastPublishedStage: string | undefined;
+        const publishProgress = (progress: StudioJobProgressView): void => {
+            const now = Date.now();
+            const stageChanged = progress.stage !== lastPublishedStage;
+            const complete = progress.current !== "indeterminate" && progress.current === progress.total;
+            if (!stageChanged && !complete && now - lastPublishedAt < 250) return;
+            lastPublishedAt = now;
+            lastPublishedStage = progress.stage;
+            this.jobService?.progress(record.id, progress);
+        };
         const result = await this.generateService.generate(record.projectRoot, {
             ...record.request,
             signal: record.controller.signal,
             onProgress: (processedRawIndex, progressTotal) => {
                 record.progress = {processedRawIndex: processedRawIndex.toString(), progressTotal: progressTotal.toString()};
-                this.jobService?.progress(record.id, {stage: "Enumerating combinations", unit: "raw combinations", current: processedRawIndex.toString(), total: progressTotal.toString()});
+                publishProgress({stage: "Enumerating combinations", unit: "raw combinations", current: processedRawIndex.toString(), total: progressTotal.toString()});
             },
         }, (stage) => {
             record.lifecycleStage = stage;
-            this.jobService?.progress(record.id, {
+            publishProgress({
                 stage: durableStageLabel(stage),
                 unit: "work",
                 current: "indeterminate",
@@ -329,12 +344,12 @@ export class StudioOutcomeLibraryGenerateJobService {
             if (record.lifecycleStage !== undefined && record.lifecycleStage !== "generation" && record.lifecycleStage !== "finalization") return;
             if (record.progress !== undefined) record.progress.emittedOutcomes = emittedOutcomes.toString();
             else record.progress = {processedRawIndex: "0", progressTotal: "0", emittedOutcomes: emittedOutcomes.toString()};
-            this.jobService?.progress(record.id, {stage: "Deduplicating/finalizing outcomes", unit: "outcome records", current: emittedOutcomes.toString(), total: "indeterminate"});
+            publishProgress({stage: "Deduplicating/finalizing outcomes", unit: "outcome records", current: emittedOutcomes.toString(), total: "indeterminate"});
         }, (progress) => {
             // A raw-combination total says nothing about a write, analysis or
             // index-copy stage. Preserve an honest indeterminate total until
             // the owning writer supplies a stage-local denominator.
-            this.jobService?.progress(record.id, {
+            publishProgress({
                 stage: durableStageLabel(record.lifecycleStage ?? "writing"),
                 unit: progress.unit ?? "outcome records",
                 current: progress.completed.toString(),
