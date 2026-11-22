@@ -1,5 +1,6 @@
 import {describeSimulationDiagnostics} from "./describeSimulationDiagnostics.js";
 import {describeFeatureAnalytics} from "../simulation/describeFeatureAnalytics.js";
+import {payoutHistogramRows} from "./payoutHistogramPresentation.js";
 import {describeWeightedBonusCoverage} from "../session/videoslot/authored/WeightedBonus.js";
 import {describeSequenceVariantCoverage} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {SimulationReport} from "./SimulationReport.js";
@@ -96,13 +97,22 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
             ["Workers", String(report.workers ?? 1)],
         ];
         const tableRows = rows.map(([label, value]) => `            <tr><th scope="row">${label}</th><td>${value}</td></tr>`).join("\n");
+        const atAGlance = [
+            `RTP ${(report.rtp * 100).toFixed(2)}%`,
+            ...(report.rtpConfidenceInterval95 !== undefined ? [`(95% CI ${formatPercentInterval(report.rtpConfidenceInterval95)})`] : []),
+            `hit frequency ${(report.hitFrequency * 100).toFixed(2)}%`,
+            `max win ${report.maxWin.toFixed(2)}× bet`,
+            `over ${report.rounds.toLocaleString()} rounds`,
+        ].join(" ");
 
         return [
+            `        <p><strong>At a glance:</strong> ${this.escapeHtml(atAGlance)}. This is an empirical estimate; confidence intervals and unseen rare events still matter.</p>`,
             "        <table>",
             "            <tbody>",
             tableRows,
             "            </tbody>",
             "        </table>",
+            ...this.renderPayoutHistogramSection(report),
             "<h2>Sampling and precision diagnostics</h2>", ...describeSimulationDiagnostics(report).map(line => `<p>${this.escapeHtml(line)}</p>`),
             ...(report.sampling ? [`<h2>Logical round sampling</h2><p>Completed logical rounds: ${report.rounds}; accepted subrounds: ${report.sampling.acceptedSubrounds}; carried subrounds: ${report.sampling.carriedSubrounds ?? 0}; excluded unfinished/restored subrounds: ${report.sampling.excludedSubrounds}. Independent session trajectory per worker. Monetary totals include every observed subround.</p>`] : []),
             ...(report.modifiers ? [`<h2>Screen modifiers</h2><p>Executed steps: ${this.escapeHtml(String(report.modifiers.steps))}; rule applications: ${this.escapeHtml(String(report.modifiers.ruleApplications))}; sticky steps: ${this.escapeHtml(String(report.modifiers.stickySteps))}; multiplied components: ${this.escapeHtml(String(report.modifiers.multipliedComponents))}</p>`] : []),
@@ -117,6 +127,25 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
             ...this.renderReproducibilitySection(report),
             ...this.renderListSection("Warnings", report.warnings),
             ...this.renderListSection("Recommendations", report.recommendations),
+        ];
+    }
+
+    private renderPayoutHistogramSection(report: SimulationReport): string[] {
+        const rows = payoutHistogramRows(report.payoutHistogram);
+        if (rows.length === 0) return [];
+        return [
+            "        <section>",
+            "            <h2>Payout distribution</h2>",
+            "            <table>",
+            "                <thead><tr><th>Payout bucket (× bet)</th><th>Rounds</th><th>Share</th></tr></thead>",
+            "                <tbody>",
+            ...rows.map(row => `                    <tr><td>${this.escapeHtml(row.label)}</td><td>${row.rounds}</td><td>${(row.share * 100).toFixed(2)}%</td></tr>`),
+            "                </tbody>",
+            "            </table>",
+            "            <div aria-label=\"Payout distribution bars\">",
+            ...rows.map(row => `                <div style="display:grid;grid-template-columns:8rem 1fr 4rem;gap:.5rem;align-items:center"><span>${this.escapeHtml(row.label)}</span><progress max="100" value="${(row.share * 100).toFixed(2)}"></progress><span>${(row.share * 100).toFixed(2)}%</span></div>`),
+            "            </div>",
+            "        </section>",
         ];
     }
 

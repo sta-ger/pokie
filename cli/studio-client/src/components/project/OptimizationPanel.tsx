@@ -58,14 +58,17 @@ function undoStorageKey(projectRoot: string): string {
     return `${UNDO_STORAGE_PREFIX}${projectRoot}`;
 }
 
+// Keep the reviewed-apply receipt beyond a tab reload (a browser restart too, until the 15-minute
+// server-side TTL expires). localStorage is safe here: it stores only the opaque server undo id and
+// the local timestamp, never project content or a source value.
 function readStoredUndo(projectRoot: string): StoredUndo | undefined {
-    if (typeof sessionStorage === "undefined") return undefined;
+    if (typeof localStorage === "undefined") return undefined;
     try {
-        const raw = sessionStorage.getItem(undoStorageKey(projectRoot));
+        const raw = localStorage.getItem(undoStorageKey(projectRoot));
         if (raw === null) return undefined;
         const parsed = JSON.parse(raw) as Partial<StoredUndo>;
         if (typeof parsed.undoId !== "string" || typeof parsed.savedAt !== "number" || Date.now() - parsed.savedAt > UNDO_TTL_MS) {
-            sessionStorage.removeItem(undoStorageKey(projectRoot));
+            localStorage.removeItem(undoStorageKey(projectRoot));
             return undefined;
         }
         return {undoId: parsed.undoId, savedAt: parsed.savedAt};
@@ -75,18 +78,18 @@ function readStoredUndo(projectRoot: string): StoredUndo | undefined {
 }
 
 function storeUndo(projectRoot: string, undoId: string): void {
-    if (typeof sessionStorage === "undefined") return;
+    if (typeof localStorage === "undefined") return;
     try {
-        sessionStorage.setItem(undoStorageKey(projectRoot), JSON.stringify({undoId, savedAt: Date.now()} satisfies StoredUndo));
+        localStorage.setItem(undoStorageKey(projectRoot), JSON.stringify({undoId, savedAt: Date.now()} satisfies StoredUndo));
     } catch {
         // A browser with storage disabled still has the in-memory undo for this mounted panel.
     }
 }
 
 function clearStoredUndo(projectRoot: string): void {
-    if (typeof sessionStorage === "undefined") return;
+    if (typeof localStorage === "undefined") return;
     try {
-        sessionStorage.removeItem(undoStorageKey(projectRoot));
+        localStorage.removeItem(undoStorageKey(projectRoot));
     } catch {
         // Nothing else to clear.
     }
@@ -377,7 +380,11 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
     const currentRevision = support?.sourceRevision ?? sourceChange?.sourceRevision;
     const resultRevisions = [job?.request.sourceRevision, retainedResult?.evidence?.sourceRevision, retainedResult?.candidate?.sourceRevision]
         .filter((revision): revision is string => typeof revision === "string");
-    const stale = !active && job !== undefined && (
+    // Applying a candidate deliberately changes the saved source. That is the expected outcome, not a
+    // stale result: keep the reviewed evidence and the green apply receipt, and only label it stale
+    // when a *different* source change made the candidate no longer describe the current design.
+    const appliedToSource = applied || Boolean(job?.result?.provenance?.authoredApply);
+    const stale = !active && !appliedToSource && job !== undefined && (
         (currentRevision !== undefined && resultRevisions.some(revision => revision !== currentRevision)) ||
         (sourceChange !== undefined && (currentRevision === undefined || resultRevisions.length === 0))
     );
@@ -546,22 +553,26 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
     let jobStatusLine: string | undefined;
     if (job !== undefined) {
         const label = OPTIMIZATION_STATUS_LABEL[job.status] ?? job.status;
-        jobStatusLine = `${stale ? "Historical optimization — " : ""}${label}`;
-        if (active) {
-            const progress = job.progress;
-            if (progress !== undefined && isMeasuredProgressValue(progress.current) && isMeasuredProgressValue(progress.total)) {
-                jobStatusLine += `: ${progress.current} / ${progress.total} ${progress.unit} ${progress.stage}${progress.message ? ` · ${progress.message}` : ""}`;
-            } else if (progress !== undefined) {
-                // Finalization/cancellation phases can carry non-numeric sentinels. Name the phase instead of
-                // printing "indeterminate / indeterminate work".
-                jobStatusLine += `: ${progress.stage}${progress.message ? ` · ${progress.message}` : ""}`;
-            } else {
-                jobStatusLine += `: ${unreportedProgress}`;
-            }
-        } else if (job.status === "completed") {
-            jobStatusLine += " — review the verdict below.";
+        if (appliedToSource) {
+            jobStatusLine = "Applied — the reviewed values are now part of the saved design. The retained evidence is below.";
         } else {
-            jobStatusLine += ".";
+            jobStatusLine = `${stale ? "Historical optimization — " : ""}${label}`;
+            if (active) {
+                const progress = job.progress;
+                if (progress !== undefined && isMeasuredProgressValue(progress.current) && isMeasuredProgressValue(progress.total)) {
+                    jobStatusLine += `: ${progress.current} / ${progress.total} ${progress.unit} ${progress.stage}${progress.message ? ` · ${progress.message}` : ""}`;
+                } else if (progress !== undefined) {
+                    // Finalization/cancellation phases can carry non-numeric sentinels. Name the phase instead of
+                    // printing "indeterminate / indeterminate work".
+                    jobStatusLine += `: ${progress.stage}${progress.message ? ` · ${progress.message}` : ""}`;
+                } else {
+                    jobStatusLine += `: ${unreportedProgress}`;
+                }
+            } else if (job.status === "completed") {
+                jobStatusLine += " — review the verdict below.";
+            } else {
+                jobStatusLine += ".";
+            }
         }
     }
 
@@ -955,7 +966,7 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
                 </>
             )}
             {(applied || Boolean(job?.result?.provenance?.authoredApply) || undo !== undefined) && undoNotice === undefined && (
-                <Alert color="green" title="Changes saved to the game design">
+                <Alert color="green" title="Applied — changes saved to the game design">
                     <Text size="sm">The reviewed values are now part of the saved design. Check support and run a fresh preview before applying again.</Text>
                     {undo !== undefined && (
                         <Group mt="xs">
@@ -969,7 +980,7 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
                             >
                                 Undo applied changes
                             </Button>
-                            <Text size="xs" c="dimmed">Available for 15 minutes. Switching tabs keeps it; if the design source changed after applying, Undo will report that it is no longer valid.</Text>
+                            <Text size="xs" c="dimmed">Available for 15 minutes in this browser, including after a reload. If the design source changed after applying, Undo will report that it is no longer valid.</Text>
                         </Group>
                     )}
                 </Alert>

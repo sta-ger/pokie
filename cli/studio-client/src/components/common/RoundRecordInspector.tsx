@@ -81,6 +81,7 @@ export function RoundRecordInspector({
     credits,
     paytable,
     sequenceStatistics,
+    omitScreen = false,
 }: {
     artifact: RoundRecordDisplayView;
     sequenceStatistics?: readonly import("../../../../../src/session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceStatistics[];
@@ -96,6 +97,11 @@ export function RoundRecordInspector({
     // normally obtain their authoritative table from the captured serializer initialPayload through
     // describeRoundPresentation below; an import without that snapshot can still supply one directly.
     paytable?: PaytableData;
+    // The live Play summary already renders this round's player-facing screen (including its own bet
+    // controls). The inspector should then show record provenance, wins and state -- not a second,
+    // interactive copy of the same grid. Replay/record-only surfaces leave this false and keep the
+    // screen as their primary view.
+    omitScreen?: boolean;
 }) {
     const [stepIndex, setStepIndex] = useState(0);
 
@@ -151,23 +157,27 @@ export function RoundRecordInspector({
 
             <RoundDetailsTable artifact={artifact} />
 
-            <GameScreenView sequenceStatistics={sequenceStatistics}
-                visibleRowCoverage={artifact.steps[artifact.steps.length - 1]?.visibleRowCoverage}
-                screen={artifact.screen}
-                wins={artifact.wins}
-                credits={credits}
-                totalWin={artifact.totalWin}
-                payoutMultiplier={artifact.payoutMultiplier}
-                paytable={presentation.paytable}
-                featureCounters={presentation.featureCounters}
-                lines={presentation.lines}
-                availableBets={presentation.availableBets}
-                currentBet={presentation.currentBet}
-                availableModeIds={presentation.availableModeIds}
-                currentModeId={presentation.currentModeId}
-            />
+            {!omitScreen && (
+                <>
+                    <GameScreenView sequenceStatistics={sequenceStatistics}
+                        visibleRowCoverage={artifact.steps[artifact.steps.length - 1]?.visibleRowCoverage}
+                        screen={artifact.screen}
+                        wins={artifact.wins}
+                        credits={credits}
+                        totalWin={artifact.totalWin}
+                        payoutMultiplier={artifact.payoutMultiplier}
+                        paytable={presentation.paytable}
+                        featureCounters={presentation.featureCounters}
+                        lines={presentation.lines}
+                        availableBets={presentation.availableBets}
+                        currentBet={presentation.currentBet}
+                        availableModeIds={presentation.availableModeIds}
+                        currentModeId={presentation.currentModeId}
+                    />
 
-            <Text size="xs" c="dimmed">Screens use the visible view. The full round-record JSON contains generated and debug data; exact replay also requires the separate audit recording.</Text>
+                    <Text size="xs" c="dimmed">Screens use the visible view. The full round-record JSON contains generated and debug data; exact replay also requires the separate audit recording.</Text>
+                </>
+            )}
 
             {artifact.sequenceSelections && <PageSection legend="Whole-sequence selections">
                 {artifact.sequenceSelections.map(selection => <Text key={selection.reelIndex}>Reel {selection.reelIndex + 1}: {selection.variantId} ({selection.context})</Text>)}

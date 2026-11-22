@@ -374,6 +374,7 @@ export * from "./reporting/SimulationReportRendering.js";
 export * from "./reporting/SimulationReportSet.js";
 export * from "./reporting/describeSimulationDiagnostics.js";
 export * from "./reporting/isSimulationReportSet.js";
+export * from "./reporting/payoutHistogramPresentation.js";
 export * from "./reporting/projectOutcomeSourceSimulationReport.js";
 export * from "./reporting/validateSimulationReportExtensions.js";
 export * from "./roundrecord/PokieJsonRoundRecordProjector.js";

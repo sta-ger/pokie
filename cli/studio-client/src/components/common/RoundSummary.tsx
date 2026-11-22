@@ -112,6 +112,7 @@ export function RoundSummary({
                             credits={session.credits}
                             stateBefore={session.debug.stateBefore}
                             stateAfter={session.debug.stateAfter}
+                            omitScreen
                         />
                     )}
                 </details>

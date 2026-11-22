@@ -28,6 +28,16 @@ function textValue(value: unknown): string | undefined {
     return typeof value === "string" || typeof value === "number" ? String(value) : undefined;
 }
 
+// A headless Studio session has no desktop file browser, but its outputs are still written. Treat that
+// as a quiet environmental limitation, not as a failed operation (the raw server reason mentions
+// DISPLAY/WAYLAND and reads like an error to someone who is not debugging X11).
+function describeHostOutputAvailability(reason: string): string {
+    if ((/graphical display|DISPLAY|WAYLAND_DISPLAY|desktop/i).test(reason)) {
+        return "This Studio session has no desktop file browser. Outputs are still written; use the download link or open the path from Operation details.";
+    }
+    return reason;
+}
+
 function selectorLabel(selector: RecordValue): string {
     if (selector.kind === "folder" && typeof selector.libraryDir === "string" && typeof selector.modeName === "string") return `Folder ${selector.libraryDir}, mode ${selector.modeName}`;
     if (selector.kind === "json" && typeof selector.path === "string") return `JSON ${selector.path}`;
@@ -110,8 +120,8 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
                                 <Button size="xs" variant="subtle" disabled={actionsDisabledReason !== undefined} onClick={() => onOpenOutput(outputPath)}>Open {output.label}</Button>}
                             {outputPath !== undefined && output.unavailableReason === undefined && outputActionsUnavailableReason === undefined && onRevealOutput !== undefined &&
                                 <Button size="xs" variant="subtle" disabled={actionsDisabledReason !== undefined} onClick={() => onRevealOutput(outputPath)}>Reveal {output.label}</Button>}
-                            {outputPath !== undefined && outputActionsUnavailableReason !== undefined &&
-                                <Text size="xs" data-job-detail>Open and reveal are unavailable: {outputActionsUnavailableReason}</Text>}
+                            {outputPath !== undefined && output.downloadPath === undefined && outputActionsUnavailableReason !== undefined &&
+                                <Text size="xs" c="dimmed" data-job-detail>{describeHostOutputAvailability(outputActionsUnavailableReason)}</Text>}
                             {output.downloadPath === undefined && (outputPath === undefined || (onOpenOutput === undefined && onRevealOutput === undefined && onInspectOutput === undefined)) &&
                                 <Text className="studio-technical-text" size="xs" data-job-detail>{output.label}{outputPath === undefined ? "" : `: ${outputPath}`}</Text>}
                         </Group>

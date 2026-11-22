@@ -160,7 +160,7 @@ export function PlayTab({
         return (
             <div>
                 <Text size="sm" c="dimmed" mb="sm">
-                    Play prepares this game for a real round and creates a session in Studio. Nothing else needs to be set up.
+                    Play is ready. Start a session to spin a real round in Studio. No game server or extra setup is needed.
                 </Text>
                 {activeSession?.logicalRound && <Text size="sm">Round {activeSession.logicalRound.status}: {formatCount(activeSession.logicalRound.mathematicalCursor, "step")}, {formatCount(activeSession.logicalRound.cursor, "part", "parts")}, stake {activeSession.logicalRound.totalStake}, payout {activeSession.logicalRound.totalPayout}</Text>}
                 {loading && <LoadingState label="Starting…" />}
@@ -173,7 +173,7 @@ export function PlayTab({
                     </AdvancedDisclosure>
                     <QuickActions>
                         <Button loading={loading} onClick={() => onNewSession(seed.trim() || undefined, selectedMode ?? undefined)}>
-                            New Play session
+                            Start playing
                         </Button>
                     </QuickActions>
                 </PageSection>

@@ -30,6 +30,18 @@ test("the advanced file controls explain that they are not the managed project l
     await expect(page.getByText(/These are file tools for a Blueprint JSON copy/)).toBeVisible();
 });
 
+test("a generated game idea is previewed before it replaces the draft", async ({page}) => {
+    await page.goto("/#/home/design");
+    await page.getByRole("button", {name: "Choose a different start"}).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("button", {name: "Generate a game idea"}).click();
+    await dialog.getByRole("button", {name: "Generate"}).click();
+    await expect(dialog.getByText(/Generated “/)).toBeVisible({timeout: 60_000});
+    await expect(dialog.getByText("Board", {exact: true})).toBeVisible();
+    await expect(dialog.getByText("Features", {exact: true})).toBeVisible();
+    await expect(dialog.getByText(/RTP is not tuned yet/)).toBeVisible();
+});
+
 test.describe.serial("managed project labels", () => {
     test("creates the starter project through the browser", async ({page}) => {
         await page.goto("/#/home/design");
@@ -57,6 +69,17 @@ test.describe.serial("managed project labels", () => {
         await payout.press("Tab");
         await expect(page.getByText("Payout cannot be negative. The previous value was kept.")).toBeVisible();
         await expect(payout).toHaveValue(original);
+        await page.getByRole("button", {name: "Cancel", exact: true}).click();
+    });
+
+    test("a zero payout is saved only after a visible warning", async ({page}) => {
+        await page.goto("/");
+        await page.getByRole("button", {name: "Game Model", exact: true}).click();
+        await page.getByRole("button", {name: "Edit", exact: true}).nth(4).click();
+        const payout = page.getByRole("textbox", {name: "A x3 payout"});
+        await payout.fill("0");
+        await payout.press("Tab");
+        await expect(page.getByText(/A zero payout disables this win/)).toBeVisible();
         await page.getByRole("button", {name: "Cancel", exact: true}).click();
     });
 
@@ -102,6 +125,7 @@ test.describe.serial("managed project labels", () => {
         await page.getByRole("button", {name: "Open full report"}).click();
         await expect(page.getByRole("rowheader", {name: "Stop reason"})).toBeVisible();
         await expect(page.getByRole("rowheader", {name: "Stop reason"}).locator("xpath=following-sibling::td[1]")).toHaveText(/requested rounds completed/i);
+        await expect(page.getByRole("region", {name: "Payout distribution chart"})).toBeVisible();
     });
 
     test("simulation rounds keep grouped thousands instead of silently dropping digits", async ({page}) => {
@@ -156,7 +180,7 @@ test.describe.serial("managed project labels", () => {
     test("Play uses singular round wording for a single step and one part", async ({page}) => {
         await page.goto("/");
         await page.getByRole("button", {name: "Play", exact: true}).click();
-        const newSession = page.getByRole("button", {name: "New Play session"});
+        const newSession = page.getByRole("button", {name: "Start playing"});
         await expect(newSession).toBeVisible({timeout: 30_000});
         await newSession.click();
         const spin = page.getByRole("button", {name: "Spin", exact: true});
@@ -170,7 +194,7 @@ test.describe.serial("managed project labels", () => {
     test("Play keeps paylines and paytable disclosures open while the round updates", async ({page}) => {
         await page.goto("/");
         await page.getByRole("button", {name: "Play", exact: true}).click();
-        const newSession = page.getByRole("button", {name: "New Play session"});
+        const newSession = page.getByRole("button", {name: "Start playing"});
         const spin = page.getByRole("button", {name: "Spin", exact: true});
         await expect(newSession.or(spin)).toBeVisible({timeout: 60_000});
         if (await newSession.isVisible()) {
@@ -206,7 +230,7 @@ test.describe.serial("managed project labels", () => {
     test("Find any win settles at the bet selected in Play", async ({page}) => {
         await page.goto("/");
         await page.getByRole("button", {name: "Play", exact: true}).click();
-        const newSession = page.getByRole("button", {name: "New Play session"});
+        const newSession = page.getByRole("button", {name: "Start playing"});
         const spin = page.getByRole("button", {name: "Spin", exact: true});
         await expect(newSession.or(spin)).toBeVisible({timeout: 60_000});
         if (await newSession.isVisible()) {
@@ -266,7 +290,7 @@ test.describe.serial("managed project labels", () => {
         await page.getByRole("button", {name: "Apply reviewed changes"}).click();
         await expect(page.getByRole("dialog")).toContainText("Apply these reviewed changes to the saved design?");
         await page.locator("#optimization-apply-confirm").click();
-        await expect(page.getByText("Changes saved to the game design")).toBeVisible({timeout: 60_000});
+        await expect(page.getByText(/Applied — changes saved to the game design/)).toBeVisible({timeout: 60_000});
         // The optimization panel must re-read the saved model after Apply: the Current column should
         // show the newly saved payout without a manual reload.
         const tunedRow = page.getByRole("row", {name: /A × 3 payout/});
@@ -280,6 +304,10 @@ test.describe.serial("managed project labels", () => {
         // must not leave those old numbers looking current until a manual reload.
         await expect(page.getByText(/computed from a different saved design/)).toBeVisible({timeout: 30_000});
         await expect(page.getByRole("button", {name: "Recompute exact math"}).first()).toBeVisible();
+        // The reviewed-apply receipt is browser-persisted, not tab-session-only: a reload must still
+        // offer the 15-minute Undo rather than losing the escape hatch.
+        await page.reload({waitUntil: "domcontentloaded"});
+        await expect(page.getByRole("button", {name: "Undo applied changes"})).toBeVisible({timeout: 60_000});
         await page.getByRole("button", {name: "Undo applied changes"}).click();
         await expect(page.getByText(/Previous design values restored/)).toBeVisible({timeout: 60_000});
     });

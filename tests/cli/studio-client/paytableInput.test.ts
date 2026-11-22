@@ -5,7 +5,10 @@ describe("paytable payout input", () => {
         expect(parsePayoutInput("8", 3)).toEqual({value: 8});
         expect(parsePayoutInput(1.5, 3)).toEqual({value: 1.5});
         expect(parsePayoutInput(" 12 ", 3)).toEqual({value: 12});
-        expect(parsePayoutInput("0", 3)).toEqual({value: 0});
+        expect(parsePayoutInput("0", 3)).toEqual({
+            value: 0,
+            warning: "A zero payout disables this win. Remove the row if you meant to delete it.",
+        });
     });
 
     it("never turns a blank field into a zero payout", () => {

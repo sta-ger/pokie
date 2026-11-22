@@ -4,7 +4,7 @@
  * draft is not a valid non-negative number, and the caller can show `error`
  * next to the field so the edit is visibly rejected instead of silently saved.
  */
-export function parsePayoutInput(input: number | string, previous: number): {value: number; error?: string} {
+export function parsePayoutInput(input: number | string, previous: number): {value: number; error?: string; warning?: string} {
     const text = String(input).trim();
     if (text.length === 0) {
         return {value: previous, error: "Enter a payout number. The previous value was kept."};
@@ -15,6 +15,9 @@ export function parsePayoutInput(input: number | string, previous: number): {val
     }
     if (parsed < 0) {
         return {value: previous, error: "Payout cannot be negative. The previous value was kept."};
+    }
+    if (parsed === 0) {
+        return {value: 0, warning: "A zero payout disables this win. Remove the row if you meant to delete it."};
     }
     return {value: parsed};
 }

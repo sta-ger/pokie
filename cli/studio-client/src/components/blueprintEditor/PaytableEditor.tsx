@@ -18,10 +18,14 @@ type PaytableRow = {symbolId: string; matchCount: number; payout: number};
 function PayoutInput({label, value, onCommit}: {label: string; value: number; onCommit: (value: number) => void}) {
     const [draft, setDraft] = useState<number | string>(value);
     const [error, setError] = useState<string>();
+    const [warning, setWarning] = useState<string>();
 
     useEffect(() => {
         setDraft(value);
         setError(undefined);
+        // A committed zero is still a zero: surface the same warning after the parent rerenders with
+        // the new value, rather than letting the value-sync effect erase the just-shown warning.
+        setWarning(value === 0 ? "A zero payout disables this win. Remove the row if you meant to delete it." : undefined);
     }, [value]);
 
     return (
@@ -33,11 +37,13 @@ function PayoutInput({label, value, onCommit}: {label: string; value: number; on
                 onChange={(event) => {
                     setDraft(event.currentTarget.value);
                     setError(undefined);
+                    setWarning(undefined);
                 }}
                 onBlur={() => {
                     const parsed = parsePayoutInput(draft, value);
                     setDraft(parsed.value);
                     setError(parsed.error);
+                    setWarning(parsed.warning);
                     if (parsed.error === undefined) {
                         onCommit(parsed.value);
                     }
@@ -46,6 +52,7 @@ function PayoutInput({label, value, onCommit}: {label: string; value: number; on
                     if (event.key === "Enter") event.currentTarget.blur();
                 }}
                 error={error}
+                description={warning}
             />
         </div>
     );

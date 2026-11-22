@@ -35,6 +35,7 @@ import {BlueprintLoadSaveControls} from "./BlueprintLoadSaveControls";
 import {BlueprintValidationPanel} from "./BlueprintValidationPanel";
 import {BlueprintMathPreviewPanel} from "./BlueprintMathPreviewPanel";
 import {GameModelPreviewPanel} from "./GameModelPreviewPanel";
+import {GettingStartedGuide} from "./GettingStartedGuide";
 import {LayoutFieldset} from "./LayoutFieldset";
 import {MetadataFieldset} from "./MetadataFieldset";
 import {NewBlueprintDialog} from "./NewBlueprintDialog";
@@ -1211,6 +1212,7 @@ export function BlueprintEditorPage({
                         reels, prizes, and bets. Studio checks your design as you work; Create game saves it and opens
                         its workspace, where you can play, test, and export it.
                     </Text>
+                    <GettingStartedGuide />
                 </div>
             )}
 

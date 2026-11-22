@@ -83,6 +83,16 @@ function CurrentProjectJobs({projectRoot, onRefreshContext}: {projectRoot: strin
     });
     // Opening records already have their source-scoped Home card and actions.
     const projectJobs = jobs.jobs.filter(job => job.operation !== "project-open-materialization");
+    const activeProjectJobs = projectJobs.filter(job => !["completed", "failed", "cancelled"].includes(job.status));
+    const finishedProjectJobs = projectJobs.filter(job => ["completed", "failed", "cancelled"].includes(job.status));
+    const renderProjectJob = (job: typeof projectJobs[number]) => (
+        <JobCard key={job.id} job={job} cancellationPending={jobs.pendingIds.includes(job.id)} onCancel={jobs.cancel} onRecover={jobs.recover}
+            onRecoveryAction={() => navigate(`/project/${encodeURIComponent(projectRoot)}/overview?recoverJob=${encodeURIComponent(job.id)}`)}
+            onOpenOutput={path => hostOutput(path, false)} onRevealOutput={path => hostOutput(path, true)}
+            onInspectOutput={path => runOutput(() => openAndNavigate(path))}
+            outputActionsUnavailableReason={outputUnavailableReason}
+            actionsDisabledReason={outputPending ? "Opening job output. Wait for its result." : undefined} />
+    );
     return (
         <Stack gap="xs" mt="lg" role="region" aria-label="Current project operations">
             <Title order={3}>Project operations</Title>
@@ -93,12 +103,13 @@ function CurrentProjectJobs({projectRoot, onRefreshContext}: {projectRoot: strin
                 onRefreshContext();
                 await jobs.refresh();
             }} />
-            {projectJobs.map(job => <JobCard key={job.id} job={job} cancellationPending={jobs.pendingIds.includes(job.id)} onCancel={jobs.cancel} onRecover={jobs.recover}
-                onRecoveryAction={() => navigate(`/project/${encodeURIComponent(projectRoot)}/overview?recoverJob=${encodeURIComponent(job.id)}`)}
-                onOpenOutput={path => hostOutput(path, false)} onRevealOutput={path => hostOutput(path, true)}
-                onInspectOutput={path => runOutput(() => openAndNavigate(path))}
-                outputActionsUnavailableReason={outputUnavailableReason}
-                actionsDisabledReason={outputPending ? "Opening job output. Wait for its result." : undefined} />)}
+            {activeProjectJobs.map(renderProjectJob)}
+            {finishedProjectJobs.length > 0 && (
+                <details>
+                    <summary>Finished project operations ({finishedProjectJobs.length})</summary>
+                    <Stack gap="xs" mt="xs">{finishedProjectJobs.map(renderProjectJob)}</Stack>
+                </details>
+            )}
             {outputNotice !== undefined && <Text size="xs" aria-live="polite">{outputNotice}</Text>}
         </Stack>
     );

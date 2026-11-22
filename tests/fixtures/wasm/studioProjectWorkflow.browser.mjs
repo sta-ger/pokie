@@ -111,7 +111,7 @@ try {
     await click("Play");
     await click("Show advanced details");
     await input("Seed (optional)", "0");
-    await click("New Play session");
+    await click("Start playing");
     await rendered("Reset Play session");
     for (const [index, round] of expected.entries()) {
         const committed = await selectBet(round.bet);

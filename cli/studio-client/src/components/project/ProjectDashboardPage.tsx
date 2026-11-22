@@ -1149,7 +1149,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     }, [activeTab, newSessionRecoveryRequested, play]);
 
     // Reset Play before the newly resolved project's tab can be painted.  A passive effect here can
-    // run after the user has already pressed "New Play session" on a just-opened project; its reset
+    // run after the user has already pressed "Start playing" on a just-opened project; its reset
     // then invalidates that request and leaves the visible form looking as if the action did nothing.
     // Layout effects run after React has committed the new project but before the browser can dispatch
     // an interaction against it, so the first session request belongs to the current project.

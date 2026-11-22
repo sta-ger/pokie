@@ -1,5 +1,6 @@
 import {describeSimulationDiagnostics} from "./describeSimulationDiagnostics.js";
 import {describeFeatureAnalytics} from "../simulation/describeFeatureAnalytics.js";
+import {payoutHistogramBar, payoutHistogramRows} from "./payoutHistogramPresentation.js";
 import {describeWeightedBonusCoverage} from "../session/videoslot/authored/WeightedBonus.js";
 import {describeSequenceVariantCoverage} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {SimulationReport} from "./SimulationReport.js";
@@ -8,8 +9,17 @@ import type {SimulationReportSet} from "./SimulationReportSet.js";
 
 export class MarkdownSimulationReportRenderer implements SimulationReportRendering {
     public render(report: SimulationReport): string {
+        const atAGlance = [
+            `RTP ${(report.rtp * 100).toFixed(2)}%`,
+            ...(report.rtpConfidenceInterval95 !== undefined ? [`(95% CI ${formatPercentInterval(report.rtpConfidenceInterval95)})`] : []),
+            `hit frequency ${(report.hitFrequency * 100).toFixed(2)}%`,
+            `max win ${report.maxWin.toFixed(2)}× bet`,
+            `over ${report.rounds.toLocaleString()} rounds`,
+        ].join(" ");
         const lines = [
             `# Simulation Report: ${report.game.name}`,
+            "",
+            `> **At a glance:** ${atAGlance}. This is an empirical estimate; confidence intervals and unseen rare events still matter.`,
             "",
             `- **Game id**: \`${report.game.id}\``,
             `- **Game version**: ${report.game.version}`,
@@ -42,6 +52,19 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
             `- **Spins per second**: ${report.spinsPerSecond}`,
             `- **Workers**: ${report.workers ?? 1}`,
         ];
+
+        const histogramRows = payoutHistogramRows(report.payoutHistogram);
+        if (histogramRows.length > 0) {
+            lines.push("", "## Payout distribution", "", "| Payout bucket (× bet) | Rounds | Share |", "| --- | --- | --- |");
+            for (const row of histogramRows) {
+                lines.push(`| ${row.label.replace(/[|\n\r]/g, " ")} | ${row.rounds} | ${(row.share * 100).toFixed(2)}% |`);
+            }
+            lines.push("", "```text");
+            for (const row of histogramRows) {
+                lines.push(`${row.label.padEnd(14)} ${payoutHistogramBar(row.share)} ${(row.share * 100).toFixed(2)}%`);
+            }
+            lines.push("```");
+        }
 
         lines.push("", "## Sampling and precision diagnostics", ...describeSimulationDiagnostics(report).map(line => `- ${line.replace(/[<>|\n\r]/g, " ")}`));
         lines.push("", "## Feature analytics", ...describeFeatureAnalytics(report.analytics).map(line => `- ${line.replace(/[<>|\n\r]/g, " ")}`));

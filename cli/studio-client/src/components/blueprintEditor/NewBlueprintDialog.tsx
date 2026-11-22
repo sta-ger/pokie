@@ -1,9 +1,10 @@
-import {Button, Group, Modal, SegmentedControl, Stack, Text, TextInput} from "@mantine/core";
+import {Alert, Button, Group, Modal, SegmentedControl, Stack, Table, Text, TextInput} from "@mantine/core";
 import {useEffect, useRef, useState} from "react";
 import {generateRandomBlueprint} from "../../api/apiClient";
 import type {StudioBlueprintRandomView} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
+import {describeGeneratedBlueprint} from "../../domain/generatedBlueprintSummary";
 import {describePathActionError} from "../../domain/pathActionError";
 import {describeProjectActionError} from "../../domain/projectActionError";
 import type {BlueprintLoadView, BlueprintSaveView} from "../../domain/interpret/BlueprintEditor";
@@ -20,15 +21,6 @@ type RandomFormState = {seed: string; preset: RandomPreset; name: string};
 type RandomGenerationView = {status: "idle"} | {status: "loading"} | {status: "error"; message: string} | {status: "ok"; result: StudioBlueprintRandomView};
 
 type Step = "confirmDirty" | "choose" | "random" | "load";
-
-function blueprintNameAndId(blueprint: unknown): {name: string; id: string} {
-    const info = blueprint !== null && typeof blueprint === "object" ? (blueprint as Record<string, unknown>).info : undefined;
-    const infoRecord = info !== null && typeof info === "object" ? (info as Record<string, unknown>) : {};
-    return {
-        name: typeof infoRecord.name === "string" ? infoRecord.name : "(unnamed)",
-        id: typeof infoRecord.id === "string" ? infoRecord.id : "(no id)",
-    };
-}
 
 // The New flow's own entry point (see BlueprintEditorPage's own doc comment on `handleChooseBlank`/
 // `handleUseRandomBlueprint`) -- a top-level lifecycle choice between Blank, Generate random, and Load
@@ -305,13 +297,25 @@ export function NewBlueprintDialog({
                         {randomView.status === "error" && <ErrorState message={describeProjectActionError("Generating this game idea", randomView.message)} />}
                         {randomView.status === "ok" &&
                             (() => {
-                                const {name} = blueprintNameAndId(randomView.result.blueprint);
+                                const summary = describeGeneratedBlueprint(randomView.result.blueprint);
                                 return (
-                                    <Stack gap={4}>
-                                        <Text size="sm">
-                                            Generated &quot;{name}&quot; from seed {randomView.result.seed}.
+                                    <Alert color="blue" variant="light" title={`Generated “${summary.name}” from seed ${randomView.result.seed}`}>
+                                        <Table withRowBorders={false} verticalSpacing={2} horizontalSpacing="sm">
+                                            <Table.Tbody>
+                                                <Table.Tr><Table.Th>Board</Table.Th><Table.Td>{summary.board}</Table.Td></Table.Tr>
+                                                <Table.Tr><Table.Th>Symbols</Table.Th><Table.Td>{summary.symbols}</Table.Td></Table.Tr>
+                                                <Table.Tr><Table.Th>Paylines</Table.Th><Table.Td>{summary.paylines}</Table.Td></Table.Tr>
+                                                <Table.Tr><Table.Th>Win model</Table.Th><Table.Td>{summary.winModel}</Table.Td></Table.Tr>
+                                                <Table.Tr><Table.Th>Wilds / scatters</Table.Th><Table.Td>{summary.wilds} / {summary.scatters}</Table.Td></Table.Tr>
+                                                <Table.Tr><Table.Th>Bets</Table.Th><Table.Td>{summary.bets}</Table.Td></Table.Tr>
+                                                <Table.Tr><Table.Th>Features</Table.Th><Table.Td>{summary.features.join(", ")}</Table.Td></Table.Tr>
+                                            </Table.Tbody>
+                                        </Table>
+                                        <Text size="xs" mt="xs">
+                                            This is an editable structural draft. RTP is not tuned yet: review the paytable, run exact math or a
+                                            simulation, then use Optimize math before treating it as a finished game.
                                         </Text>
-                                    </Stack>
+                                    </Alert>
                                 );
                             })()}
 

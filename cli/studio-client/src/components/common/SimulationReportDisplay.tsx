@@ -7,6 +7,7 @@ import {AdvancedDisclosure} from "./AdvancedDisclosure";
 import {PageSection} from "./PageSection";
 import {SimulationAnalyticsDisplay} from "./SimulationAnalyticsDisplay";
 import {SimulationAssessment} from "./SimulationAssessment";
+import {PayoutHistogramChart} from "./PayoutHistogramChart";
 import {formatConfidenceInterval} from "../../domain/interpret/formatConfidenceInterval";
 
 export {formatConfidenceInterval};
@@ -65,6 +66,8 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                     </Table.Tbody>
                 </Table>
             </section>
+
+            <PayoutHistogramChart histogram={view.payoutHistogram} />
 
             <SimulationAssessment view={view} />
             <AdvancedDisclosure label="sampling and precision">
