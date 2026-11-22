@@ -78,6 +78,7 @@ export class ParWorkbookOutputBuilder implements BuildOutputBuilder {
                 const conversion = await this.inspectConversion(source);
                 const exportIssues = await this.exporter.exportToFile(this.loadBlueprint(source.rootPath), destinationPath, source.rootPath, {
                     signal: options?.signal,
+                    includeMath: true,
                     onPublication: owned => {
                         publication = owned;
                     },
@@ -103,6 +104,7 @@ export class ParWorkbookOutputBuilder implements BuildOutputBuilder {
 
             reportBuildProgress(options, {status: "running", message: "Publishing PAR workbook"});
             const exportIssues = await this.exporter.exportToFile(imported.blueprint, destinationPath, source.rootPath, {
+                includeMath: true,
                 losslessEligible: imported.conversionEvidence?.losslessEligible ?? false,
                 conversionReport: parSheetConversionReport(imported.issues, imported.conversionEvidence ?? {issues: [], facts: [], losslessEligible: false}),
                 onPublication: owned => {

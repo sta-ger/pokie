@@ -3,6 +3,8 @@ import {AdvancedModelSourceValidator} from "../../../src/validation/AdvancedMode
 import {
     FormatConversionPlanner,
     BuildOutputBuilderRegistry,
+    analyzeBlueprintMath,
+    DEFAULT_BLUEPRINT_MATH_OUTCOME_CAP,
     BuildConflictError,
     assertPreparedOutputDestinationAvailable,
     BLUEPRINT_BUILD_CAPABILITY,
@@ -47,6 +49,7 @@ import type {StudioBuildPreviewView} from "../home/StudioBuildPreviewView.js";
 import type {StudioBuildResult} from "../home/StudioBuildResult.js";
 import {serializeGameBlueprint} from "./serializeGameBlueprint.js";
 import type {StudioBlueprintCheckView} from "./StudioBlueprintCheckView.js";
+import type {StudioBlueprintMathPreviewView} from "./StudioBlueprintMathPreviewView.js";
 import type {StudioBlueprintLoadView} from "./StudioBlueprintLoadView.js";
 import type {StudioBlueprintRandomView} from "./StudioBlueprintRandomView.js";
 import type {StudioBlueprintSaveManagedView} from "./StudioBlueprintSaveManagedView.js";
@@ -792,7 +795,7 @@ export class StudioBlueprintService {
                 // PAR export performs its own atomic publication. The
                 // operation owns its ordering and terminal boundary; the
                 // shared policy has already ruled out a borrowed target.
-                publish: () => this.parSheetExporter.exportToFile(blueprint, resolved, sourcePath, {signal, losslessEligible: this.parDraftLosslessEligible(blueprint, sourcePath), onPublication: owned => {
+                publish: () => this.parSheetExporter.exportToFile(blueprint, resolved, sourcePath, {signal, includeMath: true, losslessEligible: this.parDraftLosslessEligible(blueprint, sourcePath), onPublication: owned => {
                     publication = owned;
                 }}),
                 rollback,
@@ -958,6 +961,35 @@ export class StudioBlueprintService {
                 reason: `This draft can't be projected into a game model yet: ${error instanceof Error ? error.message : String(error)}`,
             });
         }
+    }
+
+    // Design Game's exact math preview: runs one complete in-memory enumeration against the current
+    // draft, never saving a project or writing an Outcome Library. Kept separate from
+    // previewGameModel() (which is synchronous and structural) because exact analysis is the expensive
+    // "show me the math" action and gets its own explicit request from the editor.
+    public async previewMath(blueprint: unknown, signal?: AbortSignal): Promise<StudioBlueprintMathPreviewView> {
+        const result = await analyzeBlueprintMath(blueprint, {
+            pokieVersion: this.pokieVersion,
+            maxOutcomes: DEFAULT_BLUEPRINT_MATH_OUTCOME_CAP,
+            ...(signal === undefined ? {} : {signal}),
+        });
+        if (result.status === "unavailable") {
+            return {
+                status: "unavailable",
+                message: result.reason,
+                ...(result.outcomeSpaceSize === undefined ? {} : {outcomeSpaceSize: result.outcomeSpaceSize.toString()}),
+            };
+        }
+        return {
+            status: "ok",
+            outcomeCount: result.outcomeCount,
+            totalWeight: result.totalWeight,
+            stake: result.stake,
+            analysis: result.analysis,
+            generatedAt: result.generatedAt,
+            maxOutcomes: DEFAULT_BLUEPRINT_MATH_OUTCOME_CAP,
+            ...(result.note === undefined ? {} : {note: result.note}),
+        };
     }
 
     public withRuntimePackageRoot(runtimePackageRoot: string): this {

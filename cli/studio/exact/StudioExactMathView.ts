@@ -23,6 +23,27 @@ export type StudioExactMathContributionTable = {
     readonly truncated: boolean;
 };
 
+// One distinct win event and the exact probability that a random round contains it. This is deliberately
+// event-level (symbol × match count, scatter count, feature win) rather than another total-payout bucket:
+// a round can contain several events, so rows overlap and probabilities do not sum to 1.
+export type StudioExactMathEvent = {
+    readonly kind: "line" | "scatter" | "other";
+    readonly key: string;
+    readonly label: string;
+    readonly winType: string;
+    readonly winId: string;
+    readonly symbolId?: string;
+    readonly matchCount?: number;
+    readonly probability: number;
+    readonly rtpContribution: number;
+    readonly outcomeCount: number;
+};
+
+export type StudioExactMathEventTable = {
+    readonly entries: readonly StudioExactMathEvent[];
+    readonly truncated: boolean;
+};
+
 export type StudioExactMathView =
     | {
           readonly status: "ok";
@@ -40,8 +61,11 @@ export type StudioExactMathView =
               readonly line: StudioExactMathContributionTable;
               readonly symbol: StudioExactMathContributionTable;
           };
-          /** Set when exact metrics are available but per-line/symbol detail was intentionally skipped. */
+          readonly events: StudioExactMathEventTable;
+          /** Set when exact metrics are available but per-line/symbol/event detail was intentionally skipped. */
           readonly contributionNote?: string;
+          /** Set when the event table itself was limited or skipped. */
+          readonly eventNote?: string;
       }
     | {readonly status: "missing"; readonly message: string}
     | {readonly status: "stale"; readonly message: string}

@@ -1021,6 +1021,12 @@ adjust that entry. A generated reel without its own integer `seed` is rejected b
 seed; PAR snapshots never fall back to nondeterministic generation. The workbook maps info, reels/rows, symbols (with wilds/scatters), literal snapshot
 `reelStrips`, `paytable`, `paylines`, `availableBets`, `winModel`, `mechanics.freeGames`, and `betModes`.
 
+The exported workbook also carries advisory exact-math sheets — `MathSummary`, `PayoutDistribution`, `WinEvents`,
+`LineContributions`, and `SymbolContributions` — when the source has at most 25,000 reel-stop combinations. They are
+computed by complete enumeration, never by sampling. A larger source gets a `MathSummary` that says exact math was
+not included and why. Import recognizes these sheets as advisory analysis and ignores them without treating the
+workbook as lossy; they are not part of the Blueprint hash or the model-defining round trip.
+
 ```
 pokie par export starter.blueprint.json --out starter.par.xlsx
 pokie par import starter.par.xlsx --out starter.blueprint.json
@@ -3318,7 +3324,11 @@ Home offers one editable design path, including loading an existing Blueprint. P
  rather than clearing the editor; any top-level field the Form doesn't know about survives every round trip
  unchanged. Studio automatically validates the current revision with the same `GameBlueprintValidator`
  used everywhere else, without touching disk.
- Load/Save-by-path, the raw JSON view, and PAR import are tucked behind **Show advanced options (file
+ **Calculate exact math** in the **Math preview** section runs one complete enumeration of the current draft and
+ reports exact RTP, hit frequency, volatility, max win, and outcome count without saving a project; a draft above
+ the 25,000-combination preview cap gets an actionable explanation instead of a sampled number. The saved project's
+ Overview **Exact math** card also exposes event-level probabilities (for example `A × 5` or a scatter count), not
+ only the total-payout distribution. Load/Save-by-path, the raw JSON view, and PAR import are tucked behind **Show advanced options (file
  and JSON tools)**. PAR Apply updates the draft; it does not publish an output. **Create game** validates
  the current revision, saves the design and opens its workspace. Build packages and export PAR workbooks
  from that workspace’s **Build/Export**, which previews the actual destination and refuses occupied outputs.

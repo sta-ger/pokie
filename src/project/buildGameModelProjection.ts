@@ -71,6 +71,22 @@ function resolvePaylineCount(model: {
     return model.screenGeometry?.evaluated.rows ?? model.rows;
 }
 
+// The effective paylines, not just their count: an authored array when present, otherwise the same
+// horizontal-row default resolveSharedSlotMathModel uses at runtime. The read-only Game Model renders
+// these directly, so a math author never has to enter edit mode just to see what the RTP was computed on.
+function resolvePaylines(model: {
+    paylines?: readonly (readonly number[])[];
+    reels?: number;
+    screenGeometry?: {evaluated: {rows: number}};
+    rows?: number;
+}): readonly (readonly number[])[] | undefined {
+    if (model.paylines !== undefined) return model.paylines.map((line) => [...line]);
+    const rows = model.screenGeometry?.evaluated.rows ?? model.rows;
+    const reels = model.reels;
+    if (rows === undefined || reels === undefined || rows <= 0 || reels <= 0) return undefined;
+    return Array.from({length: rows}, (_, row) => Array.from({length: reels}, () => row));
+}
+
 export type GameModelProjectionFallback = {
     // Best-effort identity for a project whose own tracked source blueprint isn't available (see
     // `reason` below for why) -- typically a build's own recorded manifest (GameBuildInfo.game) or a
@@ -127,6 +143,7 @@ export function buildGameModelProjection(
             ...(blueprint.screenGeometry ? {screenGeometry: JSON.parse(JSON.stringify(blueprint.screenGeometry))} : {}),
             winModel,
             paylineCount: winModel.type === "lines" ? resolvePaylineCount(blueprint) : undefined,
+            paylines: winModel.type === "lines" ? resolvePaylines(blueprint) : undefined,
         }),
         symbols: available(symbols),
         reels: available(buildGameModelReels(blueprint, reelsOptions)),
@@ -159,7 +176,7 @@ export function buildPackageGameModelProjection(extraction: PackageBlueprintExtr
     if (!valid && model && extraction.status === "partial") {
         if (Number.isInteger(model.reels) && Number.isInteger(model.rows) && model.reels! > 0 && model.rows! > 0) {
             const winModel = model.winModel ?? {type: "lines"};
-            projection.layout = available({reels: model.reels, rows: model.rows, screenGeometry: model.screenGeometry, winModel, paylineCount: winModel.type === "lines" ? resolvePaylineCount(model) : undefined});
+            projection.layout = available({reels: model.reels, rows: model.rows, screenGeometry: model.screenGeometry, winModel, paylineCount: winModel.type === "lines" ? resolvePaylineCount(model) : undefined, paylines: winModel.type === "lines" ? resolvePaylines(model) : undefined});
         }
         if (Array.isArray(model.symbols) && model.symbols.every(symbol => typeof symbol === "string")) {
             projection.symbols = available(model.symbols.map(id => ({id, isWild: model.wilds?.includes(id) ?? false, isScatter: model.scatters?.includes(id) ?? false})));

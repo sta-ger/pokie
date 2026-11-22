@@ -33,6 +33,7 @@ import type {SymbolsSheetMapping} from "./mapping/SymbolsSheetMapping.js";
 import {WinModelSheetMapper} from "./mapping/WinModelSheetMapper.js";
 import type {WinModelSheetMapping} from "./mapping/WinModelSheetMapping.js";
 import type {ParSheetExportOptions, ParSheetExporting} from "./ParSheetExporting.js";
+import {buildParSheetMathSheets, computeParSheetMathAnalysis} from "./ParSheetMathAnalysis.js";
 import type {SheetGrid} from "./SheetGrid.js";
 import {writeFileAtomically} from "./writeFileAtomically.js";
 
@@ -257,6 +258,17 @@ export class ParSheetExporter implements ParSheetExporting {
         }
         if (typedBlueprint.betModes) {
             addSheet(workbook, this.betModesMapper.sheetName, this.betModesMapper.toRows(typedBlueprint.betModes));
+        }
+        if (options !== undefined && (options.includeMath === true || options.mathAnalysis !== undefined)) {
+            options.onProgress?.({message: "Computing exact PAR math"});
+            assertNotCancelled(options);
+            const math = options.mathAnalysis ?? await computeParSheetMathAnalysis(typedBlueprint, this.pokieVersion, {
+                ...(options.maxMathOutcomes === undefined ? {} : {maxOutcomes: options.maxMathOutcomes}),
+                ...(options.signal === undefined ? {} : {signal: options.signal}),
+                now: this.now,
+            });
+            assertNotCancelled(options);
+            for (const sheet of buildParSheetMathSheets(math)) addSheet(workbook, sheet.name, sheet.grid);
         }
         addSheet(
             workbook,

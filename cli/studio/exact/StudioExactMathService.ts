@@ -1,25 +1,18 @@
-import {OutcomeLibraryFolderReader, type OutcomeLibraryFolderReading, type WeightedOutcomeLibrary, type WeightedOutcomeLibraryAnalysis} from "@fromstan/pokie";
+import {OutcomeLibraryFolderReader, analyzeWeightedOutcomeWins, type OutcomeLibraryFolderReading, type WeightedOutcomeLibraryAnalysis} from "@fromstan/pokie";
 import type {StudioOutcomeLibraryRegistryView} from "../outcomeLibrary/StudioOutcomeLibraryRegistryView.js";
 import {resolveProjectDirectory} from "../outcomeLibrary/resolveProjectDirectory.js";
-import type {StudioExactMathContribution, StudioExactMathContributionTable, StudioExactMathView} from "./StudioExactMathView.js";
+import type {StudioExactMathContributionTable, StudioExactMathEventTable, StudioExactMathView} from "./StudioExactMathView.js";
 
 // Reading every retained outcome is only needed for the line/symbol breakdown; the exact headline
 // metrics and payout distribution are already embedded in the bundle's mode index. A very large
 // library should still open quickly and truthfully show the exact metrics even when a full scan is
 // intentionally skipped.
 const MAX_CONTRIBUTION_OUTCOMES = 25_000;
-const MAX_CONTRIBUTION_ROWS = 40;
-
-type ContributionTally = {
-    symbolId?: string;
-    rtpContribution: number;
-    hitWeight: number;
-    outcomeCount: number;
-};
 
 /**
  * Reads the exact analysis of a compatible Outcome Library for the current saved design and augments it
- * with per-line and per-symbol contributions computed from the library's retained RoundRecords.
+ * with per-line/per-symbol contributions and event-level win probabilities computed from the library's
+ * retained RoundRecords.
  *
  * This service never generates or recomputes outcomes. It answers only from a library whose own game
  * id/version/config hash/recorded POKIE version already match the current project (see
@@ -76,20 +69,28 @@ export class StudioExactMathService {
 
         let line: StudioExactMathContributionTable = {entries: [], truncated: false};
         let symbol: StudioExactMathContributionTable = {entries: [], truncated: false};
+        let events: StudioExactMathEventTable = {entries: [], truncated: false};
         let contributionNote: string | undefined;
+        let eventNote: string | undefined;
         if (mode.outcomeCount > MAX_CONTRIBUTION_OUTCOMES) {
-            contributionNote = `This library has ${mode.outcomeCount.toLocaleString("en-US")} outcomes. Exact metrics and the payout distribution are shown from its index; per-line and per-symbol contributions were skipped because loading every outcome would be too expensive here.`;
+            const skip = `This library has ${mode.outcomeCount.toLocaleString("en-US")} outcomes. Exact metrics and the payout distribution are shown from its index; per-line, per-symbol and per-event detail was skipped because loading every outcome would be too expensive here.`;
+            contributionNote = skip;
+            eventNote = skip;
         } else {
             try {
                 const library = await this.reader.readLibrary(resolved.resolvedPath, mode.modeName);
-                const contributions = computeContributions(library);
-                line = contributions.line;
-                symbol = contributions.symbol;
-                if (line.truncated || symbol.truncated) {
-                    contributionNote = `Contributions are limited to the ${MAX_CONTRIBUTION_ROWS} largest rows in each table. The library itself remains complete.`;
+                const winAnalysis = analyzeWeightedOutcomeWins(library);
+                line = winAnalysis.line;
+                symbol = winAnalysis.symbol;
+                events = winAnalysis.events;
+                if (winAnalysis.truncated) {
+                    contributionNote = "Contribution and event tables are limited to their largest rows. The library itself remains complete.";
+                    eventNote = contributionNote;
                 }
             } catch (error) {
-                contributionNote = `Exact metrics and the payout distribution are available from the library index, but per-line/symbol contributions could not be read: ${error instanceof Error ? error.message : String(error)}`;
+                const message = error instanceof Error ? error.message : String(error);
+                contributionNote = `Exact metrics and the payout distribution are available from the library index, but per-line/symbol contributions could not be read: ${message}`;
+                eventNote = `Exact win-event probabilities could not be read: ${message}`;
             }
         }
 
@@ -106,86 +107,9 @@ export class StudioExactMathService {
             ...(mode.strategy === undefined ? {} : {strategy: mode.strategy}),
             analysis,
             contributions: {line, symbol},
+            events,
             ...(contributionNote === undefined ? {} : {contributionNote}),
+            ...(eventNote === undefined ? {} : {eventNote}),
         };
     }
-}
-
-function computeContributions(
-    library: WeightedOutcomeLibrary<string>,
-): {line: StudioExactMathContributionTable; symbol: StudioExactMathContributionTable} {
-    const totalWeight = library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0);
-    const lineTallies = new Map<string, ContributionTally>();
-    const symbolTallies = new Map<string, ContributionTally>();
-
-    for (const outcome of library.outcomes) {
-        const share = outcome.weight / totalWeight;
-        const stake = outcome.record.stake;
-        const seenLines = new Set<string>();
-        const seenSymbols = new Set<string>();
-        for (const step of outcome.record.steps) {
-            for (const win of step.wins) {
-                const symbolId = win.symbolId === null || win.symbolId === undefined ? undefined : String(win.symbolId);
-                const rtp = (share * win.winAmount) / stake;
-                if (win.type === "line") {
-                    const key = `line:${win.id}:${symbolId ?? ""}`;
-                    const tally = lineTallies.get(key) ?? {symbolId, rtpContribution: 0, hitWeight: 0, outcomeCount: 0};
-                    tally.rtpContribution += rtp;
-                    if (!seenLines.has(key)) {
-                        tally.hitWeight += share;
-                        tally.outcomeCount++;
-                        seenLines.add(key);
-                    }
-                    lineTallies.set(key, tally);
-                }
-                let symbolKey: string | undefined;
-                if (symbolId !== undefined) {
-                    symbolKey = `symbol:${symbolId}`;
-                } else if (win.type !== "line") {
-                    symbolKey = `symbol:${win.type}:${win.id}`;
-                }
-                if (symbolKey !== undefined) {
-                    const tally = symbolTallies.get(symbolKey) ?? {symbolId, rtpContribution: 0, hitWeight: 0, outcomeCount: 0};
-                    tally.rtpContribution += rtp;
-                    if (!seenSymbols.has(symbolKey)) {
-                        tally.hitWeight += share;
-                        tally.outcomeCount++;
-                        seenSymbols.add(symbolKey);
-                    }
-                    symbolTallies.set(symbolKey, tally);
-                }
-            }
-        }
-    }
-
-    return {
-        line: toContributionTable(lineTallies, "line"),
-        symbol: toContributionTable(symbolTallies, "symbol"),
-    };
-}
-
-function toContributionTable(
-    tallies: ReadonlyMap<string, ContributionTally>,
-    kind: "line" | "symbol",
-): StudioExactMathContributionTable {
-    const entries: StudioExactMathContribution[] = [...tallies.entries()].map(([key, tally]) => {
-        let label: string;
-        if (kind === "line") {
-            const lineId = key.split(":")[1];
-            label = tally.symbolId === undefined ? `Line ${lineId}` : `Line ${lineId} · ${tally.symbolId}`;
-        } else {
-            label = tally.symbolId ?? key.replace(/^symbol:/, "");
-        }
-        return {
-            kind,
-            key,
-            label,
-            ...(tally.symbolId === undefined ? {} : {symbolId: tally.symbolId}),
-            rtpContribution: tally.rtpContribution,
-            hitFrequency: tally.hitWeight,
-            outcomeCount: tally.outcomeCount,
-        };
-    });
-    entries.sort((left, right) => right.rtpContribution - left.rtpContribution);
-    return {entries: entries.slice(0, MAX_CONTRIBUTION_ROWS), truncated: entries.length > MAX_CONTRIBUTION_ROWS};
 }

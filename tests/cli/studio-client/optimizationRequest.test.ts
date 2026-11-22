@@ -1,7 +1,10 @@
 import {
     buildDefaultOptimizationRequest,
     describeTunablePath,
+    formatOptimizationMetricValue,
+    formatOptimizationTolerance,
     formatTunableValues,
+    nearestOptimizationCandidate,
     optimizationDomainSize,
     parsePaytablePath,
     parseTunableValues,
@@ -48,6 +51,20 @@ describe("optimization request helpers", () => {
         expect(parseTunableValues("")).toEqual({error: "Enter at least one candidate value."});
         expect(parseTunableValues("1, nope")).toEqual({error: "\"nope\" is not a finite number."});
         expect(formatTunableValues([6, 7, 8])).toBe("6, 7, 8");
+    });
+
+    it("formats ratios in their display unit and finds the nearest evaluated candidate", () => {
+        const rtpTarget = {metric: "rtp" as const, unit: "ratio" as const, value: 0.96, tolerance: {kind: "absolute" as const, value: 0.001}};
+        expect(formatOptimizationMetricValue(rtpTarget, 0.96768)).toBe("96.7680%");
+        expect(formatOptimizationTolerance(rtpTarget, 0.001)).toBe("0.1000pp");
+        expect(formatOptimizationMetricValue({metric: "maxWin", unit: "betMultiple", value: 38}, 38)).toBe("38.0000× bet");
+        const nearest = nearestOptimizationCandidate(rtpTarget, [
+            {measured: [0.85248], parameters: {"/paytable/A/3": 2}},
+            {measured: [0.96768], parameters: {"/paytable/A/3": 8}},
+            {measured: [0.98688], parameters: {"/paytable/A/3": 9}},
+        ]);
+        expect(nearest).toMatchObject({index: 1, measured: 0.96768});
+        expect(nearest?.distance).toBeCloseTo(0.00768, 12);
     });
 
     it("builds a default request around the first real paytable row", () => {

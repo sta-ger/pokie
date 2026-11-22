@@ -24,7 +24,7 @@ export function classifyPathActionErrorReason(message: string): PathActionErrorR
     if ((/is required\.|must be a non-empty string|is not valid JSON|unexpected token .*json/i).test(message)) {
         return "schema";
     }
-    if ((/safe default project location|choose a destination directory explicitly/i).test(message)) {
+    if ((/safe default project location|choose a destination directory explicitly|managed project location|no available managed project/i).test(message)) {
         return "destination";
     }
     return "other";

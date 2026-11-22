@@ -225,7 +225,7 @@ export type GameModelBasics = {id?: string; name?: string; version?: string; des
 
 export type GameModelWinModel = {type: "lines" | "ways" | "clusters"; minimumClusterSize?: number};
 
-export type GameModelLayout = {reels?: number; rows?: number; screenGeometry?: ScreenGeometry; winModel: GameModelWinModel; paylineCount?: number};
+export type GameModelLayout = {reels?: number; rows?: number; screenGeometry?: ScreenGeometry; winModel: GameModelWinModel; paylineCount?: number; paylines?: number[][]};
 
 export type GameModelSymbol = {id: string; isWild: boolean; isScatter: boolean};
 
@@ -1633,6 +1633,24 @@ export type StudioExactMathContributionTable = {
     truncated: boolean;
 };
 
+export type StudioExactMathEvent = {
+    kind: "line" | "scatter" | "other";
+    key: string;
+    label: string;
+    winType: string;
+    winId: string;
+    symbolId?: string;
+    matchCount?: number;
+    probability: number;
+    rtpContribution: number;
+    outcomeCount: number;
+};
+
+export type StudioExactMathEventTable = {
+    entries: StudioExactMathEvent[];
+    truncated: boolean;
+};
+
 // Mirrors cli/studio/exact/StudioExactMathView.ts. The analysis is the same exact
 // WeightedOutcomeLibraryAnalysis embedded in an Outcome Library's own mode index.
 export type StudioExactMathView =
@@ -1649,8 +1667,25 @@ export type StudioExactMathView =
           strategy?: string;
           analysis: import("../../../../src/weightedoutcome/WeightedOutcomeLibraryAnalysis.js").WeightedOutcomeLibraryAnalysis;
           contributions: {line: StudioExactMathContributionTable; symbol: StudioExactMathContributionTable};
+          events: StudioExactMathEventTable;
           contributionNote?: string;
+          eventNote?: string;
       }
     | {status: "missing"; message: string}
     | {status: "stale"; message: string}
     | {status: "error"; message: string};
+
+// Mirrors cli/studio/blueprint/StudioBlueprintMathPreviewView.ts. Design Game's on-demand exact math
+// preview: "ok" is a complete enumeration of the draft, never a sampled estimate and never a saved file.
+export type StudioBlueprintMathPreviewView =
+    | {
+          status: "ok";
+          outcomeCount: number;
+          totalWeight: number;
+          stake: number;
+          analysis: import("../../../../src/weightedoutcome/WeightedOutcomeLibraryAnalysis.js").WeightedOutcomeLibraryAnalysis;
+          generatedAt: string;
+          maxOutcomes: number;
+          note?: string;
+      }
+    | {status: "unavailable"; message: string; outcomeSpaceSize?: string};

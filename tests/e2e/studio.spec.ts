@@ -6,6 +6,14 @@ test("Home opens at the top with the design intro visible", async ({page}) => {
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
 });
 
+test("Design Game previews exact math from the draft without saving a project", async ({page}) => {
+    await page.goto("/#/home/design");
+    await page.getByRole("button", {name: "Calculate exact math"}).click();
+    await expect(page.getByText("Exact RTP", {exact: true})).toBeVisible({timeout: 60_000});
+    await expect(page.getByText("96.7680%", {exact: true}).first()).toBeVisible();
+    await expect(page.getByText(/Draft only — nothing was saved/)).toBeVisible();
+});
+
 test("a duplicate symbol rename is rejected visibly and keeps the persisted id", async ({page}) => {
     await page.goto("/#/home/design");
     await page.getByRole("tab", {name: /Symbols/}).click();
@@ -29,6 +37,14 @@ test.describe.serial("managed project labels", () => {
         await expect(create).toBeEnabled({timeout: 45_000});
         await create.click();
         await expect(page.getByRole("button", {name: "Overview", exact: true})).toBeVisible({timeout: 90_000});
+    });
+
+    test("Game Model shows the effective payline rows without entering edit mode", async ({page}) => {
+        await page.goto("/");
+        await page.getByRole("button", {name: "Game Model", exact: true}).click();
+        await expect(page.getByText("Line 1: 0 → 0 → 0 → 0 → 0")).toBeVisible({timeout: 60_000});
+        await expect(page.getByText("Line 2: 1 → 1 → 1 → 1 → 1")).toBeVisible();
+        await expect(page.getByText("Line 3: 2 → 2 → 2 → 2 → 2")).toBeVisible();
     });
 
     test("optimization exposes a target and tunable fields without opening JSON", async ({page}) => {
@@ -213,6 +229,10 @@ test.describe.serial("managed project labels", () => {
         await expect(page.getByRole("button", {name: (/Show all \d+ payouts/)})).toHaveCount(0);
         await page.getByRole("button", {name: /line and symbol contributions/}).click();
         await expect(page.getByRole("table", {name: "Exact line and symbol contributions"}).first()).toBeVisible();
+        await page.getByRole("button", {name: /win event probabilities/}).click();
+        const events = page.getByRole("table", {name: "Exact win event probabilities"});
+        await expect(events).toBeVisible();
+        await expect(events.getByRole("row", {name: /A × 3/})).toContainText("1.9200%");
     });
 
     test("apply asks for confirmation and marks the exact library stale immediately", async ({page}) => {

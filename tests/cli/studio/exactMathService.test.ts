@@ -87,6 +87,15 @@ describe("StudioExactMathService", () => {
         });
         expect(view.contributions.symbol.entries[0].rtpContribution).toBeCloseTo(2.75, 12);
         expect(view.contributions.symbol.entries[0].hitFrequency).toBeCloseTo(0.5, 12);
+        expect(view.events.entries).toHaveLength(1);
+        expect(view.events.entries[0]).toMatchObject({
+            kind: "other",
+            winType: "value",
+            symbolId: "A",
+            outcomeCount: 4,
+        });
+        expect(view.events.entries[0].probability).toBeCloseTo(0.5, 12);
+        expect(view.events.entries[0].rtpContribution).toBeCloseTo(2.75, 12);
     });
 
     it("reports a missing library instead of inventing exact numbers", async () => {
@@ -121,6 +130,8 @@ describe("StudioExactMathService", () => {
         if (view.status !== "ok") throw new Error(view.message);
         expect(view.analysis.rtp).toBeCloseTo(2.75, 12);
         expect(view.contributions.symbol.entries).toEqual([]);
+        expect(view.events.entries).toEqual([]);
         expect(view.contributionNote).toMatch(/could not be read/i);
+        expect(view.eventNote).toMatch(/could not be read/i);
     });
 });

@@ -33,6 +33,7 @@ import {BlueprintBuildPanel} from "./BlueprintBuildPanel";
 import {BlueprintJsonPanel} from "./BlueprintJsonPanel";
 import {BlueprintLoadSaveControls} from "./BlueprintLoadSaveControls";
 import {BlueprintValidationPanel} from "./BlueprintValidationPanel";
+import {BlueprintMathPreviewPanel} from "./BlueprintMathPreviewPanel";
 import {GameModelPreviewPanel} from "./GameModelPreviewPanel";
 import {LayoutFieldset} from "./LayoutFieldset";
 import {MetadataFieldset} from "./MetadataFieldset";
@@ -1447,6 +1448,7 @@ export function BlueprintEditorPage({
                 setValidationView({status: "error", message: "Validation cancelled. Retry to check the current design."});
             }} />
             <GameModelPreviewPanel key={`gamemodel-${editor.formGeneration}`} blueprint={blueprint} sourcePath={blueprintPath} revision={editor.state.revision} />
+            <BlueprintMathPreviewPanel key={`mathpreview-${editor.formGeneration}`} blueprint={blueprint} revision={editor.state.revision} />
             <Collapse expanded={!guided || advancedOpened}>
                 {guided && <Text size="sm" c="dimmed" mb="sm">
                     Create game saves this design and opens its workspace. Build Package exports the current

@@ -1,4 +1,5 @@
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
+import type {ParSheetMathAnalysis} from "./ParSheetMathAnalysis.js";
 
 /** Identity of the file exclusively published by this invocation, for guarded caller rollback. */
 export type ParSheetFilePublication = {readonly path: string; readonly dev: number; readonly ino: number};
@@ -8,6 +9,12 @@ export type ParSheetExportOptions = {
     readonly losslessEligible?: boolean;
     readonly conversionReport?: import("./ParSheetConversionReport.js").ParSheetConversionReport;
     readonly signal?: AbortSignal;
+    /** Include exact math sheets when the source is small enough to enumerate; unavailable math is explained in MathSummary. */
+    readonly includeMath?: boolean;
+    /** Exact outcome cap for the math sheets (default: the shared draft-preview cap). */
+    readonly maxMathOutcomes?: number;
+    /** Precomputed math for callers that already ran the same analysis; avoids a duplicate enumeration. */
+    readonly mathAnalysis?: ParSheetMathAnalysis;
     /** Synchronous ownership notification; the export may still fail or cancel before resolving. */
     readonly onPublication?: (publication: ParSheetFilePublication) => void;
     readonly onProgress?: (progress: {readonly message: string}) => void;

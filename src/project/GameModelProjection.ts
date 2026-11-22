@@ -19,7 +19,7 @@ export type GameModelWinModel = {type: "lines" | "ways" | "clusters"; minimumClu
 // `paylineCount` is only meaningful for the "lines" win model (paylines are ignored otherwise -- see
 // GameBlueprintWinModel's own doc comment) -- omitted for "ways"/"clusters" rather than reporting a
 // possibly-misleading 0.
-export type GameModelLayout = {reels?: number; rows?: number; screenGeometry?: ScreenGeometry; winModel: GameModelWinModel; paylineCount?: number};
+export type GameModelLayout = {reels?: number; rows?: number; screenGeometry?: ScreenGeometry; winModel: GameModelWinModel; paylineCount?: number; paylines?: readonly (readonly number[])[]};
 
 export type GameModelSymbol = {id: string; isWild: boolean; isScatter: boolean};
 

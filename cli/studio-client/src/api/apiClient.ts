@@ -16,6 +16,7 @@ import type {
     StudioOutputFormatView,
     StudioBlueprintCheckView,
     StudioBlueprintLoadView,
+    StudioBlueprintMathPreviewView,
     StudioBlueprintRandomView,
     StudioBlueprintSaveManagedView,
     StudioBlueprintSaveView,
@@ -698,6 +699,21 @@ export async function previewGameModel(fetchImpl: FetchLike, blueprint: unknown,
         throw new Error(await extractErrorMessage(response, "Failed to preview the game model"));
     }
     return (await response.json()) as GameModelProjection;
+}
+
+// Design Game's on-demand exact math preview -- one complete in-memory enumeration of the draft, never
+// an Outcome Library write and never a sampled estimate. "unavailable" is an ordinary domain state.
+export async function previewBlueprintMath(fetchImpl: FetchLike, blueprint: unknown, signal?: AbortSignal): Promise<StudioBlueprintMathPreviewView> {
+    const response = await fetchImpl("/api/home/blueprints/math-preview", {
+        signal,
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({blueprint}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to preview exact math for this game design"));
+    }
+    return (await response.json()) as StudioBlueprintMathPreviewView;
 }
 
 export type StartSimulationResult =

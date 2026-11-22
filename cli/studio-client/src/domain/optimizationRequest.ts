@@ -1,3 +1,4 @@
+import {formatAnalysisNumber} from "../../../../src/internal/formatAnalysisNumber";
 import type {GameModelPaytableRow, GameModelProjection, StudioOptimizationRequest} from "../api/types";
 
 export type OptimizationTarget = StudioOptimizationRequest["targets"][number];
@@ -45,6 +46,43 @@ export function metricDisplayValue(target: OptimizationTarget, option: Optimizat
 
 export function metricDisplayTolerance(target: OptimizationTarget, option: OptimizationMetricOption): number {
     return (target.tolerance?.value ?? 0) * option.scale;
+}
+
+// Format a ratio/standard-deviation/bet-multiple in the same unit the compact form edits. Unknown
+// metrics keep their raw value rather than being silently multiplied by an unrelated scale.
+export function formatOptimizationMetricValue(target: OptimizationTarget, value: number, digits = 4): string {
+    const option = findOptimizationMetric(target);
+    if (option === undefined) return formatAnalysisNumber(value, digits);
+    return `${formatAnalysisNumber(value * option.scale, digits)}${option.valueSuffix}`;
+}
+
+export function formatOptimizationTolerance(target: OptimizationTarget, value: number, digits = 4): string {
+    const option = findOptimizationMetric(target);
+    if (option === undefined) return formatAnalysisNumber(value, digits);
+    return `${formatAnalysisNumber(value * option.scale, digits)}${option.toleranceSuffix}`;
+}
+
+export type OptimizationEvaluationLike = {
+    readonly measured?: readonly (number | string)[];
+    readonly parameters?: Readonly<Record<string, unknown>>;
+};
+
+/** The evaluated candidate closest to the first target's requested value, if any candidate was measured. */
+export function nearestOptimizationCandidate<T extends OptimizationEvaluationLike>(
+    target: OptimizationTarget,
+    evaluations: readonly T[],
+): {readonly evaluation: T; readonly index: number; readonly measured: number; readonly distance: number} | undefined {
+    let best: {evaluation: T; index: number; measured: number; distance: number} | undefined;
+    evaluations.forEach((evaluation, index) => {
+        const raw = evaluation.measured?.[0];
+        let measured = Number.NaN;
+        if (typeof raw === "number") measured = raw;
+        else if (typeof raw === "string") measured = Number(raw);
+        if (!Number.isFinite(measured)) return;
+        const distance = Math.abs(measured - target.value);
+        if (best === undefined || distance < best.distance) best = {evaluation, index, measured, distance};
+    });
+    return best;
 }
 
 const escapePointerToken = (value: string): string => value.replace(/~/g, "~0").replace(/\//g, "~1");

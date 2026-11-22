@@ -785,6 +785,14 @@ function LayoutSection({section}: {section: GameModelProjection["layout"]}) {
                     : ""}
             </Text>
             <Text size="sm">Paylines: {section.data.winModel.type === "lines" ? (section.data.paylineCount ?? 0) : "n/a for this win model"}</Text>
+            {section.data.winModel.type === "lines" && section.data.paylines !== undefined && section.data.paylines.length > 0 && (
+                <div>
+                    <Text size="xs" c="dimmed" mt="xs">Rows per reel, 0 = top row:</Text>
+                    {section.data.paylines.map((line, index) => (
+                        <Text size="sm" key={index}>Line {index + 1}: {line.join(" → ")}</Text>
+                    ))}
+                </div>
+            )}
         </>
     );
 }

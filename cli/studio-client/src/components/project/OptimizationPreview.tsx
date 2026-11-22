@@ -1,9 +1,12 @@
 import type {OptimizationEvidence} from "../../../../../src/optimization/OptimizationPolicy";
+import {describeTunablePath, formatOptimizationMetricValue, formatOptimizationTolerance, nearestOptimizationCandidate} from "../../domain/optimizationRequest";
 
 /** Measurements shown here come from the held-out assessment, never the search fitness. */
 export function OptimizationPreview({evidence}: {evidence: OptimizationEvidence}) {
     const request = evidence.request;
     const assessment = evidence.stochastic?.assessment;
+    const firstTarget = request?.targets[0];
+    const nearest = firstTarget === undefined ? undefined : nearestOptimizationCandidate(firstTarget, evidence.evaluations ?? []);
     return <section aria-label="Optimization review">
         <p>Source revision: {evidence.sourceRevision}</p>
         <p>Precision: {evidence.numericRepresentation}</p>
@@ -23,8 +26,8 @@ export function OptimizationPreview({evidence}: {evidence: OptimizationEvidence}
                     return <tr key={index}>
                         <td>{target.metric}{target.event ? ` (${target.event})` : ""}{target.bucket ? ` [${target.bucket.min}, ${target.bucket.max ?? "∞"})` : ""}</td>
                         <td>{target.unit}</td><td>{request.policy.mode}, {request.policy.scope}, stake {request.policy.stake}</td>
-                        <td>{target.value}</td><td>{target.tolerance?.kind ?? "absolute"}: {tolerance}</td>
-                        <td>{measured ?? "Unavailable"} {sampled ? "validation estimate" : "exact"}</td>
+                        <td>{formatOptimizationMetricValue(target, target.value)}</td><td>{target.tolerance?.kind ?? "absolute"}: {formatOptimizationTolerance(target, target.tolerance?.value ?? 0)}</td>
+                        <td>{measured === undefined ? "Unavailable" : `${formatOptimizationMetricValue(target, measured)} ${sampled ? "validation estimate" : "exact"}`}</td>
                         <td>{interval}</td>
                         <td>{sampled ? result?.verdict ?? "Unavailable" : verdict}{result && `: ${result.reason}`}</td>
                     </tr>;
@@ -35,13 +38,25 @@ export function OptimizationPreview({evidence}: {evidence: OptimizationEvidence}
                     <thead><tr>{["Candidate", "Parameters", "Measured", "Verdict"].map(label => <th key={label}>{label}</th>)}</tr></thead>
                     <tbody>{evidence.evaluations.map((evaluation, index) => <tr key={index}>
                         <td>{index + 1}</td>
-                        <td>{Object.entries(evaluation.parameters).map(([path, value]) => `${path}=${String(value)}`).join(", ")}</td>
+                        <td>{Object.entries(evaluation.parameters).map(([path, value]) => `${describeTunablePath(path)}=${String(value)}`).join(", ")}</td>
                         <td>{evaluation.measured === undefined
                             ? "Not measured"
-                            : evaluation.measured.map((value, targetIndex) => `${request.targets[targetIndex]?.metric ?? `metric ${targetIndex + 1}`}: ${value}`).join("; ")}</td>
+                            : evaluation.measured.map((value, targetIndex) => {
+                                const target = request.targets[targetIndex];
+                                const rendered = target === undefined ? String(value) : formatOptimizationMetricValue(target, value);
+                                return `${target?.metric ?? `metric ${targetIndex + 1}`}: ${rendered}`;
+                            }).join("; ")}</td>
                         <td>{evaluation.verdict}</td>
                     </tr>)}</tbody>
                 </table>
+            )}
+            {nearest !== undefined && firstTarget !== undefined && (
+                <p aria-label="Nearest evaluated candidate">
+                    Nearest evaluated candidate: #{nearest.index + 1}
+                    {Object.keys(nearest.evaluation.parameters ?? {}).length === 0 ? "" : ` (${Object.entries(nearest.evaluation.parameters ?? {}).map(([path, value]) => `${describeTunablePath(path)}=${String(value)}`).join(", ")})`}
+                    {" — "}{formatOptimizationMetricValue(firstTarget, nearest.measured)}
+                    {", miss "}{formatOptimizationMetricValue(firstTarget, nearest.distance)}
+                </p>
             )}
             <p>Limits: {request.policy.strategy}; candidate limit {request.policy.budget}; maximum native population {request.policy.maxOutcomes}.</p>
             {request.policy.sampling && <p>Sampling limits: search limit {request.policy.sampling.searchBudget}; validation samples {request.policy.sampling.assessmentSamples}; minimum samples {request.policy.sampling.minSamples}; minimum event count {request.policy.sampling.minEventCount}; workers {request.policy.sampling.workers}.</p>}

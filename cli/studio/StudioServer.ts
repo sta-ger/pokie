@@ -1187,6 +1187,11 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (method === "POST" && url.pathname === "/api/home/blueprints/math-preview") {
+            await this.handleBlueprintMathPreview(req, res);
+            return;
+        }
+
         if (method === "POST" && url.pathname === "/api/home/blueprints/par-import") {
             await this.handleBlueprintParImport(req, res);
             return;
@@ -2306,6 +2311,35 @@ export class StudioServer implements StudioServerHandling {
 
         const seed = (body as {sharedWeightsSampleSeed?: unknown} | null)?.sharedWeightsSampleSeed;
         this.sendJson(res, 200, this.blueprintService.previewGameModel(validated.blueprint, typeof seed === "number" ? seed : undefined));
+    }
+
+    // Same request shape as /game-model-preview (just "blueprint"). Exact enumeration is cancellable
+    // through the request's own close signal, so navigating away from Design Game does not leave an
+    // abandoned sweep running against a large draft.
+    private async handleBlueprintMathPreview(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateBlueprintValidationRequest((body ?? {}) as BlueprintValidationRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const controller = new AbortController();
+        const abort = (): void => controller.abort();
+        const abortOnResponseClose = (): void => {
+            if (!res.writableEnded) controller.abort();
+        };
+        req.once("aborted", abort);
+        res.once("close", abortOnResponseClose);
+        try {
+            const view = await this.blueprintService.previewMath(validated.blueprint, controller.signal);
+            if (!controller.signal.aborted) this.sendJson(res, 200, view);
+        } finally {
+            req.off("aborted", abort);
+            res.off("close", abortOnResponseClose);
+        }
     }
 
     private async handleBlueprintParImport(req: IncomingMessage, res: ServerResponse): Promise<void> {

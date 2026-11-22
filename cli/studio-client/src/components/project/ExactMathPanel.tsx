@@ -8,7 +8,7 @@ import {
     OutcomeLibraryGenerationStartError,
     startOutcomeLibraryGeneration,
 } from "../../api/apiClient";
-import type {StudioExactMathContributionTable, StudioExactMathView, StudioOutcomeLibraryGenerateJobView} from "../../api/types";
+import type {StudioExactMathContributionTable, StudioExactMathEventTable, StudioExactMathView, StudioOutcomeLibraryGenerateJobView} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
@@ -192,6 +192,16 @@ export function ExactMathPanel({projectRoot, sourceRevision, refreshKey}: {proje
                     Library {view.libraryId} · generated {view.generatedAt}{view.strategy === undefined ? "" : ` · ${view.strategy}`}
                 </Text>
                 <ExactPayoutDistribution buckets={analysis.payoutDistribution} />
+                {view.events.entries.length > 0 && (
+                    <AdvancedDisclosure label="win event probabilities">
+                        <Text size="sm" c="dimmed" mb="xs">
+                            Exact chance that a random round contains at least one of these wins. A round can contain several events, so the rows overlap and their probabilities do not sum to 1.
+                        </Text>
+                        <EventTable table={view.events} />
+                        {view.events.truncated && <Text size="xs" c="dimmed" mt="xs">Showing the most likely events. The library itself remains complete.</Text>}
+                    </AdvancedDisclosure>
+                )}
+                {view.events.entries.length === 0 && view.eventNote !== undefined && <Text size="xs" c="dimmed">{view.eventNote}</Text>}
                 {(contribution.line.entries.length > 0 || contribution.symbol.entries.length > 0) && (
                     <AdvancedDisclosure label="line and symbol contributions">
                         <Text size="sm" c="dimmed" mb="xs">
@@ -284,6 +294,33 @@ function Metric({label, value}: {label: string; value: string}) {
             <Text size="xs" c="dimmed">{label}</Text>
             <Text fw={600}>{value}</Text>
         </div>
+    );
+}
+
+function EventTable({table}: {table: StudioExactMathEventTable}) {
+    return (
+        <Table withRowBorders={false} aria-label="Exact win event probabilities">
+            <Table.Thead>
+                <Table.Tr>
+                    <Table.Th>Event</Table.Th>
+                    <Table.Th>Probability</Table.Th>
+                    <Table.Th>1 in</Table.Th>
+                    <Table.Th>RTP contribution</Table.Th>
+                    <Table.Th>Outcomes</Table.Th>
+                </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+                {table.entries.map((entry) => (
+                    <Table.Tr key={entry.key}>
+                        <Table.Td>{entry.label}</Table.Td>
+                        <Table.Td>{formatAnalysisNumber(entry.probability * 100, 4)}%</Table.Td>
+                        <Table.Td>{entry.probability > 0 ? formatAnalysisNumber(1 / entry.probability, 2) : "—"}</Table.Td>
+                        <Table.Td>{formatAnalysisNumber(entry.rtpContribution * 100, 4)}%</Table.Td>
+                        <Table.Td>{entry.outcomeCount.toLocaleString("en-US")}</Table.Td>
+                    </Table.Tr>
+                ))}
+            </Table.Tbody>
+        </Table>
     );
 }
 

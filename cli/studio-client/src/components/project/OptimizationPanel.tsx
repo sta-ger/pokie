@@ -21,9 +21,12 @@ import {
     defaultTargetForMetric,
     describeTunablePath,
     findOptimizationMetric,
+    formatOptimizationMetricValue,
+    formatOptimizationTolerance,
     formatTunableValues,
     metricDisplayTolerance,
     metricDisplayValue,
+    nearestOptimizationCandidate,
     OPTIMIZATION_METRICS,
     optimizationDomainSize,
     parseTunableValues,
@@ -94,6 +97,8 @@ function OptimizationSummary({evidence}: {evidence: OptimizationEvidence}) {
     const targets = evidence.request.targets;
     const measured = evidence.measured;
     const sampled = evidence.strategy === "seeded-search-v1";
+    const firstTarget = targets[0];
+    const nearest = firstTarget === undefined ? undefined : nearestOptimizationCandidate(firstTarget, evidence.evaluations ?? []);
     return (
         <div>
             {sampled && <Text size="xs" c="dimmed" mb="xs">Measured values are the held-out assessment estimates; open the full mathematical evidence for intervals.</Text>}
@@ -110,29 +115,33 @@ function OptimizationSummary({evidence}: {evidence: OptimizationEvidence}) {
                     {targets.map((target, index) => {
                         const option = findOptimizationMetric(target);
                         const value = sampled ? evidence.stochastic?.assessment?.targets[index]?.estimate : measured?.[index];
-                        const targetValue = option === undefined ? target.value : metricDisplayValue(target, option);
-                        let measuredValue: number | undefined;
-                        if (value !== undefined) measuredValue = option === undefined ? value : value * option.scale;
-                        let tolerance: number | undefined;
-                        if (target.tolerance !== undefined) tolerance = option === undefined ? target.tolerance.value : metricDisplayTolerance(target, option);
                         let allowance: number | undefined;
                         if (target.tolerance !== undefined) allowance = target.tolerance.kind === "relative" ? Math.abs(target.value) * target.tolerance.value : target.tolerance.value;
                         const attained = value !== undefined && allowance !== undefined ? Math.abs(value - target.value) <= allowance : undefined;
                         let attainedLabel = "—";
                         if (attained !== undefined) attainedLabel = attained ? "attained" : "missed";
-                        const suffix = option?.valueSuffix ?? "";
-                        const toleranceSuffix = option?.toleranceSuffix ?? "";
                         return (
                             <Table.Tr key={index}>
                                 <Table.Td>{option?.label ?? target.metric}{target.event ? ` (${target.event})` : ""}</Table.Td>
-                                <Table.Td>{targetValue.toFixed(2)}{suffix}{tolerance === undefined ? "" : ` ± ${tolerance.toFixed(2)}${toleranceSuffix}`}</Table.Td>
-                                <Table.Td>{measuredValue === undefined ? "—" : `${measuredValue.toFixed(4)}${suffix}`}</Table.Td>
+                                <Table.Td>
+                                    {formatOptimizationMetricValue(target, target.value, 2)}
+                                    {target.tolerance === undefined ? "" : ` ± ${formatOptimizationTolerance(target, target.tolerance.value, 2)}`}
+                                </Table.Td>
+                                <Table.Td>{value === undefined ? "—" : formatOptimizationMetricValue(target, value)}</Table.Td>
                                 <Table.Td>{attainedLabel}</Table.Td>
                             </Table.Tr>
                         );
                     })}
                 </Table.Tbody>
             </Table>
+            {nearest !== undefined && firstTarget !== undefined && (
+                <Alert color="yellow" variant="light" mt="sm">
+                    Nearest evaluated candidate: #{nearest.index + 1}
+                    {Object.keys(nearest.evaluation.parameters ?? {}).length === 0 ? "" : ` (${Object.entries(nearest.evaluation.parameters ?? {}).map(([path, value]) => `${describeTunablePath(path)}=${String(value)}`).join(", ")})`}
+                    {" — "}{formatOptimizationMetricValue(firstTarget, nearest.measured)}
+                    {", miss "}{formatOptimizationMetricValue(firstTarget, nearest.distance)}
+                </Alert>
+            )}
             {evidence.diff !== undefined && evidence.diff.length > 0 && (
                 <Table withRowBorders={false} aria-label="Selected parameter changes" mt="sm">
                     <Table.Thead>

@@ -31,6 +31,7 @@ import type {ParSheetImporting} from "./ParSheetImporting.js";
 import type {ParSheetImportResult} from "./ParSheetImportResult.js";
 import type {SheetGrid} from "./SheetGrid.js";
 import {cellToText} from "./mapping/sheetCellParsing.js";
+import {PAR_SHEET_MATH_SHEET_NAMES} from "./ParSheetMathSheetNames.js";
 
 // "Manifest"/"Symbols"/"Paytable" are the minimum needed to describe a playable blueprint at all
 // (mirrors GameBlueprint's own required fields); the rest are optional, matching reelStrips/
@@ -41,7 +42,7 @@ import {cellToText} from "./mapping/sheetCellParsing.js";
 // requires, rather than maintaining a second copy that could silently drift out of sync.
 export const REQUIRED_SHEETS = ["Manifest", "Symbols", "Paytable"];
 const OPTIONAL_SHEETS = ["ReelSequences", "ReelStrips", "Paylines", "AvailableBets", "WinModel", "Mechanics", "BetModes", "Meta"];
-const KNOWN_SHEETS = [...REQUIRED_SHEETS, ...OPTIONAL_SHEETS];
+const KNOWN_SHEETS = [...REQUIRED_SHEETS, ...OPTIONAL_SHEETS, ...PAR_SHEET_MATH_SHEET_NAMES];
 const BLUEPRINT_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/;
 type ConversionFact = NonNullable<ParSheetImportResult["conversionEvidence"]>["facts"][number];
 

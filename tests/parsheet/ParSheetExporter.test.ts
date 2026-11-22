@@ -105,6 +105,30 @@ describe("ParSheetExporter", () => {
         console.info(`PAR ${kind}: ${stdout.trim()}`);
     });
 
+    it("adds exact math sheets when requested, and explains an over-cap space instead of sampling it", async () => {
+        await new ParSheetExporter("1").exportToFile(blueprint, filePath, undefined, {includeMath: true});
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.readFile(filePath);
+        expect(workbook.worksheets.map((worksheet) => worksheet.name)).toEqual(expect.arrayContaining([
+            "MathSummary", "PayoutDistribution", "WinEvents", "LineContributions", "SymbolContributions",
+        ]));
+        const summary = workbook.getWorksheet("MathSummary")!;
+        expect(summary.getCell("A2").value).toBe("RTP");
+        expect(Number(summary.getCell("B2").value)).toBeGreaterThanOrEqual(0);
+        expect(workbook.getWorksheet("WinEvents")!.getCell("A1").value).toBe("Kind");
+        const imported = await new ParSheetImporter().importFromFile(filePath);
+        expect(imported.issues.filter(issue => issue.severity === "error")).toEqual([]);
+        expect(imported.conversionEvidence?.losslessEligible).toBe(true);
+
+        const cappedPath = path.join(dir, "capped.par.xlsx");
+        await new ParSheetExporter("1").exportToFile(blueprint, cappedPath, undefined, {includeMath: true, maxMathOutcomes: 1});
+        const capped = new ExcelJS.Workbook();
+        await capped.xlsx.readFile(cappedPath);
+        const cappedSummary = capped.getWorksheet("MathSummary")!;
+        expect(cappedSummary.getCell("A2").value).toBe("Not included");
+        expect(String(cappedSummary.getCell("C2").value)).toMatch(/exact preview cap is 1/i);
+    });
+
     it("retains an authored empty symbol payout map, omitted counts and explicit zeros in a real XLSX", async () => {
         const authored = {...blueprint, paytable: {A: {}, W: {2: 0}}, availableBets: [0.05, 7.5, 1e-7]};
         expect((await new ParSheetExporter("1").exportToFile(authored, filePath)).some(issue => issue.severity === "error")).toBe(false);
