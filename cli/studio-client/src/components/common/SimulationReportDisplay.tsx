@@ -213,7 +213,7 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                         </Table.Tr>
                         <Table.Tr>
                             <Table.Th>Seed</Table.Th>
-                            <Table.Td>{view.seed ?? "(none)"}</Table.Td>
+                            <Table.Td>{view.seed ?? "(none — not reproducible)"}</Table.Td>
                         </Table.Tr>
                         <Table.Tr>
                             <Table.Th>Total bet</Table.Th>

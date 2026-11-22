@@ -7,6 +7,7 @@ import {describeDesignCompatibility, describeReportListEntry, shortSourceRevisio
 import type {SimulationProgressView, SimulationReportView} from "../../domain/interpret/Simulation";
 import {describeProjectActionError} from "../../domain/projectActionError";
 import {getSimulationRoundsError, MAX_STUDIO_SIMULATION_ROUNDS} from "../../domain/simulationRounds";
+import {generateSimulationSeed} from "../../domain/simulationSeed";
 import {useConfirm} from "../../hooks/useConfirm";
 import type {SimulationTerminalReceipt} from "../../hooks/useSimulationPoll";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
@@ -155,9 +156,12 @@ export function SimulationTab({
 }) {
     const confirm = useConfirm();
     const [capturedConvergence, setCapturedConvergence] = useState<StudioSimulationReportListEntry["convergence"]>();
+    // A fresh tab starts with a real seed instead of an empty field: the ordinary default run is
+    // then reproducible, and the seed is visible without opening the advanced section.
+    const [initialSeed] = useState(() => generateSimulationSeed());
     const form = useForm<FormValues>({
         mode: "uncontrolled",
-        initialValues: {rounds: DEFAULT_ROUNDS, seed: "", workers: defaultWorkers(), modeName: ""},
+        initialValues: {rounds: DEFAULT_ROUNDS, seed: initialSeed, workers: defaultWorkers(), modeName: ""},
         validate: {rounds: getSimulationRoundsError},
         validateInputOnChange: ["rounds"],
         validateInputOnBlur: ["rounds"],
@@ -294,9 +298,11 @@ export function SimulationTab({
         ? recentRuns.entries.find((entry) => entry.durationMs > 0 && (entry.actualRounds ?? entry.requestedRounds) > 0)
         : undefined;
     const currentRounds = form.getValues().rounds;
-    const estimatedCurrentRun = latestTimedRun !== undefined && Number.isFinite(currentRounds) && currentRounds > 0
-        ? formatElapsedMs((latestTimedRun.durationMs / (latestTimedRun.actualRounds ?? latestTimedRun.requestedRounds)) * currentRounds)
+    const estimatedCurrentRunMs = latestTimedRun !== undefined && Number.isFinite(currentRounds) && currentRounds > 0
+        ? (latestTimedRun.durationMs / (latestTimedRun.actualRounds ?? latestTimedRun.requestedRounds)) * currentRounds
         : undefined;
+    const estimatedCurrentRun = estimatedCurrentRunMs === undefined ? undefined : formatElapsedMs(estimatedCurrentRunMs);
+    const longEstimatedRun = estimatedCurrentRunMs !== undefined && estimatedCurrentRunMs > 30 * 60 * 1000;
     const lastRunHint = latestTimedRun === undefined
         ? ""
         : ` Last local run: ${(latestTimedRun.actualRounds ?? latestTimedRun.requestedRounds).toLocaleString("en-US")} rounds in ${formatElapsedMs(latestTimedRun.durationMs)} (${Math.round((latestTimedRun.actualRounds ?? latestTimedRun.requestedRounds) / (latestTimedRun.durationMs / 1000)).toLocaleString("en-US")} rounds/s).${estimatedCurrentRun === undefined ? "" : ` At that rate, ${currentRounds.toLocaleString("en-US")} rounds ≈ ${estimatedCurrentRun}.`}`;
@@ -315,6 +321,22 @@ export function SimulationTab({
         }
         return undefined;
     })();
+
+    // Changing settings after inspecting a report should show that report's own seed/rounds, not a
+    // fresh tab-local seed that makes the next run look like an unrelated sample.
+    const showSettingsForReviewedReport = (): void => {
+        if (reviewedDetail.status === "loaded" && !("modes" in reviewedDetail.report)) {
+            const report = reviewedDetail.report;
+            formRef.current.setValues({
+                rounds: report.requestedRounds > 0 ? report.requestedRounds : report.rounds,
+                seed: report.seed ?? "",
+                workers: report.workers,
+                modeName: report.betMode ?? "",
+            });
+            formRef.current.validateField("rounds");
+        }
+        setActiveStep(0);
+    };
 
     return (
         <div ref={workflowRef} tabIndex={-1} role="region" aria-label="Simulation workflow" onFocusCapture={(event) => {
@@ -393,11 +415,38 @@ export function SimulationTab({
                             data-pokie-lifecycle-field="simulation-rounds"
                             {...form.getInputProps("rounds")}
                             key={form.key("rounds")}
+                            style={{width: 230}}
+                        />
+                        <TextInput
+                            label="Seed"
+                            description="Same seed and game reproduce the same run. The report keeps this seed."
+                            placeholder="Leave empty for an unseeded run"
+                            data-pokie-lifecycle-field="simulation-seed"
+                            {...form.getInputProps("seed")}
+                            key={form.key("seed")}
+                            rightSection={(
+                                <Button
+                                    type="button"
+                                    size="compact-xs"
+                                    variant="subtle"
+                                    aria-label="Generate a new seed"
+                                    onClick={() => form.setFieldValue("seed", generateSimulationSeed())}
+                                >
+                                    New seed
+                                </Button>
+                            )}
+                            rightSectionWidth={78}
+                            style={{flex: "1 1 300px", minWidth: 260}}
                         />
                         <Button id="simulation-run" type="submit" data-pokie-lifecycle="operation" data-pokie-transaction-state="editable-submission" data-pokie-lifecycle-operation="simulation" loading={progress?.status === "queued"} disabled={restorationMessage !== undefined || active || !form.isValid()}>
                             Run Simulation
                         </Button>
                     </QuickActions>
+                    {longEstimatedRun && (
+                        <Text size="xs" c="orange" mb="sm">
+                            This run is estimated at about {estimatedCurrentRun}. It can be cancelled while it runs; Studio keeps the progress and terminal state.
+                        </Text>
+                    )}
                     {modeDiscoveryError && <ErrorState message={`Cannot discover bet modes: ${modeDiscoveryError}`} />}
                     {availableModes !== undefined && availableModes.length > 0 && (
                         <Select
@@ -412,9 +461,8 @@ export function SimulationTab({
                         />
                     )}
                     {capturedConvergence && <Text size="sm">Captured adaptive stopping: minimum {capturedConvergence?.minRounds} usable samples per worker; tolerance {capturedConvergence?.rtpTolerance} RTP units; check every {capturedConvergence?.checkIntervalRounds} accepted plays; stable checks {capturedConvergence?.stableChecks ?? 3}. These settings will be saved for retry. <Button variant="subtle" size="xs" onClick={() => setCapturedConvergence(undefined)}>Use fixed limit</Button></Text>}
-                    <AdvancedDisclosure detail="seed, workers">
+                    <AdvancedDisclosure detail="workers">
                         <QuickActions>
-                            <TextInput label="Seed (optional)" {...form.getInputProps("seed")} key={form.key("seed")} />
                             <NumberInput label="Workers" description="Defaults to up to 4, based on this browser's CPU count." min={1} step={1} required {...form.getInputProps("workers")} key={form.key("workers")} />
                         </QuickActions>
                     </AdvancedDisclosure>
@@ -483,7 +531,7 @@ export function SimulationTab({
                                         Back to configuration
                                     </Button>
                                 )}
-                                <Button variant="default" onClick={() => setActiveStep(0)}>
+                                <Button variant="default" onClick={showSettingsForReviewedReport}>
                                     Change settings
                                 </Button>
                                 <Button
@@ -687,7 +735,7 @@ export function SimulationTab({
                                         <Group gap="xs" wrap="wrap" align="baseline">
                                             <Text size="sm" style={{overflowWrap: "anywhere"}}>
                                                 {entry.game.id} v{entry.game.version} — {entry.modeName ? `mode ${entry.modeName}, ` : ""}{entry.actualRounds ?? "per-mode"}/{entry.requestedRounds} rounds, RTP{" "}
-                                                {entry.rtp === undefined ? "per-mode" : `${(entry.rtp * 100).toFixed(2)}%`}, {new Date(entry.startedAt).toLocaleString()}
+                                                {entry.rtp === undefined ? "per-mode" : `${(entry.rtp * 100).toFixed(2)}%`}, seed {entry.seed ?? "none"}, {new Date(entry.startedAt).toLocaleString()}
                                                 {shortSourceRevision(entry.sourceRevision) === undefined ? "" : `, design ${shortSourceRevision(entry.sourceRevision)}`}
                                                 {entry.hasWarnings ? " (has warnings)" : ""}
                                             </Text>

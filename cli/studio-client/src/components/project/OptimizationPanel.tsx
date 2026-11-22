@@ -208,11 +208,13 @@ function TunableValuesInput({label, values, onCommit}: {
 }
 
 /** A form view over the same validated request document the expert editor exposes. */
-export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange, onStarted, onApplied}: {
+export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange, refreshKey, onStarted, onApplied}: {
     projectRoot: string;
     jobs: ReturnType<typeof useProjectJobs>;
     recoveryJob?: {id?: string; request: StudioJobView["request"]};
     sourceChange?: {sourceRevision?: string};
+    /** Bumped when an authored change (save/apply/undo) is committed, even when no revision is returned. */
+    refreshKey?: number;
     onStarted?: (sourceRevision: string) => void;
     onApplied?: () => void;
 }) {
@@ -271,7 +273,7 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
             ? {...previous, sourceChange} : undefined);
         setSaved(undefined);
         setBusy(false);
-    }, [sourceChange]);
+    }, [sourceChange, refreshKey]);
     useEffect(() => {
         const read = new AbortController();
         setModel(undefined);
@@ -293,7 +295,7 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
                 setModelError(failure instanceof Error ? failure.message : String(failure));
             });
         return () => read.abort();
-    }, [fetchImpl, projectRoot, sourceChange?.sourceRevision]);
+    }, [fetchImpl, projectRoot, sourceChange?.sourceRevision, refreshKey]);
     const projectJobs = jobs.jobs;
     const job =
         projectJobs.find((item) => item.id === started?.id) ??
@@ -857,7 +859,7 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
                                 {support.reason}
                                 {support.writable !== undefined && (
                                     <Text size="sm">
-                                        {support.writable.length.toLocaleString()} writable field{support.writable.length === 1 ? "" : "s"} discovered.
+                                        {support.writable.length.toLocaleString()} field{support.writable.length === 1 ? "" : "s"} can be tuned.
                                     </Text>
                                 )}
                             </Alert>

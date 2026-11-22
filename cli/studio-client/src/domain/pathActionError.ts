@@ -41,7 +41,7 @@ const PATH_ACTION_ISSUE_COPY: Record<PathActionErrorReason, (subject: string) =>
     schema: (subject) => ({status: `${subject} is missing or invalid.`, remediation: "Provide a valid value and try again."}),
     destination: (subject) => ({
         status: `${subject} needs a destination Studio can use.`,
-        remediation: "Choose a destination folder explicitly, or start Studio from a different folder and try again.",
+        remediation: "Use a different Game id, or start Studio from a folder with a writable POKIE Projects location, then try again.",
     }),
     other: (subject) => ({
         status: `${subject} could not be completed.`,

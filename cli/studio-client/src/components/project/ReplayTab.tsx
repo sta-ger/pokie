@@ -191,7 +191,7 @@ export function ReplayTab({
     onInspectStored: (id: string) => Promise<void>;
     onCompareStored: (id: string) => void;
     expected: ExpectedReplayState;
-    onLoadExpectedFromPaste: (raw: string) => void;
+    onLoadExpectedFromPaste: (raw: string, source?: "paste" | "recovery" | "session-spin") => void;
     onClearExpected: () => void;
     comparison: ReplayComparisonView | undefined;
     recentSpins: RecentSpinsListView;
@@ -254,7 +254,7 @@ export function ReplayTab({
         if (recoveryRequest === undefined) return;
         if (recoveryRequest.recording) {
             setFindMethod("artifact");
-            onLoadExpectedFromPasteRef.current(JSON.stringify(recoveryRequest.recording));
+            onLoadExpectedFromPasteRef.current(JSON.stringify(recoveryRequest.recording), "recovery");
             setLoadedForMethod("artifact");
             setJobLoaded(false);
         }
@@ -427,10 +427,10 @@ export function ReplayTab({
         const finishedResult = jobLoaded && !active ? result : undefined;
         if (findMethod === "spin" && selectedSpin) {
             loadedReplayCard = describeLoadedReplay({source: "spin", spin: selectedSpin, canExport: exportReady});
-        } else if (findMethod === "artifact") {
+        } else if (findMethod === "artifact" && expected.status === "loaded") {
             loadedReplayCard = describeLoadedReplay({
                 source: "artifact",
-                expected: expected.status === "loaded" ? expected : {},
+                expected,
                 reproducibility: artifactReproducibility,
                 result: finishedResult,
                 comparison,
@@ -501,7 +501,7 @@ export function ReplayTab({
                             data-pokie-lifecycle="precondition"
                             data-pokie-lifecycle-operation="replay-target"
                         >
-                            Load
+                            Use these settings
                         </Button>
                     </QuickActions>
                     {availableModes !== undefined && availableModes.length > 0 && (
@@ -734,7 +734,7 @@ export function ReplayTab({
                                     setJobLoaded(false);
                                     setSelectedSimulationMode(value ?? undefined);
                                 }} allowDeselect={false} />}
-                                <Button disabled={simulationUnavailableReason !== undefined} onClick={() => loadTarget(simRound, selectedSimEntry.seed, selectedSimEntry.modes ? selectedSimulationMode : selectedSimEntry.modeName)}>Load</Button>
+                                <Button disabled={simulationUnavailableReason !== undefined} onClick={() => loadTarget(simRound, selectedSimEntry.seed, selectedSimEntry.modes ? selectedSimulationMode : selectedSimEntry.modeName)}>Use these settings</Button>
                             </QuickActions>
                         </div>
                     )}
@@ -822,9 +822,9 @@ export function ReplayTab({
                             {selectedSpin.debug?.recording && (
                                 <Button variant="default" onClick={() => {
                                     setFindMethod("artifact");
-                                    onLoadExpectedFromPaste(JSON.stringify(selectedSpin.debug!.recording));
+                                    onLoadExpectedFromPaste(JSON.stringify(selectedSpin.debug!.recording), "session-spin");
                                     markLoaded("artifact", false);
-                                }}>Load for audit replay</Button>
+                                }}>Open recorded round for replay</Button>
                             )}
                             {/* The Loaded replay card's Reproducible row above already says there's nothing to reproduce;
                                 its Identities/Timestamp rows already name the session/round/request/recorded-at/source/mode. */}
@@ -1086,7 +1086,7 @@ export function ReplayTab({
                                             fresh parameterized run with no recorded round behind it (see
                                             runReproducibilityLabel's own doc comment), so "Reproduce" would overstate
                                             what's actually happening for them. */}
-                                        {findMethod === "artifact" ? "Reproduce" : "Run again"}
+                                        {findMethod === "artifact" ? "Reproduce" : "Run replay"}
                                     </Button>
                                 )}
                                 {active && (

@@ -29,6 +29,7 @@ export function SimulationAssessment({view, compact = false}: {view: SingleSimul
                         </Table.Tr>}
                     </Table.Tbody>
                 </Table>
+                <Text size="xs" c="dimmed">95% intervals use a normal approximation: 1.96 × standard deviation ÷ √rounds.</Text>
                 <Text size="sm" c="dimmed">Empirical estimates · exact RTP and unseen-event coverage are not established.</Text>
                 {roughEstimate && (
                     <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title="Rough RTP estimate" mt="sm">

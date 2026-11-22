@@ -184,10 +184,13 @@ export function ExactMathPanel({projectRoot, sourceRevision, refreshKey}: {proje
                 <SimpleGrid cols={{base: 2, md: 5}} spacing="sm">
                     <Metric label="Exact RTP" value={`${formatAnalysisNumber(analysis.rtp * 100, 4)}%`} />
                     <Metric label="Hit frequency" value={`${formatAnalysisNumber(analysis.hitFrequency * 100, 4)}%`} />
-                    <Metric label="Volatility (std. dev.)" value={formatAnalysisNumber(analysis.standardDeviation, 4)} />
+                    <Metric label="Volatility (σ, bet units)" value={formatAnalysisNumber(analysis.standardDeviation, 4)} />
                     <Metric label="Max win (× bet)" value={formatAnalysisNumber(analysis.maxWin / view.stake, 4)} />
                     <Metric label="Outcomes" value={view.outcomeCount.toLocaleString("en-US")} />
                 </SimpleGrid>
+                <Text size="xs" c="dimmed">
+                    Volatility is the standard deviation of payout per round, in bet units. Max win is the largest single-round payout, also in bet units.
+                </Text>
                 <Text size="xs" c="dimmed">
                     Library {view.libraryId} · generated {view.generatedAt}{view.strategy === undefined ? "" : ` · ${view.strategy}`}
                 </Text>

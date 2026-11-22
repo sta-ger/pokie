@@ -134,8 +134,8 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
             return {
                 supported: true,
                 reason: validated.policy.strategy === "seeded-search-v1"
-                    ? "Supported bounded sampled same-type workflow; held-out confidence assessment determines attainment in the submitted population."
-                    : "Supported finite same-type workflow; target authority is limited to the submitted scope.",
+                    ? "Supported sampled search. Studio evaluates a repeatable sample and uses a held-out confidence check to decide whether the target is met."
+                    : "Supported exact search. Studio evaluates each candidate value you listed and reports its exact RTP; the target applies only to the scope you submitted.",
                 ...discovery,
             };
         } catch (error) {

@@ -6,7 +6,7 @@ describe("describePathActionError", () => {
 
         expect(classifyPathActionErrorReason(raw)).toBe("destination");
         expect(describePathActionError("Your game", raw)).toBe(
-            "Your game needs a destination Studio can use. Choose a destination folder explicitly, or start Studio from a different folder and try again.",
+            "Your game needs a destination Studio can use. Use a different Game id, or start Studio from a folder with a writable POKIE Projects location, then try again.",
         );
     });
 

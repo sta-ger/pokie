@@ -68,10 +68,15 @@ export function SimulationSummaryCard({outcome}: {outcome: SimulationOutcome}) {
                         <Table.Th scope="row">Max win (× bet)</Table.Th>
                         <Table.Td>{report.maxWin.toFixed(2)}</Table.Td>
                     </Table.Tr>
+                    <Table.Tr>
+                        <Table.Th scope="row">Seed</Table.Th>
+                        <Table.Td style={{overflowWrap: "anywhere"}}>{report.seed ?? "— (not set; this run is not reproducible)"}</Table.Td>
+                    </Table.Tr>
                 </Table.Tbody>
             </Table>
 
             <Text size="sm" className="studio-simulation-run-facts">Duration: {formatElapsedMs(report.durationMs)}</Text>
+            <Text size="xs" c="dimmed">Volatility is the standard deviation of payout per round, in bet units.</Text>
             <SimulationAssessment view={report} compact />
 
             <AdvancedDisclosure label="sampling and precision">

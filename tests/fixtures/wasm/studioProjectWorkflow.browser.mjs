@@ -173,8 +173,8 @@ try {
     await click("Replay");
     await input("Seed", "0");
     await input("Target round number", 3);
-    await click("Load");
-    const replay = await submitJob("replay", "Run again");
+    await click("Use these settings");
+    const replay = await submitJob("replay", "Run replay");
     assert.equal((await jobTerminal(replay)).status, "completed");
     assert.equal((await fetch(`${base}/api/project/replays/${replay.id}/download`)).status, 200);
     const retried = await submitJob("replay", "Run again with the same parameters");

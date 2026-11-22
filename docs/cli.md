@@ -3440,19 +3440,24 @@ The Dashboard itself has four states, all handled explicitly by the frontend:
 
 The **Simulation** tab runs a [`pokie sim`](#pokie-sim-packageroot)-equivalent simulation against the active
 project and shows a human-readable report — without ever shelling out to `pokie sim` or reimplementing its logic.
-A form asks for **rounds** (required, a positive integer), an optional **seed**, and **workers** (a positive
-integer, default `1`), same as `pokie sim --rounds/--seed/--workers`; running it shows **queued** → **running**
-(with a live rounds-completed/total progress line — aggregated across every worker when `workers > 1` — and
-elapsed duration) → **completed**/**failed**/**cancelled**. A **Cancel** button is available while
-queued/running (asking for confirmation before it actually cancels — see below for what cancelling actually stops
-when `workers > 1`), and once the job reaches a terminal state, a **Run again with the same parameters** button
-re-submits the exact same rounds/seed/workers.
+A form asks for **rounds** (required, a positive integer), a **seed** (prefilled with a fresh Studio seed on
+each new configure session; leave it empty only for a deliberately unseeded, non-reproducible run), and **workers**
+(a positive integer, default `1`), same as `pokie sim --rounds/--seed/--workers`; running it shows
+**queued** → **running** (with a live rounds-completed/total progress line — aggregated across every worker
+when `workers > 1` — and elapsed duration) → **completed**/**failed**/**cancelled**. A **Cancel** button is
+available while queued/running (asking for confirmation before it actually cancels — see below for what
+cancelling actually stops when `workers > 1`), and once the job reaches a terminal state, a **Run again with
+the same parameters** button re-submits the exact same rounds/seed/workers. **Change settings** returns to the
+form with the reviewed report's own rounds/seed/workers, so a historical result can be re-run without guessing
+or copying its seed by hand.
 
 The report shown on completion includes at minimum: game id/version, rounds (and requested rounds, if the game
-stopped itself early), seed, total bet, total payout, RTP, hit frequency, volatility/standard deviation, the RTP
-95% confidence interval, max win, a base/free-games/custom category **breakdown** table when the report has one
-(same as [`pokie sim`](#pokie-sim-packageroot)'s own breakdown — omitted entirely for a game whose session doesn't
-support round categorization), and any **warnings**/**reproducibility** command the report carries.
+stopped itself early), seed, total bet, total payout, RTP, hit frequency, volatility/standard deviation (payout
+standard deviation per round, in bet units), the RTP 95% confidence interval (normal approximation:
+1.96 × standard deviation ÷ √rounds), max win, a base/free-games/custom category **breakdown** table when the
+report has one (same as [`pokie sim`](#pokie-sim-packageroot)'s own breakdown — omitted entirely for a game whose
+session doesn't support round categorization), and any **warnings**/**reproducibility** command the report
+carries.
 
 Only one simulation may be queued/running per project at a time — starting a second one while the first is still
 active returns a `409` naming the already-active job's id, rather than silently starting a competing run.
@@ -3735,7 +3740,7 @@ client, even for a load/validation failure.
  for the active project and returns immediately (`202`) with the new job in `"queued"` status; the simulation
  itself runs in the background, never blocking this request. `workers` defaults to `1` when omitted. `400
  {"error": "..."}` for an invalid `rounds` (missing, not an integer, less than 1, or above the safe Studio
- ceiling of 2,000,000 — see `MAX_STUDIO_SIMULATION_ROUNDS`), an invalid `seed` (present but empty/not a string),
+ ceiling of 10,000,000 — see `MAX_STUDIO_SIMULATION_ROUNDS`), an invalid `seed` (present but empty/not a string),
  or an invalid `workers` (present but not an integer between 1 and `MAX_SIMULATION_WORKERS`, currently 32); `409
  {"error": "No active project."}` in Home mode; `409 {"error": "...", "activeJobId": "..."}` if a simulation is
  already queued/running for this project — a retried/duplicated request can never spawn a competing job or

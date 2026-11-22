@@ -71,7 +71,7 @@ test.describe.serial("managed project labels", () => {
         await page.getByRole("button", {name: "Check tuning support"}).click();
         await expect(page.getByText(/Unknown policy path/).first()).toBeVisible({timeout: 30_000});
         await expect(page.getByText("/paytable/NOPE/3", {exact: false}).first()).toBeVisible();
-        await expect(page.getByText(/writable fields discovered/)).toBeVisible();
+        await expect(page.getByText(/can be tuned/)).toBeVisible();
         await expect(page.getByText(/does not list this field as writable/)).toBeVisible();
     });
 
@@ -82,6 +82,10 @@ test.describe.serial("managed project labels", () => {
         await page.getByRole("button", {name: "Run Simulation"}).click();
         await expect(page.getByText(/Simulation completed — /)).toBeVisible({timeout: 60_000});
         await expect(page.getByText(/1,000 rounds used · no precision target set/i).first()).toBeVisible();
+        const summary = page.getByRole("table", {name: "Simulation summary"});
+        const seedRow = summary.getByRole("rowheader", {name: "Seed"});
+        await expect(seedRow).toBeVisible();
+        await expect(seedRow.locator("xpath=following-sibling::td[1]")).toHaveText(/^studio-[a-z0-9]+$/);
         await page.getByRole("button", {name: "Open full report"}).click();
         await expect(page.getByRole("rowheader", {name: "Stop reason"})).toBeVisible();
         await expect(page.getByRole("rowheader", {name: "Stop reason"}).locator("xpath=following-sibling::td[1]")).toHaveText(/requested rounds completed/i);
@@ -115,12 +119,12 @@ test.describe.serial("managed project labels", () => {
         const run = async (seed: string) => {
             const before = await reportCount();
             await page.getByRole("button", {name: "Change settings", exact: true}).click();
-            const advanced = page.getByRole("button", {name: "Show advanced details (seed, workers)"});
+            const advanced = page.getByRole("button", {name: "Show advanced details (workers)"});
             if (await advanced.isVisible().catch(() => false)) {
                 await advanced.click();
             }
             await page.getByLabel("Rounds *").fill("1000");
-            await page.getByLabel("Seed (optional)").fill(seed);
+            await page.getByLabel("Seed", {exact: true}).fill(seed);
             await page.getByRole("button", {name: "Run Simulation", exact: true}).click();
             // The list count is a completion receipt for *this* run; a previous report's status text
             // would otherwise satisfy a plain "Simulation completed" wait immediately.
@@ -208,7 +212,7 @@ test.describe.serial("managed project labels", () => {
     test("a completed optimization does not show indeterminate work", async ({page}) => {
         await page.goto("/");
         await page.getByRole("button", {name: "Check tuning support"}).click();
-        await expect(page.getByText(/Supported finite same-type workflow/)).toBeVisible({timeout: 30_000});
+        await expect(page.getByText(/Supported exact search/)).toBeVisible({timeout: 30_000});
         await page.getByRole("button", {name: "Run optimization"}).click();
         await expect(page.getByText(/Verdict: (success|attained)/)).toBeVisible({timeout: 60_000});
         await expect(page.getByText(/indeterminate/)).toHaveCount(0);
@@ -238,7 +242,7 @@ test.describe.serial("managed project labels", () => {
     test("apply asks for confirmation and marks the exact library stale immediately", async ({page}) => {
         await page.goto("/");
         await page.getByRole("button", {name: "Check tuning support"}).click();
-        await expect(page.getByText(/Supported finite same-type workflow/)).toBeVisible({timeout: 30_000});
+        await expect(page.getByText(/Supported exact search/)).toBeVisible({timeout: 30_000});
         await page.getByRole("button", {name: "Run optimization"}).click();
         await expect(page.getByText(/Verdict: (success|attained)/)).toBeVisible({timeout: 60_000});
         await expect(page.getByRole("button", {name: "Apply reviewed changes"})).toBeVisible({timeout: 30_000});
@@ -246,6 +250,10 @@ test.describe.serial("managed project labels", () => {
         await expect(page.getByRole("dialog")).toContainText("Apply these reviewed changes to the saved design?");
         await page.locator("#optimization-apply-confirm").click();
         await expect(page.getByText("Changes saved to the game design")).toBeVisible({timeout: 60_000});
+        // The optimization panel must re-read the saved model after Apply: the Current column should
+        // show the newly saved payout without a manual reload.
+        const tunedRow = page.getByRole("row", {name: /A × 3 payout/});
+        await expect(tunedRow.getByRole("cell").nth(2)).toHaveText("7", {timeout: 30_000});
         // Switching tabs unmounts the optimization panel, not the 15-minute server receipt. Undo must
         // remain available when the designer comes back to inspect the applied values.
         await page.getByRole("button", {name: "Game Model", exact: true}).click();

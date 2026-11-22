@@ -977,8 +977,14 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     );
 
     const onLoadExpectedFromPaste = useCallback(
-        (raw: string) => {
+        (raw: string, source: "paste" | "recovery" | "session-spin" = "paste") => {
             const requestId = ++expectedReplayRequestIdRef.current;
+            const subject = source === "paste" ? "The pasted record" : "The recorded round";
+            const identityLabel = {
+                paste: "pasted replay artifact",
+                recovery: "recorded replay round",
+                "session-spin": "recorded play round",
+            }[source];
             let parsed: unknown;
             try {
                 parsed = JSON.parse(raw);
@@ -1017,7 +1023,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         stateBefore: parsedDescriptor?.stateBefore,
                         stateAfter: parsedDescriptor?.stateAfter,
                         identity: {
-                            label: `pasted replay artifact${parsedDescriptor?.sessionId ? `, session ${parsedDescriptor.sessionId}` : ""}, round ${response.round}`,
+                            label: `${identityLabel}${parsedDescriptor?.sessionId ? `, session ${parsedDescriptor.sessionId}` : ""}, round ${response.round}`,
                             seed: response.seed,
                             timestamp: parsedDescriptor?.timestamp,
                         },
@@ -1025,7 +1031,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                 })
                 .catch((error: unknown) => {
                     if (requestId === expectedReplayRequestIdRef.current) {
-                        setExpectedReplay({status: "error", message: describeReplayActionError("The pasted record", errorMessage(error))});
+                        setExpectedReplay({status: "error", message: describeReplayActionError(subject, errorMessage(error))});
                     }
                 });
         },
@@ -1519,7 +1525,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     ? <WasmManifestInspection projectRoot={header.projectRoot} summary={header.wasmPresentation.inspectionSummary} />
                                     : <Text>This {describeProjectType(header.type).toLowerCase()} can be republished from Build/Export.</Text>
                             )}
-                            {activeTab === "overview" && (header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact") && <OptimizationPanel key={header.projectRoot} projectRoot={header.projectRoot} jobs={commonJobs} recoveryJob={recoveryJob?.operation === "optimization" ? recoveryJob : undefined} sourceChange={optimizerSourceChange?.projectRoot === header.projectRoot ? optimizerSourceChange : undefined} onStarted={(sourceRevision) => {
+                            {activeTab === "overview" && (header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact") && <OptimizationPanel key={header.projectRoot} projectRoot={header.projectRoot} jobs={commonJobs} recoveryJob={recoveryJob?.operation === "optimization" ? recoveryJob : undefined} sourceChange={optimizerSourceChange?.projectRoot === header.projectRoot ? optimizerSourceChange : undefined} refreshKey={exactMathRefreshKey} onStarted={(sourceRevision) => {
                                 // Retry owns only the pending form handoff. Once the server
                                 // accepts its replacement, remounts must follow current work.
                                 setRecoveryJob(job => job?.operation === "optimization" ? undefined : job);
