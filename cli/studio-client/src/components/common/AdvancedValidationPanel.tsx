@@ -5,21 +5,28 @@ import {IssueList} from "./IssueList";
 
 function describeAnalysisStatus(status: AdvancedModelValidationReport["status"]): string {
     if (status === "budget-exhausted") return "not finished (analysis limit reached)";
+    if (status === "complete") return "complete";
     return status;
+}
+
+function describeVerdict(verdict: AdvancedModelValidationReport["verdict"]): string {
+    if (verdict === "proved-within-assumptions") return "all declared feature paths passed (within assumptions)";
+    if (verdict === "violated") return "a declared check failed";
+    return "not conclusive";
 }
 
 export function AdvancedValidationPanel({report}: {report?: AdvancedModelValidationReport}) {
     if (!report) return null;
     return <div>
-        <Text fw={600}>Advanced analysis: {describeAnalysisStatus(report.status)} — {report.verdict}</Text>
+        <Text fw={600}>Feature and accounting check: {describeAnalysisStatus(report.status)} — {describeVerdict(report.verdict)}</Text>
         <Text size="sm" c="dimmed">
-            Optional check. Structural validation above is separate{report.status === "budget-exhausted" ? "; an unfinished analysis does not make this design invalid." : "."}
+            Optional check of feature termination and accounting. It does not prove RTP, payout probabilities or certification. Structural validation above is separate{report.status === "budget-exhausted" ? "; an unfinished check does not make this design invalid." : "."}
         </Text>
-        <AdvancedDisclosure label="model analysis details">
-            <Text size="sm">Termination: {report.termination}. Executable fidelity: {report.executableFidelity}.</Text>
-            <IssueList title="Advanced checks" issues={report.checks.map(check => ({code: check.id, path: check.path, message: `${check.status}: ${check.message}`, details: check.evidence === undefined ? undefined : {evidence: check.evidence}}))} />
-            <IssueList title="Analysis assumptions" issues={report.assumptions.map(message => ({message}))} />
-            <IssueList title="Analysis limitations" issues={report.limitations.map(message => ({message}))} />
+        <AdvancedDisclosure label="technical check details">
+            <Text size="sm">Feature paths: {report.termination}. Runtime behavior: {report.executableFidelity}.</Text>
+            <IssueList title="Checks" issues={report.checks.map(check => ({code: check.id, path: check.path, message: `${check.status}: ${check.message}`, details: check.evidence === undefined ? undefined : {evidence: check.evidence}}))} />
+            <IssueList title="Assumptions" issues={report.assumptions.map(message => ({message}))} />
+            <IssueList title="Limitations" issues={report.limitations.map(message => ({message}))} />
             <details><summary>Analysis limits and work</summary><pre>{JSON.stringify({limits: report.limits, work: report.work}, null, 2)}</pre></details>
         </AdvancedDisclosure>
     </div>;

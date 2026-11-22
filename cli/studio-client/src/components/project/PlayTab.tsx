@@ -127,7 +127,7 @@ export function PlayTab({
         errorNotice = <ErrorState message={session.message} />;
     }
 
-    const deliveryField = activeSession?.logicalRoundDeliverySupported && <Select label="Round delivery" aria-label="Round delivery" value={delivery} data={[{value: "stepwise", label: "One subround"}, {value: "composite", label: "Complete logical round"}]} onChange={(value) => setDelivery(value === "composite" ? "composite" : "stepwise")} disabled={loading} />;
+    const deliveryField = activeSession?.logicalRoundDeliverySupported && <Select label="Round display" aria-label="Round display" value={delivery} data={[{value: "stepwise", label: "One step"}, {value: "composite", label: "Whole round"}]} onChange={(value) => setDelivery(value === "composite" ? "composite" : "stepwise")} disabled={loading} />;
     const seedField = (
         <TextInput
             label="Seed (optional)"
@@ -162,7 +162,7 @@ export function PlayTab({
                 <Text size="sm" c="dimmed" mb="sm">
                     Play prepares this game for a real round and creates a session in Studio. Nothing else needs to be set up.
                 </Text>
-                {activeSession?.logicalRound && <Text size="sm">Round {activeSession.logicalRound.status}: {formatCount(activeSession.logicalRound.mathematicalCursor, "subround")}, {formatCount(activeSession.logicalRound.cursor, "delivery", "deliveries")}, stake {activeSession.logicalRound.totalStake}, payout {activeSession.logicalRound.totalPayout}</Text>}
+                {activeSession?.logicalRound && <Text size="sm">Round {activeSession.logicalRound.status}: {formatCount(activeSession.logicalRound.mathematicalCursor, "step")}, {formatCount(activeSession.logicalRound.cursor, "part", "parts")}, stake {activeSession.logicalRound.totalStake}, payout {activeSession.logicalRound.totalPayout}</Text>}
                 {loading && <LoadingState label="Starting…" />}
                 {errorNotice}
                 <PageSection legend="Play session">
@@ -235,7 +235,7 @@ export function PlayTab({
                     </Button>
                 </QuickActions>
                 {errorNotice}
-                {activeSession?.logicalRound && <Text size="sm">Round {activeSession.logicalRound.status}: {formatCount(activeSession.logicalRound.mathematicalCursor, "subround")}, {formatCount(activeSession.logicalRound.cursor, "delivery", "deliveries")}, stake {activeSession.logicalRound.totalStake}, payout {activeSession.logicalRound.totalPayout}</Text>}
+                {activeSession?.logicalRound && <Text size="sm">Round {activeSession.logicalRound.status}: {formatCount(activeSession.logicalRound.mathematicalCursor, "step")}, {formatCount(activeSession.logicalRound.cursor, "part", "parts")}, stake {activeSession.logicalRound.totalStake}, payout {activeSession.logicalRound.totalPayout}</Text>}
                 {loading && <LoadingState label="Spinning…" />}
                 {(!loading || playedRound !== undefined) && roundResult}
             </PageSection>

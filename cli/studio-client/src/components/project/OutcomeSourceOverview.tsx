@@ -9,6 +9,7 @@ import {errorMessage} from "../../domain/errorMessage";
 import {describeRoundRecord} from "../../domain/interpret/Replay";
 import {OUTCOME_SOURCE_SAMPLE_CAPABILITY, type ProjectHeaderView} from "../../domain/interpret/ProjectDashboard";
 import {ErrorState} from "../common/ErrorState";
+import {ExactPayoutDistribution} from "../common/ExactPayoutDistribution";
 import {RoundRecordInspector} from "../common/RoundRecordInspector";
 
 type OutcomeSourceHeader = Extract<ProjectHeaderView, {status: "outcome-source"}>;
@@ -61,14 +62,14 @@ export function OutcomeSourceOverview({header, onRoundRecorded}: {header: Outcom
         <div>
             <Title order={4}>Outcome Source</Title>
             <Group gap="xs" mt="xs">
-                <Badge>{report.descriptor.kind === "native" ? "Native Outcome Library" : "Stake Engine Export"}</Badge>
-                <Badge color={report.descriptor.streaming ? "teal" : "gray"}>{report.descriptor.streaming ? "streaming reader" : "reads source fully"}</Badge>
+                <Badge>{report.descriptor.kind === "native" ? "Native exact library" : "Stake Engine export"}</Badge>
+                <Badge color={report.descriptor.streaming ? "teal" : "gray"}>{report.descriptor.streaming ? "streams outcomes" : "reads source fully"}</Badge>
             </Group>
 
             <Alert color="blue" mt="sm" title="Fixed snapshot">
                 <Text size="sm">
-                    These outcomes were computed from one saved design. Editing the source paytable, reels or features later does not update this
-                    library — regenerate it before using these numbers for the changed design.
+                    These are exact probabilities computed from one saved design — never a sampled estimate. Editing the source paytable, reels or
+                    features later does not update this library; regenerate it before using these numbers for the changed design.
                 </Text>
             </Alert>
 
@@ -123,6 +124,14 @@ export function OutcomeSourceOverview({header, onRoundRecorded}: {header: Outcom
 
             {canSample && (
                 <TextInput mt="sm" label="Seed (optional)" placeholder="deterministic seed" value={seed} onChange={(event) => setSeed(event.currentTarget.value)} style={{maxWidth: 320}} />
+            )}
+
+            {!hasErrors && report.modes.length > 0 && (
+                <div style={{marginTop: "0.75rem"}}>
+                    {report.modes.map((mode) => (
+                        <ExactPayoutDistribution key={mode.modeName} buckets={mode.analysis.payoutDistribution} label={`payout distribution · ${mode.modeName}`} />
+                    ))}
+                </div>
             )}
 
             {error && (

@@ -84,6 +84,7 @@ import {
 } from "./certification/validateCertificationSourceValidateRequest.js";
 import {StudioDeploymentService} from "./deployment/StudioDeploymentService.js";
 import type {StudioDeploymentRunView} from "./deployment/StudioDeploymentRunView.js";
+import {StudioExactMathService} from "./exact/StudioExactMathService.js";
 import {validateDeploymentRunRequest, DeploymentRunRequestInput} from "./deployment/validateDeploymentRunRequest.js";
 import {createPreparingRuntimePackageResolver, RuntimePackageResolving} from "../runtime/prepareRuntimePackage.js";
 import {StudioFairnessService} from "./fairness/StudioFairnessService.js";
@@ -308,6 +309,7 @@ export class StudioServer implements StudioServerHandling {
     private readonly deploymentService: StudioDeploymentService;
     private readonly outcomeLibraryGenerateService: StudioOutcomeLibraryGenerateService;
     private readonly outcomeLibraryGenerateJobService: StudioOutcomeLibraryGenerateJobService;
+    private readonly exactMathService: StudioExactMathService;
     private readonly certificationService: StudioCertificationService;
     private readonly fairnessService: StudioFairnessService;
     private readonly stakeEngineExportService: StudioStakeEngineExportService;
@@ -419,6 +421,7 @@ export class StudioServer implements StudioServerHandling {
         this.outcomeLibraryGenerateService = options.outcomeLibraryGenerateService ?? new StudioOutcomeLibraryGenerateService(this.pokieVersion, loadCurrentProjectGame);
         this.outcomeLibraryGenerateJobService = new StudioOutcomeLibraryGenerateJobService(this.outcomeLibraryGenerateService);
         this.outcomeLibraryGenerateJobService.attachJobService(this.jobService);
+        this.exactMathService = options.exactMathService ?? new StudioExactMathService((projectRoot) => this.outcomeLibraryGenerateService.registry(projectRoot));
         this.deploymentService = options.deploymentService ?? StudioDeploymentService.withPokieVersion(
             this.pokieVersion,
             async (projectRoot) => {
@@ -1246,7 +1249,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const optimizationRoute = (/^\/api\/project\/optimization\/(support|start|save|apply)$/).exec(url.pathname);
+        const optimizationRoute = (/^\/api\/project\/optimization\/(support|start|save|apply|undo)$/).exec(url.pathname);
         if (optimizationRoute) {
             const context = this.currentContext;
             if (context.mode !== "project") {
@@ -1257,18 +1260,18 @@ export class StudioServer implements StudioServerHandling {
                 this.sendJson(res, 409, {error: "Project transition is draining active work. Retry after it finishes."});
                 return;
             }
-            if (method === "POST" && optimizationRoute[1] === "apply") {
+            if (method === "POST" && (optimizationRoute[1] === "apply" || optimizationRoute[1] === "undo")) {
                 if (this.activeCommonJobs().length) {
-                    this.sendJson(res, 409, {error: "Wait for active Project work to finish before applying authored changes."});
+                    this.sendJson(res, 409, {error: "Wait for active Project work to finish before changing authored source."});
                     return;
                 }
             }
             this.optimizationService ??= new StudioOptimizationService(this.jobService);
-            const result = await this.optimizationService.handle(method, optimizationRoute[1] as "support" | "start" | "save" | "apply", await this.readJsonBody(req), {
+            const result = await this.optimizationService.handle(method, optimizationRoute[1] as "support" | "start" | "save" | "apply" | "undo", await this.readJsonBody(req), {
                 projectRoot: context.projectRoot,
                 projectId: this.canonicalPathIdentity(context.projectRoot),
                 isCurrent: () => !this.stopping && !this.authoredRuntimeRefresh && this.currentContext === context && this.validationTransitions === 0 &&
-                    (optimizationRoute[1] !== "apply" || this.activeCommonJobs().length === 0),
+                    ((optimizationRoute[1] !== "apply" && optimizationRoute[1] !== "undo") || this.activeCommonJobs().length === 0),
                 onAuthoredCommit: async () => {
                     // Runs in the synchronous commit stack: invalidate old preparations and
                     // sessions before another request can execute against the committed source.
@@ -1313,6 +1316,11 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "GET" && url.pathname === "/api/project/gameModel") {
             await this.handleGameModel(req, res, url);
+            return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/project/exact-math") {
+            await this.handleExactMath(res);
             return;
         }
 
@@ -2646,6 +2654,33 @@ export class StudioServer implements StudioServerHandling {
             await this.playService.reset();
             this.sendJson(res, 409, {error: error instanceof Error ? error.message : String(error)});
             return true;
+        }
+    }
+
+    // Overview's exact-math card reads only an already-computed compatible Outcome Library: exact
+    // headline metrics and payout distribution come from the bundle's own mode index, and the optional
+    // line/symbol breakdown is read from the retained RoundRecords. Generation remains the explicit
+    // Build/Export (or Overview "Compute exact math") action, so merely opening Overview never writes
+    // project files or silently recomputes a changed design.
+    private async handleExactMath(res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {status: "error", message: "No active project."});
+            return;
+        }
+        if (this.stopping || this.validationTransitions > 0) {
+            this.sendJson(res, 409, {status: "error", message: "The project is changing; retry the exact-math read after it settles."});
+            return;
+        }
+        const context = this.currentContext;
+        try {
+            const view = await this.exactMathService.get(context.projectRoot);
+            if (this.currentContext !== context) {
+                this.sendJson(res, 409, {status: "error", message: "The project changed while the exact analysis was being read. Reopen it and retry."});
+                return;
+            }
+            this.sendJson(res, 200, view);
+        } catch (error) {
+            this.sendJson(res, 500, {status: "error", message: error instanceof Error ? error.message : String(error)});
         }
     }
 

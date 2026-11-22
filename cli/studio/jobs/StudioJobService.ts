@@ -188,6 +188,19 @@ export class StudioJobService {
     }
 
     /**
+     * Mark a consumed apply as undone. The preview stays consumed (the same candidate cannot be applied
+     * again), but reloading Studio must no longer present the source as still changed by it.
+     */
+    public recordOptimizationUndo(projectId: string, id: string): StudioJobView | undefined {
+        return this.transition(id, job => {
+            if (job.projectId !== projectId || job.operation !== "optimization" || job.status !== "completed" || !job.result) return job;
+            const provenance = {...(job.result.provenance ?? {})};
+            Reflect.deleteProperty(provenance, "authoredApply");
+            return {...job, result: {...job.result, provenance: {...provenance, authoredUndo: {restoredAt: new Date().toISOString()}}}};
+        });
+    }
+
+    /**
      * Runs one compatibility executor behind the common durable job record.
      * Reattachment/conflict is resolved before `executor` is called, and the
      * retained AbortController is released only after its terminal state has

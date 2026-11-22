@@ -16,7 +16,7 @@ export function SimulationAssessment({view, compact = false}: {view: SingleSimul
         <div className="studio-simulation-assessment">
             <section aria-label="Precision and convergence" className="studio-simulation-precision">
                 <Text component="h3" size="sm" fw={600}>Precision and convergence</Text>
-                <Text size="sm">{view.rounds} usable samples · {view.diagnostics ? describeSimulationPrecision(view.diagnostics.precision) : "Precision unavailable (legacy report)"}</Text>
+                <Text size="sm">{view.rounds.toLocaleString("en-US")} rounds used · {view.diagnostics ? describeSimulationPrecision(view.diagnostics.precision).replace("no precision target requested", "no precision target set") : "precision unavailable (older report)"}</Text>
                 <Table withRowBorders={false} aria-label="Confidence intervals" className="studio-simulation-intervals">
                     <Table.Tbody>
                         <Table.Tr>

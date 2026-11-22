@@ -29,6 +29,7 @@ import type {
     StudioDeploymentModeInput,
     StudioDeploymentRunView,
     StudioDeploymentTargetSummary,
+    StudioExactMathView,
     StudioFairnessConfigureView,
     StudioFairnessGenerateView,
     StudioFairnessVerifyView,
@@ -669,6 +670,17 @@ export async function getGameModel(fetchImpl: FetchLike, sharedWeightsSampleSeed
         throw new Error(await extractErrorMessage(response, "Failed to load the game model"));
     }
     return (await response.json()) as GameModelProjection;
+}
+
+// Overview's exact-math card. Reads only an already-computed compatible Outcome Library; never starts
+// generation. "missing"/"stale" are ordinary domain states the card turns into a Compute action, not
+// transport failures.
+export async function getExactMath(fetchImpl: FetchLike, signal?: AbortSignal): Promise<StudioExactMathView> {
+    const response = await fetchImpl("/api/project/exact-math", {cache: "no-store", signal});
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to read exact math"));
+    }
+    return (await response.json()) as StudioExactMathView;
 }
 
 // The guided Design Game editor's own live Game Model preview -- see StudioBlueprintService.
@@ -1472,7 +1484,7 @@ export async function previewMathDefinitionDiff(fetchImpl: FetchLike, request: {
     return body as import("./types.js").MathDefinitionDiff;
 }
 
-export async function optimizationAction<T>(fetchImpl: FetchLike, action: "support" | "start" | "save" | "apply", body: unknown, signal?: AbortSignal): Promise<T> {
+export async function optimizationAction<T>(fetchImpl: FetchLike, action: "support" | "start" | "save" | "apply" | "undo", body: unknown, signal?: AbortSignal): Promise<T> {
     const response = await fetchImpl(`/api/project/optimization/${action}`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body), signal});
     const value = await response.json() as T & {error?: string};
     if (!response.ok) throw new Error(value.error ?? "Optimization request failed.");

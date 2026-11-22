@@ -65,6 +65,7 @@ export type OutcomeSourceProjectModeAnalysisView = {
         maxWin?: number;
         maxRatio?: number;
         maxWinProbability: number;
+        payoutDistribution: readonly {payoutMultiplier: number; probability: number | string}[];
     };
 };
 
@@ -1612,3 +1613,40 @@ export type PackageBlueprintExtractionResult = {
 export type StudioOptimizationRequest = import("../../../../src/optimization/OptimizationPolicy.js").OptimizationRequest;
 export type StudioOptimizationResult = import("../../../../src/optimization/OptimizationPolicy.js").OptimizationResult;
 export type StudioOptimizationSupport = {supported: boolean; reason: string; adapter: string; writable?: string[]; sourceRevision: string};
+
+export type StudioExactMathContribution = {
+    kind: "line" | "symbol";
+    key: string;
+    label: string;
+    symbolId?: string;
+    rtpContribution: number;
+    hitFrequency: number;
+    outcomeCount: number;
+};
+
+export type StudioExactMathContributionTable = {
+    entries: StudioExactMathContribution[];
+    truncated: boolean;
+};
+
+// Mirrors cli/studio/exact/StudioExactMathView.ts. The analysis is the same exact
+// WeightedOutcomeLibraryAnalysis embedded in an Outcome Library's own mode index.
+export type StudioExactMathView =
+    | {
+          status: "ok";
+          modeName: string;
+          libraryDir: string;
+          libraryId: string;
+          libraryHash: string;
+          outcomeCount: number;
+          totalWeight: number;
+          stake: number;
+          generatedAt: string;
+          strategy?: string;
+          analysis: import("../../../../src/weightedoutcome/WeightedOutcomeLibraryAnalysis.js").WeightedOutcomeLibraryAnalysis;
+          contributions: {line: StudioExactMathContributionTable; symbol: StudioExactMathContributionTable};
+          contributionNote?: string;
+      }
+    | {status: "missing"; message: string}
+    | {status: "stale"; message: string}
+    | {status: "error"; message: string};

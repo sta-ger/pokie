@@ -444,12 +444,12 @@ interface does not implement a payout cap. Explicit unsupported field trusted so
 also overrides generated defaults and applies to descendants, including fields
 inside arrays.
 
-Advanced analysis of a package is analysis of its declared model. It does not
+Feature and accounting analysis of a package is analysis of its declared model. It does not
 instantiate custom sessions to infer a theorem. A complete descriptor, a
 `sourceKind: "generated"` label, package-interface validity or restorable codec
 cannot establish arbitrary TypeScript executable fidelity. Undeclared max-win
 policy and unsupported nested collaborators remain unknown. Source-path
 acquisition owns and releases its snapshot; a direct supplied game remains
-caller-owned. See the advanced-validation report for supported checks and limits.
+caller-owned. See the feature and accounting check report for supported checks and limits.
 
 See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning interfaces, locks, results and explicit candidate publication.

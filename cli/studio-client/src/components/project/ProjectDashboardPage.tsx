@@ -1493,7 +1493,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         <>
                             {activeTab === "overview" && header.status === "loaded" && (
                                 <>
-                                    <OverviewTab header={header} validation={validation} onRevalidate={runValidate} onOpenPlay={() => setActiveTab("play")} />
+                                    <OverviewTab header={header} validation={validation} onRevalidate={runValidate} onOpenPlay={() => setActiveTab("play")} sourceRevision={optimizerSourceChange?.projectRoot === header.projectRoot ? optimizerSourceChange.sourceRevision : undefined} />
                                     {header.type === "wasm" && (
                                         <WasmManifestInspection
                                             projectRoot={header.projectRoot}

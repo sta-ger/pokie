@@ -3,14 +3,30 @@ import type {
     OptimizationRequest,
     OptimizationResult,
 } from "../../../src/optimization/OptimizationPolicy.js";
-import {ProjectOptimizationService} from "../../../src/optimization/ProjectOptimizationService.js";
+import {
+    ProjectOptimizationService,
+    type OptimizationAppliedFile,
+} from "../../../src/optimization/ProjectOptimizationService.js";
 import {
     OptimizationInputError,
     validateOptimizationRequest,
 } from "../../../src/optimization/validateOptimizationRequest.js";
-import {projectRevision} from "../../../src/optimization/internal/optimizationData.js";
+import {digest, projectRevision} from "../../../src/optimization/internal/optimizationData.js";
+import {applyAuthoredFiles} from "../../../src/optimization/internal/applyAuthoredFiles.js";
 import {ProjectTargetResolver} from "../../../src/project/ProjectTargetResolver.js";
+import {randomUUID} from "crypto";
+import fs from "fs";
+import path from "path";
 import type {StudioJobService} from "../jobs/StudioJobService.js";
+
+const UNDO_TTL_MS = 15 * 60 * 1000;
+
+type UndoReceipt = {
+    readonly projectRoot: string;
+    readonly jobId: string;
+    readonly files: readonly OptimizationAppliedFile[];
+    readonly expiresAt: number;
+};
 
 export type StudioOptimizationContext = {
     projectRoot: string;
@@ -27,13 +43,17 @@ export class StudioOptimizationService {
     private readonly mutations = new Set<string>();
     private readonly executions = new Set<Promise<unknown>>();
     private readonly candidates = new Map<string, {candidate: OptimizationCandidate; request: OptimizationRequest}>();
+    // One short-lived undo receipt per project: the previous bytes of every authored file Apply replaced.
+    // Retaining only one per project bounds memory and matches the user-visible "undo until the source
+    // changes or Studio restarts" contract.
+    private readonly undos = new Map<string, UndoReceipt>();
     private readonly jobs: StudioJobService;
     private readonly optimizer: ProjectOptimizationService;
     public constructor(jobs: StudioJobService, optimizer = new ProjectOptimizationService()) {
         this.jobs = jobs;
         this.optimizer = optimizer;
     }
-    public handle(method: string, action: "support" | "start" | "save" | "apply", body: unknown, context: StudioOptimizationContext): Promise<{status: number; body: unknown}> {
+    public handle(method: string, action: "support" | "start" | "save" | "apply" | "undo", body: unknown, context: StudioOptimizationContext): Promise<{status: number; body: unknown}> {
         if (!this.accepting || this.releasing) return Promise.resolve({status: 409, body: {error: "Studio optimization is shutting down or changing Project."}});
         const controller = new AbortController();
         this.admissions.add(controller);
@@ -57,6 +77,7 @@ export class StudioOptimizationService {
     }
     public async releaseCandidates(): Promise<void> {
         this.releasing++;
+        this.undos.clear();
         for (const controller of this.admissions) controller.abort();
         for (const job of this.jobs.list()) if (job.operation === "optimization" && ["queued", "running"].includes(job.status)) this.jobs.cancel(job.projectId, job.id);
         try {
@@ -81,12 +102,28 @@ export class StudioOptimizationService {
     }
     public async shutdown(): Promise<void> {
         this.accepting = false;
+        this.undos.clear();
         for (const job of this.jobs.list()) if (job.operation === "optimization" && ["queued", "running"].includes(job.status)) this.jobs.cancel(job.projectId, job.id);
         await this.releaseCandidates();
     }
+    private rememberUndo(projectRoot: string, jobId: string, files: readonly OptimizationAppliedFile[] | undefined): string | undefined {
+        if (files === undefined || files.length === 0) return undefined;
+        for (const [id, receipt] of this.undos) {
+            if (receipt.projectRoot === projectRoot) this.undos.delete(id);
+        }
+        const id = randomUUID();
+        this.undos.set(id, {
+            projectRoot,
+            jobId,
+            files: files.map((item) => ({...item, before: Buffer.from(item.before)})),
+            expiresAt: Date.now() + UNDO_TTL_MS,
+        });
+        return id;
+    }
+
     private async handleOwned(
         method: string,
-        action: "support" | "start" | "save" | "apply",
+        action: "support" | "start" | "save" | "apply" | "undo",
         body: unknown,
         context: StudioOptimizationContext,
         signal: AbortSignal,
@@ -98,10 +135,64 @@ export class StudioOptimizationService {
                 request?: unknown;
                 sourceRevision?: unknown;
                 jobId?: unknown;
+                undoId?: unknown;
                 destination?: unknown;
             };
             if (!submitted || typeof submitted !== "object") throw new Error("Expected an optimization request.");
             if (submitted.expectedProjectRoot !== context.projectRoot || !context.isCurrent()) return {status: 409, body: {error: "Project changed. Reopen the intended Project before optimizing or saving."}};
+            if (action === "undo") {
+                if (typeof submitted.undoId !== "string" || !submitted.undoId.trim()) throw new Error("undoId is required.");
+                const receipt = this.undos.get(submitted.undoId);
+                if (receipt === undefined || receipt.projectRoot !== context.projectRoot || Date.now() > receipt.expiresAt) {
+                    this.undos.delete(submitted.undoId);
+                    return {status: 409, body: {error: "Undo is no longer available. It expires after 15 minutes, after the source changes, or after Studio restarts."}};
+                }
+                const mutationKey = `undo:${submitted.undoId}`;
+                if (this.mutations.has(mutationKey)) throw new Error("Undo is already in progress.");
+                this.mutations.add(mutationKey);
+                try {
+                    const plans = receipt.files.map((item) => {
+                        const current = fs.readFileSync(item.file);
+                        if (digest(current) !== item.afterHash) {
+                            throw new Error(`Source changed since the optimization was applied at ${item.file}; undo would overwrite a newer edit. Review the current source instead.`);
+                        }
+                        return {file: item.file, before: current, after: item.before};
+                    });
+                    const staging = new Set<string>();
+                    applyAuthoredFiles(
+                        plans,
+                        () => {
+                            if (!context.isCurrent()) throw new Error("Project changed during undo.");
+                            if (signal.aborted) throw new Error("Undo cancelled.");
+                        },
+                        path.dirname(receipt.files[0].file),
+                        staging,
+                        () => {
+                            for (const item of receipt.files) {
+                                if (digest(fs.readFileSync(item.file)) !== digest(item.before)) {
+                                    throw new Error(`Undo readback failed at ${item.file}.`);
+                                }
+                            }
+                        },
+                    );
+                    this.undos.delete(submitted.undoId);
+                    let warning: string | undefined;
+                    try {
+                        this.jobs.recordOptimizationUndo(context.projectId, receipt.jobId);
+                    } catch (error) {
+                        warning = `The previous values were restored, but the durable apply marker could not be updated: ${String(error)}`;
+                    }
+                    try {
+                        await context.onAuthoredCommit?.();
+                    } catch (error) {
+                        this.refreshFailure = new Error(`Undo committed but runtime refresh failed: ${String(error)}`);
+                        warning = [warning, `The previous values were restored, but the runtime refresh failed. Reopen the Project before playing: ${String(error)}`].filter(Boolean).join(" ");
+                    }
+                    return {status: 200, body: {outputPath: receipt.files[0].file, restored: true, ...(warning ? {warning} : {})}};
+                } finally {
+                    this.mutations.delete(mutationKey);
+                }
+            }
             if (action === "save" || action === "apply") {
                 if (
                     typeof submitted.jobId !== "string" ||
@@ -131,9 +222,11 @@ export class StudioOptimizationService {
                         }
                         refresh?.catch(() => undefined);
                     };
-                    const outputPath = action === "apply"
-                        ? await this.optimizer["apply"](retained.candidate, request, {isCurrent: context.isCurrent, signal, onAuthoredCommit})
-                        : await this.optimizer.publish(retained.candidate, request, submitted.destination as string, {isCurrent: context.isCurrent, signal});
+                    const applied = action === "apply"
+                        ? await this.optimizer.applyWithUndo(retained.candidate, request, {isCurrent: context.isCurrent, signal, onAuthoredCommit})
+                        : undefined;
+                    const outputPath = applied?.outputPath
+                        ?? await this.optimizer.publish(retained.candidate, request, submitted.destination as string, {isCurrent: context.isCurrent, signal});
                     let warning: string | undefined;
                     try {
                         await refresh;
@@ -148,7 +241,8 @@ export class StudioOptimizationService {
                             warning = [warning, `Source was applied, but its durable apply marker could not be saved. The old preview is consumed; inspect the source before retrying: ${String(error)}`].filter(Boolean).join(" ");
                         }
                     }
-                    return {status: 200, body: {outputPath, ...(warning ? {warning} : {})}};
+                    const undoId = action === "apply" ? this.rememberUndo(context.projectRoot, submitted.jobId, applied?.undoFiles) : undefined;
+                    return {status: 200, body: {outputPath, ...(undoId === undefined ? {} : {undoId}), ...(warning ? {warning} : {})}};
                 } finally {
                     this.mutations.delete(submitted.jobId);
                 }

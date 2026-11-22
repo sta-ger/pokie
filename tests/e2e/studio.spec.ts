@@ -65,13 +65,13 @@ test.describe.serial("managed project labels", () => {
         await page.getByLabel("Rounds *").fill("1000");
         await page.getByRole("button", {name: "Run Simulation"}).click();
         await expect(page.getByText(/Simulation completed — /)).toBeVisible({timeout: 60_000});
-        await expect(page.getByText(/1000 usable samples · no precision target requested/i).first()).toBeVisible();
+        await expect(page.getByText(/1,000 rounds used · no precision target set/i).first()).toBeVisible();
         await page.getByRole("button", {name: "Open full report"}).click();
         await expect(page.getByRole("rowheader", {name: "Stop reason"})).toBeVisible();
         await expect(page.getByRole("rowheader", {name: "Stop reason"}).locator("xpath=following-sibling::td[1]")).toHaveText(/requested rounds completed/i);
     });
 
-    test("Play uses singular round wording for a single subround and delivery", async ({page}) => {
+    test("Play uses singular round wording for a single step and one part", async ({page}) => {
         await page.goto("/");
         await page.getByRole("button", {name: "Play", exact: true}).click();
         const newSession = page.getByRole("button", {name: "New Play session"});
@@ -80,8 +80,8 @@ test.describe.serial("managed project labels", () => {
         const spin = page.getByRole("button", {name: "Spin", exact: true});
         await expect(spin).toBeVisible({timeout: 60_000});
         await spin.click();
-        await expect(page.getByText(/Round completed: 1 subround, 1 delivery/)).toBeVisible({timeout: 30_000});
-        await expect(page.getByText(/1 subrounds/)).toHaveCount(0);
+        await expect(page.getByText(/Round completed: 1 step, 1 part/)).toBeVisible({timeout: 30_000});
+        await expect(page.getByText(/1 steps/)).toHaveCount(0);
     });
 
     test("a completed optimization does not show indeterminate work", async ({page}) => {
@@ -92,5 +92,43 @@ test.describe.serial("managed project labels", () => {
         await expect(page.getByText(/Verdict: (success|attained)/)).toBeVisible({timeout: 60_000});
         await expect(page.getByText(/indeterminate/)).toHaveCount(0);
         await expect(page.getByText(/Finalizing/)).toHaveCount(0);
+    });
+
+    test("apply asks for confirmation and undo restores the previous design values", async ({page}) => {
+        await page.goto("/");
+        await page.getByRole("button", {name: "Check tuning support"}).click();
+        await expect(page.getByText(/Supported finite same-type workflow/)).toBeVisible({timeout: 30_000});
+        await page.getByRole("button", {name: "Run optimization"}).click();
+        await expect(page.getByText(/Verdict: (success|attained)/)).toBeVisible({timeout: 60_000});
+        await expect(page.getByRole("button", {name: "Apply reviewed changes"})).toBeVisible({timeout: 30_000});
+        await page.getByRole("button", {name: "Apply reviewed changes"}).click();
+        await expect(page.getByRole("dialog")).toContainText("Apply these reviewed changes to the saved design?");
+        await page.locator("#optimization-apply-confirm").click();
+        await expect(page.getByText("Changes saved to the game design")).toBeVisible({timeout: 60_000});
+        await page.getByRole("button", {name: "Undo applied changes"}).click();
+        await expect(page.getByText(/Previous design values restored/)).toBeVisible({timeout: 60_000});
+    });
+
+    test("Overview computes exact math and exposes the complete payout distribution", async ({page}) => {
+        await page.goto("/");
+        await expect(page.getByRole("heading", {name: "Exact math for this saved design"})).toBeVisible({timeout: 60_000});
+        await page.getByRole("button", {name: /^Compute exact math$/}).click();
+        await expect(page.getByText(/Exact, not sampled:/)).toBeVisible({timeout: 120_000});
+        await page.getByRole("button", {name: /payout distribution/}).click();
+        await expect(page.getByRole("table", {name: "Exact payout distribution"})).toBeVisible();
+        await page.getByRole("button", {name: /line and symbol contributions/}).click();
+        await expect(page.getByRole("table", {name: "Exact line and symbol contributions"}).first()).toBeVisible();
+    });
+
+    test("a correctly scoped project URL restores the requested tab", async ({page}) => {
+        await page.goto("/");
+        await page.getByRole("button", {name: "Simulation", exact: true}).click();
+        await expect(page.getByText("Simulation ready")).toBeVisible({timeout: 60_000});
+        const simulationUrl = page.url();
+        expect(simulationUrl).toContain("/simulation");
+        await page.goto("about:blank");
+        await page.goto(simulationUrl);
+        await expect(page.getByText("Simulation ready")).toBeVisible({timeout: 60_000});
+        expect(page.url()).toContain("/simulation");
     });
 });

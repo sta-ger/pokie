@@ -5,6 +5,7 @@ import {StudioBuildService} from "./build/StudioBuildService.js";
 import {StudioBlueprintService} from "./blueprint/StudioBlueprintService.js";
 import {StudioCertificationService} from "./certification/StudioCertificationService.js";
 import {StudioDeploymentService} from "./deployment/StudioDeploymentService.js";
+import {StudioExactMathService} from "./exact/StudioExactMathService.js";
 import {StudioFairnessService} from "./fairness/StudioFairnessService.js";
 import {StudioFsBrowseService} from "./home/StudioFsBrowseService.js";
 import {StudioHomeService} from "./home/StudioHomeService.js";
@@ -128,6 +129,11 @@ export type StudioServerOptions = {
     // Needs `pokieVersion` (embedded in every bundle it writes/compares against), same reasoning as
     // certificationService/stakeEngineExportService.
     outcomeLibraryGenerateService?: StudioOutcomeLibraryGenerateService;
+    // Reads Overview's exact-math card from a compatible Outcome Library (headline metrics, payout
+    // distribution and per-line/symbol contributions). It never generates outcomes; the Overview
+    // "Compute exact math" action starts the same Outcome Library generation job as Build/Export.
+    // Defaults to a service built around this server's outcomeLibraryGenerateService registry.
+    exactMathService?: StudioExactMathService;
     // Drives the Project Dashboard's Certification tab (POST /api/project/certification/validate-source,
     // /build) — built directly on top of pokie's own CertificationPackBuilder/
     // OutcomeLibraryFolderValidator; no `loadGame` needed (same reasoning as deploymentService), but

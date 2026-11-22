@@ -129,7 +129,7 @@ export class StudioWasmBrowserService {
             const progress = value.progress as PokieWasmWorkerProgress;
             lease.completed = progress.completed;
             if (progress.statistics) lease.prefix = progress.statistics;
-            this.jobs.progress(job.id, {stage: "Browser Worker", unit: job.operation === "simulation" ? "accepted plays" : "rounds", current: progress.completed, total: progress.total ?? job.request.rounds as number ?? job.request.round as number ?? 1});
+            this.jobs.progress(job.id, {stage: "Browser Worker", unit: "rounds", current: progress.completed, total: progress.total ?? job.request.rounds as number ?? job.request.round as number ?? 1});
         }
         return {status: 200, body: {cancel: this.jobs.signal(job.id)?.aborted ?? true}};
     }
@@ -283,7 +283,7 @@ export class StudioWasmBrowserService {
             const results = output as {mode?: string; targetRtp?: number; statistics: SimulationStatistics}[];
             const reports = results.map(item => new SimulationReportBuilder().build({gameInfo: game, requestedRounds: job.request.rounds as number, seed: job.request.seed as string, statistics: item.statistics, durationMs: Date.now() - job.createdAt, packageRoot: artifact.projectRoot, configHash: provenance.configHash, workers: 1, workerSeedStrategy: "portable seeded host stream (browser Worker)", betMode: item.mode, targetRtp: item.targetRtp}));
             const report = job.request.modeName === "all" ? {game, requestedRounds: job.request.rounds, seed: job.request.seed, workers: 1, modes: Object.fromEntries(results.map((item, index) => [item.mode!, reports[index]]))} : reports[0];
-            this.jobs.progress(job.id, {stage: "Completed browser Worker", unit: "accepted plays", current: results.reduce((sum, item) => sum + item.statistics.rounds, 0), total: results.reduce((sum, item) => sum + item.statistics.rounds, 0)});
+            this.jobs.progress(job.id, {stage: "Completed browser Worker", unit: "rounds", current: results.reduce((sum, item) => sum + item.statistics.rounds, 0), total: results.reduce((sum, item) => sum + item.statistics.rounds, 0)});
             return {summary: "Browser Worker simulation completed.", provenance, outputs: [{label: "Simulation report", downloadPath: `/api/project/reports/${job.id}/download?format=json`}], detail: {report, statistics: results[0].statistics}};
         }
         if (!record(output)) throw new Error("Malformed WASM Worker result.");

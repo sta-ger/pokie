@@ -245,7 +245,7 @@ export function NewBlueprintDialog({
                                 Start with a blank game
                             </Button>
                             <Text size="xs" c="dimmed">Build every part yourself, beginning with an empty game design.</Text>
-                            <Button variant="default" aria-label="Generate random" onClick={() => setStep("random")}>
+                            <Button variant="default" aria-label="Generate a game idea" onClick={() => setStep("random")}>
                                 Generate a game idea
                             </Button>
                             <Text size="xs" c="dimmed">

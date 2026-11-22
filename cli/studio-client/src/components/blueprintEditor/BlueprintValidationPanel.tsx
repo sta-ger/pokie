@@ -55,7 +55,7 @@ export function BlueprintValidationPanel({
             )}
             {view.status === "error" && <ErrorState message={describePathActionError("This validation request", view.message)} />}
             {statusText(view) && <Text mb="sm">{statusText(view)}</Text>}
-            {(view.status === "ok" || view.status === "invalid" || view.status === "inconclusive") && <Text size="sm" c="dimmed">Structural validation. Advanced analysis is reported separately below.</Text>}
+            {(view.status === "ok" || view.status === "invalid" || view.status === "inconclusive") && <Text size="sm" c="dimmed">Structural validation. The optional feature and accounting check is reported separately below.</Text>}
             {(view.status === "invalid" || view.status === "inconclusive") && <IssueList title="Errors" issues={view.errors ?? []} />}
             {(view.status === "ok" || view.status === "invalid" || view.status === "inconclusive") && <>
                 <IssueList title="Warnings" issues={view.warnings} />

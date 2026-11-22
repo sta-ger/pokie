@@ -86,8 +86,8 @@ export function CanonicalPlayerView({
         if (logicalRound?.currentStep) {
             const winLabel = elements.totalWinRow?.querySelector("dt");
             const multiplierLabel = elements.payoutMultiplierRow?.querySelector("dt");
-            if (winLabel) winLabel.textContent = "Step win";
-            if (multiplierLabel) multiplierLabel.textContent = "Step win / entry bet";
+            if (winLabel) winLabel.textContent = "Win this step";
+            if (multiplierLabel) multiplierLabel.textContent = "Win this step / bet";
         }
         renderPlayerRound(
             elements,

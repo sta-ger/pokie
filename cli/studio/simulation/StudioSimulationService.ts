@@ -797,7 +797,7 @@ export class StudioSimulationService {
     private setPhase(record: StudioSimulationJobRecord, stage: string): void {
         record.phase = stage;
         record.durationMs = this.now() - record.startedAt;
-        this.jobService?.progress(record.id, {stage, unit: "accepted plays", current: record.roundsCompleted, total: record.rounds * (record.modeCount ?? 1)});
+        this.jobService?.progress(record.id, {stage, unit: "rounds", current: record.roundsCompleted, total: record.rounds * (record.modeCount ?? 1)});
     }
 
     // Freshness is optional: inventory failure must neither reject supported work

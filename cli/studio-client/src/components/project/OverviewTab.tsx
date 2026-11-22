@@ -15,6 +15,7 @@ import {LoadingState} from "../common/LoadingState";
 import {NextStepCallout} from "../common/NextStepCallout";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
+import {ExactMathPanel} from "./ExactMathPanel";
 
 function describeAddedToStudio(origin: StudioProjectOrigin | undefined): string {
     if (origin === "managed") {
@@ -85,11 +86,14 @@ export function OverviewTab({
     validation,
     onRevalidate,
     onOpenPlay,
+    sourceRevision,
 }: {
     header: Extract<ProjectHeaderView, {status: "loaded"}>;
     validation: ProjectValidationView;
     onRevalidate: () => void;
     onOpenPlay: () => void;
+    /** Changes whenever an optimization commit changes the saved design, so exact math is refreshed. */
+    sourceRevision?: string;
 }) {
     const editable = header.capabilities.includes(BLUEPRINT_BUILD_CAPABILITY);
     const playable = editable || header.capabilities.includes(RUNTIME_EXECUTE_CAPABILITY);
@@ -99,7 +103,7 @@ export function OverviewTab({
             {playable && (
                 <NextStepCallout
                     title="Start by playing a round"
-                    description={`Open Play to spin a real round. ${editable ? "Use Game Model to edit the saved layout, symbols, reels, paytable, and bets." : "Game Model is read-only for this package; open the original Blueprint to change its design and build a new package."} Use Simulation to estimate RTP and Replay to inspect a selected round. In Build/Export, Stake Engine export automatically plans outcome-library reuse or generation; separate generation is optional.`}
+                    description={`Open Play to spin a real round. ${editable ? "Use Game Model to edit the saved layout, symbols, reels, paytable, and bets." : "Game Model is read-only for this package; open the original Blueprint to change its design and build a new package."} Use Exact math for a complete enumeration, or Simulation for a sampled estimate. Replay inspects a selected round; Build/Export creates shareable outputs.`}
                     actionLabel="Open Play"
                     onAction={onOpenPlay}
                 />
@@ -137,6 +141,8 @@ export function OverviewTab({
                 <Text size="sm" c="dimmed" mb="sm">Structural validation checks the project format. It does not establish mathematical balance or certification.</Text>
                 <ValidationDiagnostics view={validation} onRevalidate={onRevalidate} />
             </PageSection>
+
+            {header.type !== "wasm" && <ExactMathPanel projectRoot={header.projectRoot} sourceRevision={sourceRevision} />}
         </div>
     );
 }

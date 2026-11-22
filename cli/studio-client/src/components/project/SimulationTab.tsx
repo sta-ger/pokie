@@ -31,6 +31,11 @@ export type ReportDetailState =
 const DEFAULT_ROUNDS = 10000;
 const RECENT_RUNS_PAGE_SIZE = 50;
 
+function defaultWorkers(): number {
+    const cores = typeof navigator === "undefined" ? 2 : navigator.hardwareConcurrency;
+    return Number.isFinite(cores) ? Math.max(1, Math.min(4, Math.floor(cores) - 1 || 1)) : 1;
+}
+
 type FormValues = {rounds: number; seed: string; workers: number; modeName: string};
 
 // The single Configure -> Run -> Review -> Export workflow, replacing the old separate Simulation and
@@ -105,7 +110,7 @@ export function SimulationTab({
     const [capturedConvergence, setCapturedConvergence] = useState<StudioSimulationReportListEntry["convergence"]>();
     const form = useForm<FormValues>({
         mode: "uncontrolled",
-        initialValues: {rounds: DEFAULT_ROUNDS, seed: "", workers: 1, modeName: ""},
+        initialValues: {rounds: DEFAULT_ROUNDS, seed: "", workers: defaultWorkers(), modeName: ""},
         validate: {rounds: getSimulationRoundsError},
         validateInputOnChange: ["rounds"],
         validateInputOnBlur: ["rounds"],
@@ -158,7 +163,7 @@ export function SimulationTab({
         formRef.current.setValues({
             rounds: rounds ?? DEFAULT_ROUNDS,
             seed: seed ?? "",
-            workers: workers ?? 1,
+            workers: workers ?? defaultWorkers(),
             modeName: modeName ?? "",
         });
         setCapturedConvergence(recoveryRequest.convergence as StudioSimulationReportListEntry["convergence"]);
@@ -238,6 +243,16 @@ export function SimulationTab({
 
     const reviewReachable = reviewedDetail.status !== "empty" || isTerminal;
     const exportReachable = downloadUrls !== undefined;
+    const latestTimedRun = recentRuns.status === "loaded"
+        ? recentRuns.entries.find((entry) => entry.durationMs > 0 && (entry.actualRounds ?? entry.requestedRounds) > 0)
+        : undefined;
+    const currentRounds = form.getValues().rounds;
+    const estimatedCurrentRun = latestTimedRun !== undefined && Number.isFinite(currentRounds) && currentRounds > 0
+        ? formatElapsedMs((latestTimedRun.durationMs / (latestTimedRun.actualRounds ?? latestTimedRun.requestedRounds)) * currentRounds)
+        : undefined;
+    const lastRunHint = latestTimedRun === undefined
+        ? ""
+        : ` Last local run: ${(latestTimedRun.actualRounds ?? latestTimedRun.requestedRounds).toLocaleString("en-US")} rounds in ${formatElapsedMs(latestTimedRun.durationMs)} (${Math.round((latestTimedRun.actualRounds ?? latestTimedRun.requestedRounds) / (latestTimedRun.durationMs / 1000)).toLocaleString("en-US")} rounds/s).${estimatedCurrentRun === undefined ? "" : ` At that rate, ${currentRounds.toLocaleString("en-US")} rounds ≈ ${estimatedCurrentRun}.`}`;
     // A report can never be meaningfully compared against itself (requirement 7).
     const comparableEntries = recentRuns.status === "loaded" ? recentRuns.entries.filter((entry) => entry.id !== currentReportId) : [];
 
@@ -320,7 +335,7 @@ export function SimulationTab({
                     <QuickActions>
                         <NumberInput
                             label="Rounds"
-                            description={`1–${MAX_STUDIO_SIMULATION_ROUNDS.toLocaleString("en-US")} rounds per simulation.`}
+                            description={`1–${MAX_STUDIO_SIMULATION_ROUNDS.toLocaleString("en-US")} rounds per simulation.${lastRunHint}`}
                             min={1}
                             max={MAX_STUDIO_SIMULATION_ROUNDS}
                             clampBehavior="none"
@@ -351,7 +366,7 @@ export function SimulationTab({
                     <AdvancedDisclosure detail="seed, workers">
                         <QuickActions>
                             <TextInput label="Seed (optional)" {...form.getInputProps("seed")} key={form.key("seed")} />
-                            <NumberInput label="Workers" min={1} step={1} required {...form.getInputProps("workers")} key={form.key("workers")} />
+                            <NumberInput label="Workers" description="Defaults to up to 4, based on this browser's CPU count." min={1} step={1} required {...form.getInputProps("workers")} key={form.key("workers")} />
                         </QuickActions>
                     </AdvancedDisclosure>
                 </form>
@@ -419,15 +434,24 @@ export function SimulationTab({
                                         Back to configuration
                                     </Button>
                                 )}
+                                <Button variant="default" onClick={() => setActiveStep(0)}>
+                                    Change settings
+                                </Button>
                                 <Button
                                     id="simulation-retry"
                                     data-pokie-lifecycle="recovery"
                                     data-pokie-transaction-state="recovery-operation"
                                     data-pokie-lifecycle-operation="simulation-retry"
                                     variant="default"
-                                    onClick={onRetry}
+                                    onClick={() => {
+                                        confirm("Run this simulation again with the same settings? The current report stays in Recent runs.", onRetry, undefined, {
+                                            confirm: "simulation-repeat-confirm",
+                                            cancel: "simulation-repeat-dismiss",
+                                            operation: "simulation-retry",
+                                        });
+                                    }}
                                 >
-                                    Repeat simulation
+                                    Run again with same settings
                                 </Button>
                             </QuickActions>
 

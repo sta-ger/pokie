@@ -74,6 +74,19 @@ export interface OptimizationCandidatePublishing {
     apply(candidate: OptimizationCandidate, request: unknown, options?: OptimizationOptions): Promise<string>;
     discard(candidate: OptimizationCandidate): Promise<void>;
 }
+
+/** One authored file changed by Apply, with the bytes needed for a one-step undo. */
+export type OptimizationAppliedFile = {
+    readonly file: string;
+    readonly before: Buffer;
+    readonly afterHash: string;
+};
+
+export type OptimizationApplyResult = {
+    readonly outputPath: string;
+    /** Present for authored (source) applies; lets Studio offer an explicit undo until the source changes. */
+    readonly undoFiles?: readonly OptimizationAppliedFile[];
+};
 /** Stable authored domain order and first-match tie breaking. Seed is recorded; exact enumeration uses no random selection. */
 export class ProjectOptimizationService implements ProjectOptimizing, OptimizationCandidatePublishing {
     private readonly receipts = new Map<string, {candidate: OptimizationCandidate; request: OptimizationRequest; evidence?: OptimizationEvidence; status?: OptimizationResult["status"]; executableRevision?: string}>();
@@ -469,7 +482,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
         }
     }
     /** Commit reviewed authored files; native generated artifacts use publish instead. */
-    public async apply(candidate: OptimizationCandidate, input: unknown, options: OptimizationOptions = {}): Promise<string> {
+    public async applyWithUndo(candidate: OptimizationCandidate, input: unknown, options: OptimizationOptions = {}): Promise<OptimizationApplyResult> {
         if (!["blueprint", "parWorkbook", "tsPackage"].includes(candidate.type)) throw new Error("Generated artifacts require publish to a new/empty destination.");
         const request = validateOptimizationRequest(input);
         const receipt = this.receipts.get(candidate.path);
@@ -532,7 +545,15 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
         } catch (error) {
             throw new Error(`Authored source committed and preview consumed at ${candidate.sourcePath}, but commit notification failed: ${String(error)}. Reopen the project before retrying.`);
         }
-        return candidate.sourcePath;
+        return {
+            outputPath: candidate.sourcePath,
+            undoFiles: files.map((item) => ({file: item.file, before: Buffer.from(item.before), afterHash: digest(item.after)})),
+        };
+    }
+
+    /** Compatibility entry point for callers that only need the written path. */
+    public async apply(candidate: OptimizationCandidate, input: unknown, options: OptimizationOptions = {}): Promise<string> {
+        return (await this.applyWithUndo(candidate, input, options)).outputPath;
     }
     public async discard(candidate: OptimizationCandidate): Promise<void> {
         const receipt = this.receipts.get(candidate.path);

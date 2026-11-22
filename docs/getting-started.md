@@ -20,10 +20,14 @@ cannot type-check an ESM dependency from a CommonJS file.
 ## Design and test in Studio
 
 Run `npx --package @fromstan/pokie pokie` to open Home. Choose a starter, change its design, then **Create game** to save it and open
-its workspace. **Overview** checks the design; **Play** runs real local rounds. **Simulation** estimates
-RTP, and **Build/Export** writes a game package or another output. Saving a design, preparing its
-project, validating it and building an output are separate results. The saved game design remains
-editable; an exported game package is read-only in Studio. Keep the design for later changes.
+its workspace. **Overview** checks the design and shows **Exact math** when a compatible Outcome Library exists; if none
+exists yet, **Compute exact math** generates one and then shows exact RTP, the complete payout distribution, and line/symbol
+contributions. **Play** runs real local rounds. **Simulation** estimates RTP, and **Build/Export** writes a game package or
+another output. Saving a design, preparing its project, validating it and building an output are separate results. The
+saved game design remains editable; an exported game package is read-only in Studio. Keep the design for later changes.
+
+Applying a reviewed optimization asks for confirmation and can be undone once from the same Studio session, until the
+source changes, the undo expires after 15 minutes, or Studio restarts.
 
 POKIE serves developers and game-math authors; Studio provides a local authoring and testing path. It
 does not provide mathematical certification or a casino backend. Delivering a game to an operator

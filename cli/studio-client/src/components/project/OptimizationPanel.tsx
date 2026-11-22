@@ -14,6 +14,7 @@ import type {
 } from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import type {useProjectJobs} from "../../hooks/useProjectJobs";
+import {useConfirm} from "../../hooks/useConfirm";
 import {validateOptimizationRequest} from "../../../../../src/optimization/validateOptimizationRequest";
 import {
     buildDefaultOptimizationRequest,
@@ -59,7 +60,7 @@ function OptimizationSummary({evidence}: {evidence: OptimizationEvidence}) {
                     <Table.Tr>
                         <Table.Th>Metric</Table.Th>
                         <Table.Th>Target</Table.Th>
-                        <Table.Th>Measured</Table.Th>
+                        <Table.Th>{sampled ? "Measured" : "Exact"}</Table.Th>
                         <Table.Th>Result</Table.Th>
                     </Table.Tr>
                 </Table.Thead>
@@ -165,6 +166,7 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
     onApplied?: () => void;
 }) {
     const fetchImpl = useStudioApi();
+    const confirm = useConfirm();
     const runExplanationId = useId();
     const [text, setText] = useState(() => JSON.stringify(buildDefaultOptimizationRequest(), null, 2));
     const [model, setModel] = useState<GameModelProjection>();
@@ -177,6 +179,8 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
     const [destination, setDestination] = useState("");
     const [saved, setSaved] = useState<string>();
     const [applied, setApplied] = useState(false);
+    const [undo, setUndo] = useState<string>();
+    const [undoNotice, setUndoNotice] = useState<string>();
     const [started, setStarted] = useState<StudioJobView>();
     const [fieldFilter, setFieldFilter] = useState("");
     const [customField, setCustomField] = useState("");
@@ -193,6 +197,8 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
             setStarted(undefined);
             setSaved(undefined);
             setError(undefined);
+            setUndo(undefined);
+            setUndoNotice(undefined);
             setBusy(false);
             setFieldFilter("");
             setCustomField("");
@@ -383,6 +389,7 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
         setBusy(true);
         setError(undefined);
         setSaved(undefined);
+        setUndoNotice(undefined);
         try {
             const request = validateOptimizationRequest(JSON.parse(text));
             if (kind === "support") {
@@ -407,7 +414,7 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
                     if (support?.sourceRevision !== undefined) onStarted?.(support.sourceRevision);
                 }
             } else {
-                const value = await optimizationAction<{outputPath: string; warning?: string}>(
+                const value = await optimizationAction<{outputPath: string; warning?: string; undoId?: string; restored?: boolean}>(
                     fetchImpl,
                     kind,
                     {jobId: job?.id, request, destination, expectedProjectRoot: projectRoot},
@@ -418,6 +425,8 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
                     if (value.warning) setError(value.warning);
                     if (kind === "apply") {
                         setApplied(true);
+                        setUndo(value.undoId);
+                        setUndoNotice(undefined);
                         setSupportSnapshot(undefined);
                         onApplied?.();
                     }
@@ -427,6 +436,29 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
             if (current === generation.current) setError(failure instanceof Error ? failure.message : String(failure));
         } finally {
             if (current === generation.current) setBusy(false);
+        }
+    };
+    const undoApply = async (): Promise<void> => {
+        if (undo === undefined) return;
+        setBusy(true);
+        setError(undefined);
+        setUndoNotice(undefined);
+        try {
+            const value = await optimizationAction<{outputPath: string; warning?: string; restored?: boolean}>(
+                fetchImpl,
+                "undo",
+                {undoId: undo, expectedProjectRoot: projectRoot},
+            );
+            setApplied(false);
+            setUndo(undefined);
+            setSupportSnapshot(undefined);
+            setUndoNotice("Previous design values restored. Check tuning support and run a fresh optimization before applying again.");
+            if (value.warning) setError(value.warning);
+            onApplied?.();
+        } catch (failure) {
+            setError(failure instanceof Error ? failure.message : String(failure));
+        } finally {
+            setBusy(false);
         }
     };
     const unreportedProgress = "Preparing optimization; waiting for execution progress.";
@@ -809,13 +841,16 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
             {job?.error && <Alert color="red" role="alert">{job.error}</Alert>}
             {job?.recovery && <Alert color="yellow" role="alert">Recovery ({job.recovery.action}): {job.recovery.reason}</Alert>}
             <JobObservationNotice discoveryStatus={jobs.discoveryStatus} connectionError={jobs.connectionError} actionError={jobs.actionError} onReattach={jobs.refresh} />
-            {!applied && !job?.result?.provenance?.authoredApply && result?.candidate && ["success", "attained", "inconclusive", "exhausted"].includes(result.status) && job?.status === "completed" && (
+            {!applied && !job?.result?.provenance?.authoredApply && !job?.result?.provenance?.authoredUndo && result?.candidate && ["success", "attained", "inconclusive", "exhausted"].includes(result.status) && job?.status === "completed" && (
                 <>
                     { ["blueprint", "parWorkbook", "tsPackage"].includes(result.candidate.type) && <Button disabled={busy} onClick={() => {
-                        action("apply");
-                    }}>Apply reviewed changes to source</Button>}
+                        confirm("Apply these reviewed changes to the saved design? This writes the selected values to the project source.", () => {
+                            action("apply").catch((failure: unknown) => setError(failure instanceof Error ? failure.message : String(failure)));
+                        }, undefined, {confirm: "optimization-apply-confirm", cancel: "optimization-apply-dismiss", operation: "optimization-apply"});
+                    }}>Apply reviewed changes</Button>}
                     <TextInput
-                        label="Candidate destination"
+                        label="Save candidate to"
+                        description="Copy the reviewed candidate to a separate destination instead of changing the source."
                         value={destination}
                         onChange={(event) => setDestination(event.currentTarget.value)}
                     />
@@ -829,7 +864,32 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
                     </Button>
                 </>
             )}
-            {(applied || Boolean(job?.result?.provenance?.authoredApply)) && <Alert color="green">Authored changes applied. Check support and run a fresh preview before applying again.</Alert>}
+            {(applied || Boolean(job?.result?.provenance?.authoredApply)) && undoNotice === undefined && (
+                <Alert color="green" title="Changes saved to the game design">
+                    <Text size="sm">The reviewed values are now part of the saved design. Check support and run a fresh preview before applying again.</Text>
+                    {undo !== undefined && (
+                        <Group mt="xs">
+                            <Button
+                                size="xs"
+                                variant="default"
+                                disabled={busy}
+                                onClick={() => {
+                                    undoApply().catch((failure: unknown) => setError(failure instanceof Error ? failure.message : String(failure)));
+                                }}
+                            >
+                                Undo applied changes
+                            </Button>
+                            <Text size="xs" c="dimmed">Available until the source changes or Studio restarts (15 minutes).</Text>
+                        </Group>
+                    )}
+                </Alert>
+            )}
+            {undoNotice !== undefined && <Alert color="teal">{undoNotice}</Alert>}
+            {!applied && job?.result?.provenance?.authoredUndo !== undefined && undoNotice === undefined && (
+                <Alert color="gray">
+                    This candidate was applied and then undone. Run a new optimization to review a fresh candidate before applying again.
+                </Alert>
+            )}
             {saved && <Alert color="green">Candidate saved: {saved}</Alert>}
             {error && (
                 <Alert color="red" role="alert">

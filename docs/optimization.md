@@ -5,7 +5,9 @@ Studio Project → Overview → **Optimize math** use `ProjectOptimizationServic
 the same operation available from the package root to ESM and `require()` callers.
 Studio checks tuning support, starts a durable cancellable job, retains its
 result/evidence across reload, and saves a reviewed candidate only on request.
-The ordinary `pokie` / `pokie SOURCE` Studio startup is unchanged.
+Applying reviewed changes to an authored source asks for confirmation and
+retains a one-step undo for 15 minutes, until the source changes, or until
+Studio restarts. The ordinary `pokie` / `pokie SOURCE` Studio startup is unchanged.
 Conversions remain `build SOURCE --target TARGET`.
 
 ```json
