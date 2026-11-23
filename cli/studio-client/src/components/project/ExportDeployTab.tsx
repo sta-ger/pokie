@@ -446,6 +446,16 @@ function TargetCard({
         diskRisk: "unknown",
         likelyDuration: "unknown",
     } as const;
+    let artifactBuildLabel: string;
+    if (artifactPreview.status === "loading") {
+        artifactBuildLabel = "Checking…";
+    } else if (artifactBuildRun.status === "running") {
+        artifactBuildLabel = "Building…";
+    } else if (card.artifactTarget === "blueprint" && artifactPreview.status === "ok" && artifactPreview.result.plan?.packageExtraction) {
+        artifactBuildLabel = "Save Blueprint";
+    } else {
+        artifactBuildLabel = "Build";
+    }
 
     return (
         <div
@@ -843,7 +853,7 @@ function TargetCard({
                             disabled={!canBuildArtifact}
                             title={!canBuildArtifact ? artifactBuildDisabledReason : undefined}
                         >
-                            {card.artifactTarget === "blueprint" && artifactPreview.status === "ok" && artifactPreview.result.plan?.packageExtraction ? "Save Blueprint" : "Build"}
+                            {artifactBuildLabel}
                         </Button>
                         {artifactBuildRun.status === "running" && (
                             <Button size="xs" mt="sm" ml="xs" color="red" variant="light" disabled={artifactBuildRun.cancellationRequested} onClick={() => onCancelArtifactBuild(card.artifactTarget!)}>

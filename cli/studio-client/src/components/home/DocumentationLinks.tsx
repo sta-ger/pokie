@@ -22,6 +22,11 @@ export function DocumentationLinks() {
                     </Anchor>
                 </List.Item>
                 <List.Item>
+                    <Anchor href={`${DOCS}/glossary.md`} target="_blank" rel="noreferrer">
+                        Glossary
+                    </Anchor>
+                </List.Item>
+                <List.Item>
                     <Anchor href={`${DOCS}/cli.md`} target="_blank" rel="noreferrer">
                         CLI reference
                     </Anchor>

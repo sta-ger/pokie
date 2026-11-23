@@ -1171,6 +1171,19 @@ export function BlueprintEditorPage({
     // primary action through Open so a valid model cannot authorize another
     // Create/Save while the first pointer's Overview transition is pending.
     const guidedActionPending = managedSaveView.status === "loading" || validationView.status === "loading" || workspaceOpenPending;
+    // Mantine hides a Button's label while `loading` is true. During validation that left the primary
+    // action as an unlabeled spinner, so keep the validation phase disabled-but-labelled and reserve
+    // the loading treatment for the actual save/open writes.
+    let guidedActionLabel: string;
+    if (validationView.status === "loading") {
+        guidedActionLabel = "Checking design…";
+    } else if (managedSaveView.status === "loading") {
+        guidedActionLabel = "Saving…";
+    } else if (workspaceOpenPending) {
+        guidedActionLabel = "Opening…";
+    } else {
+        guidedActionLabel = blueprintPath === undefined || overwriteConfirmedForPath !== blueprintPath ? "Create game" : "Save game";
+    }
     const validationDescriptionId = validationView.status !== "ok" ? "blueprint-create-game-validation" : undefined;
     let guidedActionDescriptionId = validationDescriptionId;
     if (workspaceOpenPending) {
@@ -1252,10 +1265,10 @@ export function BlueprintEditorPage({
                             onClick={handleGuidedSave}
                             disabled={sequenceDraftDirty || guidedActionPending || validationView.status !== "ok"}
                             aria-describedby={guidedActionDescriptionId}
-                            loading={guidedActionPending}
+                            loading={managedSaveView.status === "loading" || workspaceOpenPending}
                             aria-busy={guidedActionPending || undefined}
                         >
-                            {blueprintPath === undefined || overwriteConfirmedForPath !== blueprintPath ? "Create game" : "Save game"}
+                            {guidedActionLabel}
                         </Button>
                     </QuickActions>
                     {managedSaveView.status === "loading" && !workspaceOpenPending && (

@@ -34,6 +34,12 @@ This page explains the words POKIE uses. If a term is missing, the page that int
 - **Scatter** — a symbol that pays or triggers a feature regardless of position.
 - **Wild** — a symbol that substitutes for other symbols.
 - **Paytable** — the table of symbol payouts.
+- **Logical round** — one paid entry plus everything it triggers, including free games and cascades. It
+  can contain several spins and several screens.
+- **Spin** — one settled play inside a logical round, including a free spin. The runtime API's
+  `mathematicalCursor` counts these.
+- **Screen** — one delivered view of a round after a spin or cascade step. The runtime API's
+  `cursor` (delivery cursor) counts these.
 - **PAR sheet** — the standard slot-math spreadsheet used to exchange paytable and reel data.
 - **Bet mode** — a named way to play, such as base, ante or buy-feature.
 - **Ante bet** — a higher base bet that improves the chance of triggering a feature.
@@ -100,5 +106,7 @@ use the right-hand column.
 | contract | interface / format |
 | adapter | connector |
 | preflight | check |
+| step (logical round) | spin / screen |
+| part (delivery) | screen |
 | idempotent | safe to retry |
 | canonical (as filler) | delete the word |

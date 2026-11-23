@@ -749,8 +749,8 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
                         )}
                         <Group align="end" mt="sm">
                             <TextInput
-                                label="Another writable field"
-                                description="Raw JSON pointer; the tuning check will validate it."
+                                label="Advanced field path (optional)"
+                                description="Paste a JSON pointer such as /paytable/A/3; the tuning check validates it before use."
                                 placeholder="/paytable/A/3"
                                 value={customField}
                                 onChange={(event) => setCustomField(event.currentTarget.value)}

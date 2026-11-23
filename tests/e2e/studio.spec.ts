@@ -120,7 +120,7 @@ test.describe.serial("managed project labels", () => {
 
     test("an unsupported field still reveals the project's writable fields", async ({page}) => {
         await page.goto("/");
-        await page.getByLabel("Another writable field").fill("/paytable/NOPE/3");
+        await page.getByLabel("Advanced field path (optional)").fill("/paytable/NOPE/3");
         await page.getByRole("button", {name: "Add field"}).click();
         await page.getByRole("button", {name: "Check tuning support"}).click();
         await expect(page.getByText(/Unknown policy path/).first()).toBeVisible({timeout: 30_000});
@@ -201,7 +201,7 @@ test.describe.serial("managed project labels", () => {
         await expect(table.getByRole("row", {name: /RTP/})).toContainText("%");
     });
 
-    test("Play uses singular round wording for a single step and one part", async ({page}) => {
+    test("Play uses singular round wording for a single spin and one screen", async ({page}) => {
         await page.goto("/");
         await page.getByRole("button", {name: "Play", exact: true}).click();
         const newSession = page.getByRole("button", {name: "Start playing"});
@@ -211,7 +211,7 @@ test.describe.serial("managed project labels", () => {
         await expect(spin).toBeVisible({timeout: 60_000});
         await expect(page.getByText("No round played yet — Spin to play.")).toBeVisible();
         await spin.click();
-        await expect(page.getByText(/Round completed: 1 step, 1 part/)).toBeVisible({timeout: 30_000});
+        await expect(page.getByText(/Round completed: 1 spin, 1 screen/)).toBeVisible({timeout: 30_000});
         await expect(page.getByText(/1 steps/)).toHaveCount(0);
     });
 
@@ -226,7 +226,7 @@ test.describe.serial("managed project labels", () => {
         }
         await expect(spin).toBeVisible({timeout: 60_000});
         await spin.click();
-        await expect(page.getByText(/Round completed: 1 step, 1 part/)).toBeVisible({timeout: 30_000});
+        await expect(page.getByText(/Round completed: 1 spin, 1 screen/)).toBeVisible({timeout: 30_000});
 
         const paytable = page.locator("details.player-paytable-details");
         await expect(paytable).toBeVisible();
@@ -245,7 +245,7 @@ test.describe.serial("managed project labels", () => {
         await expect(lines).toContainText(/rows/);
 
         await page.getByRole("button", {name: "Find any win", exact: true}).click();
-        await expect(page.getByText(/Round completed: 1 step, 1 part, stake \d+, payout [1-9]/)).toBeVisible({timeout: 30_000});
+        await expect(page.getByText(/Round completed: 1 spin, 1 screen; stake \d+, payout [1-9]/)).toBeVisible({timeout: 30_000});
         await page.locator("summary", {hasText: "Inspect round record"}).click();
         await expect(page.getByRole("columnheader", {name: "Positions (reel:row, 0-based)"})).toBeVisible();
         await expect(page.getByRole("cell", {name: /\d+:\d+/}).first()).toBeVisible();
@@ -264,10 +264,10 @@ test.describe.serial("managed project labels", () => {
         // One plain spin materializes the bet picker; then change the bet and search immediately. The
         // scenario search must carry that selection instead of settling at the session's previous bet.
         await spin.click();
-        await expect(page.getByText(/Round completed: 1 step, 1 part/)).toBeVisible({timeout: 30_000});
+        await expect(page.getByText(/Round completed: 1 spin, 1 screen/)).toBeVisible({timeout: 30_000});
         await page.getByRole("button", {name: "Select bet 5"}).click();
         await page.getByRole("button", {name: "Find any win", exact: true}).click();
-        await expect(page.getByText(/Round completed: 1 step, 1 part, stake 5, payout [1-9]/)).toBeVisible({timeout: 60_000});
+        await expect(page.getByText(/Round completed: 1 spin, 1 screen; stake 5, payout [1-9]/)).toBeVisible({timeout: 60_000});
         await expect(page.getByText("Bet: 5", {exact: true})).toBeVisible();
     });
 
@@ -347,5 +347,53 @@ test.describe.serial("managed project labels", () => {
         await page.goto(simulationUrl);
         await expect(page.getByText("Simulation ready")).toBeVisible({timeout: 60_000});
         expect(page.url()).toContain("/simulation");
+    });
+
+    test("saving a paytable edit refreshes Overview validation without a reload", async ({page}) => {
+        await page.goto("/");
+        await page.getByRole("button", {name: "Game Model", exact: true}).click();
+        await page.getByRole("button", {name: "Edit", exact: true}).nth(4).click();
+        const payout = page.getByRole("textbox", {name: "A x5 payout"});
+        await payout.fill("40");
+        await payout.press("Tab");
+        await page.getByRole("button", {name: "Save", exact: true}).click();
+        await expect(page.getByRole("button", {name: "Save", exact: true})).toHaveCount(0, {timeout: 60_000});
+        await page.getByRole("button", {name: "Overview", exact: true}).click();
+        // The saved file now has A x5 = 40. Overview must report that warning from the fresh save,
+        // not the pre-save validation result and not only after a page reload.
+        await expect(page.getByText(/Valid, with warnings/)).toBeVisible({timeout: 30_000});
+        await expect(page.getByText(/"A" pays more than "K"/)).toBeVisible({timeout: 30_000});
+
+        await page.getByRole("button", {name: "Game Model", exact: true}).click();
+        await page.getByRole("button", {name: "Edit", exact: true}).nth(4).click();
+        await page.getByRole("textbox", {name: "A x5 payout"}).fill("32");
+        await page.getByRole("textbox", {name: "A x5 payout"}).press("Tab");
+        await page.getByRole("button", {name: "Save", exact: true}).click();
+        await expect(page.getByRole("button", {name: "Save", exact: true})).toHaveCount(0, {timeout: 60_000});
+        await page.getByRole("button", {name: "Overview", exact: true}).click();
+        await expect(page.getByText("Valid — no issues found.")).toBeVisible({timeout: 30_000});
+    });
+
+    test("Simulation review shows the exact-math reference for a current sample", async ({page}) => {
+        await page.goto("/");
+        // The exact card may still be loading when the page first paints; wait for whichever action it
+        // settles on instead of sampling visibility once and guessing wrong.
+        const exactAction = page.getByRole("button", {name: /^(Compute|Recompute) exact math$/}).first();
+        await expect(exactAction).toBeVisible({timeout: 30_000});
+        await exactAction.click();
+        await expect(page.getByText("Exact RTP", {exact: true})).toBeVisible({timeout: 120_000});
+
+        await page.getByRole("button", {name: "Simulation", exact: true}).click();
+        const change = page.getByRole("button", {name: "Change settings", exact: true});
+        const rounds = page.getByLabel("Rounds *");
+        // A retained completed report opens on Review, while a fresh project opens on Configure.
+        await expect(rounds.or(change)).toBeVisible({timeout: 60_000});
+        if (await change.isVisible().catch(() => false)) await change.click();
+        await expect(rounds).toBeVisible({timeout: 30_000});
+        await rounds.fill("1000");
+        await page.getByRole("button", {name: "Run Simulation", exact: true}).click();
+        await expect(page.getByText(/Simulation completed/).first()).toBeVisible({timeout: 60_000});
+        await expect(page.getByText("Exact math reference")).toBeVisible({timeout: 30_000});
+        await expect(page.getByText(/Exact for this saved design: RTP/)).toBeVisible();
     });
 });

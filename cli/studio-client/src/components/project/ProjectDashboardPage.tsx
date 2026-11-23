@@ -1,5 +1,5 @@
 import {WASM_EXECUTION_BOUNDARY} from "../../../../../src/wasm/PokieWasmRuntimeApi";
-import {Alert, Button, Stack, Table, Text, Title} from "@mantine/core";
+import {Alert, Anchor, Button, Stack, Table, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
 import {useCallback, useEffect, useLayoutEffect, useRef, useState} from "react";
 import {useLocation, useNavigate, useParams} from "react-router-dom";
@@ -1178,6 +1178,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const handleBlueprintSaved = (sourceRevision?: string): void => {
         if (projectKey !== undefined) setOptimizerSourceChange({projectRoot: projectKey, sourceRevision});
         setExactMathRefreshKey((value) => value + 1);
+        // Saving a design changes the project-level validation report too. Refresh it here instead of
+        // leaving Overview's card on the validation result read before the write (the card could even
+        // describe the previous payout after the file already contained the new one).
+        runValidate();
         simulation.invalidateResult();
         reportRequestIdRef.current++;
         compareRequestIdRef.current++;
@@ -1442,7 +1446,14 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         >
             <div className="studio-page">
                 <Title id="project-dashboard-heading" order={2}>{describeProjectName(header)}</Title>
-                {header.status === "loaded" && <Text size="sm" c="dimmed">{header.id} · v{header.version}</Text>}
+                {header.status === "loaded" && (
+                    <Text size="sm" c="dimmed">
+                        {header.id} · v{header.version} ·{" "}
+                        <Anchor href="https://github.com/sta-ger/pokie/tree/develop/docs/glossary.md" target="_blank" rel="noreferrer">
+                            Glossary
+                        </Anchor>
+                    </Text>
+                )}
                 {projectKey !== undefined && (
                     <AdvancedDisclosure label="project location">
                         <Text className="studio-technical-text" size="sm">Project path: {projectKey}</Text>

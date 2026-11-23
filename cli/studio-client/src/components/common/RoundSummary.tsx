@@ -56,17 +56,17 @@ export function RoundSummary({
     onSelectBetMode?: (modeId: string) => void;
 }) {
     let roundTitle = "Round complete";
-    if (session.logicalRound?.status === "pending") roundTitle = "Subround committed";
+    if (session.logicalRound?.status === "pending") roundTitle = "Round in progress";
     if (session.logicalRound?.status === "exhausted") roundTitle = "Round stopped at its bound";
     const [artifactInspectorOpen, setArtifactInspectorOpen] = useState(false);
     const roundWin = session.logicalRound?.totalWin ?? session.debug?.artifact?.totalWin ?? session.win;
     const roundOutcome = roundWin !== undefined && roundWin > 0 ? (
         <Alert color="green" variant="light" icon={<IconCircleCheck size={16} />} title={roundTitle} mb="md">
-            {session.logicalRound ? `Logical-round win ${roundWin.toFixed(2)}. Payout ${session.logicalRound.totalPayout.toFixed(2)}.` : `You won ${roundWin.toFixed(2)}.`}
+            {session.logicalRound ? `Round win ${roundWin.toFixed(2)}. Payout ${session.logicalRound.totalPayout.toFixed(2)}.` : `You won ${roundWin.toFixed(2)}.`}
         </Alert>
     ) : (
         <Text size="sm" c="dimmed" mb="md">
-            {roundTitle} — {session.logicalRound ? `no win ${session.logicalRound.status === "completed" ? "in" : "so far in"} this logical round. Payout ${session.logicalRound.totalPayout.toFixed(2)}.` : "no win this round."}
+            {roundTitle} — {session.logicalRound ? `no win ${session.logicalRound.status === "completed" ? "in" : "so far in"} this round. Payout ${session.logicalRound.totalPayout.toFixed(2)}.` : "no win this round."}
         </Text>
     );
     if (session.debug?.artifact) {

@@ -14,6 +14,26 @@ import {RoundSummary} from "../common/RoundSummary";
 import {GameScreenView} from "../common/GameScreenView";
 import {describeRuntimeScreen} from "../../domain/interpret/Runtime";
 
+// The public status text is for a game-math author, not a runtime implementer: "step"/"part" are
+// internal delivery terms. A mathematical spin and the screen it produced are what the player sees.
+function describeRoundProgress(round: {
+    status: "pending" | "completed" | "exhausted";
+    mathematicalCursor: number;
+    cursor: number;
+    totalStake: number;
+    totalPayout: number;
+}): string {
+    let label: string;
+    if (round.status === "completed") {
+        label = "Round completed";
+    } else if (round.status === "pending") {
+        label = "Round in progress";
+    } else {
+        label = "Round stopped at its bound";
+    }
+    return `${label}: ${formatCount(round.mathematicalCursor, "spin")}, ${formatCount(round.cursor, "screen")}; stake ${round.totalStake}, payout ${round.totalPayout}`;
+}
+
 // Studio's own -- and only -- game mode: Play never starts a server, never shows a host/port/server URL,
 // and is never represented as a product POKIE game server/RGS workflow. "New session"/"Reset" both
 // runtime/load the project as needed and create a real session directly in Studio's own backend
@@ -127,7 +147,7 @@ export function PlayTab({
         errorNotice = <ErrorState message={session.message} />;
     }
 
-    const deliveryField = activeSession?.logicalRoundDeliverySupported && <Select label="Round display" aria-label="Round display" value={delivery} data={[{value: "stepwise", label: "One step"}, {value: "composite", label: "Whole round"}]} onChange={(value) => setDelivery(value === "composite" ? "composite" : "stepwise")} disabled={loading} />;
+    const deliveryField = activeSession?.logicalRoundDeliverySupported && <Select label="Round display" aria-label="Round display" value={delivery} data={[{value: "stepwise", label: "One step at a time"}, {value: "composite", label: "Whole round at once"}]} onChange={(value) => setDelivery(value === "composite" ? "composite" : "stepwise")} disabled={loading} />;
     const seedField = (
         <TextInput
             label="Seed (optional)"
@@ -162,7 +182,7 @@ export function PlayTab({
                 <Text size="sm" c="dimmed" mb="sm">
                     Play is ready. Start a session to spin a real round in Studio. No game server or extra setup is needed.
                 </Text>
-                {activeSession?.logicalRound && <Text size="sm">Round {activeSession.logicalRound.status}: {formatCount(activeSession.logicalRound.mathematicalCursor, "step")}, {formatCount(activeSession.logicalRound.cursor, "part", "parts")}, stake {activeSession.logicalRound.totalStake}, payout {activeSession.logicalRound.totalPayout}</Text>}
+                {activeSession?.logicalRound && <Text size="sm">{describeRoundProgress(activeSession.logicalRound)}</Text>}
                 {loading && <LoadingState label="Starting…" />}
                 {errorNotice}
                 <PageSection legend="Play session">
@@ -238,7 +258,7 @@ export function PlayTab({
                     </Button>
                 </QuickActions>
                 {errorNotice}
-                {activeSession?.logicalRound && <Text size="sm">Round {activeSession.logicalRound.status}: {formatCount(activeSession.logicalRound.mathematicalCursor, "step")}, {formatCount(activeSession.logicalRound.cursor, "part", "parts")}, stake {activeSession.logicalRound.totalStake}, payout {activeSession.logicalRound.totalPayout}</Text>}
+                {activeSession?.logicalRound && <Text size="sm">{describeRoundProgress(activeSession.logicalRound)}</Text>}
                 {loading && <LoadingState label="Spinning…" />}
                 {(!loading || playedRound !== undefined) && roundResult}
             </PageSection>

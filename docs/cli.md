@@ -914,8 +914,8 @@ their economics (paying from 2-of-a-kind, much bigger multipliers) are legitimat
  `symbolWeights` (or `reelStripGeneration`'s own `symbolCounts`/`symbolWeights`, or, counting occurrences across
  every strip, `reelStrips`), crowding out the rest.
 - **A wild is too common** (`blueprint-weighting-wild-too-common`) — a wild symbol's weight is at least as high as
- the average of the regular symbols. Wilds substitute for everything, so landing this often inflates RTP well
- beyond what the paytable alone suggests.
+ the average of the regular symbols. Wilds substitute for everything, so landing this often can push hit frequency
+ and RTP above the intended range; check the exact or simulated RTP.
 - **Payout doesn't track rarity** (`blueprint-weighting-pay-mismatch`) — a higher-paying symbol isn't rarer (in
  `symbolWeights`/`reelStripGeneration`/`reelStrips`) than a lower-paying one. This is the most common way a
  blueprint's RTP quietly runs away: identical weights across symbols with different payouts (every symbol equally

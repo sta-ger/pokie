@@ -2,8 +2,11 @@ import {Alert, Anchor, Button, Collapse, Group, List, NumberInput, Progress, Sel
 import {useForm} from "@mantine/form";
 import {useDisclosure} from "@mantine/hooks";
 import {useEffect, useLayoutEffect, useRef, useState} from "react";
-import type {StudioSimulationReportListEntry} from "../../api/types";
+import {getExactMath} from "../../api/apiClient";
+import type {StudioExactMathView, StudioSimulationReportListEntry} from "../../api/types";
+import {useStudioApi} from "../../context/StudioApiProvider";
 import {describeDesignCompatibility, describeReportListEntry, shortSourceRevision, type ReportListView} from "../../domain/interpret/Reports";
+import {formatConfidenceInterval} from "../../domain/interpret/formatConfidenceInterval";
 import type {SimulationProgressView, SimulationReportView} from "../../domain/interpret/Simulation";
 import {describeProjectActionError} from "../../domain/projectActionError";
 import {getSimulationRoundsError, MAX_STUDIO_SIMULATION_ROUNDS} from "../../domain/simulationRounds";
@@ -171,6 +174,23 @@ export function SimulationTab({
         formRef.current = form;
     }, [form]);
 
+    // Compare a completed sample with the exact library for the same saved design, so the math author
+    // does not have to remember an RTP from the Overview tab. Missing/stale exact math simply omits the
+    // reference; this is a read-only convenience, never a second calculation path.
+    const fetchImpl = useStudioApi();
+    const [exactMathView, setExactMathView] = useState<StudioExactMathView>();
+    useEffect(() => {
+        const controller = new AbortController();
+        getExactMath(fetchImpl, controller.signal)
+            .then((view) => {
+                if (!controller.signal.aborted) setExactMathView(view);
+            })
+            .catch(() => {
+                if (!controller.signal.aborted) setExactMathView(undefined);
+            });
+        return () => controller.abort();
+    }, [fetchImpl]);
+
     // Defaults the picker to the first real mode the moment the list becomes available -- SimulationTab
     // can mount before the project header's own outcome-source report necessarily has (see PlayTab's own
     // identical effect for why).
@@ -309,6 +329,25 @@ export function SimulationTab({
     // A report can never be meaningfully compared against itself (requirement 7).
     const comparableEntries = recentRuns.status === "loaded" ? recentRuns.entries.filter((entry) => entry.id !== currentReportId) : [];
 
+    // Exact-vs-sample reference for the Review step. Only current, single-mode reports qualify: a
+    // historical report belongs to another saved design, and a mode-set report has no single exact RTP
+    // to compare against. The exact library is still the authority; this block only contextualizes the
+    // sample so the author does not have to remember another tab's number.
+    const exactReference = (() => {
+        if (historicalResult || reviewedDetail.status !== "loaded" || exactMathView?.status !== "ok" || "modes" in reviewedDetail.report) return undefined;
+        const report = reviewedDetail.report;
+        const analysis = exactMathView.analysis;
+        const interval = report.rtpConfidenceInterval95;
+        return {
+            report,
+            analysis,
+            deltaPp: (report.rtp - analysis.rtp) * 100,
+            interval,
+            intervalContainsExact: interval === undefined ? undefined : interval.low <= analysis.rtp && analysis.rtp <= interval.high,
+            outcomes: exactMathView.outcomeCount,
+        };
+    })();
+
     const outcome: SimulationOutcome | undefined = (() => {
         if (reviewedDetail.status === "loaded") {
             return {kind: "completed", report: reviewedDetail.report};
@@ -400,6 +439,9 @@ export function SimulationTab({
                     <Text size="sm" c="dimmed" mb="sm">
                         Simulation plays many rounds of this game to estimate RTP, win frequency, and the largest win.
                         When it finishes, review the summary here or export the full report.
+                    </Text>
+                    <Text size="xs" c="dimmed" mb="sm">
+                        If this design is small enough to enumerate completely, use Exact math on Overview instead: it is exact and avoids sampling noise.
                     </Text>
                     <QuickActions>
                         <NumberInput
@@ -511,6 +553,37 @@ export function SimulationTab({
                     {outcome !== undefined && (
                         <div>
                             {(outcome.kind !== "completed" || (!fullReportOpened && !comparisonVisible)) && <SimulationSummaryCard outcome={outcome} />}
+                            {outcome.kind === "completed" && exactReference !== undefined && (
+                                <Alert
+                                    color={exactReference.intervalContainsExact === false ? "yellow" : "blue"}
+                                    title="Exact math reference"
+                                    mt="sm"
+                                    role="status"
+                                >
+                                    <Text size="sm">
+                                        Exact for this saved design: RTP <strong>{(exactReference.analysis.rtp * 100).toFixed(4)}%</strong>,
+                                        hit frequency <strong>{(exactReference.analysis.hitFrequency * 100).toFixed(4)}%</strong> from{" "}
+                                        {exactReference.outcomes.toLocaleString("en-US")} enumerated outcomes. This{" "}
+                                        {exactReference.report.rounds.toLocaleString("en-US")}-round sample differs by{" "}
+                                        <strong>{signed(exactReference.deltaPp, 2, " pp")}</strong> RTP and{" "}
+                                        <strong>{signed((exactReference.report.hitFrequency - exactReference.analysis.hitFrequency) * 100, 2, " pp")}</strong> hit frequency.
+                                    </Text>
+                                    <Text size="sm" mt={4}>
+                                        {exactReference.interval === undefined
+                                            ? "This report has no RTP confidence interval to compare with the exact value."
+                                            : `The sample's 95% RTP interval is ${formatConfidenceInterval(exactReference.interval)}; it ${exactReference.intervalContainsExact ? "contains" : "does not contain"} the exact RTP.`}
+                                    </Text>
+                                    <Text size="xs" c="dimmed" mt={4}>
+                                        Exact math is the reference; simulation is an estimate. Use the full report for sampling caveats.
+                                    </Text>
+                                </Alert>
+                            )}
+                            {outcome.kind === "completed" && !historicalResult && (exactMathView?.status === "missing" || exactMathView?.status === "stale") && (
+                                <Text size="xs" c="dimmed" mt="sm">
+                                    {exactMathView.status === "stale" ? "The exact library is stale for this saved design." : "No exact library exists for this saved design yet."}{" "}
+                                    Compute exact math on Overview to compare it with this sample.
+                                </Text>
+                            )}
                             <QuickActions>
                                 {outcome.kind === "completed" && (
                                     <Button data-pokie-lifecycle-artifact="simulation-report" variant="default" onClick={() => {

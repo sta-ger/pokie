@@ -1800,7 +1800,7 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                     issues.push({
                         code: "blueprint-weighting-wild-too-common",
                         severity: "warning",
-                        message: `Wild symbol "${wildSymbolId}" has weight ${wildWeight} in "${source}", at least as common as the average regular symbol (${averageRegularWeight.toFixed(1)}) — wilds substitute for everything, so landing this often will inflate hit frequency and RTP well beyond what the paytable alone suggests.`,
+                        message: `Wild symbol "${wildSymbolId}" has weight ${wildWeight} in "${source}", at least as common as the average regular symbol (${averageRegularWeight.toFixed(1)}) — wilds substitute for everything, so landing this often can push hit frequency and RTP above the intended range. Check the exact or simulated RTP.`,
                         suggestion: `Make "${wildSymbolId}" rarer than the regular symbols in "${source}".`,
                     });
                 }
@@ -1823,7 +1823,7 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                 issues.push({
                     code: "blueprint-weighting-pay-mismatch",
                     severity: "warning",
-                    message: `"${higher.symbolId}" pays more than "${lower.symbolId}" (${higher.topPayout}x vs ${lower.topPayout}x at a full line) but isn't rarer in "${source}" (weight ${higher.weight} vs ${lower.weight}) — a higher-paying symbol landing this often will inflate RTP well beyond what the paytable alone suggests.`,
+                    message: `"${higher.symbolId}" pays more than "${lower.symbolId}" (${higher.topPayout}x vs ${lower.topPayout}x at a full line) but isn't rarer in "${source}" (weight ${higher.weight} vs ${lower.weight}) — a higher-paying symbol landing this often makes the design top-heavy and can push RTP above the intended range. Check the exact or simulated RTP.`,
                     suggestion: `Lower "${higher.symbolId}"'s weight relative to "${lower.symbolId}" in "${source}", or rebalance the paytable so payout roughly tracks rarity.`,
                 });
             }
