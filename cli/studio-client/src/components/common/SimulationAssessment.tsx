@@ -3,7 +3,7 @@ import {IconAlertTriangle} from "@tabler/icons-react";
 import {describeSimulationDiagnostics, describeSimulationPrecision} from "../../../../../src/reporting/describeSimulationDiagnostics";
 import type {SingleSimulationReportView} from "../../domain/interpret/Simulation";
 import {formatConfidenceInterval} from "../../domain/interpret/formatConfidenceInterval";
-import {describeStudioSimulationRecommendation} from "../../domain/simulationRecommendations";
+import {describeStudioSimulationRecommendation, formatRoundsEstimate, roundsForRtpHalfWidth} from "../../domain/simulationRecommendations";
 import {AdvancedDisclosure} from "./AdvancedDisclosure";
 
 // Both result views read the same persisted assessment. Keep warnings and the
@@ -12,6 +12,8 @@ export function SimulationAssessment({view, compact = false}: {view: SingleSimul
     const limitations = view.diagnostics?.coverageLimitations ?? [];
     const rtpInterval = view.rtpConfidenceInterval95;
     const roughEstimate = rtpInterval !== undefined && rtpInterval.high - rtpInterval.low > 0.02;
+    const onePointRounds = rtpInterval === undefined ? undefined : roundsForRtpHalfWidth(view.rounds, rtpInterval, 0.01);
+    const halfPointRounds = rtpInterval === undefined ? undefined : roundsForRtpHalfWidth(view.rounds, rtpInterval, 0.005);
     return (
         <div className="studio-simulation-assessment">
             <section aria-label="Precision and convergence" className="studio-simulation-precision">
@@ -37,6 +39,12 @@ export function SimulationAssessment({view, compact = false}: {view: SingleSimul
                             This interval is wider than ±1 percentage point. Run more rounds, or generate an exact outcome library, before treating this RTP
                             as final.
                         </Text>
+                        {onePointRounds !== undefined && (
+                            <Text size="sm" mt={4}>
+                                At the observed spread, about {formatRoundsEstimate(onePointRounds)} rounds are needed for a ±1 pp interval
+                                {halfPointRounds === undefined ? "" : `; about ${formatRoundsEstimate(halfPointRounds)} for ±0.5 pp`}.
+                            </Text>
+                        )}
                     </Alert>
                 )}
             </section>

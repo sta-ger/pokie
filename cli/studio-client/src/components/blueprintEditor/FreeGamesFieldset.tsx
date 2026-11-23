@@ -1,4 +1,4 @@
-import {Button, Group, NumberInput, Select, Table, Text} from "@mantine/core";
+import {Alert, Button, Group, NumberInput, Select, Table, Text} from "@mantine/core";
 import {useState} from "react";
 import type {ValidationIssue} from "../../api/types";
 import {asStringList} from "../../domain/asStringList";
@@ -31,13 +31,32 @@ export function FreeGamesFieldset({
     const errors = issues.filter((issue) => issue.severity === "error");
     const warnings = issues.filter((issue) => issue.severity !== "error");
 
+    const hasScatter = scatters.length > 0;
+    const scatterHint = (
+        <Alert color="yellow" variant="light" title="Add a scatter symbol first" mb="xs">
+            <Text size="sm">
+                Free games need a scatter symbol to trigger. Add one in the Symbols section, then return here.
+            </Text>
+        </Alert>
+    );
+
     if (freeGames === undefined) {
         return (
             <PageSection legend="Free games">
-                <Text size="sm" c="dimmed" mb="xs">
-                    No scatter-triggered free games configured.
-                </Text>
-                <Button variant="default" size="xs" onClick={() => mutate((b) => addFreeGames(b))}>
+                {hasScatter ? (
+                    <Text size="sm" c="dimmed" mb="xs">
+                        No scatter-triggered free games configured.
+                    </Text>
+                ) : (
+                    scatterHint
+                )}
+                <Button
+                    variant="default"
+                    size="xs"
+                    disabled={!hasScatter}
+                    title={hasScatter ? undefined : "Add a scatter symbol in Symbols first."}
+                    onClick={() => mutate((b) => addFreeGames(b))}
+                >
                     Add free games
                 </Button>
             </PageSection>
@@ -50,6 +69,7 @@ export function FreeGamesFieldset({
         <PageSection legend="Free games">
             <IssueList title="Errors" issues={errors} />
             <IssueList title="Warnings" issues={warnings} />
+            {!hasScatter && scatterHint}
             <Text>Retrigger policy: additive.</Text>
             <Select
                 label="Scatter symbol"

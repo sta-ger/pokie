@@ -198,7 +198,9 @@ export function ExactMathPanel({projectRoot, sourceRevision, refreshKey}: {proje
                     <Metric label="Outcomes" value={view.outcomeCount.toLocaleString("en-US")} />
                 </SimpleGrid>
                 <Text size="xs" c="dimmed">
-                    Volatility is the standard deviation of payout per round, in bet units. Max win is the largest single-round payout, also in bet units.
+                    Volatility is the standard deviation of payout per round, in bet units. Max win is the largest
+                    single-round payout, also in bet units; it can exceed the largest paytable entry when several
+                    lines win in the same round.
                 </Text>
                 <Text size="xs" c="dimmed">
                     Library {view.libraryId} · generated {view.generatedAt}{view.strategy === undefined ? "" : ` · ${view.strategy}`}

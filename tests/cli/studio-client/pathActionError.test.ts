@@ -10,7 +10,15 @@ describe("describePathActionError", () => {
         );
     });
 
-    it("classifies an exhausted managed-project location as a destination problem", () => {
+    it("turns an exhausted managed-project name into a name-specific message", () => {
+        const raw = 'No free managed project name for "starter-slot" after 1000 attempts. Choose a different Game id.';
+        expect(classifyPathActionErrorReason(raw)).toBe("name");
+        expect(describePathActionError("Your game", raw)).toBe(
+            "Your game name is already taken. Choose a different Game id; Studio could not find a free project folder after 1000 attempts.",
+        );
+    });
+
+    it("keeps the older exhausted-location wording classified as a destination problem", () => {
         const raw = 'Could not find an available managed project location for "starter-slot" after 1000 attempts.';
         expect(classifyPathActionErrorReason(raw)).toBe("destination");
         expect(describePathActionError("Your game", raw)).toMatch(/needs a destination Studio can use/i);

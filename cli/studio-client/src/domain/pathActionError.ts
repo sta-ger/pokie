@@ -4,7 +4,7 @@
 // StudioFsBrowseService's own `StudioFsBrowseErrorReason` naming so a caller's remediation copy stays
 // consistent with PathInput's own resolved-path hint. `schema` covers the one category browse never
 // produces: a missing/malformed value rejected before any filesystem access is even attempted.
-export type PathActionErrorReason = "network" | "absent" | "permission" | "type" | "schema" | "destination" | "other";
+export type PathActionErrorReason = "network" | "absent" | "permission" | "type" | "schema" | "destination" | "name" | "other";
 
 type PathActionIssue = {status: string; remediation: string};
 
@@ -24,6 +24,9 @@ export function classifyPathActionErrorReason(message: string): PathActionErrorR
     if ((/is required\.|must be a non-empty string|is not valid JSON|unexpected token .*json/i).test(message)) {
         return "schema";
     }
+    if ((/no free managed project name|no available managed project name/i).test(message)) {
+        return "name";
+    }
     if ((/safe default project location|choose a destination directory explicitly|managed project location|no available managed project/i).test(message)) {
         return "destination";
     }
@@ -42,6 +45,10 @@ const PATH_ACTION_ISSUE_COPY: Record<PathActionErrorReason, (subject: string) =>
     destination: (subject) => ({
         status: `${subject} needs a destination Studio can use.`,
         remediation: "Use a different Game id, or start Studio from a folder with a writable POKIE Projects location, then try again.",
+    }),
+    name: (subject) => ({
+        status: `${subject} name is already taken.`,
+        remediation: "Choose a different Game id; Studio could not find a free project folder after 1000 attempts.",
     }),
     other: (subject) => ({
         status: `${subject} could not be completed.`,

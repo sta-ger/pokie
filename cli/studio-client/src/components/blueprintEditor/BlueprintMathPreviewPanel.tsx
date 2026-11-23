@@ -94,6 +94,10 @@ export function BlueprintMathPreviewPanel({blueprint, revision}: {blueprint: unk
                     <Text size="xs" c="dimmed" mt="xs">
                         Draft only — nothing was saved. Exact for the values currently applied to this draft.
                     </Text>
+                    <Text size="xs" c="dimmed" mt={4}>
+                        Volatility is the standard deviation of payout per round, in bet units. Max win can exceed the
+                        largest paytable entry when several lines win in the same round.
+                    </Text>
                 </>
             )}
         </PageSection>

@@ -138,7 +138,7 @@ function resolveAvailableManagedDestination(pathResolver: PokiePathResolver, bas
     }
     return {
         status: "unavailable",
-        message: `Could not find an available managed project location for "${baseName}" after ${MAX_MANAGED_DESTINATION_ATTEMPTS} attempts.`,
+        message: `No free managed project name for "${baseName}" after ${MAX_MANAGED_DESTINATION_ATTEMPTS} attempts. Choose a different Game id.`,
     };
 }
 

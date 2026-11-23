@@ -3,6 +3,7 @@ import {expect, test} from "@playwright/test";
 test("Home opens at the top with the design intro visible", async ({page}) => {
     await page.goto("/#/home/design");
     await expect(page.getByRole("heading", {name: "Design Your Game"})).toBeVisible();
+    await expect(page.getByText(/no code needed for those steps/i)).toBeVisible();
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
 });
 
@@ -12,6 +13,23 @@ test("Design Game previews exact math from the draft without saving a project", 
     await expect(page.getByText("Exact RTP", {exact: true})).toBeVisible({timeout: 60_000});
     await expect(page.getByText("96.7680%", {exact: true}).first()).toBeVisible();
     await expect(page.getByText(/Draft only — nothing was saved/)).toBeVisible();
+    await expect(page.locator("p").filter({hasText: /can exceed the largest paytable entry when several lines win/})).toBeVisible();
+});
+
+test("the slot-math primer explains exact vs sampled and the math-review path", async ({page}) => {
+    await page.goto("/#/home/design");
+    await page.getByText(/New to slot math\?/).click();
+    await expect(page.getByText(/Exact math enumerates every outcome/)).toBeVisible();
+    await expect(page.getByText(/Studio never presents a sample as exact/)).toBeVisible();
+    await expect(page.getByText(/No code needed/)).toBeVisible();
+    await expect(page.getByText("PAR sheet (.xlsx)", {exact: true})).toBeVisible();
+});
+
+test("free games asks for a scatter symbol before adding the mechanic", async ({page}) => {
+    await page.goto("/#/home/design");
+    await page.getByRole("tab", {name: /Bets/}).click();
+    await expect(page.getByText("Add a scatter symbol first")).toBeVisible();
+    await expect(page.getByRole("button", {name: "Add free games"})).toBeDisabled();
 });
 
 test("a duplicate symbol rename is rejected visibly and keeps the persisted id", async ({page}) => {
@@ -140,6 +158,7 @@ test.describe.serial("managed project labels", () => {
         const seedRow = summary.getByRole("rowheader", {name: "Seed"});
         await expect(seedRow).toBeVisible();
         await expect(seedRow.locator("xpath=following-sibling::td[1]")).toHaveText(/^studio-[a-z0-9]+$/);
+        await expect(page.getByText(/rounds are needed for a ±1 pp interval/).first()).toBeVisible();
         await page.getByRole("button", {name: "Open full report"}).click();
         await expect(page.getByRole("rowheader", {name: "Stop reason"})).toBeVisible();
         await expect(page.getByRole("rowheader", {name: "Stop reason"}).locator("xpath=following-sibling::td[1]")).toHaveText(/requested rounds completed/i);

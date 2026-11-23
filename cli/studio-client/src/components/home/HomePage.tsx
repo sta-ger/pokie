@@ -230,9 +230,10 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
         >
             <Stack className="studio-page" gap="lg">
                 <Text className="studio-intro" size="sm" c="dimmed">
-                    POKIE is a slot-game logic framework for JavaScript/TypeScript developers and game-math authors.
-                    Studio lets producers design, validate, and play games locally. Validation is structural;
-                    simulation estimates game math. Local artifacts do not deploy a game or certify it for real-money use.
+                    POKIE is a slot-game math framework for game-math authors and producers. Studio lets you design,
+                    check the exact math, play and review games locally — no code needed for those steps. Validation is
+                    structural; simulation estimates the math. TypeScript is only for shipping the game; local artifacts
+                    do not deploy a game or certify it for real-money use.
                 </Text>
                 <div id="home-design-panel" ref={designRef} role="region" aria-labelledby="design-game-heading" tabIndex={-1} style={{display: activeTab === "design" ? undefined : "none"}}>
                     <BlueprintEditorPage

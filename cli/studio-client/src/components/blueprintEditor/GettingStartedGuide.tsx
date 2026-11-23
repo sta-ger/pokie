@@ -18,7 +18,8 @@ export function GettingStartedGuide() {
                     <Text span fw={600}>Check the math.</Text> Use exact math for a complete enumeration; use Simulation when the design is too large to enumerate.
                 </List.Item>
                 <List.Item>
-                    <Text span fw={600}>Make it real.</Text> Create game saves the design, then Play, Replay and Build/Export open in the workspace.
+                    <Text span fw={600}>Make it real.</Text> Create game saves the design under your POKIE Projects folder, then Play,
+                    Replay and Build/Export open in the workspace.
                 </List.Item>
             </List>
             <details>
@@ -31,7 +32,22 @@ export function GettingStartedGuide() {
                         <Text span fw={600}>Wild</Text> substitutes for other symbols on a line. <Text span fw={600}>Scatter</Text> usually pays anywhere and can trigger free games.
                     </List.Item>
                     <List.Item>
-                        <Text span fw={600}>RTP</Text> is the long-run share returned to players; <Text span fw={600}>volatility</Text> describes how bumpy the ride is.
+                        <Text span fw={600}>Exact or sampled?</Text> Exact math enumerates every outcome. Simulation samples rounds and reports an
+                        estimate; Studio never presents a sample as exact. If a design is too large, Studio says so and points to an
+                        Outcome Library or Simulation.
+                    </List.Item>
+                    <List.Item>
+                        <Text span fw={600}>RTP</Text> is the long-run share returned to players. <Text span fw={600}>Hit frequency</Text> is
+                        the share of rounds with any win. <Text span fw={600}>Volatility (σ)</Text> is the spread of per-round payouts; higher
+                        means bumpier. <Text span fw={600}>Max win</Text> can exceed the largest paytable entry when several lines win together.
+                    </List.Item>
+                    <List.Item>
+                        <Text span fw={600}>For a math review</Text>, use Build/Export → <Text span fw={600}>PAR sheet (.xlsx)</Text>:
+                        paytable, reels, exact RTP and win contributions in one workbook.
+                    </List.Item>
+                    <List.Item>
+                        <Text span fw={600}>No code needed</Text> for design, exact math, simulation, play or PAR export. TypeScript and WASM
+                        are only for developers shipping the game.
                     </List.Item>
                 </List>
                 <Text size="xs" c="dimmed" mt="xs">
