@@ -47,6 +47,14 @@ const OPTIMIZATION_STATUS_LABEL: Record<StudioJobView["status"], string> = {
     "recovery-required": "Recovery required",
 };
 
+const OPTIMIZATION_VERDICT_EXPLANATION: Partial<Record<StudioOptimizationResult["status"], string>> = {
+    success: "A candidate within the requested tolerance was found.",
+    attained: "A candidate within the requested tolerance was found.",
+    infeasible: "No evaluated candidate met the requested tolerance.",
+    exhausted: "No evaluated candidate met the requested tolerance within the search budget.",
+    inconclusive: "The evidence is not conclusive. Review the candidate and measurements before applying.",
+};
+
 const MAX_SEARCH_BUDGET = 1_000_000;
 const MAX_EXACT_OUTCOMES = 1_000_000;
 const UNDO_TTL_MS = 15 * 60 * 1000;
@@ -141,7 +149,7 @@ function OptimizationSummary({evidence}: {evidence: OptimizationEvidence}) {
                         if (target.tolerance !== undefined) allowance = target.tolerance.kind === "relative" ? Math.abs(target.value) * target.tolerance.value : target.tolerance.value;
                         const attained = value !== undefined && allowance !== undefined ? Math.abs(value - target.value) <= allowance : undefined;
                         let attainedLabel = "—";
-                        if (value !== undefined) attainedLabel = attained === true ? "attained" : "missed";
+                        if (value !== undefined) attainedLabel = attained === true ? "within tolerance" : "outside tolerance";
                         return (
                             <Table.Tr key={index}>
                                 <Table.Td>{option?.label ?? target.metric}{target.event ? ` (${target.event})` : ""}</Table.Td>
@@ -161,7 +169,7 @@ function OptimizationSummary({evidence}: {evidence: OptimizationEvidence}) {
                     Nearest evaluated candidate: #{nearest.index + 1}
                     {Object.keys(nearest.evaluation.parameters ?? {}).length === 0 ? "" : ` (${Object.entries(nearest.evaluation.parameters ?? {}).map(([path, value]) => `${describeTunablePath(path)}=${String(value)}`).join(", ")})`}
                     {" — "}{formatOptimizationMetricValue(firstTarget, nearest.measured)}
-                    {", miss "}{formatOptimizationDistance(firstTarget, nearest.distance)}
+                    {", deviation "}{formatOptimizationDistance(firstTarget, nearest.distance)}
                 </Alert>
             )}
             {evidence.diff !== undefined && evidence.diff.length > 0 && (
@@ -250,6 +258,7 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
     const [supportSnapshot, setSupportSnapshot] = useState<{value: StudioOptimizationSupport; sourceChange: typeof sourceChange}>();
     const support = supportSnapshot?.sourceChange === sourceChange ? supportSnapshot?.value : undefined;
     const [busy, setBusy] = useState(false);
+    const [busyAction, setBusyAction] = useState<"support" | "start" | "save" | "apply" | "undo">();
     const [error, setError] = useState<string>();
     const [destination, setDestination] = useState("");
     const [saved, setSaved] = useState<string>();
@@ -275,6 +284,7 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
             setUndo(readStoredUndo(projectRoot)?.undoId);
             setUndoNotice(undefined);
             setBusy(false);
+            setBusyAction(undefined);
             setFieldFilter("");
             setCustomField("");
             edited.current = false;
@@ -295,6 +305,7 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
             ? {...previous, sourceChange} : undefined);
         setSaved(undefined);
         setBusy(false);
+        setBusyAction(undefined);
     }, [sourceChange, refreshKey]);
     useEffect(() => {
         const read = new AbortController();
@@ -466,6 +477,7 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
         controller.current?.abort();
         controller.current = new AbortController();
         setBusy(true);
+        setBusyAction(kind);
         setError(undefined);
         setSaved(undefined);
         setUndoNotice(undefined);
@@ -516,12 +528,16 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
         } catch (failure) {
             if (current === generation.current) setError(failure instanceof Error ? failure.message : String(failure));
         } finally {
-            if (current === generation.current) setBusy(false);
+            if (current === generation.current) {
+                setBusy(false);
+                setBusyAction(undefined);
+            }
         }
     };
     const undoApply = async (): Promise<void> => {
         if (undo === undefined) return;
         setBusy(true);
+        setBusyAction("undo");
         setError(undefined);
         setUndoNotice(undefined);
         try {
@@ -546,6 +562,7 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
             }
         } finally {
             setBusy(false);
+            setBusyAction(undefined);
         }
     };
     const unreportedProgress = "Preparing optimization; waiting for execution progress.";
@@ -915,9 +932,22 @@ export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange,
                 Stale optimization result — the saved design changed. Check tuning support and run a new optimization for the current design. Retained evidence remains available as history.
                 {retainedResult && <details><summary>Historical optimization details</summary><Code block>{JSON.stringify(retainedResult, null, 2)}</Code></details>}
             </Alert>}
+            {busyAction === "apply" && (
+                <Alert color="blue" role="status" aria-live="polite" title="Applying reviewed changes">
+                    Saving the selected values to the game design. The saved model and exact-math freshness refresh when the write completes.
+                </Alert>
+            )}
+            {busyAction === "undo" && (
+                <Alert color="blue" role="status" aria-live="polite" title="Restoring previous design values">
+                    The previous design values are being restored. The saved model refreshes when the write completes.
+                </Alert>
+            )}
             {result && (
                 <div ref={resultRef}>
                     <Text fw={600}>Verdict: {result.status}</Text>
+                    {OPTIMIZATION_VERDICT_EXPLANATION[result.status] !== undefined && (
+                        <Text size="sm" c="dimmed">{OPTIMIZATION_VERDICT_EXPLANATION[result.status]}</Text>
+                    )}
                     {result.candidate && !["success", "attained"].includes(result.status) && <Alert color="yellow">Best-so-far candidate; targets are not approved. Saving keeps this result.</Alert>}
                     {["success", "attained"].includes(result.status) && result.evidence?.strategy === "exact-finite-v1" && (
                         <Text size="xs" c="dimmed">

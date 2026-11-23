@@ -83,6 +83,24 @@ test.describe.serial("managed project labels", () => {
         await page.getByRole("button", {name: "Cancel", exact: true}).click();
     });
 
+    test("exact math preview clears immediately when a paytable payout changes", async ({page}) => {
+        await page.goto("/");
+        await page.getByRole("button", {name: "Game Model", exact: true}).click();
+        await page.getByRole("button", {name: "Edit", exact: true}).nth(4).click();
+        await page.getByRole("button", {name: "Calculate exact math"}).click();
+        await expect(page.getByText("96.7680%", {exact: true}).first()).toBeVisible({timeout: 60_000});
+
+        const payout = page.getByRole("textbox", {name: "A x3 payout"});
+        // Intentionally do not blur: a visible payout must not leave the old exact result looking
+        // current while the new value is still waiting for focus to leave the field.
+        await payout.fill("10");
+        await expect(page.getByText("Exact RTP", {exact: true})).toHaveCount(0);
+
+        await page.getByRole("button", {name: "Calculate exact math"}).click();
+        await expect(page.getByText("100.6080%", {exact: true}).first()).toBeVisible({timeout: 60_000});
+        await page.getByRole("button", {name: "Cancel", exact: true}).click();
+    });
+
     test("optimization exposes a target and tunable fields without opening JSON", async ({page}) => {
         await page.goto("/");
         await expect(page.getByText("Math target", {exact: true})).toBeVisible({timeout: 60_000});
@@ -126,6 +144,12 @@ test.describe.serial("managed project labels", () => {
         await expect(page.getByRole("rowheader", {name: "Stop reason"})).toBeVisible();
         await expect(page.getByRole("rowheader", {name: "Stop reason"}).locator("xpath=following-sibling::td[1]")).toHaveText(/requested rounds completed/i);
         await expect(page.getByRole("region", {name: "Payout distribution chart"})).toBeVisible();
+
+        // Export must be a visible action on Review, not only a muted stepper step.
+        await page.getByRole("button", {name: "Export report", exact: true}).click();
+        await expect(page.getByRole("link", {name: "Download JSON"})).toBeVisible();
+        await expect(page.getByRole("link", {name: "Download Markdown"})).toBeVisible();
+        await expect(page.getByRole("link", {name: "Download HTML"})).toBeVisible();
     });
 
     test("simulation rounds keep grouped thousands instead of silently dropping digits", async ({page}) => {
@@ -253,6 +277,7 @@ test.describe.serial("managed project labels", () => {
         await expect(page.getByText(/Supported exact search/)).toBeVisible({timeout: 30_000});
         await page.getByRole("button", {name: "Run optimization"}).click();
         await expect(page.getByText(/Verdict: (success|attained)/)).toBeVisible({timeout: 60_000});
+        await expect(page.getByText(/within tolerance/).first()).toBeVisible();
         await expect(page.getByText(/indeterminate/)).toHaveCount(0);
         await expect(page.getByText(/Finalizing/)).toHaveCount(0);
     });

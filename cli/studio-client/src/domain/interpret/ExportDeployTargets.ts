@@ -72,21 +72,21 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
 > = {
     blueprint: {
         label: "Game Blueprint",
-        purpose: "Extract a supported public package model or import a PAR workbook into a separate editable Game Blueprint.",
-        destination: "Choose where to save the imported Blueprint, or use the default destination.",
+        purpose: "Save an editable game-design JSON file, or import a PAR workbook into one.",
+        destination: "Choose where to save the Blueprint, or use the default destination.",
         technicalDestination: "A new game design JSON file with conversion details.",
         unavailableReason: "This project cannot supply a complete representable game model. Open a package with a public model descriptor or a PAR workbook.",
     },
     tsPackage: {
         label: "TypeScript Game Package",
-        purpose: "Create a runnable game package from this project.",
+        purpose: "Create a runnable game package for developers. For a math review, use the PAR sheet instead.",
         destination: "Choose a folder for the finished game package, or use the default destination.",
         technicalDestination: "A new package directory (default: a \"tsPackage\" sibling of this project).",
         unavailableReason: "This project cannot build a TypeScript Game Package. Open a Game Blueprint project to create one.",
     },
     outcomeLibrary: {
         label: "Outcome library",
-        purpose: "Build an outcome library from this project.",
+        purpose: "Build the machine-readable outcome set behind exact math, simulation and exports.",
         destination: "Choose a folder for the outcome library, or use the default destination.",
         technicalDestination: "A new bundle directory (default: an \"outcomeLibrary\" sibling of this project).",
         unavailableReason:
@@ -94,7 +94,7 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
     },
     stakeAdapter: {
         label: "Stake Engine export",
-        purpose: "Build a Stake Engine export from this project.",
+        purpose: "Build outcome data in Stake Engine's format for an external integration.",
         destination: "Choose a folder for the Stake Engine export, or use the default destination.",
         technicalDestination: "A new Stake Engine export directory beside this project by default.",
         unavailableReason:
@@ -102,14 +102,14 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
     },
     parWorkbook: {
         label: "PAR sheet (.xlsx)",
-        purpose: "Export this game design as a PAR workbook copy, or republish this PAR workbook.",
+        purpose: "Export an Excel workbook with the paytable, reels, exact RTP and win contributions for math review.",
         destination: "Choose where to save the PAR workbook, or use the default destination.",
         technicalDestination: "A new .xlsx file (default: \"parWorkbook.xlsx\" next to this project).",
         unavailableReason: "This project cannot export or republish a PAR workbook. Open a Game Blueprint or PAR sheet workbook project to continue.",
     },
     wasm: {
         label: "Portable WASM game",
-        purpose: `Build a portable POKIE WASM game from a supported Blueprint/PAR model. ${WASM_EXECUTION_BOUNDARY}`,
+        purpose: `Build a compiled game module for embedding outside Studio. ${WASM_EXECUTION_BOUNDARY}`,
         destination: "Choose where to save the WASM game, or use the default destination.",
         technicalDestination: "A game.wasm module with a hash-verified POKIE companion file.",
         unavailableReason: "This project cannot build a portable WASM game. Open a Game Blueprint or PAR sheet workbook project to continue.",

@@ -84,7 +84,7 @@ const GROUP_LABELS: Record<ExportDeployTargetKind, {legend: string; blurb: strin
     },
     buildArtifact: {
         legend: "Build output",
-        blurb: "Create a project file or package that can be opened or shared.",
+        blurb: "For a math review, start with PAR sheet (.xlsx). TypeScript and WASM are developer outputs; Game Blueprint is the editable source.",
     },
     remoteDeployment: {
         legend: "Remote deployment",

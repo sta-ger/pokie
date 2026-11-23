@@ -1,6 +1,12 @@
 import type {OptimizationEvidence} from "../../../../../src/optimization/OptimizationPolicy";
 import {describeTunablePath, formatOptimizationDistance, formatOptimizationMetricValue, formatOptimizationTolerance, nearestOptimizationCandidate} from "../../domain/optimizationRequest";
 
+function describeTargetVerdict(verdict: string): string {
+    if (verdict === "attained") return "within tolerance";
+    if (verdict === "missed") return "outside tolerance";
+    return verdict;
+}
+
 /** Measurements shown here come from the held-out assessment, never the search fitness. */
 export function OptimizationPreview({evidence}: {evidence: OptimizationEvidence}) {
     const request = evidence.request;
@@ -20,7 +26,7 @@ export function OptimizationPreview({evidence}: {evidence: OptimizationEvidence}
                     const tolerance = target.tolerance?.value ?? 0;
                     const allowance = target.tolerance?.kind === "relative" ? Math.abs(target.value) * tolerance : tolerance;
                     let verdict = "Unavailable";
-                    if (measured !== undefined) verdict = Math.abs(measured - target.value) <= allowance ? "attained" : "missed";
+                    if (measured !== undefined) verdict = Math.abs(measured - target.value) <= allowance ? "within tolerance" : "outside tolerance";
                     let interval = sampled ? "Assessment unavailable" : "Not applicable (exact)";
                     if (sampled && result) interval = `[${result.confidence.low}, ${result.confidence.high}]; confidence ${request.policy.sampling?.confidence}; ${result.observations} samples`;
                     return <tr key={index}>
@@ -29,7 +35,7 @@ export function OptimizationPreview({evidence}: {evidence: OptimizationEvidence}
                         <td>{formatOptimizationMetricValue(target, target.value)}</td><td>{target.tolerance?.kind ?? "absolute"}: {formatOptimizationTolerance(target, target.tolerance?.value ?? 0)}</td>
                         <td>{measured === undefined ? "Unavailable" : `${formatOptimizationMetricValue(target, measured)} ${sampled ? "validation estimate" : "exact"}`}</td>
                         <td>{interval}</td>
-                        <td>{sampled ? result?.verdict ?? "Unavailable" : verdict}{result && `: ${result.reason}`}</td>
+                        <td>{sampled ? describeTargetVerdict(result?.verdict ?? "Unavailable") : verdict}{result && `: ${result.reason}`}</td>
                     </tr>;
                 })}</tbody>
             </table>
@@ -55,7 +61,7 @@ export function OptimizationPreview({evidence}: {evidence: OptimizationEvidence}
                     Nearest evaluated candidate: #{nearest.index + 1}
                     {Object.keys(nearest.evaluation.parameters ?? {}).length === 0 ? "" : ` (${Object.entries(nearest.evaluation.parameters ?? {}).map(([path, value]) => `${describeTunablePath(path)}=${String(value)}`).join(", ")})`}
                     {" — "}{formatOptimizationMetricValue(firstTarget, nearest.measured)}
-                    {", miss "}{formatOptimizationDistance(firstTarget, nearest.distance)}
+                    {", deviation "}{formatOptimizationDistance(firstTarget, nearest.distance)}
                 </p>
             )}
             <p>Limits: {request.policy.strategy}; candidate limit {request.policy.budget}; maximum native population {request.policy.maxOutcomes}.</p>

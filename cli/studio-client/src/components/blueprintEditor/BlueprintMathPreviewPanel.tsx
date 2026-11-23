@@ -92,7 +92,7 @@ export function BlueprintMathPreviewPanel({blueprint, revision}: {blueprint: unk
                         <Metric label="Outcomes" value={state.view.outcomeCount.toLocaleString("en-US")} />
                     </SimpleGrid>
                     <Text size="xs" c="dimmed" mt="xs">
-                        Draft only — nothing was saved. Exact for the current editor values.
+                        Draft only — nothing was saved. Exact for the values currently applied to this draft.
                     </Text>
                 </>
             )}

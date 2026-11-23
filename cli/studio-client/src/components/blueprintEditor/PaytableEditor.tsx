@@ -14,7 +14,9 @@ type PaytableRow = {symbolId: string; matchCount: number; payout: number};
 // A payout field must stay editable while the user types, but a blank/text/negative value may never be
 // silently rewritten or committed as 0. A plain text field keeps the exact draft (including a leading
 // minus or an empty value), so parsePayoutInput can reject it visibly on blur instead of Mantine's
-// NumberInput sanitizing the evidence away before validation runs.
+// NumberInput sanitizing the evidence away before validation runs. Valid values commit immediately:
+// the exact-math preview reads the committed draft, so a visible number that is still waiting for blur
+// must never leave an older "exact" result looking current.
 function PayoutInput({label, value, onCommit}: {label: string; value: number; onCommit: (value: number) => void}) {
     const [draft, setDraft] = useState<number | string>(value);
     const [error, setError] = useState<string>();
@@ -35,16 +37,24 @@ function PayoutInput({label, value, onCommit}: {label: string; value: number; on
                 inputMode="decimal"
                 value={draft}
                 onChange={(event) => {
-                    setDraft(event.currentTarget.value);
+                    const next = event.currentTarget.value;
+                    setDraft(next);
                     setError(undefined);
                     setWarning(undefined);
+                    const parsed = parsePayoutInput(next, value);
+                    if (parsed.error === undefined) {
+                        setWarning(parsed.warning);
+                        if (parsed.value !== value) {
+                            onCommit(parsed.value);
+                        }
+                    }
                 }}
                 onBlur={() => {
                     const parsed = parsePayoutInput(draft, value);
                     setDraft(parsed.value);
                     setError(parsed.error);
                     setWarning(parsed.warning);
-                    if (parsed.error === undefined) {
+                    if (parsed.error === undefined && parsed.value !== value) {
                         onCommit(parsed.value);
                     }
                 }}

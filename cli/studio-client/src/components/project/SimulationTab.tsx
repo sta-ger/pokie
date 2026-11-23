@@ -377,10 +377,10 @@ export function SimulationTab({
                 />
                 <Stepper.Step
                     label="Export"
-                    description="Download report"
+                    description={exportReachable ? "JSON, Markdown, HTML" : "Download report"}
                     disabled={!exportReachable}
                     aria-describedby={exportReachable ? undefined : "simulation-export-unavailable"}
-                    title={exportReachable ? undefined : "Export becomes available after a completed simulation report is ready."}
+                    title={exportReachable ? "Open the ready report downloads." : "Export becomes available after a completed simulation report is ready."}
                     aria-current={activeStep === 3 ? "step" : undefined}
                 />
             </Stepper>
@@ -524,6 +524,11 @@ export function SimulationTab({
                                 {outcome.kind === "completed" && (
                                     <Button variant="default" onClick={() => setCompareOpened((opened) => !opened)}>
                                         Compare with another run
+                                    </Button>
+                                )}
+                                {outcome.kind === "completed" && exportReachable && (
+                                    <Button data-pokie-lifecycle-artifact="simulation-report" onClick={() => setActiveStep(3)}>
+                                        Export report
                                     </Button>
                                 )}
                                 {outcome.kind !== "completed" && (
