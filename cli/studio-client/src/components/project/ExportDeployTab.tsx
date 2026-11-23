@@ -116,7 +116,7 @@ function describeStakeRoute(route: "reuse" | "generate" | "publish"): string {
     return "publish existing Stake source";
 }
 
-const GROUP_ORDER: readonly ExportDeployTargetKind[] = ["buildArtifact", "remoteDeployment", "outcomeLibrary"];
+const GROUP_ORDER: readonly ExportDeployTargetKind[] = ["buildArtifact", "outcomeLibrary", "remoteDeployment"];
 
 // Every "Configure"/etc-free run below runs against this single project-wide mode name -- the project's
 // own first current build mode when known, "base" (the same fallback generateOutcomeLibrary's own
@@ -459,6 +459,12 @@ function TargetCard({
                     <Badge size="sm" color={card.locality === "local" ? "blue" : "grape"} variant="light">
                         {card.locality === "local" ? "This computer" : "Remote"}
                     </Badge>
+                    {card.artifactTarget === "parWorkbook" && (
+                        <Badge size="sm" color="green" variant="light">Math review</Badge>
+                    )}
+                    {(card.artifactTarget === "tsPackage" || card.artifactTarget === "wasm") && (
+                        <Badge size="sm" color="gray" variant="light">Developer</Badge>
+                    )}
                     <Text className="studio-output-status" data-status={summaryStatus} size="xs" c="dimmed">{summaryStatus}</Text>
                 </Group>
                 <Button
