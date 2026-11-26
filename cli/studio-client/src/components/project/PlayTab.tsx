@@ -608,10 +608,12 @@ export function PlayTab({
                     <Button
                         variant="default"
                         loading={loading}
-                        disabled={findAnyWinReason !== undefined}
+                        disabled={findAnyWinReason !== undefined || pendingRound}
                         title={
-                            findAnyWinReason ??
-                            "Plays real spins at the selected bet until a win is found; up to 2,000 spins are charged."
+                            pendingRound
+                                ? "Finish the current paid round before starting a scenario search."
+                                : findAnyWinReason ??
+                                  "Plays real spins at the selected bet until a win is found; up to 2,000 spins are charged."
                         }
                         onClick={() => {
                             setPendingAction("findAnyWin");
@@ -623,10 +625,12 @@ export function PlayTab({
                     <Button
                         variant="default"
                         loading={loading}
-                        disabled={findSymbolWinReason !== undefined || !selectedSymbol}
+                        disabled={findSymbolWinReason !== undefined || pendingRound || !selectedSymbol}
                         title={
-                            findSymbolWinReason ??
-                            "Plays real spins at the selected bet until the chosen symbol wins; up to 2,000 spins are charged."
+                            pendingRound
+                                ? "Finish the current paid round before starting a scenario search."
+                                : findSymbolWinReason ??
+                                  "Plays real spins at the selected bet until the chosen symbol wins; up to 2,000 spins are charged."
                         }
                         onClick={() => {
                             if (selectedSymbol === null) return;
@@ -639,10 +643,12 @@ export function PlayTab({
                     <Button
                         variant="default"
                         loading={loading}
-                        disabled={findFreeGamesReason !== undefined}
+                        disabled={findFreeGamesReason !== undefined || pendingRound}
                         title={
-                            findFreeGamesReason ??
-                            "Plays real spins at the selected bet until free games trigger; up to 2,000 spins are charged."
+                            pendingRound
+                                ? "Finish the current paid round before starting a scenario search."
+                                : findFreeGamesReason ??
+                                  "Plays real spins at the selected bet until free games trigger; up to 2,000 spins are charged."
                         }
                         onClick={() => {
                             setPendingAction("findFreeGames");
@@ -652,6 +658,11 @@ export function PlayTab({
                         Find free games
                     </Button>
                 </QuickActions>
+                {pendingRound && (
+                    <Text size="xs" c="dimmed" mt="xs">
+                        Finish the current paid round before starting a scenario search.
+                    </Text>
+                )}
                 {findSymbolWinReason === undefined && selectedSymbol === null && (availableSymbols?.length ?? 0) > 0 && (
                     <Text size="xs" c="dimmed" mt="xs">
                         Choose a symbol below to enable Find symbol win.

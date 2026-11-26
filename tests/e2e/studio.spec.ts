@@ -1212,6 +1212,9 @@ test("Play offers a one-click finish and labels a feature screen's own win", asy
 
     const finish = page.getByRole("button", {name: "Finish whole round", exact: true});
     await expect(finish).toBeVisible({timeout: 60_000});
+    // A scenario search cannot start from the middle of an unsettled feature.
+    await expect(page.getByRole("button", {name: "Find any win"})).toBeDisabled();
+    await expect(page.getByText("Finish the current paid round before starting a scenario search.")).toBeVisible();
     // Resetting a session in the middle of a feature must not silently discard the paid round.
     await page.getByRole("button", {name: "Reset Play session"}).click();
     const resetDialog = page.getByRole("dialog");
