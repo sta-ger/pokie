@@ -1217,7 +1217,24 @@ test("Replay groups free spins under the paid round's full spin count", async ({
     const save = page.getByRole("button", {name: /^(Create game design|Save to source file)$/});
     await expect(save).toBeEnabled({timeout: 60_000});
     await save.click();
-    await expect(page.getByRole("button", {name: "Overview", exact: true})).toBeVisible({timeout: 90_000});
+    // A preceding test may still own a durable job. Opening the freshly saved project can then ask
+    // for confirmation before cancelling that work; accept it instead of waiting behind the guard.
+    const overview = page.getByRole("button", {name: "Overview", exact: true});
+    const openGuardConfirm = page.getByRole("button", {name: "Confirm", exact: true});
+    await expect
+        .poll(
+            async () => {
+                if (await overview.isVisible().catch(() => false)) return "overview";
+                if (await openGuardConfirm.isVisible().catch(() => false)) {
+                    await openGuardConfirm.click();
+                    return "confirming";
+                }
+                return "waiting";
+            },
+            {timeout: 90_000, intervals: [500]},
+        )
+        .not.toBe("waiting");
+    await expect(overview).toBeVisible({timeout: 90_000});
 
     await page.getByRole("button", {name: "Play", exact: true}).click();
     await page.getByRole("button", {name: "Start playing"}).click();
