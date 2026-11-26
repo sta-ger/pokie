@@ -503,6 +503,17 @@ test.describe.serial("managed project labels", () => {
         await expect(page.getByText("That Game id is already taken.")).toHaveCount(0);
     });
 
+    test("editing a colliding Game id clears the stale collision message", async ({page}) => {
+        await page.goto("/#/home/design");
+        const create = page.getByRole("button", {name: "Create game design"});
+        await expect(create).toBeEnabled({timeout: 45_000});
+        await create.click();
+        await expect(page.getByText("Game id already in use")).toBeVisible({timeout: 30_000});
+        await page.getByRole("textbox", {name: "Game id"}).fill("starter-slot-manual");
+        await expect(page.getByText("Game id already in use")).toHaveCount(0);
+        await expect(page.getByText("That Game id is already taken.")).toHaveCount(0);
+    });
+
     test("Game design shows the effective payline rows 1-based without entering edit mode", async ({page}) => {
         await page.goto("/");
         await page.getByRole("button", {name: "Game design", exact: true}).click();

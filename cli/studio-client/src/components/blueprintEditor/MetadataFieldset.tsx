@@ -31,12 +31,14 @@ export function MetadataFieldset({
     legend = "Metadata",
     issues = [],
     gameIdConflict,
+    onGameIdChanged,
 }: {
     blueprint: Record<string, unknown>;
     mutate: BlueprintMutate;
     legend?: string;
     issues?: ValidationIssue[];
     gameIdConflict?: {suggestedGameId: string; onUseSuggested: () => void};
+    onGameIdChanged?: () => void;
 }) {
     const info = toRecordCopy(blueprint.info);
     const gameIdRef = useRef<HTMLInputElement>(null);
@@ -59,22 +61,25 @@ export function MetadataFieldset({
             }
             b.info = nextInfo;
         });
+        if (field === "id") onGameIdChanged?.();
     };
 
     // A project's initial id is a deterministic convenience derived from its Name.  Once somebody
     // types a different Game id it is theirs: later Name edits never overwrite that explicit choice.
     const setName = (value: string): void => {
         if (readInfo("name") === value) return;
+        const previousName = readInfo("name");
+        const previousId = readInfo("id");
+        const willDeriveId = previousId.length === 0 || previousId === deriveIdFromName(previousName);
         mutate((b) => {
             const nextInfo = toRecordCopy(b.info);
-            const previousName = typeof nextInfo.name === "string" ? nextInfo.name : "";
-            const previousId = typeof nextInfo.id === "string" ? nextInfo.id : "";
             nextInfo.name = value;
-            if (previousId.length === 0 || previousId === deriveIdFromName(previousName)) {
+            if (willDeriveId) {
                 nextInfo.id = deriveIdFromName(value);
             }
             b.info = nextInfo;
         });
+        if (willDeriveId) onGameIdChanged?.();
     };
 
     return (

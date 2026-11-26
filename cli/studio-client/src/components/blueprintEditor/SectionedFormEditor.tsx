@@ -49,6 +49,7 @@ export function SectionedFormEditor({
     revision,
     validationView,
     gameIdConflict,
+    onGameIdChanged,
     onSequenceDirtyChange,
 }: {
     blueprint: Record<string, unknown>;
@@ -58,6 +59,7 @@ export function SectionedFormEditor({
     revision: number;
     validationView: BlueprintValidationView;
     gameIdConflict?: {suggestedGameId: string; onUseSuggested: () => void};
+    onGameIdChanged?: () => void;
     onSequenceDirtyChange?: (dirty: boolean) => void;
 }) {
     const [activeSection, setActiveSection] = useState<BlueprintSectionId>("basics");
@@ -157,6 +159,7 @@ export function SectionedFormEditor({
                             legend="Game basics"
                             issues={[...classifiedErrors.bySection.basics, ...classifiedWarnings.bySection.basics]}
                             gameIdConflict={gameIdConflict}
+                            onGameIdChanged={onGameIdChanged}
                         />
                     </>}
                 </Tabs.Panel>

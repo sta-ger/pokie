@@ -1217,6 +1217,13 @@ export function BlueprintEditorPage({
     const gameIdConflict = guided && suggestedGameId !== undefined
         ? {suggestedGameId, onUseSuggested: () => applySuggestedGameId(suggestedGameId)}
         : undefined;
+    // The collision message describes the id that was submitted. Once the author changes that id,
+    // keeping the old red error (and its suggestion) visible would be misleading.
+    const dismissSaveFailureOnGameIdEdit = (): void => {
+        if (managedSaveView.status !== "failed") return;
+        setManagedSaveView({status: "idle"});
+        setExistingProjectOpenError(undefined);
+    };
 
     const {blueprint, revision} = editor.state;
 
@@ -1230,6 +1237,7 @@ export function BlueprintEditorPage({
             revision={revision}
             validationView={validationView}
             gameIdConflict={gameIdConflict}
+            onGameIdChanged={dismissSaveFailureOnGameIdEdit}
             onSequenceDirtyChange={setSequenceDraftDirty}
         />
     ) : (
