@@ -1390,8 +1390,12 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         return <JobCard job={displayedJob} cancellationPending={commonJobs.pendingIds.includes(job.id) || (job.id === simulation.currentJobId && simulation.cancellationRequested)} onCancel={(id) => {
             // The workflow's own Cancel asks for confirmation; the retained-job card must not provide
             // a silent second path that discards the same long-running simulation.
-            if (id === simulation.currentJobId) {
-                confirm("Cancel the running simulation?", simulation.cancel);
+            if (id === simulation.currentJobId || job.operation === "simulation") {
+                confirm("Cancel the running simulation?", () => id === simulation.currentJobId ? simulation.cancel() : commonJobs.cancel(id));
+                return;
+            }
+            if (job.operation === "replay") {
+                confirm("Cancel the running replay?", () => commonJobs.cancel(id));
                 return;
             }
             commonJobs.cancel(id);
