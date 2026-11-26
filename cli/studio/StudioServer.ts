@@ -2153,6 +2153,14 @@ export class StudioServer implements StudioServerHandling {
             // authoritative source, not the pre-save dashboard model.
             this.startProjectDashboardLoad(result.path, true);
         }
+        if (result.status === "ok" && this.currentContext.mode === "project") {
+            const savedName = readBlueprintInfo(validated.blueprint).name?.trim();
+            // Projects list labels come from the durable registry. A rename saved in Game design must not
+            // leave the old label behind until the project is closed and reopened.
+            if (savedName !== undefined && savedName.length > 0) {
+                this.projectRegistrationService.recordOpened(result.path, savedName).catch(() => undefined);
+            }
+        }
         this.sendJson(res, this.statusForBlueprintSave(result.status), result);
     }
 

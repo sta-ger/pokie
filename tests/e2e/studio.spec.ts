@@ -465,6 +465,28 @@ test("a failed project removal keeps the loaded project list visible", async ({p
     await expect(row.getByRole("button", {name: "Remove", exact: true})).toBeEnabled();
 });
 
+test("Projects can be sorted by name", async ({page}) => {
+    const entries = ["Charlie", "Alpha", "Bravo"].map((name, index) => ({
+        location: `/tmp/${name.toLowerCase()}.blueprint.json`,
+        name,
+        type: "blueprint",
+        capabilities: ["blueprint.build"],
+        origin: "managed",
+        lastOpenedAt: new Date(Date.now() - index * 1000).toISOString(),
+        status: "ok",
+    }));
+    await page.route("**/api/home/projects/registry**", (route) => route.request().method() === "GET"
+        ? route.fulfill({status: 200, contentType: "application/json", body: JSON.stringify(entries)})
+        : route.continue());
+    await page.goto("/#/home/projects");
+    const rows = page.locator("tr.project-registry-entry");
+    await expect(rows).toHaveCount(3, {timeout: 30_000});
+    await page.getByRole("combobox", {name: "Sort projects"}).click();
+    await page.getByRole("option", {name: "Name", exact: true}).click();
+    const names = await rows.evaluateAll((items) => items.map((row) => row.querySelector("button.mantine-Anchor-root")?.textContent?.trim() ?? ""));
+    expect(names).toEqual(["Alpha", "Bravo", "Charlie"]);
+});
+
 test("multiple historical failed openings collapse into one reviewable group", async ({page}) => {
     const jobs = [1, 2].map((index) => ({
         id: `recovery-group-${index}`,
@@ -1012,7 +1034,7 @@ test.describe.serial("managed project labels", () => {
 
         await page.getByRole("button", {name: "Game design", exact: true}).click();
         await page.getByRole("button", {name: "Edit", exact: true}).first().click();
-        await page.getByRole("textbox", {name: "Description (optional)"}).fill("Play reset probe");
+        await page.getByRole("textbox", {name: "Game name"}).fill("Starter Slot Renamed");
         await page.getByRole("button", {name: "Save", exact: true}).click();
         await page.getByRole("button", {name: "Play", exact: true}).click();
 
@@ -1020,6 +1042,9 @@ test.describe.serial("managed project labels", () => {
         // silently after the source changes.
         await expect(page.getByRole("button", {name: "Start playing"})).toBeVisible({timeout: 60_000});
         await expect(page.getByText(/saved design changed, so the Play session was reset/)).toBeVisible();
+        // A saved rename must also update the Projects label, not wait for a close-and-reopen.
+        await page.getByRole("button", {name: "Your projects", exact: true}).click();
+        await expect(page.getByRole("row", {name: /Starter Slot Renamed/})).toBeVisible({timeout: 30_000});
     });
 
     test("Simulation review shows the exact-math reference for a current sample", async ({page}) => {
