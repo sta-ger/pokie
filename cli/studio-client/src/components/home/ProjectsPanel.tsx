@@ -87,6 +87,7 @@ const PROJECTS_PER_PAGE = 10;
 
 type ProjectTypeFilter = "all" | StudioProjectType;
 type ProjectStatusFilter = "all" | "ok" | "missing" | "unavailable";
+type ProjectSort = "recent" | "name";
 
 function previewProjectImportWithTimeout(fetchImpl: FetchLike, location: string): Promise<StudioProjectImportPreviewResult> {
     return new Promise((resolve, reject) => {
@@ -130,6 +131,7 @@ export function ProjectsPanel({
     const relocationLocationRef = useRef("");
     const [relocationError, setRelocationError] = useState<string | undefined>(undefined);
     const [search, setSearch] = useState("");
+    const [sort, setSort] = useState<ProjectSort>("recent");
     const [typeFilter, setTypeFilter] = useState<ProjectTypeFilter>("all");
     // Available projects are the useful default. A machine that has accumulated missing registry
     // entries (old temp projects, moved folders) should not turn the first Projects visit into a
@@ -411,7 +413,10 @@ export function ProjectsPanel({
 
     const entries = listView.status === "loaded" ? listView.entries : [];
     const searchNeedle = search.trim().toLocaleLowerCase();
-    const filteredEntries = entries.filter((entry) => {
+    const orderedEntries = sort === "name"
+        ? [...entries].sort((left, right) => left.name.localeCompare(right.name, undefined, {sensitivity: "base"}))
+        : entries;
+    const filteredEntries = orderedEntries.filter((entry) => {
         const typeLabel = entry.type === "wasm" ? describeProjectType(entry.type, entry.wasmPresentation) : describeProjectType(entry.type);
         const matchesSearch = searchNeedle.length === 0 || [entry.name, entry.location, typeLabel, entry.origin]
             .some((value) => value.toLocaleLowerCase().includes(searchNeedle));
@@ -537,8 +542,21 @@ export function ProjectsPanel({
                                 value={statusFilter}
                                 onChange={(value) => setFilters(search, typeFilter, (value ?? "all") as ProjectStatusFilter)}
                             />
-                            {(search.length > 0 || typeFilter !== "all" || statusFilter !== "ok") && (
-                                <Button variant="default" onClick={() => setFilters("", "all", "ok")}>Clear filters</Button>
+                            <Select
+                                label="Sort"
+                                aria-label="Sort projects"
+                                data={[{value: "recent", label: "Recently opened"}, {value: "name", label: "Name"}]}
+                                value={sort}
+                                onChange={(value) => {
+                                    setSort(value === "name" ? "name" : "recent");
+                                    setPage(1);
+                                }}
+                            />
+                            {(search.length > 0 || typeFilter !== "all" || statusFilter !== "ok" || sort !== "recent") && (
+                                <Button variant="default" onClick={() => {
+                                    setSort("recent");
+                                    setFilters("", "all", "ok");
+                                }}>Clear filters</Button>
                             )}
                         </QuickActions>
                         {missingEntries.length > 0 && (statusFilter === "missing" || statusFilter === "all") && (

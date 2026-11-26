@@ -24,6 +24,16 @@ describe("job labels", () => {
         expect(describeJobDiagnostic("Run the replay again with the captured parameters.")).toBe("Run the replay again with the captured parameters.");
     });
 
+    it("turns restart-only technical wording into an instruction a producer can act on", () => {
+        const raw = "Project preparation is not resumable after restart. Reopen the same project to retry.";
+        expect(describeJobDiagnostic(raw)).toBe("Studio restarted before this operation finished. Run it again to continue.");
+        expect(describeJobDiagnostic(raw)).not.toMatch(/resumable/i);
+    });
+
+    it("keeps the technical Outcome Library name out of the human summary", () => {
+        expect(describeJobDiagnostic("Generated an Outcome Library at /tmp/game.")).toBe("Generated an outcome table at /tmp/game.");
+    });
+
     it("turns raw project path errors into an actionable message", () => {
         const notDirectory = "Could not read \"/tmp/game.blueprint.json/package.json\": ENOTDIR: not a directory, open '/tmp/game.blueprint.json/package.json'";
         expect(describeJobDiagnostic(notDirectory)).toContain("isn't a project folder");

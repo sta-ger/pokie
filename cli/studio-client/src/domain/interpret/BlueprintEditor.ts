@@ -150,7 +150,7 @@ export type BlueprintSaveView =
     | {status: "idle"}
     | {status: "loading"}
     | {status: "error"; message: string}
-    | {status: "failed"; message: string; existingProjectPath?: string}
+    | {status: "failed"; message: string; existingProjectPath?: string; suggestedGameId?: string}
     | {
           status: "conflict";
           path: string;
@@ -197,6 +197,9 @@ export function describeSaveManagedResult(result: StudioBlueprintSaveManagedView
         message: result.error,
         ...(result.status === "unavailable" && result.existingProjectPath !== undefined
             ? {existingProjectPath: result.existingProjectPath}
+            : {}),
+        ...(result.status === "unavailable" && result.suggestedGameId !== undefined
+            ? {suggestedGameId: result.suggestedGameId}
             : {}),
     };
 }

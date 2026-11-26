@@ -1,6 +1,7 @@
-import {Badge, Button, Group, Select, Text, TextInput} from "@mantine/core";
+import {Alert, Badge, Button, Group, Select, Text, TextInput} from "@mantine/core";
 import {ReactNode, useEffect, useMemo, useState} from "react";
 import {deriveAvailableBetModeIds, deriveAvailableBets, deriveBetModeId} from "../../../../client/player";
+import type {PlayScenarioSummary} from "../../api/apiClient";
 import {describeRuntimeActionError} from "../../domain/runtimeActionError";
 import {formatCount} from "../../domain/formatCount";
 import type {PlaySessionView} from "../../hooks/usePlaySession";
@@ -36,6 +37,23 @@ function describeRoundProgress(round: {
         round.cursor,
         "screen",
     )}; total stake ${round.totalStake}, ${payoutLabel} ${round.totalPayout}`;
+}
+
+function describeScenarioSummary(summary: PlayScenarioSummary): {title: string; text: string} {
+    const searched = `${formatCount(summary.attemptedSpins, "spin")} (maximum ${formatCount(summary.maximumSpins, "spin")})`;
+    let target: string;
+    if (summary.operation === "find-symbol-win") target = `a win for symbol ${summary.symbolId ?? "(unknown)"}`;
+    else if (summary.operation === "find-free-games") target = "free games";
+    else target = "a winning round";
+    const details = [
+        `Searched ${searched} at bet ${summary.bet ?? "the current bet"}`,
+        summary.win === undefined ? undefined : `final win ${summary.win.toFixed(2)}`,
+        summary.credits === undefined ? undefined : `credits now ${summary.credits.toFixed(2)}`,
+    ].filter((part): part is string => part !== undefined);
+    return {
+        title: `Found ${target}`,
+        text: `${details.join("; ")}. The matching round is shown below.`,
+    };
 }
 
 function describePendingAction(action: "newSession" | "spin" | "findAnyWin" | "findSymbolWin" | "findFreeGames"): string {
@@ -143,6 +161,7 @@ function PlaySessionSetup({
 export function PlayTab({
     session,
     sessionId,
+    scenarioSummary,
     onNewSession,
     onSpin,
     onFindAnyWin,
@@ -153,6 +172,7 @@ export function PlayTab({
 }: {
     session: PlaySessionView;
     sessionId: string | undefined;
+    scenarioSummary?: PlayScenarioSummary;
     onNewSession: (seed?: string, modeName?: string) => void;
     onSpin: (bet?: number, mode?: string, delivery?: "stepwise" | "composite") => void;
     onFindAnyWin: (bet?: number, mode?: string) => void;
@@ -341,7 +361,7 @@ export function PlayTab({
                 <Text size="sm" c="dimmed" mb="sm">
                     Play is ready. Start a session, then press Spin to play a real round in Studio. Starting a session
                     does not place a bet. No game server or extra setup is needed. A page reload starts a fresh Play
-                    session; earlier spins stay available under Replay → Session Spin.
+                    session; earlier spins stay available under Replay → Played rounds.
                 </Text>
                 {activeSession?.logicalRound && (
                     <Text size="sm">{describeRoundProgress(activeSession.logicalRound)}</Text>
@@ -349,7 +369,7 @@ export function PlayTab({
                 {pendingRound && (
                     <Text size="xs" c="dimmed">
                         This in-progress paid round is browser-local: reloading the page starts a new Play session.
-                        Completed rounds stay available under Replay → Session Spin.
+                        Completed rounds stay available under Replay → Played rounds.
                     </Text>
                 )}
                 {loading && <LoadingState label="Starting…" />}
@@ -495,7 +515,7 @@ export function PlayTab({
                 {pendingRound && (
                     <Text size="xs" c="dimmed">
                         This in-progress paid round is browser-local: reloading the page starts a new Play session.
-                        Completed rounds stay available under Replay → Session Spin.
+                        Completed rounds stay available under Replay → Played rounds.
                     </Text>
                 )}
                 {loading && <LoadingState label={describePendingAction(pendingAction)} />}
@@ -556,6 +576,22 @@ export function PlayTab({
                     spins. Every paid spin is charged to Play credits; free spins are not. The final round stays in this
                     Play session.
                 </Text>
+                {scenarioSummary && (() => {
+                    const summary = describeScenarioSummary(scenarioSummary);
+                    return (
+                        <Alert
+                            color="teal"
+                            variant="light"
+                            title={summary.title}
+                            mb="sm"
+                            role="status"
+                            data-pokie-scenario-summary
+                            data-pokie-scenario-operation={scenarioSummary.operation}
+                        >
+                            <Text size="sm">{summary.text}</Text>
+                        </Alert>
+                    );
+                })()}
                 <QuickActions>
                     <Button
                         variant="default"
@@ -604,6 +640,11 @@ export function PlayTab({
                         Find free games
                     </Button>
                 </QuickActions>
+                {findSymbolWinReason === undefined && selectedSymbol === null && (availableSymbols?.length ?? 0) > 0 && (
+                    <Text size="xs" c="dimmed" mt="xs">
+                        Choose a symbol below to enable Find symbol win.
+                    </Text>
+                )}
                 {(findAnyWinReason !== undefined ||
                     findSymbolWinReason !== undefined ||
                     findFreeGamesReason !== undefined) && (

@@ -49,7 +49,12 @@ export function describeJobDiagnostic(message: string): string {
     if ((/audit-identity|different game configuration|config(?:uration)? hash|model differs/i).test(message)) {
         return "The round was recorded with a different game configuration. Open the design/version that produced it, or record a new round against the current design.";
     }
-    return message;
+    if ((/not resumable after restart|cannot resume after restart/i).test(message)) {
+        return "Studio restarted before this operation finished. Run it again to continue.";
+    }
+    // "Outcome Library" is the API/persistence name. The main UI deliberately says outcome table; keep
+    // that one vocabulary in the human summary while the raw message remains under Technical detail.
+    return message.replace(/\bOutcome Library\b/g, "outcome table");
 }
 
 export function describeJobRecoveryReason(reason: string): string {

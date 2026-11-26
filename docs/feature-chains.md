@@ -144,7 +144,7 @@ provenance, not resumable executable state. Monetary totals/RTP
 include all actually observed stakes and payouts, even unfinished tails; means
 and distributions include completed samples only.
 
-Recent Simulation replay selects an accepted **subround** from 1 through
+Simulation replay selects an accepted **subround** from 1 through
 `sampling.acceptedSubrounds`; its selector and server guard use this range, while
 the report continues to display completed logical-round metrics. This requires the
 original recorded seed and a single-worker run. Seedless and multiple-worker

@@ -429,10 +429,42 @@ test("an interrupted project opening appears under Needs attention, not Active j
     await page.goto("/#/home/design");
     await expect(page.getByRole("heading", {name: "Needs attention"})).toBeVisible({timeout: 30_000});
     await expect(page.getByRole("button", {name: "Retry", exact: true})).toBeVisible();
-    await expect(page.getByText(/Project preparation is not resumable after restart/).first()).toBeVisible();
+    await expect(page.getByText(/Studio restarted before this operation finished/).first()).toBeVisible();
     await expect(page.getByRole("heading", {name: "Active jobs"})).toHaveCount(0);
-    await expect(page.getByRole("button", {name: "Dismiss", exact: true})).toBeVisible();
-    await page.getByRole("button", {name: "Dismiss finished jobs"}).click();
+    await page.getByRole("button", {name: "Dismiss", exact: true}).click();
+    await expect(page.getByRole("heading", {name: "Needs attention"})).toHaveCount(0);
+});
+
+test("multiple historical failed openings collapse into one reviewable group", async ({page}) => {
+    const jobs = [1, 2].map((index) => ({
+        id: `recovery-group-${index}`,
+        projectId: `/tmp/recovered-game-${index}.blueprint.json`,
+        operation: "project-open-materialization",
+        request: {sourcePath: `/tmp/recovered-game-${index}.blueprint.json`},
+        conflictKey: `project-open:/tmp/recovered-game-${index}.blueprint.json`,
+        status: "recovery-required",
+        createdAt: index,
+        completedAt: index + 1,
+        durationMs: 1,
+        recovery: {action: "retry", reason: "Project preparation is not resumable after restart. Reopen the same project to retry."},
+    }));
+    let present = true;
+    await page.route("**/api/home/jobs**", (route) => {
+        if (route.request().method() === "POST" && route.request().url().endsWith("/dismiss")) {
+            present = false;
+            return route.fulfill({status: 200, contentType: "application/json", body: JSON.stringify({dismissed: true})});
+        }
+        return route.fulfill({status: 200, contentType: "application/json", body: JSON.stringify({jobs: present ? jobs : []})});
+    });
+    await page.goto("/#/home/design");
+    const summary = page.locator("[data-pokie-home-attention-summary]");
+    await expect(summary).toContainText("2 earlier operations need attention", {timeout: 30_000});
+    // The point of the group is that the cards are not an immediate wall of red. They stay available
+    // behind one explicit review action.
+    await expect(page.locator("[data-pokie-lifecycle-result='project-open-materialization']")).toHaveCount(0);
+    await summary.getByRole("button", {name: "Review 2"}).click();
+    await expect(page.locator("[data-pokie-lifecycle-result='project-open-materialization']")).toHaveCount(2);
+    await summary.getByRole("button", {name: "Dismiss all"}).click();
     await expect(page.getByRole("heading", {name: "Needs attention"})).toHaveCount(0);
 });
 
@@ -455,6 +487,20 @@ test.describe.serial("managed project labels", () => {
         await expect(openExisting).toBeVisible();
         await openExisting.click();
         await expect(page.getByRole("button", {name: "Overview", exact: true})).toBeVisible({timeout: 90_000});
+    });
+
+    test("a colliding starter offers a unique Game id in the field", async ({page}) => {
+        await page.goto("/#/home/design");
+        const create = page.getByRole("button", {name: "Create game design"});
+        await expect(create).toBeEnabled({timeout: 45_000});
+        await create.click();
+        const useSuggested = page.getByRole("button", {name: "Use starter-slot-2"});
+        await expect(useSuggested).toBeVisible({timeout: 30_000});
+        await useSuggested.click();
+        // The editor switches to Game basics and focuses the field; the next Create is no longer a
+        // collision. This test stops before saving so the serial fixture remains a single project.
+        await expect(page.getByRole("textbox", {name: "Game id"})).toHaveValue("starter-slot-2");
+        await expect(page.getByText("That Game id is already taken.")).toHaveCount(0);
     });
 
     test("Game design shows the effective payline rows 1-based without entering edit mode", async ({page}) => {
@@ -695,6 +741,9 @@ test.describe.serial("managed project labels", () => {
         await expect(
             page.getByText(/This paid round is complete: 1 spin, 1 screen; total stake \d+, total payout [1-9]/),
         ).toBeVisible({timeout: 30_000});
+        const scenarioSummary = page.locator("[data-pokie-scenario-summary]");
+        await expect(scenarioSummary).toContainText(/Searched \d+ spins?/);
+        await expect(scenarioSummary).toContainText(/found/i);
         await page.locator("summary", {hasText: "Inspect round record"}).click();
         await expect(page.getByRole("columnheader", {name: "Positions (reel:row, 1-based)"})).toBeVisible();
         await expect(page.getByRole("cell", {name: /\d+:\d+/}).first()).toBeVisible();
@@ -715,11 +764,15 @@ test.describe.serial("managed project labels", () => {
         await expect(page.getByText(/This paid round is complete/).first()).toBeVisible({timeout: 60_000});
 
         await page.getByRole("button", {name: "Replay", exact: true}).click();
-        await page.getByText("Session Spin", {exact: true}).click();
+        await page.getByText("Played rounds", {exact: true}).click();
         const sessionSpin = page.getByRole("button", {name: /Session \d+ — Spin \d+/}).first();
         await expect(sessionSpin).toBeVisible({timeout: 30_000});
+        await expect(page.getByRole("checkbox", {name: "Only winning spins"})).toBeVisible();
         await sessionSpin.click();
 
+        // Selecting a spin must take the reader to its inspector instead of leaving it below the whole list.
+        await expect(page.locator("[data-pokie-spin-inspector]")).toBeInViewport({timeout: 15_000});
+        await expect(page.getByRole("button", {name: "Back to played rounds"})).toBeVisible();
         const openRecord = page.getByRole("button", {name: "Replay recorded round"});
         await expect(openRecord).toBeVisible({timeout: 30_000});
         await openRecord.click();
@@ -850,6 +903,9 @@ test.describe.serial("managed project labels", () => {
         // Switching tabs unmounts the optimization panel, not the 15-minute server receipt. Undo must
         // remain available when the designer comes back to inspect the applied values.
         await page.getByRole("button", {name: "Game design", exact: true}).click();
+        // The exact table is stale after Apply; Game design itself must say so instead of making the
+        // author discover it only after switching back to Overview.
+        await expect(page.locator("[data-pokie-game-model-exact-stale]")).toBeVisible({timeout: 30_000});
         await page.getByRole("button", {name: "Overview", exact: true}).click();
         await expect(page.getByRole("button", {name: "Undo applied changes"})).toBeVisible({timeout: 30_000});
         // The exact library was computed above from the pre-apply design. Applying a new paytable
@@ -1047,13 +1103,22 @@ test("a hard free-games cap makes termination and total RTP explicit", async ({p
 });
 
 test("Replay groups free spins under the paid round's full spin count", async ({page}) => {
-    test.setTimeout(180_000);
+    // A retriggering feature can legitimately run dozens of screens; each Continue is a real settled
+    // round. Give this path enough time to finish rather than mistaking a long feature for a stuck one.
+    test.setTimeout(360_000);
     const source = path.join(process.cwd(), "tests/e2e/fixtures/free-games-scope.json");
     const projectPath = path.join(
         fs.mkdtempSync(path.join(os.tmpdir(), "pokie-replay-paid-round-e2e-")),
         "free-games-scope.json",
     );
     fs.copyFileSync(source, projectPath);
+    // This test is about grouping recorded screens, not about an unbounded retrigger tail. Cap the
+    // fixture copy so every run reaches a completed paid round in a bounded number of free spins.
+    const fixture = JSON.parse(fs.readFileSync(projectPath, "utf8")) as {
+        mechanics: {freeGames: {scatterSymbol: string; awardsByCount: Record<string, number>; maxFreeGames?: number}};
+    };
+    fixture.mechanics.freeGames.maxFreeGames = 15;
+    fs.writeFileSync(projectPath, JSON.stringify(fixture, null, 4));
 
     await page.goto("/#/home/design");
     await page.getByRole("button", {name: /advanced options/}).click();
@@ -1091,7 +1156,7 @@ test("Replay groups free spins under the paid round's full spin count", async ({
     await expect(page.getByText(/This paid round is complete:/).first()).toBeVisible({timeout: 60_000});
 
     await page.getByRole("button", {name: "Replay", exact: true}).click();
-    await page.getByText("Session Spin", {exact: true}).click();
+    await page.getByText("Played rounds", {exact: true}).click();
     const headers = page.getByText(/Paid round · \d+ spins?/);
     await expect(headers.first()).toBeVisible({timeout: 30_000});
     await expect(page.getByText(/Session \d+ · /).first()).toBeVisible({timeout: 30_000});

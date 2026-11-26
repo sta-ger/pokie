@@ -2,7 +2,7 @@ import {Alert, Anchor, Badge, Button, Checkbox, Group, List, NumberInput, Progre
 import {useForm} from "@mantine/form";
 import {useMediaQuery} from "@mantine/hooks";
 import {Fragment, useEffect, useRef, useState} from "react";
-import {buildReplayDownloadUrl, getGameModel} from "../../api/apiClient";
+import {buildReplayDownloadUrl, getExactMath, getGameModel} from "../../api/apiClient";
 import type {OutcomeSourceReplayDescriptorView, RoundRecord, StudioRuntimeSessionView, StudioSimulationReportListEntry} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {type PaytableData, paytableDataFromRows} from "../../domain/paytableData";
@@ -267,6 +267,20 @@ export function ReplayTab({
     // keep their own record scope and never borrow this project's paytable.
     const fetchImpl = useStudioApi();
     const [projectPaytable, setProjectPaytable] = useState<PaytableData>();
+    const [savedExactMathStale, setSavedExactMathStale] = useState(false);
+    useEffect(() => {
+        let cancelled = false;
+        getExactMath(fetchImpl)
+            .then((view) => {
+                if (!cancelled) setSavedExactMathStale(view.status === "stale");
+            })
+            .catch(() => {
+                if (!cancelled) setSavedExactMathStale(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [fetchImpl, currentGame?.id, currentGame?.version]);
     useEffect(() => {
         let cancelled = false;
         getGameModel(fetchImpl).then((model) => {
@@ -335,10 +349,15 @@ export function ReplayTab({
     // scanning past every other session's rounds first. "all" (the default) shows the unfiltered list,
     // same newest-first order recentSpins already arrives in.
     const [spinSessionFilter, setSpinSessionFilter] = useState<string>("all");
+    // Producers usually arrive here to show a winning round, not to audit every losing spin. This is a
+    // display-only filter; it never drops the matching round from history.
+    const [winsOnly, setWinsOnly] = useState(false);
     // A paid round can contain many free-game steps (retriggers, cascades, ...). Those are real audit
     // records, but showing every step by default turned a session list into a wall of near-identical
     // rows. Default to one row per paid round; the explicit checkbox reveals every recorded step.
     const [showFreeGameSteps, setShowFreeGameSteps] = useState(false);
+    const spinListRef = useRef<HTMLDivElement>(null);
+    const spinInspectorRef = useRef<HTMLDivElement>(null);
     // Resets the filter back to "all" the moment its selected session no longer appears in the list at
     // all (e.g. its rounds aged out past StudioRoundRecorder.MAX_RECORDS) -- otherwise the picker
     // would be stuck silently showing an empty list with no way back to "all" other than knowing to
@@ -366,7 +385,16 @@ export function ReplayTab({
     const spinSessionIds = Array.from(new Set(loadedSpins.map((entry) => entry.sessionId)))
         .sort((left, right) => (sessionFirstRecordedAt.get(left) ?? 0) - (sessionFirstRecordedAt.get(right) ?? 0));
     const describeSpinSession = (sessionId: string): string => `Session ${spinSessionIds.indexOf(sessionId) + 1}`;
-    const filteredSpins = spinSessionFilter === "all" ? loadedSpins : loadedSpins.filter((entry) => entry.sessionId === spinSessionFilter);
+    const filteredSpins = (spinSessionFilter === "all" ? loadedSpins : loadedSpins.filter((entry) => entry.sessionId === spinSessionFilter))
+        .filter((entry) => !winsOnly || (entry.win ?? 0) > 0);
+    // The inspector lives farther down the page than the list. Selecting a row must take the reader to
+    // the round they just chose instead of leaving them staring at an unchanged list.
+    useEffect(() => {
+        if (findMethod !== "spin" || selectedSpin === undefined) return;
+        spinInspectorRef.current?.scrollIntoView({behavior: "smooth", block: "start"});
+    }, [findMethod, selectedSpin]);
+    const selectedSpinMatchesCurrentGame = selectedSpin === undefined || currentGame === undefined ||
+        (selectedSpin.game.id === currentGame.id && selectedSpin.game.version === currentGame.version);
     const selectedSessionSpins = selectedSpin
         ? loadedSpins
             .filter((entry) => entry.sessionId === selectedSpin.sessionId)
@@ -441,6 +469,7 @@ export function ReplayTab({
         setSelectedSimEntry(undefined);
         setSimRound(1);
         setSpinSessionFilter("all");
+        setWinsOnly(false);
         onClearExpected();
     }
 
@@ -545,7 +574,7 @@ export function ReplayTab({
                 reads external state) may not reproduce the original round.
             </Text>
             <Text size="sm" c="dimmed" mb="sm">
-                To inspect a spin you just played, choose Session Spin and select it from the list. Once a spin is
+                To inspect a spin you just played, choose Played rounds and select it from the list. Once a spin is
                 loaded, its grid, wins, paylines, paytable, and export download are available below.
             </Text>
 
@@ -558,10 +587,10 @@ export function ReplayTab({
                 orientation={isPhoneWidth ? "vertical" : "horizontal"}
                 fullWidth={isPhoneWidth}
                 data={[
-                    {label: "Recreate from seed", value: "seedRound"},
-                    {label: "Replay record", value: "artifact"},
-                    {label: "Session Spin", value: "spin"},
-                    {label: "Recent Simulation", value: "simulation"},
+                    {label: "Replay from seed", value: "seedRound"},
+                    {label: "Saved round", value: "artifact"},
+                    {label: "Played rounds", value: "spin"},
+                    {label: "Simulation", value: "simulation"},
                 ]}
                 mb="md"
                 aria-label="Find method"
@@ -694,7 +723,7 @@ export function ReplayTab({
             )}
 
             {findMethod === "spin" && (
-                <div>
+                <div ref={spinListRef} data-pokie-spin-list tabIndex={-1}>
                     <QuickActions>
                         <Button variant="default" size="xs" onClick={onRefreshRecentSpins}>
                             Refresh
@@ -734,13 +763,20 @@ export function ReplayTab({
                                 ) : (
                                     <>
                                         <Text size="xs" c="dimmed" mb="xs">Spins from the same paid round are grouped under one header.</Text>
-                                        <Checkbox
-                                            mb="sm"
-                                            size="xs"
-                                            label="Show free-game steps"
-                                            checked={showFreeGameSteps}
-                                            onChange={(event) => setShowFreeGameSteps(event.currentTarget.checked)}
-                                        />
+                                        <Group gap="md" mb="sm">
+                                            <Checkbox
+                                                size="xs"
+                                                label="Only winning spins"
+                                                checked={winsOnly}
+                                                onChange={(event) => setWinsOnly(event.currentTarget.checked)}
+                                            />
+                                            <Checkbox
+                                                size="xs"
+                                                label="Show free-game steps"
+                                                checked={showFreeGameSteps}
+                                                onChange={(event) => setShowFreeGameSteps(event.currentTarget.checked)}
+                                            />
+                                        </Group>
                                         <List listStyleType="none" spacing={4}>
                                             {filteredSpins.map((entry) => {
                                                 const roundId = entry.logicalRound?.roundId;
@@ -756,8 +792,11 @@ export function ReplayTab({
                                                 const isFreeGameStep = recordedSpinStake(entry) === 0;
                                                 if (!showFreeGameSteps && isFreeGameStep) return null;
                                                 const firstVisibleEntry = showFreeGameSteps ? roundEntries[0] : paidScreens[0];
-                                                const showHeader = entry === firstVisibleEntry;
                                                 const paidRoundSpinCount = groupLastEntry.logicalRound?.mathematicalCursor ?? paidEntry?.logicalRound?.mathematicalCursor;
+                                                // A one-spin round needs no header repeating "Paid round · 1 spin" around
+                                                // every row. Keep the header only when it adds information (a feature
+                                                // round with several screens) or holds the round-level actions.
+                                                const showHeader = entry === firstVisibleEntry && (paidRoundSpinCount ?? 0) > 1;
                                                 // `studioRound` (this session's own stable spin index) keeps the key stable
                                                 // across refreshes. A duplicate (sessionId, studioRequestId) pair is
                                                 // deduplicated by StudioRoundRecorder.record before it reaches this list.
@@ -954,7 +993,7 @@ export function ReplayTab({
                         })()}
 
                     {findMethod === "spin" && selectedSpin && (
-                        <div>
+                        <div ref={spinInspectorRef} data-pokie-spin-inspector tabIndex={-1}>
                             <PageSection legend="Spin inspector">
                                 <Group gap="xs" mb="xs">
                                     <Badge variant="light">Selected</Badge>
@@ -969,6 +1008,16 @@ export function ReplayTab({
                                     Each recorded entry is one spin/screen. A paid round can contain several spins when free games retrigger.
                                 </Text>
                                 <QuickActions>
+                                    <Button
+                                        variant="subtle"
+                                        size="xs"
+                                        onClick={() => {
+                                            spinListRef.current?.scrollIntoView({behavior: "smooth", block: "start"});
+                                            spinListRef.current?.focus?.();
+                                        }}
+                                    >
+                                        Back to played rounds
+                                    </Button>
                                     <Button
                                         variant="default"
                                         size="xs"
@@ -987,6 +1036,16 @@ export function ReplayTab({
                                     </Button>
                                 </QuickActions>
                             </PageSection>
+                            {(!selectedSpinMatchesCurrentGame || savedExactMathStale) && (
+                                <Alert color="yellow" variant="light" title="This spin may not reproduce against the current design" mb="sm">
+                                    <Text size="sm">
+                                        {selectedSpinMatchesCurrentGame
+                                            ? "The saved design changed after its exact outcome table was generated."
+                                            : `This spin belongs to ${selectedSpin.game.name} v${selectedSpin.game.version}; the current saved design is ${currentGame?.id} v${currentGame?.version}.`}
+                                        {" "}If it was recorded before that change, open the matching design/version to reproduce it, or record a new round against the current design. Inspection below still works.
+                                    </Text>
+                                </Alert>
+                            )}
                             {selectedSpin.debug?.recording && recordedSpinStake(selectedSpin) > 0 && (
                                 <Button variant="default" onClick={() => openRecordedRound(selectedSpin)}>
                                     {selectedSpin.logicalRound?.status === "completed" ? "Replay recorded round" : "Replay paid trigger"}
@@ -1232,7 +1291,7 @@ export function ReplayTab({
                                                 <Alert color="blue" variant="light" title="This recording is a free-game step" mb="sm">
                                                     <Text size="sm">
                                                         The recorded stake is 0 because this screen is a free spin, not the paid trigger.
-                                                        Use Session Spin → Inspect paid round to see the paid round&apos;s total stake and payout.
+                                                        Use Played rounds → Inspect paid round to see the paid round&apos;s total stake and payout.
                                                     </Text>
                                                 </Alert>
                                             )}

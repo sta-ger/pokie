@@ -1,9 +1,10 @@
 import {MathDefinitionDiffPreview} from "../common/MathDefinitionDiffPreview";
-import {Button} from "@mantine/core";
+import {Alert, Button, Text} from "@mantine/core";
 import {modals} from "@mantine/modals";
 import {useCallback, useEffect, useLayoutEffect, useRef, useState, type MutableRefObject} from "react";
-import {getGameModel, loadBlueprint, saveBlueprint, validateBlueprint} from "../../api/apiClient";
-import type {GameModelProjection} from "../../api/types";
+import {useNavigate} from "react-router-dom";
+import {getExactMath, getGameModel, loadBlueprint, saveBlueprint, validateBlueprint} from "../../api/apiClient";
+import type {GameModelProjection, StudioExactMathView} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {setReelGenerationMode} from "../../domain/blueprintFormOps";
 import {clearPersistedProjectBlueprintDraft, createProjectBlueprintDraftWriter, loadPersistedProjectBlueprintDraft, type ProjectBlueprintDraftWriter} from "../../domain/blueprintDraftStorage";
@@ -93,6 +94,7 @@ export function GameModelTab({
 } = {}) {
     const fetchImpl = useStudioApi();
     const confirm = useConfirm();
+    const navigate = useNavigate();
     const editor = useBlueprintEditor();
     const [state, setState] = useState<GameModelState>({status: "loading"});
     const [sequenceDraftDirty, setSequenceDraftDirty] = useState(false);
@@ -125,6 +127,8 @@ export function GameModelTab({
     const [previewBlueprint, setPreviewBlueprint] = useState<unknown>();
     const [previewBlueprintError, setPreviewBlueprintError] = useState<string>();
     const previewBlueprintRequestId = useRef(0);
+    const [exactMathView, setExactMathView] = useState<StudioExactMathView>();
+    const exactMathRequestId = useRef(0);
 
     const loadPreviewBlueprint = useCallback(() => {
         if (!editable || projectRoot === undefined) {
@@ -187,6 +191,24 @@ export function GameModelTab({
             loadPreviewBlueprint();
         }
     }, [state.status, projectionSourceRevision, loadPreviewBlueprint]);
+
+    // A save can change the design while the exact outcome table still describes the previous one.
+    // Overview owns the recompute action, but an author editing here must not have to discover that
+    // warning by switching tabs first. This is a read-only status check, never a generation request.
+    useEffect(() => {
+        const requestId = ++exactMathRequestId.current;
+        let cancelled = false;
+        getExactMath(fetchImpl)
+            .then((view) => {
+                if (!cancelled && requestId === exactMathRequestId.current) setExactMathView(view);
+            })
+            .catch(() => {
+                if (!cancelled && requestId === exactMathRequestId.current) setExactMathView(undefined);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [fetchImpl, projectRoot, projectionSourceRevision]);
 
     // Advance the inspection seed instead of drawing one from Math.random(): the next sample is
     // different but its visible seed remains reproducible whenever the same seed is requested again.
@@ -495,6 +517,20 @@ export function GameModelTab({
                 onRestore={handleRestoreDraft}
                 onDiscard={handleDiscardDraft}
             />
+            {editable && exactMathView?.status === "stale" && (
+                <Alert color="yellow" variant="light" title="The saved exact outcome table is stale" mb="sm" data-pokie-game-model-exact-stale>
+                    <Text size="sm">{exactMathView.message}</Text>
+                    <Button
+                        variant="default"
+                        size="xs"
+                        mt="xs"
+                        disabled={projectRoot === undefined}
+                        onClick={() => projectRoot !== undefined && navigate(`/project/${encodeURIComponent(projectRoot)}/overview`)}
+                    >
+                        Open Overview to recompute
+                    </Button>
+                </Alert>
+            )}
             <details>
                 <summary>Compare mathematical definitions</summary>
                 <MathDefinitionDiffPreview sourcePath={projectRoot} projectRoot={projectRoot} draft={editState.status === "editing" ? editor.state.blueprint : undefined} revision={editor.state.revision} />

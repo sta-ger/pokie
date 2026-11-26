@@ -48,6 +48,7 @@ export function SectionedFormEditor({
     modeDrafts,
     revision,
     validationView,
+    gameIdConflict,
     onSequenceDirtyChange,
 }: {
     blueprint: Record<string, unknown>;
@@ -56,6 +57,7 @@ export function SectionedFormEditor({
     modeDrafts: ReelGenerationModeDraftsRef;
     revision: number;
     validationView: BlueprintValidationView;
+    gameIdConflict?: {suggestedGameId: string; onUseSuggested: () => void};
     onSequenceDirtyChange?: (dirty: boolean) => void;
 }) {
     const [activeSection, setActiveSection] = useState<BlueprintSectionId>("basics");
@@ -68,6 +70,13 @@ export function SectionedFormEditor({
         setActiveSection(section);
         setVisitedSections((visited) => visited.has(section) ? visited : new Set([...visited, section]));
     };
+
+    // A Game-id collision is a field-level problem in Game basics, not a page-level dead end. Bring that
+    // section into view as soon as the server offers a replacement id, so the author can fix it here.
+    useEffect(() => {
+        if (gameIdConflict !== undefined) activateSection("basics");
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [gameIdConflict?.suggestedGameId]);
 
     const basicsTabRef = useRef<HTMLButtonElement>(null);
     const layoutTabRef = useRef<HTMLButtonElement>(null);
@@ -147,6 +156,7 @@ export function SectionedFormEditor({
                             mutate={mutate}
                             legend="Game basics"
                             issues={[...classifiedErrors.bySection.basics, ...classifiedWarnings.bySection.basics]}
+                            gameIdConflict={gameIdConflict}
                         />
                     </>}
                 </Tabs.Panel>

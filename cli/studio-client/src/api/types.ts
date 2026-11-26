@@ -592,7 +592,7 @@ export type StudioBlueprintSaveManagedView =
           registeredProject?: StudioProjectRegistryView;
       }
     | {status: "invalid-name"; error: string}
-    | {status: "unavailable"; error: string; existingProjectPath?: string}
+    | {status: "unavailable"; error: string; existingProjectPath?: string; suggestedGameId?: string}
     | {status: "error"; error: string};
 
 // A selected PNG is staged by Studio until the Blueprint is saved. The Blueprint itself receives only

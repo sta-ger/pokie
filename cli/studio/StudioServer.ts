@@ -1927,7 +1927,7 @@ export class StudioServer implements StudioServerHandling {
                     if (dashboard.status === "loaded" || dashboard.status === "outcome-source" || dashboard.status === "artifact") {
                         return {status: "completed", result: {
                             summary: "Project opening and preparation completed.",
-                            outputs: [{path: dashboard.projectRoot, label: "Opened project"}],
+                            outputs: [{path: dashboard.projectRoot, label: "project"}],
                             provenance: {sourcePath},
                             detail: {sourcePath, projectRoot: dashboard.projectRoot},
                         }};
@@ -4404,7 +4404,7 @@ export class StudioServer implements StudioServerHandling {
             (error, cancelled) => cancelled ? {status: "cancelled", result: {summary: "Scenario search stopped after its last settled round.", detail: {sessionId, scenario: "any-win", ...validated}}, recovery} : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
         );
         if (execution === undefined) return;
-        if (execution.value.status === "ok") this.sendJson(res, 200, {status: "ok", session: execution.value.session});
+        if (execution.value.status === "ok") this.sendJson(res, 200, {status: "ok", session: execution.value.session, ...(execution.value.scenario === undefined ? {} : {scenario: execution.value.scenario})});
         else this.sendPlayErrorResult(res, sessionId, execution.value);
     }
 
@@ -4447,7 +4447,7 @@ export class StudioServer implements StudioServerHandling {
             (error, cancelled) => cancelled ? {status: "cancelled", result: {summary: "Scenario search stopped after its last settled round.", detail: {sessionId, scenario: "symbol-win", symbolId: validated.symbolId, ...(validated.bet === undefined ? {} : {bet: validated.bet}), ...(validated.mode === undefined ? {} : {mode: validated.mode})}}, recovery} : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
         );
         if (execution === undefined) return;
-        if (execution.value.status === "ok") this.sendJson(res, 200, {status: "ok", session: execution.value.session});
+        if (execution.value.status === "ok") this.sendJson(res, 200, {status: "ok", session: execution.value.session, ...(execution.value.scenario === undefined ? {} : {scenario: execution.value.scenario})});
         else this.sendPlayErrorResult(res, sessionId, execution.value);
     }
 
@@ -4490,7 +4490,7 @@ export class StudioServer implements StudioServerHandling {
             (error, cancelled) => cancelled ? {status: "cancelled", result: {summary: "Scenario search stopped after its last settled round.", detail: {sessionId, scenario: "free-games", ...validated}}, recovery} : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
         );
         if (execution === undefined) return;
-        if (execution.value.status === "ok") this.sendJson(res, 200, {status: "ok", session: execution.value.session});
+        if (execution.value.status === "ok") this.sendJson(res, 200, {status: "ok", session: execution.value.session, ...(execution.value.scenario === undefined ? {} : {scenario: execution.value.scenario})});
         else this.sendPlayErrorResult(res, sessionId, execution.value);
     }
 

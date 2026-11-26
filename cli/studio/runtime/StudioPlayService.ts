@@ -130,8 +130,25 @@ const WASM_SCENARIO_CAPABILITIES = {
     findFreeGames: "This WASM runtime does not declare free-games events, so Find free games isn't available. Spin remains available.",
 } as const;
 
+/**
+ * What a completed Find any win / Find symbol win / Find free games search actually did, returned
+ * alongside the matching round so Play can say "found after N spins" instead of silently replacing the
+ * grid. Every count is read from the real settled rounds the search played, never estimated.
+ */
+export type StudioPlayScenarioSummary = {
+    readonly operation: "find-any-win" | "find-symbol-win" | "find-free-games";
+    readonly symbolId?: string;
+    readonly attemptedSpins: number;
+    readonly maximumSpins: number;
+    readonly matched: true;
+    readonly bet?: number;
+    readonly mode?: string;
+    readonly credits?: number;
+    readonly win?: number;
+};
+
 export type StudioPlaySpinResult =
-    | {status: "ok"; session: StudioRuntimeSessionView}
+    | {status: "ok"; session: StudioRuntimeSessionView; scenario?: StudioPlayScenarioSummary}
     /** A scenario search stopped only between real settled rounds. */
     | {status: "cancelled"; session?: StudioRuntimeSessionView}
     | {status: "not-found"}
@@ -530,7 +547,7 @@ export class StudioPlayService {
             sessionId,
             "find-symbol-win",
             (session) => !new PlayUntilSymbolWinStrategy(symbolId).canPlayNextSimulationRound(session as unknown as VideoSlotSessionHandling<string>),
-            (artifact) => artifact.wins.some((win) => win.symbolId === symbolId), options.signal, options.onProgress, options.bet, options.mode,
+            (artifact) => artifact.wins.some((win) => win.symbolId === symbolId), options.signal, options.onProgress, options.bet, options.mode, symbolId,
         );
     }
 
@@ -728,13 +745,14 @@ export class StudioPlayService {
 
     private async spinUntilMatch(
         sessionId: string,
-        operation: StudioRoundOperation,
+        operation: "find-any-win" | "find-symbol-win" | "find-free-games",
         matchesLiveSession: (session: GameSessionHandling) => boolean,
         matchesArtifact: (artifact: RoundRecordJson) => boolean,
         signal?: AbortSignal,
         onProgress?: (attemptedSpins: number, maximumSpins: number) => void,
         bet?: number,
         mode?: string,
+        symbolId?: string,
     ): Promise<StudioPlaySpinResult> {
         let lastSettledSession: StudioRuntimeSessionView | undefined;
         for (let attempt = 0; attempt < this.maxFindScenarioSpins; attempt++) {
@@ -770,7 +788,20 @@ export class StudioPlayService {
                 matched = round.session.debug?.artifact !== undefined && matchesArtifact(round.session.debug.artifact);
             }
             if (matched) {
-                return round;
+                return {
+                    ...round,
+                    scenario: {
+                        operation,
+                        ...(symbolId === undefined ? {} : {symbolId}),
+                        attemptedSpins: attempt + 1,
+                        maximumSpins: this.maxFindScenarioSpins,
+                        matched: true,
+                        ...(bet === undefined ? {} : {bet}),
+                        ...(mode === undefined ? {} : {mode}),
+                        ...(round.session.credits === undefined ? {} : {credits: round.session.credits}),
+                        ...(round.session.win === undefined ? {} : {win: round.session.win}),
+                    },
+                };
             }
         }
 

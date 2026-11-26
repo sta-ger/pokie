@@ -310,7 +310,7 @@ actual charge and charged bet mode. `logicalRound`, totals and the unchanged v1
 audit deliveries retain aggregate accounting separately. Package mode attribution
 uses `modePolicy.selection: "recorded-commands"`; those commands describe the
 actual explicit entries and zero-stake continuations, rather than a repeat-mode
-selector. Studio Session Spin displays and downloads this same step record.
+selector. Studio's Played rounds view displays and downloads this same step record.
 Previously exported v1 logical-round descriptors remain accepted against their
 original aggregate view. Display-only deliveries reuse the last evaluated
 record and do not manufacture a new spin.

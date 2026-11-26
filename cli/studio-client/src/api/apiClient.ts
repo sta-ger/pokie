@@ -983,8 +983,21 @@ export async function listRecentSpins(fetchImpl: FetchLike): Promise<StudioRunti
 
 export type PlaySessionResult = {status: "ok"; session: StudioRuntimeSessionView} | {status: "error"; message: string} | {status: "no-active-project"};
 
+/** Server-owned facts about a completed scenario search; see StudioPlayService's own DTO. */
+export type PlayScenarioSummary = {
+    operation: "find-any-win" | "find-symbol-win" | "find-free-games";
+    symbolId?: string;
+    attemptedSpins: number;
+    maximumSpins: number;
+    matched: true;
+    bet?: number;
+    mode?: string;
+    credits?: number;
+    win?: number;
+};
+
 export type PlaySpinResult =
-    | {status: "ok"; session: StudioRuntimeSessionView}
+    | {status: "ok"; session: StudioRuntimeSessionView; scenario?: PlayScenarioSummary}
     | {status: "error"; message: string; code?: string; retryDisposition?: "rejected" | "safe-to-retry"; committedProgress?: {roundId: string; cursor: number; requestId: string; nextRequestId?: string}; session?: StudioRuntimeSessionView}
     | {status: "not-found"}
     | {status: "blocked"; message: string; code?: string; retryDisposition?: "rejected" | "safe-to-retry"; committedProgress?: {roundId: string; cursor: number; requestId: string; nextRequestId?: string}; session?: StudioRuntimeSessionView}
@@ -1082,7 +1095,7 @@ export async function findFreeGamesPlaySession(fetchImpl: FetchLike, sessionId: 
 async function readPlaySpinResult(response: {status: number; ok: boolean; json(): Promise<unknown>}): Promise<PlaySpinResult> {
     // Machine-readable session failures take precedence over the legacy HTTP-only project guard.
     // They preserve the settled view and never request a replacement session.
-    const body = await response.json() as {code?: string; error?: string; status?: string; session?: StudioRuntimeSessionView; retryDisposition?: "rejected" | "safe-to-retry"; committedProgress?: {roundId: string; cursor: number; requestId: string; nextRequestId?: string}};
+    const body = await response.json() as {code?: string; error?: string; status?: string; session?: StudioRuntimeSessionView; scenario?: PlayScenarioSummary; retryDisposition?: "rejected" | "safe-to-retry"; committedProgress?: {roundId: string; cursor: number; requestId: string; nextRequestId?: string}};
     const recovery = {...(body.retryDisposition ? {retryDisposition: body.retryDisposition} : {}), ...(body.committedProgress ? {committedProgress: body.committedProgress} : {}), ...(body.committedProgress && body.session ? {session: body.session} : {})};
     if (body.code !== undefined && (body.code !== "not-found" || body.committedProgress)) {
         const actions: Record<string, string> = {
@@ -1110,7 +1123,7 @@ async function readPlaySpinResult(response: {status: number; ok: boolean; json()
         throw new Error(body.error ?? "Failed to spin");
     }
     if (body.status === "ok" && body.session !== undefined) {
-        return {status: "ok", session: body.session};
+        return {status: "ok", session: body.session, ...(body.scenario === undefined ? {} : {scenario: body.scenario})};
     }
     return {status: "error", message: body.error ?? "Spin rejected."};
 }

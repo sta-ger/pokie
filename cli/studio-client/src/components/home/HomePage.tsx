@@ -15,6 +15,7 @@ import {useStudioApi} from "../../context/StudioApiProvider";
 import {useHomeSourceJobs} from "../../hooks/useHomeSourceJobs";
 import {JobCard} from "../common/JobCard";
 import {JobObservationNotice} from "../common/JobObservationNotice";
+import {QuickActions} from "../common/QuickActions";
 import {useOpenProject} from "../../hooks/useOpenProject";
 import {errorMessage} from "../../domain/errorMessage";
 import {HomeProjectJobs} from "./HomeProjectJobs";
@@ -120,6 +121,7 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
     const [jobOutputActionsUnavailableReason, setJobOutputActionsUnavailableReason] = useState<string>();
     const [dismissingHomeJobs, setDismissingHomeJobs] = useState<string[]>([]);
     const [dismissHomeJobsError, setDismissHomeJobsError] = useState<string>();
+    const [showNeedsAttentionDetails, setShowNeedsAttentionDetails] = useState(false);
     // Home does not have a current project identity.  The server therefore returns only Design and
     // project-opening records here, including retained terminal records after a reload.
     const homeJobs = useHomeSourceJobs(fetchImpl);
@@ -250,13 +252,34 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
                 {needsAttentionHomeJobs.length > 0 && (
                     <>
                         <Title order={3}>Needs attention</Title>
-                        <Text size="sm" c="dimmed">
-                            These operations stopped before confirming a result. Retry the interrupted opening, or review the job details.
-                        </Text>
-                        {needsAttentionHomeJobs.map(renderHomeJob)}
-                        <Button variant="default" size="xs" loading={needsAttentionHomeJobs.some(job => dismissingHomeJobs.includes(job.id))} onClick={() => dismissHomeJobs(needsAttentionHomeJobs.map(job => job.id))}>
-                            Dismiss finished jobs
-                        </Button>
+                        {needsAttentionHomeJobs.length === 1 ? (
+                            <>
+                                <Text size="sm" c="dimmed">
+                                    This operation stopped before confirming a result. Retry it, or review the details.
+                                </Text>
+                                {needsAttentionHomeJobs.map(renderHomeJob)}
+                            </>
+                        ) : (
+                            <Alert color="orange" variant="light" title={`${needsAttentionHomeJobs.length} earlier operations need attention`} data-pokie-home-attention-summary>
+                                <Text size="sm" mb="xs">
+                                    Most often this is an earlier project opening whose source has since moved. Nothing is retried
+                                    automatically. Review only the ones you need, or dismiss this whole historical group.
+                                </Text>
+                                <QuickActions>
+                                    <Button variant="default" size="xs" loading={needsAttentionHomeJobs.some(job => dismissingHomeJobs.includes(job.id))} onClick={() => dismissHomeJobs(needsAttentionHomeJobs.map(job => job.id))}>
+                                        Dismiss all
+                                    </Button>
+                                    <Button variant="subtle" size="xs" onClick={() => setShowNeedsAttentionDetails((shown) => !shown)}>
+                                        {showNeedsAttentionDetails ? "Hide details" : `Review ${needsAttentionHomeJobs.length}`}
+                                    </Button>
+                                </QuickActions>
+                                {showNeedsAttentionDetails && (
+                                    <Stack gap="xs" mt="xs">
+                                        {needsAttentionHomeJobs.map(renderHomeJob)}
+                                    </Stack>
+                                )}
+                            </Alert>
+                        )}
                     </>
                 )}
                 {(recoveryOpeningError !== undefined || hasUnavailableOutput) &&

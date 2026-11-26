@@ -1199,6 +1199,25 @@ export function BlueprintEditorPage({
         }, 0);
     };
 
+    // A collision is recoverable without asking the author to invent an id: the server offers the first
+    // free managed sibling (for example starter-slot-2), and this applies it to the draft so the next
+    // Create click is valid. Never applied automatically: a Game id is identity, not a cosmetic name.
+    const applySuggestedGameId = (suggestedGameId: string): void => {
+        mutateBlueprint((draft) => {
+            const info = typeof draft.info === "object" && draft.info !== null && !Array.isArray(draft.info)
+                ? {...(draft.info as Record<string, unknown>)}
+                : {};
+            info.id = suggestedGameId;
+            draft.info = info;
+        });
+        setManagedSaveView({status: "idle"});
+        setExistingProjectOpenError(undefined);
+    };
+    const suggestedGameId = managedSaveView.status === "failed" ? managedSaveView.suggestedGameId : undefined;
+    const gameIdConflict = guided && suggestedGameId !== undefined
+        ? {suggestedGameId, onUseSuggested: () => applySuggestedGameId(suggestedGameId)}
+        : undefined;
+
     const {blueprint, revision} = editor.state;
 
     const formModeContent = guided ? (
@@ -1210,6 +1229,7 @@ export function BlueprintEditorPage({
             modeDrafts={editor.modeDrafts}
             revision={revision}
             validationView={validationView}
+            gameIdConflict={gameIdConflict}
             onSequenceDirtyChange={setSequenceDraftDirty}
         />
     ) : (
@@ -1388,18 +1408,33 @@ export function BlueprintEditorPage({
                                 )}
                             </div>
                         )}
-                        {managedSaveView.status === "failed" && managedSaveView.existingProjectPath !== undefined ? (
+                        {managedSaveView.status === "failed" && (suggestedGameId !== undefined || managedSaveView.existingProjectPath !== undefined) ? (
                             <div>
                                 <RecoveryNotice
                                     title="Game id already in use"
-                                    message="A POKIE project with this Game id already exists. Open it, or change the Game id and create a new design."
-                                    actionLabel="Open existing project"
+                                    message={suggestedGameId !== undefined
+                                        ? `A POKIE project with this Game id already exists. Use ${suggestedGameId} instead, or open the existing project if you need it.`
+                                        : "A POKIE project with this Game id already exists. Open it, or change the Game id and create a new design."}
+                                    actionLabel={suggestedGameId !== undefined ? `Use ${suggestedGameId}` : "Open existing project"}
                                     onAction={() => {
                                         setExistingProjectOpenError(undefined);
+                                        if (suggestedGameId !== undefined) {
+                                            applySuggestedGameId(suggestedGameId);
+                                            return;
+                                        }
                                         openProject(managedSaveView.existingProjectPath as string).catch((error: unknown) => {
                                             setExistingProjectOpenError(describeExistingProjectOpenError(error));
                                         });
                                     }}
+                                    secondaryActionLabel={suggestedGameId !== undefined && managedSaveView.existingProjectPath !== undefined ? "Open existing project" : undefined}
+                                    onSecondaryAction={suggestedGameId !== undefined && managedSaveView.existingProjectPath !== undefined
+                                        ? () => {
+                                            setExistingProjectOpenError(undefined);
+                                            openProject(managedSaveView.existingProjectPath as string).catch((error: unknown) => {
+                                                setExistingProjectOpenError(describeExistingProjectOpenError(error));
+                                            });
+                                        }
+                                        : undefined}
                                 />
                                 {existingProjectOpenError !== undefined && (
                                     <Text size="sm" c="red" role="alert" mb="sm">

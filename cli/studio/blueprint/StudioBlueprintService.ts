@@ -119,6 +119,8 @@ type ManagedDestination =
           readonly message: string;
           /** Set only for a Game-id collision whose Blueprint Studio can actually open. */
           readonly existingProjectPath?: string;
+          /** The first free sibling Game id (for example starter-slot-2), when this was a collision. */
+          readonly suggestedGameId?: string;
       };
 
 // A Game-id collision is only useful if "Open existing project" can actually open the file. Older
@@ -139,6 +141,19 @@ function existingManagedBlueprintIsOpenable(
     }
 }
 
+// Offered only when the requested managed Game id is already taken. The suggestion is a real,
+// currently-unused managed destination, so accepting it cannot itself collide; the caller still has to
+// change the design's own info.id (we never rewrite a deliberate id behind the author's back).
+function suggestAvailableManagedGameId(pathResolver: PokiePathResolver, baseName: string): string | undefined {
+    for (let suffix = 2; suffix <= 1000; suffix++) {
+        const candidate = `${baseName}-${suffix}`;
+        const resolved = pathResolver.resolveIndependentProjectDirectory(candidate);
+        if (resolved.status !== "valid") continue;
+        if (!fs.existsSync(path.join(resolved.directory, "blueprint.json"))) return candidate;
+    }
+    return undefined;
+}
+
 function resolveAvailableManagedDestination(
     pathResolver: PokiePathResolver,
     baseName: string,
@@ -156,6 +171,7 @@ function resolveAvailableManagedDestination(
     const targetPath = path.join(resolved.directory, "blueprint.json");
     if (fs.existsSync(targetPath)) {
         const openable = existingManagedBlueprintIsOpenable(targetPath, loadBlueprint, blueprintValidator);
+        const suggestedGameId = suggestAvailableManagedGameId(pathResolver, baseName);
         return {
             status: "unavailable",
             message: openable
@@ -164,6 +180,7 @@ function resolveAvailableManagedDestination(
             // The Project-open API resolves this authored source file itself. A bare project
             // directory is not a runtime package and would be rejected looking for package.json.
             ...(openable ? {existingProjectPath: targetPath} : {}),
+            ...(suggestedGameId === undefined ? {} : {suggestedGameId}),
         };
     }
     return {status: "valid", directory: resolved.directory, targetPath, name: baseName};
@@ -537,7 +554,12 @@ export class StudioBlueprintService {
             return {status: "invalid-name", error: destination.message};
         }
         if (destination.status !== "valid") {
-            return {status: "unavailable", error: destination.message, existingProjectPath: destination.existingProjectPath};
+            return {
+                status: "unavailable",
+                error: destination.message,
+                ...(destination.existingProjectPath === undefined ? {} : {existingProjectPath: destination.existingProjectPath}),
+                ...(destination.suggestedGameId === undefined ? {} : {suggestedGameId: destination.suggestedGameId}),
+            };
         }
 
         const directoryCreated = !fs.existsSync(destination.directory);
@@ -575,7 +597,14 @@ export class StudioBlueprintService {
         const baseName = deriveManagedBlueprintName(blueprint);
         const destination = resolveAvailableManagedDestination(this.pathResolver, baseName, this.loadBlueprint, this.blueprintValidator);
         if (destination.status === "invalid-name") return {status: "invalid-name", error: destination.message};
-        if (destination.status !== "valid") return {status: "unavailable", error: destination.message, existingProjectPath: destination.existingProjectPath};
+        if (destination.status !== "valid") {
+            return {
+                status: "unavailable",
+                error: destination.message,
+                ...(destination.existingProjectPath === undefined ? {} : {existingProjectPath: destination.existingProjectPath}),
+                ...(destination.suggestedGameId === undefined ? {} : {suggestedGameId: destination.suggestedGameId}),
+            };
+        }
 
         const directoryCreated = !fs.existsSync(destination.directory);
         const artworkPaths: string[] = [];

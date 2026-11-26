@@ -1,4 +1,4 @@
-import type {PlaySessionResult, PlaySpinResult} from "../../api/apiClient";
+import type {PlayScenarioSummary, PlaySessionResult, PlaySpinResult} from "../../api/apiClient";
 import type {StudioRuntimeSessionView} from "../../api/types";
 
 // Pure view-model transforms for a Studio round — same role as interpretSimulation.ts/interpretReplay.ts:
@@ -34,7 +34,7 @@ export type PlaySpinResultView =
     | {status: "not-found"; message: string; previousSession?: StudioRuntimeSessionView}
     | {status: "blocked"; message: string; previousSession?: StudioRuntimeSessionView}
     | {status: "no-active-project"; message: string}
-    | {status: "ok"; session: StudioRuntimeSessionView};
+    | {status: "ok"; session: StudioRuntimeSessionView; scenario?: PlayScenarioSummary};
 
 export function describePlaySpinResult(result: PlaySpinResult): PlaySpinResultView {
     if (result.status === "not-found") {

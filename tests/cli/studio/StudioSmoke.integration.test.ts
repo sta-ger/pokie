@@ -126,7 +126,7 @@ describe("Studio HTTP smoke", () => {
     });
 
     it("refuses a second managed project with the same Game id instead of creating a suffixed duplicate", async () => {
-        const saved = await jsonRequest<{status: string; path?: string; error?: string}>(
+        const saved = await jsonRequest<{status: string; path?: string; error?: string; suggestedGameId?: string}>(
             `${baseUrl}/api/home/blueprints/save-managed`,
             {method: "POST", body: JSON.stringify({blueprint: createRecommendedBlueprint()})},
         );
@@ -136,6 +136,7 @@ describe("Studio HTTP smoke", () => {
         expect(body.status).toBe("unavailable");
         expect(body.error).toMatch(/with Game id "starter-slot" already exists/i);
         expect(body.error).toMatch(/Choose a different Game id/i);
+        expect(body.suggestedGameId).toBe("starter-slot-2");
         expect(fs.existsSync(path.join(tempHome, "POKIE Projects", "starter-slot-2", "blueprint.json"))).toBe(false);
     });
 });

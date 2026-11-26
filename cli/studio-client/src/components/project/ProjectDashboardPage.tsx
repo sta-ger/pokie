@@ -1530,6 +1530,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     key={projectKey ?? "no-project"}
                                     session={play.session}
                                     sessionId={play.sessionId}
+                                    scenarioSummary={play.scenarioSummary}
                                     onNewSession={play.newSession}
                                     onRestore={header.status === "loaded" && header.type === "wasm" && header.capabilities.includes("wasm.runtime.serialize") ? play.restore : undefined}
                                     onSpin={play.spin}

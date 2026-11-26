@@ -94,6 +94,7 @@ export function ScatterFreeGamesWizard({
     });
     const fetchImpl = useStudioApi();
     const [exactPreview, setExactPreview] = useState<ExactPreviewState>({status: "idle"});
+    const [exactElapsedSeconds, setExactElapsedSeconds] = useState(0);
     const exactLifecycle = useRef({generation: 0, active: undefined as AbortController | undefined});
     useEffect(() => {
         const lifecycleRef = exactLifecycle.current;
@@ -106,6 +107,20 @@ export function ScatterFreeGamesWizard({
             lifecycleRef.active?.abort();
         };
     }, [blueprint, symbolId, selectedReels, awards, maxFreeGames, longerDemoReels, fetchImpl]);
+    // The exact request is opaque server work with no progress channel. An elapsed clock is the honest
+    // signal that it is still running, especially once a 25,000-outcome preview passes a few seconds.
+    useEffect(() => {
+        if (exactPreview.status !== "loading") {
+            setExactElapsedSeconds(0);
+            return undefined;
+        }
+        const startedAt = Date.now();
+        setExactElapsedSeconds(0);
+        const timer = window.setInterval(() => {
+            setExactElapsedSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+        }, 1000);
+        return () => window.clearInterval(timer);
+    }, [exactPreview.status]);
     const symbols = asStringList(blueprint.symbols);
     const trimmedId = symbolId.trim();
     let error: string | undefined;
@@ -320,10 +335,11 @@ export function ScatterFreeGamesWizard({
                 </Group>
                 {exactPreview.status === "loading" && (
                     <>
-                        <LoadingState label="Enumerating this setup…" />
-                        <Text size="xs" c="dimmed">
-                            Add is disabled until this exact check finishes, so you can review the RTP first. Cancel
-                            the check if you want to add the demo values without it.
+                        <LoadingState label={`Enumerating this setup… ${exactElapsedSeconds}s`} />
+                        <Text size="xs" c="dimmed" role="status" aria-live="polite">
+                            Add is disabled until this exact check finishes, so you can review the RTP first. It can take
+                            a while for a 25,000-outcome setup; cancel the check if you want to add the demo values
+                            without it.
                         </Text>
                         <Group>
                             <Button

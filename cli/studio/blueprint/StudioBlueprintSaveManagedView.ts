@@ -17,5 +17,12 @@
 export type StudioBlueprintSaveManagedView =
     | {status: "ok"; path: string; name: string; blueprintHash: string; sourceWorkbookPath?: string; conversionEvidencePath?: string}
     | {status: "invalid-name"; error: string}
-    | {status: "unavailable"; error: string; /** The existing Blueprint behind a Game-id collision, when one was found. */ existingProjectPath?: string}
+    | {
+          status: "unavailable";
+          error: string;
+          /** The existing Blueprint behind a Game-id collision, when one was found. */
+          existingProjectPath?: string;
+          /** A free managed Game id close to the requested one; one-click recovery from a collision. */
+          suggestedGameId?: string;
+      }
     | {status: "error"; error: string};

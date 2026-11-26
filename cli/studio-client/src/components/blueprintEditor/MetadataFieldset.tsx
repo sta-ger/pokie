@@ -1,4 +1,5 @@
-import {SimpleGrid, Text, TextInput} from "@mantine/core";
+import {Button, Group, SimpleGrid, Text, TextInput} from "@mantine/core";
+import {useEffect, useRef} from "react";
 import type {ValidationIssue} from "../../api/types";
 import {fieldErrorMessage, fieldWarningMessage} from "../../domain/interpret/BlueprintSections";
 import type {BlueprintMutate} from "../../hooks/useBlueprintEditor";
@@ -29,13 +30,22 @@ export function MetadataFieldset({
     mutate,
     legend = "Metadata",
     issues = [],
+    gameIdConflict,
 }: {
     blueprint: Record<string, unknown>;
     mutate: BlueprintMutate;
     legend?: string;
     issues?: ValidationIssue[];
+    gameIdConflict?: {suggestedGameId: string; onUseSuggested: () => void};
 }) {
     const info = toRecordCopy(blueprint.info);
+    const gameIdRef = useRef<HTMLInputElement>(null);
+    const suggestedGameId = gameIdConflict?.suggestedGameId;
+    useEffect(() => {
+        if (suggestedGameId === undefined) return;
+        gameIdRef.current?.focus();
+        gameIdRef.current?.scrollIntoView({behavior: "smooth", block: "center"});
+    }, [suggestedGameId]);
     const readInfo = (field: InfoField): string => (typeof info[field] === "string" ? (info[field] as string) : "");
 
     const setInfoField = (field: InfoField, value: string): void => {
@@ -75,12 +85,21 @@ export function MetadataFieldset({
             <SimpleGrid cols={{base: 1, sm: 2}} spacing="sm">
                 <div>
                     <TextInput
+                        ref={gameIdRef}
                         label="Game id"
                         value={readInfo("id")}
                         onInput={(event) => setInfoField("id", event.currentTarget.value)}
                         onChange={(event) => setInfoField("id", event.currentTarget.value)}
-                        error={fieldErrorMessage(issues, "info.id")}
+                        error={fieldErrorMessage(issues, "info.id") ?? (gameIdConflict === undefined ? undefined : "That Game id is already taken.")}
                     />
+                    {gameIdConflict !== undefined && (
+                        <Group gap={4} mt={2}>
+                            <Text size="xs" c="dimmed">Try</Text>
+                            <Button size="compact-xs" variant="subtle" onClick={gameIdConflict.onUseSuggested}>
+                                {gameIdConflict.suggestedGameId}
+                            </Button>
+                        </Group>
+                    )}
                     <FieldWarningText message={fieldWarningMessage(issues, "info.id")} />
                 </div>
                 <div>

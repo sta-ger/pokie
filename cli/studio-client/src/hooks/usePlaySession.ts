@@ -1,6 +1,6 @@
 import type {SessionCommand} from "../../../../src/runtime/SessionCommand.js";
 import {useCallback, useRef, useState} from "react";
-import {createPlaySession, findAnyWinPlaySession, findFreeGamesPlaySession, findSymbolWinPlaySession, spinPlaySession} from "../api/apiClient";
+import {createPlaySession, findAnyWinPlaySession, findFreeGamesPlaySession, findSymbolWinPlaySession, spinPlaySession, type PlayScenarioSummary} from "../api/apiClient";
 import {useStudioApi} from "../context/StudioApiProvider";
 import {errorMessage} from "../domain/errorMessage";
 import {describePlaySessionResult, describePlaySpinResult, type PlaySessionResultView, type PlaySpinResultView} from "../domain/interpret/Runtime";
@@ -24,6 +24,10 @@ export function usePlaySession(onRoundRecorded?: () => void) {
     const fetchImpl = useStudioApi();
     const [session, setSession] = useState<PlaySessionView>({status: "idle"});
     const [sessionId, setSessionId] = useState<string | undefined>(undefined);
+    // The server's own account of the most recent scenario search. Kept beside the session rather than
+    // inside it: it describes one action (how many real spins it tried, which round matched), not the
+    // game state that action left behind.
+    const [scenarioSummary, setScenarioSummary] = useState<PlayScenarioSummary | undefined>(undefined);
 
     // Same monotonic-requestId staleness guard pattern used throughout Studio's own page-level hooks,
     // one level simpler here: Play has only ever one in-flight-mutation slot (newSession/spin), never a
@@ -50,6 +54,7 @@ export function usePlaySession(onRoundRecorded?: () => void) {
             const requestId = ++requestIdRef.current;
             const previousSession = activeSessionRef.current;
             const subject = checkpoint === undefined ? "This session" : "Checkpoint restore";
+            setScenarioSummary(undefined);
             setSession({status: "loading", ...(previousSession === undefined ? {} : {previousSession})});
             createPlaySession(fetchImpl, seed, modeName, checkpoint)
                 .then((result) => {
@@ -100,6 +105,9 @@ export function usePlaySession(onRoundRecorded?: () => void) {
             }
             const requestId = ++requestIdRef.current;
             const previousSession = activeSessionRef.current;
+            // A new action supersedes the previous search's account, so an old "found after N spins"
+            // banner can never sit beside a newer round.
+            setScenarioSummary(undefined);
             setSession({status: "loading", ...(previousSession === undefined ? {} : {previousSession})});
             action(activeSessionId)
                 .then((result) => {
@@ -113,6 +121,7 @@ export function usePlaySession(onRoundRecorded?: () => void) {
                     if (described.status === "ok") {
                         activeSessionRef.current = described.session;
                         setSession(described);
+                        if (described.scenario !== undefined) setScenarioSummary(described.scenario);
                     } else if (described.status === "not-found" || described.status === "no-active-project") {
                         // A missing session/project is a stale boundary, not a retryable spin failure.
                         // Clear its identity so the UI cannot offer controls against it as though it worked.
@@ -189,7 +198,8 @@ export function usePlaySession(onRoundRecorded?: () => void) {
         activeSessionIdRef.current = undefined;
         setSession({status: "idle"});
         setSessionId(undefined);
+        setScenarioSummary(undefined);
     }, []);
 
-    return {session, sessionId, newSession, restore: (state: unknown) => newSession(undefined, undefined, state), spin, findAnyWin, findSymbolWin, findFreeGames, resetForProjectSwitch};
+    return {session, sessionId, scenarioSummary, newSession, restore: (state: unknown) => newSession(undefined, undefined, state), spin, findAnyWin, findSymbolWin, findFreeGames, resetForProjectSwitch};
 }

@@ -1000,7 +1000,7 @@ function describeStudioRoundSourceForCard(
         case "outcome-source-sample":
             return "Outcome Source Analysis sample";
         case "simulation-sample":
-            return "Recent Simulation reproduction";
+            return "Simulation round reproduction";
         case "live":
         default:
             return "live spin";
@@ -1024,7 +1024,7 @@ export function describeStudioRoundSource(source: StudioRuntimeSessionView["stud
         case "outcome-source-sample":
             return "Outcome Source Analysis sample";
         case "simulation-sample":
-            return "Replay tab -- Recent Simulation";
+            return "Replay tab -- simulation round";
         default:
             return "Unknown";
     }
@@ -1136,7 +1136,7 @@ function describeLoadedFreshReplay(
         completeness = "Partial -- round-level result only, no per-screen round record for this game.";
     }
     return {
-        source: source === "seedRound" ? "Recreated -- recreate from seed" : "Recreated -- recent simulation",
+        source: source === "seedRound" ? "Recreated -- replay from seed" : "Recreated -- simulation round",
         identities: result ? `replay session ${result.sessionId}, replay job ${result.id}` : "(assigned once reproduced)",
         seed: (result ? result.seed : target.seed) ?? "(freshly generated)",
         versionHash: versionHashParts.length > 0 ? versionHashParts.join(", ") : "(unknown)",

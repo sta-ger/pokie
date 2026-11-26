@@ -69,7 +69,7 @@ export class StudioExactMathService {
         if (mode === undefined) {
             return {
                 status: "stale",
-                message: "An exact outcome table (Outcome Library) exists, but it was computed from a different saved design or POKIE version. Recompute it before treating its numbers as exact for the current design.",
+                message: "An exact outcome table exists, but it was computed from a different saved design or POKIE version. Recompute it before treating its numbers as exact for the current design.",
             };
         }
 

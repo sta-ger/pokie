@@ -3522,27 +3522,27 @@ picked one.
 
 The source choice offers four methods:
 
-- **Recreate from seed** — a **target round number in a new replay session** (required, a positive integer) and an
+- **Replay from seed** — a **target round number in a new replay session** (required, a positive integer) and an
  optional **seed**, same as `pokie replay --round/--seed`. Reproducing always creates a brand-new game session and
  plays it forward from round 1 through the target round — it never looks up an existing session's recorded round,
- even when the seed happens to match one that was recorded before (that's what **Session Spin**/**Replay record**
+ even when the seed happens to match one that was recorded before (that's what **Played rounds**/**Saved round**
  are for). **Load** stages it as the round/seed to reproduce.
-- **Replay record** — paste a replay record JSON (as produced by this same tab's own Export) into a textarea;
+- **Saved round** — paste a replay record JSON (as produced by this same tab's own Export) into a textarea;
  **Validate & load** posts it to `POST /api/project/replays/inspect-artifact` (see below), which applies the exact
  same round/seed validation `POST /api/project/replays` itself would. A structurally invalid nested round record is
  reported back as non-fatal warnings rather than blocking outright — round/seed alone are enough to attempt a
  reproduction. Or pick one directly from a **Recent Replays** list to both load it and mark it as the "expected"
  side for comparison.
-- **Session Spin** — pick a round from a shared, project-scoped recent-spins list (`GET /api/project/rounds`
+- **Played rounds** — pick a round from a shared, project-scoped recent-spins list (`GET /api/project/rounds`
  — see the API section below), optionally filtered down to one session; every real round played anywhere in
- Studio (a Play tab spin/scenario search, an Outcome Source Analysis sample draw, a Replay tab "Recent Simulation"
+ Studio (a Play tab spin/scenario search, an Outcome Source Analysis sample draw, a Replay tab "Simulation"
  reproduction) is recorded into this one list, most-recent-first, capped at the 20 most recent, cleared on project
  switch. This is an already-recorded result, so there's nothing to reproduce — picking one loads straight into its
  own inspect view, with no Reproduce action at all.
-- **Recent Simulation** — pick a completed simulation report, then a round number within it, and **Load** stages
+- **Simulation** — pick a completed simulation report, then a round number within it, and **Load** stages
  that round to reproduce with the simulation's own seed.
 
-For a loaded **Replay record** record, the loaded card first runs it through a reproducibility check
+For a loaded **Saved round** record, the loaded card first runs it through a reproducibility check
 (`describeReplayReproducibility`): reproducing forward from round 1 is only a *verifiable* match of the original
 result when the record's seed and game id/version provenance are known and match the currently loaded project, and
 — whenever the record carries a round record at all — its `stateBefore`/`stateAfter` and a `debug.reelStops` RNG
@@ -3550,7 +3550,7 @@ trace are present to check a fresh reproduction against. A round record missing 
 kept the round-level result, or a hand-trimmed record) disables **Reproduce** with a specific reason and
 remediation (add the missing field) rather than silently running an unverifiable replay.
 
-**Reproduce** (not offered for Session Spin, which has nothing to reproduce) runs the replay as a background job,
+**Reproduce** (not offered for Played rounds, which has nothing to reproduce) runs the replay as a background job,
 in bounded chunks against one long-lived session — the exact same reason [Simulation](#simulation) is chunked:
 replaying a large `round` in a single call would block the whole HTTP server's event loop for as long as it took.
 `POST /api/project/replays` therefore returns immediately (`202`) with a **queued** job; the action bar then shows
@@ -3567,13 +3567,13 @@ only the *scheduling* differs. Studio bounds `round` to an explicit safety ceili
 100,000) — `pokie replay` itself has no such limit; this mostly bounds how long a single replay job can occupy its
 project's one-active-replay-at-a-time slot.
 
-The result view shows, for **Session Spin**: a read-only table (game, session id, this session's own round number,
+The result view shows, for **Played rounds**: a read-only table (game, session id, this session's own round number,
 request id, recorded-at timestamp, source — Play tab spin vs. an outcome-library draw vs. an Outcome Source
-Analysis sample vs. a Recent Simulation reproduction — credits, bet, win), the spin's own **screen** grid, and an
+Analysis sample vs. a Simulation reproduction — credits, bet, win), the spin's own **screen** grid, and an
 Advanced disclosure with debug data/raw before-after state/the full session JSON.
 For every other method, once a round has actually been reproduced, a video-slot round's full `RoundRecordJson`
 (see [Round Records](round-records.md)) renders through the same `RoundRecordInspector` component every
-other round-record view uses, plus — whenever an "expected" round record is loaded (a pasted/picked Replay record)
+other round-record view uses, plus — whenever an "expected" round record is loaded (a pasted/picked Saved round)
 — a match/mismatch comparison banner covering **screen**, **wins**, **totalPayout**, **steps**, **featureEvents**,
 **state** (the before/after transition), and **rngReelStops** (an explicit `debug.reelStops` field only) as
 independent dimensions, each `match`/`mismatch`/`unavailable` (a dimension missing or malformed on either side is
@@ -3581,7 +3581,7 @@ independent dimensions, each `match`/`mismatch`/`unavailable` (a dimension missi
 plain round summary (game, round, seed, total bet/payout, timestamp, duration) and screen (or a "no screen
 available" notice for a session without `getSymbolsCombination()`).
 
-**Download JSON** downloads the result as JSON: for Session Spin, a client-built blob of the full session view; for
+**Download JSON** downloads the result as JSON: for Played rounds, a client-built blob of the full session view; for
 every other method, it links to `GET /api/project/replays/:id/download` — only available once the job is
 `"completed"`; a failed/cancelled job has no descriptor to download, same as a failed/cancelled simulation having
 no report.
@@ -3592,7 +3592,7 @@ exactly for the same seed/round, but a game whose outcome doesn't depend solely 
 A **Recent Replays** list (shown at the bottom of the page, below the source choice/loaded card/action bar) lists
 every replay job for the active project regardless of status (including a still-running one, unlike Simulation's
 Reports list which only ever shows completed jobs), most-recently-started first, each with **Inspect** (fetch and
-load it straight into the loaded card/result view) and **Reproduce & compare** (switch to Replay record, load it
+load it straight into the loaded card/result view) and **Reproduce & compare** (switch to Saved round, load it
 as the "expected" side) actions. Studio keeps at most the 20 most recent *terminal* (completed/failed/cancelled)
 replays per project (oldest evicted first) — a queued/running job is never evicted. This is a process-local,
 in-memory limit, same as Reports: restarting Studio clears it, and a replay from one project becomes unreachable (a
@@ -3811,7 +3811,7 @@ client, even for a load/validation failure.
  replay hasn't completed yet (still queued/running) or completed without a descriptor (failed/cancelled) — the
  message names which.
 - `POST /api/project/replays/inspect-artifact` `{"round": number, "seed"?: string, "artifact"?: unknown}` — the
- Replay tab's own "Replay record" Find/Load steps validating a pasted round record JSON before attempting a
+ Replay tab's own "Saved round" Find/Load steps validating a pasted round record JSON before attempting a
  reproduction: applies the exact same `round`/`seed` validation `POST /api/project/replays` itself applies (so
  this can never accept something the real replay start would then reject), and, only if `artifact` is present,
  runs it through `RoundRecordValidator`. `200 {"round": number, "seed"?: string, "artifactWarnings": string[]}`
@@ -3819,7 +3819,7 @@ client, even for a load/validation failure.
  since `round`/`seed` alone are enough to attempt a reproduction. `400 {"error": "..."}` for an invalid
  `round`/`seed`; `409 {"error": "No active project."}` in Home mode.
 - `GET /api/project/rounds` — the active project's shared, cross-tab recent-spins list (see
- [Session Spin](#replay) above), most-recent-first: `StudioRuntimeSessionView[]`, each including `studioRound`
+ [Played rounds](#replay) above), most-recent-first: `StudioRuntimeSessionView[]`, each including `studioRound`
  (session-local round index), `studioRequestId` (when the producer supplied one), `studioRecordedAt`,
  `studioSource` (which tab/route produced it — `"play"`, `"play-outcome-source"`, `"outcome-source-sample"`, or
  `"simulation-sample"`). Always `200`, possibly an empty array (nothing played yet, or the project was since
