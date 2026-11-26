@@ -801,6 +801,7 @@ test.describe.serial("managed project labels", () => {
         await expect.poll(() => page.getByText(/outcome records/).count(), {timeout: 30_000}).toBeGreaterThan(1);
         await expect(page.getByText(/unknown outcome records/)).toHaveCount(0);
         await expect(page.getByRole("button", {name: "Show all exact math figures", exact: true})).toBeVisible({timeout: 120_000});
+        await expect(page.getByText(/not as low, medium or high/)).toBeVisible();
         await page.getByRole("button", {name: "Show all exact math figures", exact: true}).click();
         await expect(page.getByText(/Exact enumeration of/)).toBeVisible();
         await expect(page.getByText(/Outcome table starter-slot/)).toBeVisible();

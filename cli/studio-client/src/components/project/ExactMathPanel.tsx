@@ -6,6 +6,7 @@ import {orderContributionEntries} from "../../domain/contributionTableOrder";
 import {describeFeatureEventLabel} from "../../domain/featureEventLabels";
 import {formatOneIn} from "../../domain/formatOneIn";
 import {describeRtpSanityWarning} from "../../../../../src/reporting/describeRtpSanityWarning";
+import {VOLATILITY_SCALE_DECISION} from "../../domain/volatilityScale";
 import {
     cancelOutcomeLibraryGeneration,
     estimateOutcomeLibraryGeneration,
@@ -484,9 +485,9 @@ export function ExactMathPanel({
                         payout per round, in bet units. Max win is the largest single-round paid-spin payout, also in
                         bet units; it can exceed the largest paytable entry when several lines win in the same round.
                         Simulation reports whole paid rounds; when the design has free games or other features, its
-                        volatility and largest observed win include them and can be larger. Studio reports the standard
-                        deviation instead of a low/medium/high class because there is no single industry threshold for
-                        those labels. With a free-games cap, the whole-round maximum shown here is an upper bound:
+                        volatility and largest observed win include them and can be larger. Product decision: Studio
+                        reports the standard deviation instead of a low/medium/high class because there is no single
+                        industry threshold for those labels. With a free-games cap, the whole-round maximum shown here is an upper bound:
                         the paid-spin maximum plus the cap in free spins, each at the paid-spin maximum. Without a cap,
                         retriggers can chain indefinitely, so the theoretical whole-round maximum is unbounded even
                         when expected RTP is finite. Simulation&apos;s largest observed win is a sample, not a
@@ -879,6 +880,9 @@ function KeyNumbersCard({
                             </Badge>
                         )}
                     </Group>
+                    <Text size="xs" c="dimmed" mt="sm" data-pokie-volatility-policy="true">
+                        {VOLATILITY_SCALE_DECISION}
+                    </Text>
                 </div>
                 {onOpenPlay !== undefined && (
                     <Button size="md" onClick={onOpenPlay}>
