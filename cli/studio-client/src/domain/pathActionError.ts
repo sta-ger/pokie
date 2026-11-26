@@ -4,7 +4,7 @@
 // StudioFsBrowseService's own `StudioFsBrowseErrorReason` naming so a caller's remediation copy stays
 // consistent with PathInput's own resolved-path hint. `schema` covers the one category browse never
 // produces: a missing/malformed value rejected before any filesystem access is even attempted.
-export type PathActionErrorReason = "network" | "absent" | "permission" | "type" | "schema" | "destination" | "name" | "other";
+export type PathActionErrorReason = "network" | "absent" | "permission" | "type" | "schema" | "destination" | "name" | "workbook" | "other";
 
 type PathActionIssue = {status: string; remediation: string};
 
@@ -23,6 +23,9 @@ export function classifyPathActionErrorReason(message: string): PathActionErrorR
     }
     if ((/is required\.|must be a non-empty string|is not valid JSON|unexpected token .*json/i).test(message)) {
         return "schema";
+    }
+    if ((/not a zip archive|not an? (?:valid )?xlsx|invalid (?:xlsx|workbook|worksheet)|could not read .*par sheet|corrupt.*(?:xlsx|workbook)/i).test(message)) {
+        return "workbook";
     }
     if ((/no free managed project name|no available managed project name|Game id .* already exists|already exists.*Choose a different Game id/i).test(message)) {
         return "name";
@@ -51,6 +54,10 @@ const PATH_ACTION_ISSUE_COPY: Record<PathActionErrorReason, (subject: string) =>
     name: () => ({
         status: "That Game id is already taken.",
         remediation: "Choose a different Game id, or open the existing project.",
+    }),
+    workbook: (subject) => ({
+        status: `${subject} isn't a readable PAR workbook.`,
+        remediation: "Choose an .xlsx file exported from POKIE or another spreadsheet tool, then try again.",
     }),
     other: (subject) => ({
         status: `${subject} could not be completed.`,

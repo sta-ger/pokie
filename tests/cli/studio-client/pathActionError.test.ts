@@ -37,6 +37,14 @@ describe("describePathActionError", () => {
         expect(describePathActionError("Your game", raw)).toMatch(/needs a destination Studio can use/i);
     });
 
+    it("turns a non-workbook file into an actionable workbook message", () => {
+        const raw = 'Could not read "/tmp/not-par.xlsx" as a PAR sheet XLSX workbook: The input is not a ZIP archive, so it cannot be an XLSX file.';
+        expect(classifyPathActionErrorReason(raw)).toBe("workbook");
+        expect(describePathActionError("The PAR sheet file", raw)).toBe(
+            "The PAR sheet file isn't a readable PAR workbook. Choose an .xlsx file exported from POKIE or another spreadsheet tool, then try again.",
+        );
+    });
+
     it("keeps ordinary filesystem failures classified as before", () => {
         expect(classifyPathActionErrorReason("ENOENT: no such file or directory")).toBe("absent");
         expect(classifyPathActionErrorReason("EACCES: permission denied")).toBe("permission");
