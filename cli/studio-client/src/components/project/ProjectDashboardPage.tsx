@@ -1256,6 +1256,8 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
 
     const [closeError, setCloseError] = useState<string>();
     const [copyPathNotice, setCopyPathNotice] = useState<string>();
+    const playPending = (play.session.status === "ok" && play.session.session.logicalRound?.status === "pending")
+        || ("previousSession" in play.session && play.session.previousSession?.logicalRound?.status === "pending");
     const [jobOutputNotice, setJobOutputNotice] = useState<string>();
     const [jobOutputActionsUnavailableReason, setJobOutputActionsUnavailableReason] = useState<string>();
     const closeGuard = useDoubleSubmitGuard();
@@ -1281,19 +1283,24 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             .finally(() => closeGuard.end());
     };
     const handleClose = (): void => {
-        if (!hasActiveOperation && !gameModelDirty) {
+        if (!hasActiveOperation && !gameModelDirty && !playPending) {
             closeProjectAndReturnToProjects();
             return;
         }
         const reasons = [
             hasActiveOperation ? `active Studio operations (${activeOperationNames.join(", ") || "loading"})` : undefined,
             gameModelDirty ? "unsaved game-design changes" : undefined,
+            playPending ? "an in-progress Play round" : undefined,
         ].filter((reason): reason is string => reason !== undefined);
         confirm(`This project has ${reasons.join(" and ")}. Close the project anyway?`, closeProjectAndReturnToProjects);
     };
     // Visiting Home leaves server-owned work running. GameModelTab's router
     // blocker still guards unsaved edits; only explicit Close drains the project.
     const returnToProjects = (): void => {
+        if (playPending) {
+            confirm("An in-progress Play round will be discarded. Leave the project anyway?", () => navigate("/home/projects"));
+            return;
+        }
         navigate("/home/projects");
     };
 

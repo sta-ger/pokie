@@ -1279,6 +1279,12 @@ test("Play offers a one-click finish and labels a feature screen's own win", asy
     // A scenario search cannot start from the middle of an unsettled feature.
     await expect(page.getByRole("button", {name: "Find any win"})).toBeDisabled();
     await expect(page.getByText("Finish the current paid round before starting a scenario search.")).toBeVisible();
+    // Leaving the project is another silent way to lose an unsettled feature.
+    await page.getByRole("button", {name: "Close project"}).click();
+    const closeDialog = page.getByRole("dialog");
+    await expect(closeDialog).toContainText(/in-progress Play round/i);
+    await closeDialog.getByRole("button", {name: "Cancel"}).click();
+    await expect(finish).toBeVisible();
     // Resetting a session in the middle of a feature must not silently discard the paid round.
     await page.getByRole("button", {name: "Reset Play session"}).click();
     const resetDialog = page.getByRole("dialog");
