@@ -759,7 +759,9 @@ export function ReplayTab({
                             />
                             {(() => {
                                 return filteredSpins.length === 0 ? (
-                                    <EmptyState message="No spins recorded for the selected session." />
+                                    <EmptyState message={winsOnly
+                                        ? "No winning spins match these filters. Clear “Only winning spins” to see every recorded spin."
+                                        : "No spins recorded for the selected session."} />
                                 ) : (
                                     <>
                                         <Text size="xs" c="dimmed" mb="xs">Spins from the same paid round are grouped under one header.</Text>
