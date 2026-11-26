@@ -1136,9 +1136,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         simulation.invalidateResult();
         // A Play session is materialized from the design at session creation. Once the saved design
         // changes, continuing to spin the old runtime would silently validate stale math. Drop the
-        // session and tell the author why on the next Play visit.
-        if (play.sessionId !== undefined) {
-            play.resetForProjectSwitch();
+        // session (including an in-flight session creation) and tell the author why on the next Play visit.
+        const hadPlaySession = play.sessionId !== undefined || play.session.status !== "idle";
+        play.resetForProjectSwitch();
+        if (hadPlaySession) {
             setPlayResetNotice("The saved design changed, so the Play session was reset. Start a new session to play the current design.");
         }
         reportRequestIdRef.current++;
@@ -1169,6 +1170,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         setReportsView({status: "empty"});
         setReportsError(undefined);
         setRunAgainNotice(undefined);
+        setPlayResetNotice(undefined);
         setOptimizerSourceChange(undefined);
         expectedReplayRequestIdRef.current++;
         setExpectedReplay({status: "empty"});

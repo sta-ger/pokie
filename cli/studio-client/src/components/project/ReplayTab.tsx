@@ -577,6 +577,15 @@ export function ReplayTab({
                 To inspect a spin you just played, choose Played rounds and select it from the list. Once a spin is
                 loaded, its grid, wins, paylines, paytable, and export download are available below.
             </Text>
+            {savedExactMathStale && (
+                <Alert color="yellow" variant="light" title="The saved design changed after its exact outcome table was generated" mb="md">
+                    <Text size="sm">
+                        A round recorded before that change may not reproduce against the current design. Recompute exact
+                        math on Overview, or record a new round against the current design. Inspection of recorded
+                        rounds below still works.
+                    </Text>
+                </Alert>
+            )}
 
             <SegmentedControl
                 value={findMethod}
@@ -1038,13 +1047,12 @@ export function ReplayTab({
                                     </Button>
                                 </QuickActions>
                             </PageSection>
-                            {(!selectedSpinMatchesCurrentGame || savedExactMathStale) && (
-                                <Alert color="yellow" variant="light" title="This spin may not reproduce against the current design" mb="sm">
+                            {!selectedSpinMatchesCurrentGame && (
+                                <Alert color="yellow" variant="light" title="This spin belongs to a different game build" mb="sm">
                                     <Text size="sm">
-                                        {selectedSpinMatchesCurrentGame
-                                            ? "The saved design changed after its exact outcome table was generated."
-                                            : `This spin belongs to ${selectedSpin.game.name} v${selectedSpin.game.version}; the current saved design is ${currentGame?.id} v${currentGame?.version}.`}
-                                        {" "}If it was recorded before that change, open the matching design/version to reproduce it, or record a new round against the current design. Inspection below still works.
+                                        This spin belongs to {selectedSpin.game.name} v{selectedSpin.game.version}; the current saved design is{" "}
+                                        {currentGame?.id} v{currentGame?.version}. Open the matching design/version to reproduce it,
+                                        or record a new round against the current design. Inspection below still works.
                                     </Text>
                                 </Alert>
                             )}
