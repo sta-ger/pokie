@@ -163,6 +163,7 @@ export function PlayTab({
     session,
     sessionId,
     scenarioSummary,
+    sessionNotice,
     onNewSession,
     onSpin,
     onFindAnyWin,
@@ -174,6 +175,7 @@ export function PlayTab({
     session: PlaySessionView;
     sessionId: string | undefined;
     scenarioSummary?: PlayScenarioSummary;
+    sessionNotice?: string;
     onNewSession: (seed?: string, modeName?: string) => void;
     onSpin: (bet?: number, mode?: string, delivery?: "stepwise" | "composite") => void;
     onFindAnyWin: (bet?: number, mode?: string) => void;
@@ -276,6 +278,13 @@ export function PlayTab({
             return availableBetModes[0] ?? null;
         });
     }, [activeSession, availableBetModes, currentBetMode]);
+    useEffect(() => {
+        // A new game/session may not contain the symbol chosen for Find symbol win. Never leave a
+        // selection that the current game cannot actually search for.
+        if (selectedSymbol !== null && (availableSymbols === undefined || !availableSymbols.includes(selectedSymbol))) {
+            setSelectedSymbol(null);
+        }
+    }, [availableSymbols, selectedSymbol]);
 
     // "no-active-project"/"not-found" are already plain, specific messages -- shown as-is. "error"/
     // "blocked" carry the underlying server's own raw text (a caught exception's message, or a game's
@@ -365,6 +374,11 @@ export function PlayTab({
                     does not place a bet. No game server or extra setup is needed. A page reload starts a fresh Play
                     session; earlier spins stay available under Replay → Played rounds.
                 </Text>
+                {sessionNotice !== undefined && (
+                    <Alert color="blue" variant="light" mb="sm" role="status">
+                        {sessionNotice}
+                    </Alert>
+                )}
                 {activeSession?.logicalRound && (
                     <Text size="sm">{describeRoundProgress(activeSession.logicalRound)}</Text>
                 )}

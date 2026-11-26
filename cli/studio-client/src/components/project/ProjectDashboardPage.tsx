@@ -1086,6 +1086,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     }, [fetchImpl]);
 
     const play = usePlaySession(refreshRecentSpins);
+    const [playResetNotice, setPlayResetNotice] = useState<string | undefined>(undefined);
     const resetPlayForProjectSwitch = play.resetForProjectSwitch;
     const deployment = useDeploymentManager();
 
@@ -1133,6 +1134,13 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         // describe the previous payout after the file already contained the new one).
         runValidate();
         simulation.invalidateResult();
+        // A Play session is materialized from the design at session creation. Once the saved design
+        // changes, continuing to spin the old runtime would silently validate stale math. Drop the
+        // session and tell the author why on the next Play visit.
+        if (play.sessionId !== undefined) {
+            play.resetForProjectSwitch();
+            setPlayResetNotice("The saved design changed, so the Play session was reset. Start a new session to play the current design.");
+        }
         reportRequestIdRef.current++;
         compareRequestIdRef.current++;
         setReportDetail({status: "empty"});
@@ -1370,7 +1378,15 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             (!simulation.resultCurrent || job.id !== simulation.job?.id)
             ? {...job, result: {...job.result, warnings: [...(job.result.warnings ?? []), "Historical simulation result — not validated against the current saved design. Run a new simulation for current results."]}}
             : job;
-        return <JobCard job={displayedJob} cancellationPending={commonJobs.pendingIds.includes(job.id) || (job.id === simulation.currentJobId && simulation.cancellationRequested)} onCancel={(id) => id === simulation.currentJobId ? simulation.cancel() : commonJobs.cancel(id)} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={job.operation === "project-open-materialization" ? reopenJobProject : openJobOutput} onRevealOutput={job.operation === "project-open-materialization" && jobOutputActionsUnavailableReason !== undefined ? undefined : revealJobOutput} onInspectOutput={inspectJobOutput} outputActionsUnavailableReason={job.operation === "project-open-materialization" ? undefined : jobOutputActionsUnavailableReason} key={job.id} />;
+        return <JobCard job={displayedJob} cancellationPending={commonJobs.pendingIds.includes(job.id) || (job.id === simulation.currentJobId && simulation.cancellationRequested)} onCancel={(id) => {
+            // The workflow's own Cancel asks for confirmation; the retained-job card must not provide
+            // a silent second path that discards the same long-running simulation.
+            if (id === simulation.currentJobId) {
+                confirm("Cancel the running simulation?", simulation.cancel);
+                return;
+            }
+            commonJobs.cancel(id);
+        }} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={job.operation === "project-open-materialization" ? reopenJobProject : openJobOutput} onRevealOutput={job.operation === "project-open-materialization" && jobOutputActionsUnavailableReason !== undefined ? undefined : revealJobOutput} onInspectOutput={inspectJobOutput} outputActionsUnavailableReason={job.operation === "project-open-materialization" ? undefined : jobOutputActionsUnavailableReason} key={job.id} />;
     };
 
     if (header.status === "empty") {
@@ -1531,7 +1547,11 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     session={play.session}
                                     sessionId={play.sessionId}
                                     scenarioSummary={play.scenarioSummary}
-                                    onNewSession={play.newSession}
+                                    sessionNotice={playResetNotice}
+                                    onNewSession={(seed, modeName) => {
+                                        setPlayResetNotice(undefined);
+                                        play.newSession(seed, modeName);
+                                    }}
                                     onRestore={header.status === "loaded" && header.type === "wasm" && header.capabilities.includes("wasm.runtime.serialize") ? play.restore : undefined}
                                     onSpin={play.spin}
                                     onFindAnyWin={play.findAnyWin}

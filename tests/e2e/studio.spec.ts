@@ -969,6 +969,29 @@ test.describe.serial("managed project labels", () => {
         await expect(page.getByText(/Structure valid — (no exact outcome table yet|exact outcome table is stale|exact outcome table available)/)).toBeVisible({timeout: 30_000});
     });
 
+    test("saving a design resets a Play session created from the old design", async ({page}) => {
+        await page.goto("/");
+        await page.getByRole("button", {name: "Play", exact: true}).click();
+        const start = page.getByRole("button", {name: "Start playing"});
+        await expect(start).toBeVisible({timeout: 60_000});
+        await start.click();
+        const spin = page.getByRole("button", {name: "Spin", exact: true});
+        await expect(spin).toBeVisible({timeout: 60_000});
+        await spin.click();
+        await expect(page.getByText(/This paid round is complete/).first()).toBeVisible({timeout: 30_000});
+
+        await page.getByRole("button", {name: "Game design", exact: true}).click();
+        await page.getByRole("button", {name: "Edit", exact: true}).first().click();
+        await page.getByRole("textbox", {name: "Description (optional)"}).fill("Play reset probe");
+        await page.getByRole("button", {name: "Save", exact: true}).click();
+        await page.getByRole("button", {name: "Play", exact: true}).click();
+
+        // The old runtime was materialized from the previous design. It must not keep spinning
+        // silently after the source changes.
+        await expect(page.getByRole("button", {name: "Start playing"})).toBeVisible({timeout: 60_000});
+        await expect(page.getByText(/saved design changed, so the Play session was reset/)).toBeVisible();
+    });
+
     test("Simulation review shows the exact-math reference for a current sample", async ({page}) => {
         await page.goto("/");
         // The exact card may still be loading when the page first paints; wait for whichever action it
