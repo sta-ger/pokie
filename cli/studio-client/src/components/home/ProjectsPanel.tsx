@@ -122,6 +122,7 @@ export function ProjectsPanel({
     const [location, setLocation] = useState("");
     const [importView, setImportView] = useState<ImportView>({status: "idle"});
     const [registerName, setRegisterName] = useState("");
+    const [removeError, setRemoveError] = useState<string | undefined>(undefined);
     const [openingLocation, setOpeningLocation] = useState<string | undefined>(undefined);
     const [relocatingEntry, setRelocatingEntry] = useState<StudioProjectRegistryView | undefined>(undefined);
     const [relocationLocation, setRelocationLocation] = useState("");
@@ -182,6 +183,7 @@ export function ProjectsPanel({
                 cancelled = true;
             };
         }
+        setRemoveError(undefined);
         // Preserve a just-saved project's optimistic row while this reconciliation request is in
         // flight. Otherwise opening Projects immediately after Save would briefly erase that row.
         setListView((previous) => previous.status === "loaded" ? previous : {status: "loading"});
@@ -236,10 +238,18 @@ export function ProjectsPanel({
     };
 
     const handleRemove = (entry: StudioProjectRegistryView): void => {
+        setRemoveError(undefined);
         confirm(`Remove "${entry.name}" from Projects? This only forgets it here -- nothing on disk is deleted.`, () => {
             removeProjectRegistryEntry(fetchImpl, entry.location)
-                .then(() => removeEntry(entry.location))
-                .catch((error: unknown) => setListView({status: "error", message: describeProjectActionError("Removing this game", errorMessage(error))}));
+                .then(() => {
+                    setRemoveError(undefined);
+                    removeEntry(entry.location);
+                })
+                .catch((error: unknown) => {
+                    // A failed removal must not replace the whole loaded registry with an error screen.
+                    // Keep every row visible so the author can retry just this action.
+                    setRemoveError(describeProjectActionError("Removing this game", errorMessage(error)));
+                });
         });
     };
 
@@ -519,6 +529,7 @@ export function ProjectsPanel({
                 {listView.status === "loaded" && (
                     <>
                         {listView.openError && <ErrorState message={listView.openError.message} detail={listView.openError.detail} />}
+                        {removeError !== undefined && <ErrorState message={removeError} />}
                         <QuickActions>
                             <TextInput
                                 label="Search projects"

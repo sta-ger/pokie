@@ -1221,6 +1221,11 @@ export function BlueprintEditorPage({
     // keeping the old red error (and its suggestion) visible would be misleading.
     const dismissSaveFailureOnGameIdEdit = (): void => {
         if (managedSaveView.status !== "failed") return;
+        if (managedSaveView.suggestedGameId === undefined
+            && managedSaveView.existingProjectPath === undefined
+            && !(/Game id|already exists/i).test(managedSaveView.message)) {
+            return;
+        }
         setManagedSaveView({status: "idle"});
         setExistingProjectOpenError(undefined);
     };

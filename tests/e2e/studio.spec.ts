@@ -435,6 +435,36 @@ test("an interrupted project opening appears under Needs attention, not Active j
     await expect(page.getByRole("heading", {name: "Needs attention"})).toHaveCount(0);
 });
 
+test("a failed project removal keeps the loaded project list visible", async ({page}) => {
+    const entry = {
+        location: "/tmp/remove-failure.blueprint.json",
+        name: "Remove Failure Probe",
+        type: "blueprint",
+        capabilities: ["blueprint.build"],
+        origin: "managed",
+        lastOpenedAt: new Date().toISOString(),
+        status: "ok",
+    };
+    await page.route("**/api/home/projects/registry**", (route) => {
+        if (route.request().url().includes("/registry/remove")) {
+            return route.fulfill({status: 500, contentType: "application/json", body: JSON.stringify({error: "Registry storage is temporarily unavailable."})});
+        }
+        return route.request().method() === "GET"
+            ? route.fulfill({status: 200, contentType: "application/json", body: JSON.stringify([entry])})
+            : route.continue();
+    });
+    await page.goto("/#/home/projects");
+    const row = page.getByRole("row", {name: /Remove Failure Probe/});
+    await expect(row).toBeVisible({timeout: 30_000});
+    await row.getByRole("button", {name: "Remove", exact: true}).click();
+    await page.getByRole("dialog").getByRole("button", {name: "Confirm"}).click();
+
+    await expect(page.getByText(/Registry storage is temporarily unavailable|Removing this game/).first()).toBeVisible({timeout: 15_000});
+    // The list is still usable after the failed write; only the error is new.
+    await expect(row).toBeVisible();
+    await expect(row.getByRole("button", {name: "Remove", exact: true})).toBeEnabled();
+});
+
 test("multiple historical failed openings collapse into one reviewable group", async ({page}) => {
     const jobs = [1, 2].map((index) => ({
         id: `recovery-group-${index}`,
