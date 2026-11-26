@@ -803,6 +803,14 @@ export class StudioSimulationService {
 
     // Freshness is optional: inventory failure must neither reject supported work
     // nor turn an unavailable source into a verified current result.
+    // Used by report downloads: a Studio-attached exact reference is only valid for a report whose own
+    // source revision still matches the current saved design. Missing revision data means "cannot prove
+    // current", so the caller must omit the comparison rather than attach a stale one.
+    // eslint-disable-next-line @typescript-eslint/member-ordering -- download freshness helper intentionally stays beside readSourceRevision
+    public isSourceCurrent(projectRoot: string, sourceRevision: string | undefined): boolean {
+        return sourceRevision !== undefined && this.readSourceRevision(projectRoot) === sourceRevision;
+    }
+
     private readSourceRevision(projectRoot: string): string | undefined {
         try {
             return projectRevision({rootPath: projectRoot, type: isWasmComponentFile(projectRoot) ? "wasm" : "tsPackage"});

@@ -11,6 +11,7 @@ export class VideoSlotWithFreeGamesConfig<T extends string | number | symbol = s
 implements VideoSlotWithFreeGamesConfigRepresenting<T> {
     private readonly baseConfig: VideoSlotConfig<T>;
     private readonly freeGamesForScattersMap: Record<T, Record<number, number>>;
+    private maxFreeGames: number | undefined;
 
     // Direct callers keep convenience grants by default; authored assembly can pass an empty map.
     constructor(
@@ -69,6 +70,17 @@ implements VideoSlotWithFreeGamesConfigRepresenting<T> {
             this.freeGamesForScattersMap[symbolId] = {};
         }
         this.freeGamesForScattersMap[symbolId][numberOfSymbols] = freeGamesNum;
+    }
+
+    public getMaxFreeGames(): number | undefined {
+        return this.maxFreeGames;
+    }
+
+    public setMaxFreeGames(value: number | undefined): void {
+        if (value !== undefined && (!Number.isSafeInteger(value) || value < 1)) {
+            throw new Error(`maxFreeGames must be a positive safe integer, got ${String(value)}.`);
+        }
+        this.maxFreeGames = value;
     }
 
     public isSymbolWild(symbolId: T): boolean {

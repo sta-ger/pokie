@@ -29,4 +29,10 @@ export class InMemoryStudioProjectRegistry implements StudioProjectRegistry {
         this.entries = this.entries.filter((existing) => existing.location !== location);
         return Promise.resolve();
     }
+
+    public removeMany(locations: readonly string[]): Promise<void> {
+        const removed = new Set(locations);
+        this.entries = this.entries.filter((existing) => !removed.has(existing.location));
+        return Promise.resolve();
+    }
 }

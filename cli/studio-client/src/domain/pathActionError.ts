@@ -24,7 +24,7 @@ export function classifyPathActionErrorReason(message: string): PathActionErrorR
     if ((/is required\.|must be a non-empty string|is not valid JSON|unexpected token .*json/i).test(message)) {
         return "schema";
     }
-    if ((/no free managed project name|no available managed project name/i).test(message)) {
+    if ((/no free managed project name|no available managed project name|Game id .* already exists|already exists.*Choose a different Game id/i).test(message)) {
         return "name";
     }
     if ((/safe default project location|choose a destination directory explicitly|managed project location|no available managed project/i).test(message)) {
@@ -46,9 +46,11 @@ const PATH_ACTION_ISSUE_COPY: Record<PathActionErrorReason, (subject: string) =>
         status: `${subject} needs a destination Studio can use.`,
         remediation: "Use a different Game id, or start Studio from a folder with a writable POKIE Projects location, then try again.",
     }),
-    name: (subject) => ({
-        status: `${subject} name is already taken.`,
-        remediation: "Choose a different Game id; Studio could not find a free project folder after 1000 attempts.",
+    // This reason is only produced by the managed-project Game-id collision, so name the id
+    // directly instead of turning the generic subject ("Your game") into "Your game name".
+    name: () => ({
+        status: "That Game id is already taken.",
+        remediation: "Choose a different Game id, or open the existing project.",
     }),
     other: (subject) => ({
         status: `${subject} could not be completed.`,
@@ -64,4 +66,27 @@ const PATH_ACTION_ISSUE_COPY: Record<PathActionErrorReason, (subject: string) =>
 export function describePathActionError(subject: string, message: string): string {
     const {status, remediation} = PATH_ACTION_ISSUE_COPY[classifyPathActionErrorReason(message)](subject);
     return `${status} ${remediation}`;
+}
+
+// "Open existing project" can still fail for a source the collision check could not vet (a drive
+// disconnected between the save check and the open, a package that no longer loads, ...). Never show
+// the raw `ENOTDIR`/`package.json` text to a math author: name the recoverable choice instead.
+export function describeExistingProjectOpenError(error: unknown): string {
+    const message = error instanceof Error ? error.message : String(error);
+    const detail = typeof (error as {detail?: unknown} | null)?.detail === "string" ? (error as {detail: string}).detail : "";
+    const combined = detail.length > 0 ? `${message}\n${detail}` : message;
+    if ((/ENOTDIR|not a directory|package\.json/i).test(combined)) {
+        return "That existing project could not be opened. It may be an older POKIE project or a damaged file. Choose a different Game id to save a new design, or return to Your projects and repair the old one.";
+    }
+    return describePathActionError("The existing project", combined);
+}
+
+// The generic "Game id already taken" copy correctly offers "open the existing project", but only
+// when Studio actually returned a path it can open. A collision with an older/damaged file has no such
+// action; keep its recovery copy from promising a button that is not there.
+export function describeManagedSaveFailure(message: string): string {
+    if ((/cannot be opened as a current POKIE project/i).test(message)) {
+        return "That Game id belongs to a game design Studio can't open as a current project. Choose a different Game id, or move or repair the old file if you still need it.";
+    }
+    return describePathActionError("Your game", message);
 }

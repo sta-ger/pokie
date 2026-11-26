@@ -3,8 +3,8 @@
 `pokie optimize SOURCE --policy request.json [--out NEW_DESTINATION]` and
 Studio Project → Overview → **Optimize math** use `ProjectOptimizationService`,
 the same operation available from the package root to ESM and `require()` callers.
-Studio checks tuning support, starts a durable cancellable job, retains its
-result/evidence across reload, and saves a reviewed candidate only on request.
+Studio checks the submitted settings locally (Run does this automatically), starts a durable
+cancellable job, retains its result/evidence across reload, and saves a reviewed candidate only on request.
 Applying reviewed changes to an authored source asks for confirmation and
 retains a one-step undo for 15 minutes, until the source changes, or until
 Studio restarts. The ordinary `pokie` / `pokie SOURCE` Studio startup is unchanged.
@@ -38,7 +38,7 @@ even when the user supplies no locks.
 
 | Input/output ProjectType | Concrete finite workflow and trusted source |
 | --- | --- |
-| Blueprint | Existing authored paytable multipliers; literal strips or weighted whole-sequence reels; existing authored bets. Returns Blueprint JSON. |
+| Blueprint | Existing authored paytable multipliers and free-game award counts; literal strips or weighted whole-sequence reels; existing authored bets. Returns Blueprint JSON. |
 | PAR workbook | Existing paytable cells in a lossless workbook; edits the workbook in place in a detached copy, updates its origin hash, and reimports it. Ignored/defaulted/formula features fail before candidate writes. Returns XLSX. |
 | TS package | An author-declared `pokie-tuning.json` v1 interface binds a JSON parameter Blueprint, permitted paytable paths, every custom source-file hash, and executable `getConfigHash()` / exact enumeration. Copies the package and edits only parameters and their interface hash; preserves custom code bytes and evaluates the real loaded candidate. No build script is launched. Returns a loadable package. |
 | Outcome Library | `/modes/MODE/outcomes/ID/weight` numeric weights, scoped to one mode. Preserves IDs, artifacts and other modes; the native writer rebuilds indexes, hashes, totals and analysis; deep validation/readback precedes measurement. Returns a native folder. |
@@ -117,12 +117,13 @@ Targets and exactness:
  preserved in evidence. Relative tolerance multiplies the absolute target
  value, so a zero target has zero relative allowance. Binary64 rounding can
  require a small explicit tolerance, including at fractional stakes.
-- Authored base-mode workflows use `paid-entry` or, for feature-free games,
- `logical-round`. Free-game entry enumeration supports only `paid-entry`;
- it does not prove a generating game's full feature-round target. Other
- advanced/stateful mechanics fail as unsupported. Native weights require
- `native-outcomes`: even a sampled input folder establishes only that folder's
- distribution, never its generating game's full-round RTP.
+- Authored base-mode workflows use `paid-entry`, or `logical-round` when the authored
+ additive free-games mechanic is the only feature. Logical-round RTP is derived exactly
+ from the paid-spin trigger distribution and its retrigger series; exact logical-round
+ targets support RTP only. Use `paid-entry` for other exact metrics, or Simulation for
+ whole-round estimates. Other advanced/stateful mechanics fail as unsupported. Native
+ weights require `native-outcomes`: even a sampled input folder establishes only that
+ folder's distribution, never its generating game's full-round RTP.
 
 `constraints.fixed` contains `{path,value}` entries; fixed fields cannot also be
 tunables. `constraints.sums` contains `{paths,value}` entries, using strings for

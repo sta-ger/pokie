@@ -129,11 +129,11 @@ export function resolveExpectedReelCount(reels: number, columns: ReelColumn[]): 
 // never becomes game data. A "Reel <k>" name repeated more than once is "parsheet-reel-column-duplicate"
 // (only the first occurrence is used).
 //
-// "reels" is the blueprint's own declared reel count (from Manifest.Reels) — the source of truth for
+// "reels" is the blueprint's own declared reel count (from the Info sheet's Reels value) — the source of truth for
 // how many "Reel <k>" columns *should* exist. When it's a valid positive integer: a "Reel <k>" with
 // k > reels is "parsheet-reel-column-out-of-range" (excluded from the result), and every index in
 // 1..reels without a column — whether an interior gap or missing entirely off the end ("trailing") —
-// is "parsheet-reel-column-missing". When "reels" isn't a valid positive integer (Manifest itself is
+// is "parsheet-reel-column-missing". When "reels" isn't a valid positive integer (the Info sheet itself is
 // broken — already reported elsewhere, e.g. blueprint-reels-invalid), there's no reliable expected
 // count to check against, so this falls back to self-consistency only: no out-of-range check, and
 // "missing" only covers gaps up to whatever the highest actually-found "Reel <k>" is.
@@ -173,7 +173,7 @@ export function resolveReelColumns(
             issues.push({
                 code: "parsheet-reel-column-out-of-range",
                 severity: "error",
-                message: `Sheet "${sheetName}" has a "Reel ${reelIndex}" column, but the blueprint only has ${expectedReels} reel(s) (per Manifest).`,
+                message: `Sheet "${sheetName}" has a "Reel ${reelIndex}" column, but the blueprint only has ${expectedReels} reel(s) (per the Info sheet).`,
                 details: {sheet: sheetName, reelIndex, reels: expectedReels},
             });
             return;

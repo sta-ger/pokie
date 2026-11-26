@@ -269,6 +269,17 @@ export function toggleScatterSymbol(blueprint: Record<string, unknown>, id: stri
     toggleMembership(blueprint, "scatters", id);
 }
 
+// A scatter's own paytable entries are paid anywhere on the screen, not just on a payline.  The
+// Symbols editor uses this list to warn before an author turns an already-paying line symbol into a
+// scatter, which can raise RTP far more than the line-only paytable suggests.
+export function payingScatterSymbols(blueprint: Record<string, unknown>): string[] {
+    const paytable = asPaytable(blueprint.paytable);
+    return asStringArray(blueprint.scatters).filter((id) => {
+        const payouts = paytable[id];
+        return payouts !== undefined && Object.keys(payouts).length > 0;
+    });
+}
+
 // ---- Available bets ----
 
 export function addBet(blueprint: Record<string, unknown>, value: number): void {
@@ -484,7 +495,7 @@ function asMechanics(value: unknown): Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value) ? {...(value as Record<string, unknown>)} : {};
 }
 
-function asFreeGames(value: unknown): {scatterSymbol?: unknown; awardsByCount?: unknown} | undefined {
+function asFreeGames(value: unknown): {scatterSymbol?: unknown; awardsByCount?: unknown; maxFreeGames?: unknown} | undefined {
     return typeof value === "object" && value !== null && !Array.isArray(value) ? {...(value as Record<string, unknown>)} : undefined;
 }
 
@@ -493,7 +504,7 @@ function asFreeGames(value: unknown): {scatterSymbol?: unknown; awardsByCount?: 
 // blueprint has no scatter-triggered free games configured at all (the "not every blueprint has this
 // mechanic" case GameModelSections' own read-only MechanicsSection already renders as "No
 // mechanics/features configured."). Mutations still go exclusively through the functions below.
-export function readFreeGames(blueprint: Record<string, unknown>): {scatterSymbol: string; awardsByCount: Record<string, number>} | undefined {
+export function readFreeGames(blueprint: Record<string, unknown>): {scatterSymbol: string; awardsByCount: Record<string, number>; maxFreeGames?: number} | undefined {
     const freeGames = asFreeGames(asMechanics(blueprint.mechanics).freeGames);
     if (freeGames === undefined) {
         return undefined;
@@ -501,16 +512,103 @@ export function readFreeGames(blueprint: Record<string, unknown>): {scatterSymbo
     return {
         scatterSymbol: typeof freeGames.scatterSymbol === "string" ? freeGames.scatterSymbol : "",
         awardsByCount: asNumberRecord(freeGames.awardsByCount),
+        ...(Number.isSafeInteger(freeGames.maxFreeGames) && Number(freeGames.maxFreeGames) >= 1 ? {maxFreeGames: Number(freeGames.maxFreeGames)} : {}),
     };
 }
 
 // Turns this mechanic on with the first configured scatter preselected when one exists. That keeps
-// the primary producer flow actionable after Add free games: the remaining award is still explicit,
-// while a valid, already-visible scatter is never needlessly reselected through a dropdown.
+// the primary producer flow actionable after Add free games: the award table starts at the engine's
+// documented 3/4/5-scatter defaults instead of an empty (invalid) table, while every row remains
+// editable and removable. Each row is an EXACT scatter count: removing 4 and 5 intentionally makes
+// four or five scatters award nothing, which the fieldset explains beside the table.
 export function addFreeGames(blueprint: Record<string, unknown>): void {
     const mechanics = asMechanics(blueprint.mechanics);
-    mechanics.freeGames = {scatterSymbol: asStringArray(blueprint.scatters)[0] ?? "", awardsByCount: {}};
+    mechanics.freeGames = {scatterSymbol: asStringArray(blueprint.scatters)[0] ?? "", awardsByCount: {3: 10, 4: 15, 5: 20}};
     blueprint.mechanics = mechanics;
+}
+
+// Replace one existing stop instead of appending a stop: appending changes every symbol's probability
+// and can tank the base RTP before the feature is even tuned. Prefer the lowest-paying symbol on that
+// reel (the least disruptive replacement), then the most frequent, then the latest occurrence so the
+// choice is deterministic.
+function chooseScatterReplacementIndex(blueprint: Record<string, unknown>, reelIndex: number, symbolId: string): number | undefined {
+    const strip = asReelStrips(blueprint.reelStrips)[reelIndex];
+    if (strip === undefined) return undefined;
+    const paytable = asPaytable(blueprint.paytable);
+    const counts = new Map<string, number>();
+    for (const id of strip) if (id !== symbolId) counts.set(id, (counts.get(id) ?? 0) + 1);
+    let best: {index: number; maxPayout: number; count: number} | undefined;
+    for (let index = strip.length - 1; index >= 0; index--) {
+        const id = strip[index]!;
+        if (id === symbolId) continue;
+        const row = paytable[id];
+        const maxPayout = row === undefined
+            ? 0
+            : Math.max(0, ...Object.values(row).filter((value): value is number => Number.isFinite(value)));
+        const count = counts.get(id) ?? 0;
+        if (best === undefined
+            || maxPayout < best.maxPayout
+            || (maxPayout === best.maxPayout && count > best.count)
+            || (maxPayout === best.maxPayout && count === best.count && index > best.index)) {
+            best = {index, maxPayout, count};
+        }
+    }
+    return best?.index;
+}
+
+// Repeat only the selected literal reels until each reaches the requested minimum stop count. Repeating
+// the authored strip exactly preserves its symbol proportions, so lengthening a demo reel lowers the
+// scatter's visible frequency without silently changing the base-game symbol mix. Unselected reels are
+// left byte-for-byte untouched.
+export function repeatSelectedReelStrips(
+    blueprint: Record<string, unknown>,
+    selectedReels: readonly number[],
+    minimumStops: number,
+): void {
+    if (!Number.isSafeInteger(minimumStops) || minimumStops < 1) return;
+    const selected = new Set(selectedReels);
+    const strips = asReelStrips(blueprint.reelStrips);
+    blueprint.reelStrips = strips.map((strip, index) => {
+        if (!selected.has(index) || strip.length === 0) return strip;
+        const repeats = Math.max(1, Math.ceil(minimumStops / strip.length));
+        if (repeats === 1) return strip;
+        return Array.from({length: strip.length * repeats}, (_, stop) => strip[stop % strip.length]!);
+    });
+}
+
+// Guided scatter + free-games setup: one atomic draft mutation that adds a new scatter symbol, puts
+// it on every selected literal reel, enables free games and writes the starter award table. Keeping
+// this in the domain layer (rather than three separate UI mutations) means the symbol, reels and
+// mechanic can never be half-applied if one step is rejected.
+export function applyScatterFreeGamesSetup(
+    blueprint: Record<string, unknown>,
+    symbolId: string,
+    selectedReels: readonly number[],
+    awards: Readonly<Record<number, number>>,
+    options?: {readonly maxFreeGames?: number},
+): void {
+    const id = symbolId.trim();
+    if (id.length === 0) return;
+    if (!asStringArray(blueprint.symbols).includes(id)) addSymbol(blueprint, id);
+    if (!asStringArray(blueprint.scatters).includes(id)) toggleScatterSymbol(blueprint, id);
+    const strips = asReelStrips(blueprint.reelStrips);
+    for (const reelIndex of [...new Set(selectedReels)]) {
+        if (strips[reelIndex] === undefined) continue;
+        const replacementIndex = chooseScatterReplacementIndex(blueprint, reelIndex, id);
+        if (replacementIndex === undefined) addReelStripSymbol(blueprint, reelIndex, id);
+        else setReelStripSymbolAt(blueprint, reelIndex, replacementIndex, id);
+    }
+    if (readFreeGames(blueprint) === undefined) addFreeGames(blueprint);
+    setFreeGamesScatterSymbol(blueprint, id);
+    // The guided wizard can author the cap up front. An omitted options object preserves an existing
+    // cap; passing `maxFreeGames: undefined` is the explicit "remove the cap" edit.
+    if (options !== undefined && "maxFreeGames" in options) {
+        setFreeGamesMaxFreeGames(blueprint, options.maxFreeGames);
+    }
+    for (const count of [3, 4, 5]) {
+        const award = awards[count];
+        if (award !== undefined && Number.isFinite(award) && award >= 0) setFreeGamesAward(blueprint, count, award);
+    }
 }
 
 // Turns this mechanic off outright -- removes `freeGames` (not just its fields), same as how a
@@ -526,6 +624,19 @@ export function setFreeGamesScatterSymbol(blueprint: Record<string, unknown>, sy
     const mechanics = asMechanics(blueprint.mechanics);
     const freeGames = asFreeGames(mechanics.freeGames) ?? {};
     mechanics.freeGames = {...freeGames, scatterSymbol: symbolId};
+    blueprint.mechanics = mechanics;
+}
+
+export function setFreeGamesMaxFreeGames(blueprint: Record<string, unknown>, maxFreeGames: number | undefined): void {
+    const mechanics = asMechanics(blueprint.mechanics);
+    const freeGames = asFreeGames(mechanics.freeGames);
+    if (freeGames === undefined) return;
+    if (maxFreeGames === undefined) {
+        Reflect.deleteProperty(freeGames, "maxFreeGames");
+    } else {
+        freeGames.maxFreeGames = maxFreeGames;
+    }
+    mechanics.freeGames = freeGames;
     blueprint.mechanics = mechanics;
 }
 
@@ -575,6 +686,16 @@ export function setReelStripSymbolAt(blueprint: Record<string, unknown>, reelInd
         return;
     }
     strips[reelIndex][position] = symbolId;
+    blueprint.reelStrips = strips;
+}
+
+/** Replaces a whole literal reel from a pasted symbol list; validation stays in the caller/validator. */
+export function replaceReelStripSymbols(blueprint: Record<string, unknown>, reelIndex: number, symbolIds: readonly string[]): void {
+    const strips = asReelStrips(blueprint.reelStrips).map((strip) => [...strip]);
+    if (strips[reelIndex] === undefined) {
+        return;
+    }
+    strips[reelIndex] = [...symbolIds];
     blueprint.reelStrips = strips;
 }
 

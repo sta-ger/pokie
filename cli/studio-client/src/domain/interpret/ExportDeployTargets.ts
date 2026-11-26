@@ -71,9 +71,9 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
     Record<StudioOutputFormat, {label: string; purpose: string; destination: string; technicalDestination: string; unavailableReason: string}>
 > = {
     blueprint: {
-        label: "Game Blueprint",
-        purpose: "Save an editable game-design JSON file, or import a PAR workbook into one.",
-        destination: "Choose where to save the Blueprint, or use the default destination.",
+        label: "Game design file",
+        purpose: "Save or extract an editable game-design JSON file, or import a PAR workbook into one.",
+        destination: "Choose where to save the game design, or use the default destination.",
         technicalDestination: "A new game design JSON file with conversion details.",
         unavailableReason: "This project cannot supply a complete representable game model. Open a package with a public model descriptor or a PAR workbook.",
     },
@@ -82,15 +82,15 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
         purpose: "Create a runnable game package for developers. For a math review, use the PAR sheet instead.",
         destination: "Choose a folder for the finished game package, or use the default destination.",
         technicalDestination: "A new package directory (default: a \"tsPackage\" sibling of this project).",
-        unavailableReason: "This project cannot build a TypeScript Game Package. Open a Game Blueprint project to create one.",
+        unavailableReason: "This project cannot build a TypeScript Game Package. Open an editable game-design project to create one.",
     },
     outcomeLibrary: {
-        label: "Outcome library",
+        label: "Outcome table",
         purpose: "Build the machine-readable outcome set behind exact math, simulation and exports.",
-        destination: "Choose a folder for the outcome library, or use the default destination.",
-        technicalDestination: "A new bundle directory (default: an \"outcomeLibrary\" sibling of this project).",
+        destination: "Choose a folder for the outcome table, or use the default destination.",
+        technicalDestination: "A new folder (default: an \"outcomeLibrary\" sibling of this project).",
         unavailableReason:
-            "This project cannot create or republish an outcome library. Open a Game Blueprint, runnable game package, or outcome library project to continue.",
+            "This project cannot create or republish an outcome table. Open an editable game design, runnable game package, or outcome-table project to continue.",
     },
     stakeAdapter: {
         label: "Stake Engine export",
@@ -98,21 +98,21 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
         destination: "Choose a folder for the Stake Engine export, or use the default destination.",
         technicalDestination: "A new Stake Engine export directory beside this project by default.",
         unavailableReason:
-            "This project cannot build a Stake Engine export. Open a Game Blueprint, runnable game package, outcome library, or Stake Engine export project to continue.",
+            "This project cannot build a Stake Engine export. Open an editable game design, runnable game package, outcome table, or Stake Engine export project to continue.",
     },
     parWorkbook: {
         label: "PAR sheet (.xlsx)",
         purpose: "Export an Excel workbook with the paytable, reels, exact RTP and win contributions for math review.",
         destination: "Choose where to save the PAR workbook, or use the default destination.",
         technicalDestination: "A new .xlsx file (default: \"parWorkbook.xlsx\" next to this project).",
-        unavailableReason: "This project cannot export or republish a PAR workbook. Open a Game Blueprint or PAR sheet workbook project to continue.",
+        unavailableReason: "This project cannot export or republish a PAR workbook. Open an editable game design or PAR sheet workbook project to continue.",
     },
     wasm: {
         label: "Portable WASM game",
         purpose: `Build a compiled game module for embedding outside Studio. ${WASM_EXECUTION_BOUNDARY}`,
         destination: "Choose where to save the WASM game, or use the default destination.",
         technicalDestination: "A game.wasm module with a hash-verified POKIE companion file.",
-        unavailableReason: "This project cannot build a portable WASM game. Open a Game Blueprint or PAR sheet workbook project to continue.",
+        unavailableReason: "This project cannot build a portable WASM game. Open an editable game design or PAR sheet workbook project to continue.",
     },
 };
 
@@ -126,12 +126,22 @@ function unavailableReasonsForArtifactTarget(entry: StudioOutputFormatView, fall
     // for the one case a non-programmer is most likely to hit: a Blueprint project trying to build a
     // Blueprint. Say what that actually means and what to choose instead.
     if (entry.target === "blueprint" && entry.plan?.source.kind === "blueprint") {
-        return ["This project is already an editable Game Blueprint. Use Game Model to edit it, or choose another output such as PAR sheet (.xlsx) or TypeScript Game Package."];
+        return ["This project is already an editable game design. Use Game design to edit it, or choose another output such as PAR sheet (.xlsx) or TypeScript Game Package."];
     }
     if (entry.plan?.diagnostic !== undefined) return [entry.plan.diagnostic.message, entry.plan.diagnostic.recovery];
     if (entry.diagnostic !== undefined) return [entry.diagnostic];
     if (entry.unsupportedNotes.length > 0) return entry.unsupportedNotes;
     return [fallbackReason];
+}
+
+// Math-author order: the PAR workbook is the primary review artifact, so it must not sit behind three
+// developer outputs. Blueprint remains next because it is the editable source; package/integration
+// targets follow.
+const ARTIFACT_CARD_ORDER: readonly StudioOutputFormat[] = ["parWorkbook", "blueprint", "tsPackage", "stakeAdapter", "wasm"];
+
+function artifactCardRank(target: StudioOutputFormat): number {
+    const index = ARTIFACT_CARD_ORDER.indexOf(target);
+    return index < 0 ? ARTIFACT_CARD_ORDER.length : index;
 }
 
 export function describeArtifactBuildTargetCards(targets: readonly StudioOutputFormatView[]): ExportDeployTargetCard[] {
@@ -140,10 +150,13 @@ export function describeArtifactBuildTargetCards(targets: readonly StudioOutputF
         // matrix-authoritative, but this defensive filter makes the hidden/unadvertised contract hold while
         // a browser has an older response cached.
         .filter((entry) => entry.target in ARTIFACT_TARGET_CARD_INFO)
+        // The source is already the editable design itself. Offering to save it again as another
+        // "Editable game design" card only produced an "Unavailable" wall on the main math-review page.
+        .filter((entry) => !(entry.target === "blueprint" && entry.plan?.source.kind === "blueprint"))
         // Runnable designs/packages have one configurable generator. Outcome-based projects
         // instead keep the registry card for republishing their existing bundle.
         .filter((entry) => entry.target !== "outcomeLibrary" || !isOutcomeGenerationSource(entry))
-        .map((entry) => {
+        .map((entry): ExportDeployTargetCard => {
             const info = ARTIFACT_TARGET_CARD_INFO[entry.target];
             return {
                 kind: "buildArtifact",
@@ -172,7 +185,8 @@ export function describeArtifactBuildTargetCards(targets: readonly StudioOutputF
                 artifactTarget: entry.target,
                 ...(entry.plan === undefined ? {} : {artifactPlan: entry.plan}),
             };
-        });
+        })
+        .sort((left, right) => artifactCardRank(left.artifactTarget!) - artifactCardRank(right.artifactTarget!));
 }
 
 // Advanced, user-directed Outcome Library generation. Stake's goal-oriented
@@ -180,13 +194,13 @@ export function describeArtifactBuildTargetCards(targets: readonly StudioOutputF
 const OUTCOME_LIBRARY_CARD: ExportDeployTargetCard = {
     kind: "outcomeLibrary",
     id: OUTCOME_LIBRARY_TRANSACTION.cardId,
-    label: "Outcome library generator",
+    label: "Outcome table generator",
     adapter: "pokie's own weighted-outcome-library generator",
     version: "--",
-    purpose: "Create or refresh an Outcome Library for advanced inspection and delivery workflows.",
-    destination: "Choose a local folder for the outcome library. Nothing is sent outside Studio.",
-    technicalDestination: "A local bundle directory registered for this project (outcomelibrary by default, or a custom directory) -- nothing is deployed or exported externally.",
-    writePublishBehavior: "Generate writes the bundle to disk and registers it for discovery; Select/Validate/Inspect never write anything.",
+    purpose: "Create or refresh the complete paid-spin outcome table for advanced inspection and delivery workflows.",
+    destination: "Choose a local folder for the outcome table. Nothing is sent outside Studio.",
+    technicalDestination: "A local folder registered for this project (outcomelibrary by default, or a custom directory) -- nothing is deployed or exported externally.",
+    writePublishBehavior: "Generate writes the outcome table to disk and registers it for discovery; Select/Validate/Inspect never write anything.",
     capabilities: ["Exact or bounded-sample generation, whichever the game's own mechanic supports", "Registry discovery by mode name for every other target on this page"],
     limits: [],
     prerequisites: ["A built, runnable package for this project"],
@@ -222,12 +236,12 @@ export function describeOutcomeLibraryFreshness(
     if (entry.buildStatus === "stale") {
         return {
             status: "stale",
-            reason: "This Outcome Library was generated from an earlier saved design. Regenerate it before using its RTP or outcomes for the current design.",
+            reason: "This outcome table was generated from an earlier saved design. Regenerate it before using its RTP or rows for the current design.",
         };
     }
     return {
         status: "wrong",
-        reason: "This Outcome Library belongs to a different game. Regenerate it for this project before using its results.",
+        reason: "This outcome table belongs to a different game. Regenerate it for this project before using its results.",
     };
 }
 
@@ -242,14 +256,14 @@ function describeExternalConnectorTargetCard(target: StudioDeploymentTargetSumma
         label: "Remote delivery",
         adapter: "External connector SDK registered target",
         version: target.version,
-        purpose: "Check and publish this project's outcome library to a configured remote destination.",
+        purpose: "Check and publish this project's outcome table to a configured remote destination.",
         destination: "Use the configured remote destination after a compatibility check succeeds.",
         technicalDestination: "Wherever this target's own runtime connector delivers to -- not necessarily local to this machine.",
         writePublishBehavior:
             "Preview runs the full pipeline (compatibility check, projection, generation, file validation, target diagnostic) without writing; Deploy additionally publishes the generated files to the target's own output location.",
         capabilities: target.capabilities.length > 0 ? target.capabilities.map(describeTargetCapability) : ["No optional supported actions declared."],
         limits: describeTargetRequirements(target.requirements),
-        prerequisites: ["One outcome library file per deployment mode", "A reachable target diagnostic before Deploy is offered"],
+        prerequisites: ["One outcome-table file per deployment mode", "A reachable target diagnostic before Deploy is offered"],
         unavailableReasons: [],
         supported: true,
         locality: "remote",
@@ -258,29 +272,6 @@ function describeExternalConnectorTargetCard(target: StudioDeploymentTargetSumma
         deploymentTarget: target,
     };
 }
-
-// One future-extension-point placeholder shown whenever no registered (non-demo) target exists yet --
-// keeps the Remote deployment group visible (and honest that it's currently empty) instead of omitting
-// it, since this shell's own contract is to classify Static export, Outcome library and Remote deployment
-// even before a real remote adapter is registered.
-const REMOTE_DEPLOYMENT_PLACEHOLDER_CARD: ExportDeployTargetCard = {
-    kind: "remoteDeployment",
-    id: "remote-deployment-placeholder",
-    label: "Remote delivery is not set up",
-    adapter: "External Adapter SDK",
-    version: "--",
-    purpose: "Generate this project's outcome library here before checking a configured remote destination.",
-    destination: "Generate an outcome library in Build/Export. A configured remote destination is required before delivery can begin.",
-    technicalDestination: "Not yet registered.",
-    writePublishBehavior: "Not applicable until a remote target is registered.",
-    capabilities: [],
-    limits: [],
-    prerequisites: ["Generate a compatible outcome library in Build/Export."],
-    unavailableReasons: ["No configured remote destination is available yet. Generate a compatible outcome library in Build/Export so it is ready to check when a destination is registered."],
-    supported: false,
-    locality: "remote",
-    compatibility: "Once registered, goes through the same ExternalExportCompatibilityValidator interface every other target already does.",
-};
 
 // Builds the shell's own card list from live server data.  These cards describe
 // independent services; their concrete planner availability is rendered from
@@ -294,7 +285,7 @@ export function describeExportDeployTargetCards(
         ? []
         : [plannerBackedCard(OUTCOME_LIBRARY_CARD, "outcomeLibrary", artifactTargets)];
     const connectorCards = deploymentTargets.filter((target) => target.id !== LOCAL_JSON_EXAMPLE_TARGET_ID).map(describeExternalConnectorTargetCard);
-    cards.push(...connectorCards, ...(connectorCards.length > 0 ? [] : [REMOTE_DEPLOYMENT_PLACEHOLDER_CARD]));
+    cards.push(...connectorCards);
     return cards;
 }
 

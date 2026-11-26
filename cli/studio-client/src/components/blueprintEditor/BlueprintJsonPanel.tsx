@@ -31,7 +31,7 @@ export function BlueprintJsonPanel({
     return (
         <div>
             <Textarea
-                label="Blueprint JSON"
+                label="Game design JSON"
                 rows={24}
                 value={value}
                 onChange={(event) => setValue(event.currentTarget.value)}

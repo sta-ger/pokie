@@ -88,7 +88,7 @@ a bonus. Numeric and string seeds retain their existing distinct semantics.
 ## Authoring, execution and restoration
 
 Studio Home exposes the table in Form's Bets section and in JSON Apply. Project
-Game Model exposes the same editor under Mechanics. Editing a feature ID
+Game design exposes the same editor under Mechanics. Editing a feature ID
 explicitly updates matching outcome targets; symbol renaming updates the trigger,
 and removing a referenced symbol is blocked with its field path. Invalid drafts
 remain recoverable and prevent build/save. Applying JSON, saving and building

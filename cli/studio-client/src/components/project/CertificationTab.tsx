@@ -53,7 +53,7 @@ const RECOMMENDED_SAMPLE_COUNT = 100;
 
 const EMPTY_MODE: ModeFields = {modeName: "", seed: "", sampleCount: RECOMMENDED_SAMPLE_COUNT};
 
-// Where POKIE Studio looks, relative to the project root, for a source outcome-library bundle before
+// Where POKIE Studio looks, relative to the project root, for a source outcome library before
 // asking the user to point at one themselves -- the same layout "pokie outcomelibrary build" writes to
 // by default (see OutcomeLibraryCommand's own "<config dir>/outcomelibrary" default, which projects
 // scaffolded alongside this convention place under "outcomes/bundle"). Purely a starting guess, never
@@ -417,16 +417,16 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
     // hidden/disabled button as the only signal something is still missing.
     function buildContinueBlockers(): string[] {
         if (validateView.status === "idle") {
-            return ['Run "Validate source outcome library" above first.'];
+            return ['Run "Validate source outcome table" above first.'];
         }
         if (validateView.status === "loading") {
             return ["Validation is still running."];
         }
         if (validateView.status === "network-error" || validateView.status === "load-error") {
-            return ["Fix the validation request error above, then run Validate source outcome library again."];
+            return ["Fix the validation request error above, then run Validate source outcome table again."];
         }
         if (validateOutcome === "invalid") {
-            return ["The source outcome library failed validation -- fix the errors above before continuing."];
+            return ["The source outcome table failed validation -- fix the errors above before continuing."];
         }
         if (hasIncompleteModeRow) {
             return [
@@ -462,7 +462,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
     }
 
     // The real, project-specific "pokie outcomelibrary build" invocation that would populate the
-    // directory this tab is about to read from -- targets wherever Source outcome-library bundle
+    // directory this tab is about to read from -- targets wherever Source outcome library
     // directory already points (typed value, else the detected default, else the bare convention path),
     // so the copied command always writes to the exact place Validate/Build will look.
     let generateOutcomeLibraryOutDir = DETECTED_BUNDLE_RELATIVE_PATH;
@@ -479,7 +479,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
 
     function renderValidateStep(): ReactNode {
         if (!validateReachable) {
-            return <EmptyState message="Enter a source outcome-library bundle directory first." />;
+            return <EmptyState message="Enter a source outcome table directory first." />;
         }
         return (
             <div>
@@ -489,7 +489,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                 </Text>
                 <QuickActions>
                     <Button id="certification-validate-source" data-pokie-lifecycle="operation" data-pokie-transaction-state="editable-submission" data-pokie-lifecycle-operation="certification" onClick={runValidate} loading={validateView.status === "loading"}>
-                        Validate source outcome library
+                        Validate source outcome table
                     </Button>
                 </QuickActions>
                 {validateView.status === "network-error" && (
@@ -509,7 +509,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                         />
                         {buildReachable && !hasIncompleteModeRow ? (
                             <QuickActions>
-                                <Button data-pokie-lifecycle-artifact="certification-preflight" onClick={() => setActiveStep(2)}>Continue to Build bundle</Button>
+                                <Button data-pokie-lifecycle-artifact="certification-preflight" onClick={() => setActiveStep(2)}>Continue to Build pack</Button>
                             </QuickActions>
                         ) : (
                             <IssueList title="Before you can continue" issues={buildContinueBlockers().map((message) => ({message}))} />
@@ -522,7 +522,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
 
     function renderBuildStep(): ReactNode {
         if (!buildReachable) {
-            return <EmptyState message="Validate the source outcome library first." />;
+            return <EmptyState message="Validate the source outcome table first." />;
         }
         return (
             <div>
@@ -576,8 +576,8 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
     return (
         <PageSection legend="Certification">
             <Text size="sm" c="dimmed" mb="sm">
-                Build a canonical certification/evidence bundle on top of an outcome-library bundle, inspect its
-                manifest and sampled artifacts, and export it for a certifier -- everything shown here is computed
+                Build a certification pack on top of an outcome table, inspect its package info and sampled
+                files, and export it for a certifier -- everything shown here is computed
                 by pokie&apos;s own CertificationPackBuilder/Validator, never re-derived in this UI.
             </Text>
 
@@ -588,14 +588,14 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                     label="Validate"
                     description="Check"
                     disabled={!validateReachable}
-                    title={validateReachable ? undefined : "Configure a valid source outcome library before validation."}
+                    title={validateReachable ? undefined : "Configure a valid source outcome table before validation."}
                     aria-current={activeStep === 1 ? "step" : undefined}
                 />
                 <Stepper.Step
-                    label="Build bundle"
+                    label="Build pack"
                     description="Sample & publish"
                     disabled={!buildReachable}
-                    title={buildReachable ? undefined : "Validate the source outcome library before building the certification pack."}
+                    title={buildReachable ? undefined : "Validate the source outcome table before building the certification pack."}
                     aria-current={activeStep === 2 ? "step" : undefined}
                 />
                 <Stepper.Step
@@ -607,7 +607,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                 />
                 <Stepper.Step
                     label="Export"
-                    description="Download manifest"
+                    description="Download package info"
                     disabled={!inspectReachable}
                     title={inspectReachable ? undefined : "Build a certification pack before exporting its package info."}
                     aria-current={activeStep === 4 ? "step" : undefined}
@@ -626,8 +626,8 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                     </Text>
                     {validateOutdated && (
                         <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
-                            Outdated -- the bundle directory changed since the last Validate run. Its result no
-                            longer reflects what&apos;s configured here; rerun Validate before Build bundle is
+                            Outdated -- the pack folder changed since the last Validate run. Its result no
+                            longer reflects what&apos;s configured here; rerun Validate before Build pack is
                             offered again.
                         </Alert>
                     )}
@@ -635,14 +635,14 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                         <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
                             Outdated -- the build configuration changed since the last Build run. Its
                             result no longer reflects what&apos;s configured here; rerun Build certification
-                            bundle before Inspect/Export are offered again.
+                            pack before Inspect/Export are offered again.
                         </Alert>
                     )}
                     <PathInput
-                        label="Source outcome-library bundle directory"
+                        label="Source outcome table directory"
                         placeholder="./outcomes/bundle"
                         kind="directory"
-                        browseTitle="Browse for a source outcome-library bundle directory"
+                        browseTitle="Browse for a source outcome table directory"
                         browseId="certification-bundle-dir"
                         relevantDirectory={projectRoot}
                         autoDestinationPath={detectedBundle.status === "found" ? detectedBundle.path : undefined}
@@ -654,7 +654,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                     {detectedBundle.status === "found" && (
                         <QuickActions>
                             <Text size="xs" c="dimmed">
-                                Detected an outcome-library bundle at {detectedBundle.path}.
+                                Detected an outcome table at {detectedBundle.path}.
                             </Text>
                             <Button
                                 variant="subtle"
@@ -668,10 +668,10 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                     )}
                     <QuickActions>
                         <Button variant="default" size="xs" onClick={toggleGeneratePanel} aria-expanded={generatePanelOpened}>
-                            {generatePanelOpened ? "Hide generate outcome library" : "Generate outcome library"}
+                            {generatePanelOpened ? "Hide generate outcome table" : "Generate outcome table"}
                         </Button>
                     </QuickActions>
-                    <PageSection legend="Generate an outcome library" hidden={!generatePanelOpened}>
+                    <PageSection legend="Generate an outcome table" hidden={!generatePanelOpened}>
                         <Text size="sm" c="dimmed" mb="sm">
                             POKIE Studio never fabricates outcome data itself -- run this from a terminal once you
                             have a config.json listing each mode&apos;s real outcome source (a WeightedOutcomeLibrary
@@ -756,7 +756,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                         </Button>
                     </QuickActions>
                     {!validateReachable && (
-                        <IssueList title="Before you can continue" issues={[{message: "Enter a source outcome-library bundle directory above."}]} />
+                        <IssueList title="Before you can continue" issues={[{message: "Enter a source outcome table directory above."}]} />
                     )}
                 </div>
             )}
@@ -782,9 +782,9 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                         </PageSection>
                         <PageSection legend="Independent verification">
                             <Text size="sm" c="dimmed" mb="sm">
-                                To verify this existing evidence bundle against the same source outside Studio, run
-                                this command from the project directory. The source outcome-library bundle must
-                                remain available and unchanged; if it has changed, rebuild the evidence bundle
+                                To verify this existing certification pack against the same source outside Studio, run
+                                this command from the project directory. The source outcome table must
+                                remain available and unchanged; if it has changed, rebuild the certification pack
                                 first.
                             </Text>
                             <CodeBlock>{certificationVerifyCommand}</CodeBlock>
@@ -831,7 +831,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                         </PageSection>
 
                         {buildResult.index.deepValidation.issues.length > 0 && (
-                            <PageSection legend="Source outcome library deep-validation (embedded verbatim)">
+                            <PageSection legend="Source outcome table deep-validation (embedded verbatim)">
                                 <IssueList title="Issues" issues={[...buildResult.index.deepValidation.issues]} />
                             </PageSection>
                         )}
@@ -844,7 +844,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                             ))}
                         </PageSection>
 
-                        <AdvancedDisclosure detail="raw manifest">
+                        <AdvancedDisclosure detail="raw index">
                             <CodeBlock>{JSON.stringify(buildResult.index, null, 2)}</CodeBlock>
                         </AdvancedDisclosure>
 
@@ -861,8 +861,8 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                     <div>
                         <Alert color="blue" variant="light" mb="sm">
                             <Text size="sm">
-                                The manifest and every sampled-artifact file already live on disk under the output
-                                directory below -- Studio never copies them into the browser. Download the manifest
+                                The package info and every sampled file already live on disk under the output
+                                directory below -- Studio never copies them into the browser. Download the package info
                                 for a quick reference, and hand the certifier the directory itself for the full
                                 evidence (including the per-mode samples file(s) listed under Files).
                             </Text>

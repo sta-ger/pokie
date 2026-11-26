@@ -1,4 +1,4 @@
-import {HtmlSimulationReportRenderer, MarkdownSimulationReportRenderer, SimulationReport, SimulationReportSet, isSimulationReportSet, SimulationReportRendering} from "@fromstan/pokie";
+import {HtmlSimulationReportRenderer, MarkdownSimulationReportRenderer, SimulationReport, SimulationReportSet, isSimulationReportSet, SimulationReportRendering, type SimulationReportExactReference} from "@fromstan/pokie";
 
 export type ReportDownloadFormat = "json" | "markdown" | "html";
 
@@ -32,11 +32,18 @@ export function buildSimulationReportDownload(
     report: SimulationReport | SimulationReportSet,
     simulationId: string,
     format: ReportDownloadFormat,
+    exactReference?: SimulationReportExactReference,
 ): SimulationReportDownload {
+    // Studio attaches the exact reference at download time, after confirming the report's own source
+    // revision still matches the current saved design. The persisted report stays an unmodified sample;
+    // JSON, Markdown and HTML downloads all carry the same optional comparison block.
+    const downloadable = exactReference !== undefined && !isSimulationReportSet(report)
+        ? {...report, exactReference}
+        : report;
     let body: string;
-    if (format === "json") body = JSON.stringify(report, null, 4);
-    else if (isSimulationReportSet(report)) body = RENDERERS[format].renderSet!(report);
-    else body = RENDERERS[format].render(report);
+    if (format === "json") body = JSON.stringify(downloadable, null, 4);
+    else if (isSimulationReportSet(downloadable)) body = RENDERERS[format].renderSet!(downloadable);
+    else body = RENDERERS[format].render(downloadable);
     return {
         contentType: CONTENT_TYPES[format],
         filename: buildReportFilename(report.game.id, report.game.version, simulationId, EXTENSIONS[format]),

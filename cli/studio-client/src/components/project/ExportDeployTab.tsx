@@ -1,6 +1,6 @@
 import {PackageExtractionDiagnostics} from "./PackageExtractionDiagnostics";
 import {useCallback, useEffect, useId, useRef, useState} from "react";
-import {Alert, Badge, Button, Group, List, Text, TextInput} from "@mantine/core";
+import {Alert, Anchor, Badge, Button, Group, List, Text, TextInput} from "@mantine/core";
 import {
     activateArtifactBuild,
     cancelArtifactBuild,
@@ -10,6 +10,7 @@ import {
     getOutcomeLibraryGenerationJob,
     getOutcomeLibraryRegistry,
     listOutcomeLibraryGenerationJobs,
+    listProjectJobs,
     getArtifactBuild,
     listArtifactTargets,
     openOutputFolder,
@@ -19,6 +20,7 @@ import {
     resumeOutcomeLibraryGeneration,
     startOutcomeLibraryGeneration,
     startArtifactBuild,
+    buildArtifactBuildDownloadUrl,
     OutcomeLibraryGenerationStartError,
     OutcomeLibraryGenerationPollError,
     type FetchLike,
@@ -37,7 +39,9 @@ import type {
     StudioProjectCapability,
     StudioJobView,
 } from "../../api/types";
+
 import {useStudioApi} from "../../context/StudioApiProvider";
+import {describeExistingArtifactFreshness, findExistingArtifactBuildJob} from "../../domain/existingArtifactBuild";
 import {
     describeArtifactBuildTargetCards,
     describeExportDeployTargetCards,
@@ -59,6 +63,7 @@ import {ErrorState} from "../common/ErrorState";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {IssueList} from "../common/IssueList";
 import {LoadingState} from "../common/LoadingState";
+import {CollapsiblePageSection} from "../common/CollapsiblePageSection";
 import {JobProgressCard} from "../common/JobProgressCard";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
@@ -67,7 +72,7 @@ import {PathInput} from "../common/PathInput";
 function ParConversionDiagnostics({report}: {report: StudioFormatConversionPlan["parConversion"]}) {
     if (report === undefined) return null;
     return <>
-        <Text size="sm">PAR lossless eligible: {String(report.losslessEligible)}</Text>
+        <Text size="sm">PAR round-trip check: {report.losslessEligible ? "passes — the workbook keeps the authored math when imported back" : "cannot preserve every authored field"}</Text>
         <IssueList title="PAR conversion diagnostics" issues={[...report.issues]} />
         {report.facts.length > 0 && (
             <AdvancedDisclosure label="conversion evidence">
@@ -79,12 +84,12 @@ function ParConversionDiagnostics({report}: {report: StudioFormatConversionPlan[
 
 const GROUP_LABELS: Record<ExportDeployTargetKind, {legend: string; blurb: string}> = {
     outcomeLibrary: {
-        legend: "Outcome libraries",
-        blurb: "Optional advanced outcome generation. Stake Engine export can automatically reuse or generate its outcome library.",
+        legend: "Outcome tables",
+        blurb: "Create or refresh the paid-spin outcome table used by exact math and exports. Optional for a math review: Overview already computes the exact table it needs.",
     },
     buildArtifact: {
         legend: "Build output",
-        blurb: "For a math review, start with PAR sheet (.xlsx). TypeScript and WASM are developer outputs; Game Blueprint is the editable source.",
+        blurb: "For a math review, start with PAR sheet (.xlsx). TypeScript and WASM are developer outputs; the game design is the editable source.",
     },
     remoteDeployment: {
         legend: "Remote deployment",
@@ -94,14 +99,14 @@ const GROUP_LABELS: Record<ExportDeployTargetKind, {legend: string; blurb: strin
 
 function artifactFileFilters(target: StudioOutputFormat) {
     if (target === "parWorkbook") return [{name: "Excel workbooks", extensions: ["xlsx"]}];
-    if (target === "blueprint") return [{name: "Blueprint JSON", extensions: ["json"]}];
+    if (target === "blueprint") return [{name: "Game design JSON", extensions: ["json"]}];
     if (target === "wasm") return [{name: "POKIE WASM games", extensions: ["wasm"]}];
     return undefined;
 }
 
 function artifactDestinationTitle(target: StudioOutputFormat): string {
     if (target === "parWorkbook") return "Choose a PAR workbook destination";
-    if (target === "blueprint") return "Choose a Blueprint destination";
+    if (target === "blueprint") return "Choose a game design destination";
     if (target === "wasm") return "Choose a portable WASM game destination";
     return "Choose an output folder";
 }
@@ -110,13 +115,29 @@ function isFileArtifactTarget(target: StudioOutputFormat): boolean {
     return target === "parWorkbook" || target === "blueprint" || target === "wasm";
 }
 
+/** A non-destructive retry name for an already-built output, so iterative math review never overwrites. */
+function versionedDestination(path: string, kind: "file" | "directory", now = new Date()): string {
+    const stamp = now.toISOString().replace(/[-:]/g, "").replace(/\..+$/, "").replace("T", "-");
+    if (!kind || kind === "directory") return `${path}-${stamp}`;
+    const slash = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+    const dot = path.lastIndexOf(".");
+    return dot > slash ? `${path.slice(0, dot)}-${stamp}${path.slice(dot)}` : `${path}-${stamp}`;
+}
+
 function describeStakeRoute(route: "reuse" | "generate" | "publish"): string {
-    if (route === "reuse") return "reuse verified Outcome Library";
-    if (route === "generate") return "generate compatible Outcome Library";
+    if (route === "reuse") return "reuse verified outcome table";
+    if (route === "generate") return "generate compatible outcome table";
     return "publish existing Stake source";
 }
 
 const GROUP_ORDER: readonly ExportDeployTargetKind[] = ["buildArtifact", "outcomeLibrary", "remoteDeployment"];
+
+// Math-review outputs stay in the main flow. These targets are for shipping a game and are collapsed
+// behind one explicit disclosure so a PAR workbook is never visually outranked by four developer cards.
+const DEVELOPER_ARTIFACT_TARGETS: ReadonlySet<StudioOutputFormat> = new Set(["tsPackage", "stakeAdapter", "wasm"]);
+function isDeveloperArtifactCard(card: ExportDeployTargetCard): boolean {
+    return card.artifactTarget !== undefined && DEVELOPER_ARTIFACT_TARGETS.has(card.artifactTarget);
+}
 
 // Every "Configure"/etc-free run below runs against this single project-wide mode name -- the project's
 // own first current build mode when known, "base" (the same fallback generateOutcomeLibrary's own
@@ -217,7 +238,7 @@ function outcomeLibraryTerminalErrorRun(job: StudioOutcomeLibraryGenerateJobView
         durableStatus: job.status,
         ...(job.recovery === undefined ? {} : {recovery: job.recovery}),
         ...(result === undefined || result.status === "ok" ? {
-            message: "Outcome library generation ended without a result.",
+            message: "Outcome table generation ended without a result.",
         } : {
             result,
             message: describeGenerateResultError(result),
@@ -247,17 +268,35 @@ function generationStrategyLabel(generation: OutcomeLibraryGenerationOptions["ge
         default: "Default (exact until cap)",
         exact: "Exact",
         sampled: "Sampled",
-        capped: "Conditional capped",
+        capped: "Exact until cap, then sampled",
     };
     return labels[generation];
 }
 
-function PlannerSummary({plan, label = "Server plan"}: {plan: StudioFormatConversionPlan | undefined; label?: string}) {
+const BUILD_STEP_LABELS: Record<string, string> = {
+    materializeRuntime: "prepare runtime",
+    generateOutcomeLibrary: "generate outcome table",
+    importParWorkbook: "import PAR workbook",
+    extractPackageModel: "read package model",
+    reuseManagedOutcomeLibrary: "reuse outcome table",
+    publish: "publish output",
+};
+
+function describeBuildStep(step: StudioFormatConversionPlan["steps"][number]): string {
+    let prefix = "";
+    if (step.choice === "reuse") prefix = "Reuse ";
+    else if (step.choice === "publish") prefix = "Publish ";
+    return `${prefix}${BUILD_STEP_LABELS[step.kind] ?? step.kind}`;
+}
+
+function PlannerSummary({plan, label = "Build steps"}: {plan: StudioFormatConversionPlan | undefined; label?: string}) {
     if (plan === undefined) return null;
-    const summary =
-        plan.status === "planned"
-            ? plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No publication required"
-            : `${plan.status === "conflict" ? "Conflict" : "Unavailable"}${plan.diagnostic?.message === undefined ? "" : ` — ${plan.diagnostic.message}`}`;
+    let summary: string;
+    if (plan.status === "planned") {
+        summary = plan.steps.map(describeBuildStep).join(" → ") || "No publication required";
+    } else {
+        summary = `${plan.status === "conflict" ? "Conflict" : "Unavailable"}${plan.diagnostic?.message === undefined ? "" : ` — ${plan.diagnostic.message}`}`;
+    }
     return (
         <Text size="sm" c="dimmed" mt={4}>
             {label}: {summary}
@@ -294,6 +333,10 @@ type ArtifactPreviewQueue = {
     controller?: AbortController;
     pending?: {version: number; outDir?: string; ready: boolean};
     timer?: ReturnType<typeof setTimeout>;
+    // One automatic transport retry per destination. A destination preview is cheap and read-only;
+    // a transient network failure must not leave Build permanently disabled until the author finds
+    // "Refresh output formats". A second failure still surfaces the real error.
+    retried?: boolean;
 };
 
 // One entry per "buildArtifact" card's own registry-backed preview -- fetched automatically once its own
@@ -380,9 +423,41 @@ function TargetCard({
     outputActionsUnavailable: boolean;
     onCopyPath: (path: string) => void;
 }) {
+    const fetchImpl = useStudioApi();
     const isActiveTarget = card.deploymentTarget !== undefined && deployment.selectedTarget?.id === card.deploymentTarget.id;
     const [opened, setOpened] = useState(initiallyOpened);
     const contentId = useId();
+    const conflictDestination = artifactPreview.status === "conflict" ? artifactPreview.result.destination : undefined;
+    const [existingBuildJob, setExistingBuildJob] = useState<StudioJobView>();
+    const [existingBuildJobLookup, setExistingBuildJobLookup] = useState<"idle" | "loading" | "done">("idle");
+    useEffect(() => {
+        if (conflictDestination === undefined || card.kind !== "buildArtifact" || card.artifactTarget === undefined) {
+            setExistingBuildJob(undefined);
+            setExistingBuildJobLookup("idle");
+            return undefined;
+        }
+        const target = card.artifactTarget;
+        let cancelled = false;
+        setExistingBuildJobLookup("loading");
+        listProjectJobs(fetchImpl).then((jobs) => {
+            if (!cancelled) {
+                setExistingBuildJob(findExistingArtifactBuildJob(jobs, target, conflictDestination));
+                setExistingBuildJobLookup("done");
+            }
+        }).catch(() => {
+            if (!cancelled) {
+                setExistingBuildJob(undefined);
+                setExistingBuildJobLookup("done");
+            }
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [conflictDestination, card.kind, card.artifactTarget, fetchImpl]);
+    const existingDownloadJobId = existingBuildJob?.id;
+    const existingOutputFreshness = artifactPreview.status === "conflict" && existingBuildJobLookup === "done"
+        ? describeExistingArtifactFreshness(existingBuildJob, artifactPreview.result.plan)
+        : undefined;
     // Keep editable fields and terminal receipts mounted across disclosure changes.
     // Recovered work opens its owning form; disclosure never submits or cancels it.
     let hasOperation = false;
@@ -404,7 +479,7 @@ function TargetCard({
         else if (artifactBuildRun.status === "error") summaryStatus = "Needs attention";
         else if (artifactBuildRun.status === "cancelled") summaryStatus = "Cancelled";
         else if (artifactPreview.status === "ok") summaryStatus = "Ready";
-        else if (artifactPreview.status === "conflict") summaryStatus = "Existing output";
+        else if (artifactPreview.status === "conflict") summaryStatus = existingOutputFreshness?.status === "stale" ? "Out of date" : "Existing output";
         else if (artifactPreview.status === "loading") summaryStatus = "Checking";
         else summaryStatus = "Needs attention";
     } else if (isActiveTarget) {
@@ -433,8 +508,8 @@ function TargetCard({
     const outcomeLibraryPending = outcomeLibraryRun.status === "starting" || outcomeLibraryRun.status === "running";
     const outcomeLibraryDisabled = outcomeLibraryPending || outcomeLibraryPreflight.status !== "ok" || (outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "capped");
     let outcomeLibraryDisabledReason = outcomeLibraryPreflight.status !== "ok"
-        ? "Outcome Library generation becomes available after its check succeeds."
-        : "Choose sampled or conditional capped coverage before generating this Outcome Library.";
+        ? "Outcome table generation becomes available after its check succeeds."
+        : "Choose sampled or exact-until-cap coverage before generating this outcome table.";
     if (outcomeLibraryPending) outcomeLibraryDisabledReason = "Wait for the current generation request to finish.";
     let lifecycleForm: string | undefined;
     if (card.kind === "outcomeLibrary") lifecycleForm = "outcome-library";
@@ -446,13 +521,19 @@ function TargetCard({
         diskRisk: "unknown",
         likelyDuration: "unknown",
     } as const;
+    const estimateFields = operationalEstimates === undefined ? [] : [
+        ["records", operationalEstimates.recordCount],
+        ["output size", operationalEstimates.outputSize],
+        ["memory / disk risk", `${operationalEstimates.memoryRisk} / ${operationalEstimates.diskRisk}`],
+        ["likely duration", operationalEstimates.likelyDuration],
+    ].filter(([, value]) => value !== "unknown" && !String(value).startsWith("unknown"));
     let artifactBuildLabel: string;
     if (artifactPreview.status === "loading") {
         artifactBuildLabel = "Checking…";
     } else if (artifactBuildRun.status === "running") {
         artifactBuildLabel = "Building…";
     } else if (card.artifactTarget === "blueprint" && artifactPreview.status === "ok" && artifactPreview.result.plan?.packageExtraction) {
-        artifactBuildLabel = "Save Blueprint";
+        artifactBuildLabel = "Save game design";
     } else {
         artifactBuildLabel = "Build";
     }
@@ -520,7 +601,7 @@ function TargetCard({
                             }
                         />
                         <Text size="sm" mt="sm" fw={600}>Generation strategy</Text>
-                        <Text size="xs" c="dimmed">Default follows the supported safe policy. Exact enumerates every combination. Sampled always takes a repeatable sample. Conditional capped stays exact below the limit and samples only above it.</Text>
+                        <Text size="xs" c="dimmed">Default follows the supported safe policy. Exact enumerates every combination. Sampled always takes a repeatable sample. Exact until cap stays exact below the limit and samples only above it.</Text>
                         <Group gap="xs" mt={4}>
                             {(["default", "exact", "sampled", "capped"] as const).map((generation) => (
                                 <Button key={generation} id={`outcome-library-generation-${generation}`} size="xs" variant={outcomeLibraryGenerationOptions.generation === generation ? "filled" : "default"} onClick={() => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, generation})}>
@@ -609,11 +690,13 @@ function TargetCard({
                             )}
                             {outcomeLibraryPreflight.status === "ok" && operationalEstimates !== undefined && (
                                 <Text size="xs" c="dimmed">
-                                    Estimated records: {operationalEstimates.recordCount}; output size: {operationalEstimates.outputSize}; memory/disk risk: {operationalEstimates.memoryRisk}/{operationalEstimates.diskRisk}; likely duration: {operationalEstimates.likelyDuration}. These stay unknown until measured calibration supports an estimate.
+                                    {estimateFields.length === 0
+                                        ? "No measured size or duration estimate is available for this run; progress and cancellation remain available."
+                                        : `Estimates: ${estimateFields.map(([label, value]) => `${label} ${value}`).join("; ")}.`}
                                 </Text>
                             )}
                             {outcomeLibraryPreflight.status === "ok" && outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "capped" && (
-                                <Text size="sm" c="orange">Choose sampled or conditional capped coverage with a sample size and seed, or raise the exact limit before generating.</Text>
+                                <Text size="sm" c="orange">Choose sampled or exact-until-cap coverage with a sample size and seed, or raise the exact limit before generating.</Text>
                             )}
                         </div>
                         <Button
@@ -628,9 +711,9 @@ function TargetCard({
                             disabled={outcomeLibraryDisabled}
                             title={outcomeLibraryDisabled ? outcomeLibraryDisabledReason : undefined}
                         >
-                            Generate {outcomeLibraryGenerationOptions.generation === "default" ? "exact" : outcomeLibraryGenerationOptions.generation} outcome library ({outcomeLibraryGenerationOptions.mode.trim() || defaultModeName})
+                            Generate {outcomeLibraryGenerationOptions.generation === "default" ? "exact" : outcomeLibraryGenerationOptions.generation} outcome table ({outcomeLibraryGenerationOptions.mode.trim() || defaultModeName})
                         </Button>
-                        {outcomeLibraryRun.status === "starting" && <LoadingState label="Submitting Outcome Library generation…" />}
+                        {outcomeLibraryRun.status === "starting" && <LoadingState label="Submitting outcome table generation…" />}
                         {outcomeLibraryRun.status === "running" && (
                             outcomeLibraryRun.job.durableProgress !== undefined
                                 ? <JobProgressCard job={toDurableOutcomeLibraryJob(outcomeLibraryRun.job)} onCancel={onCancelOutcomeLibrary} />
@@ -676,11 +759,17 @@ function TargetCard({
                                     {outcomeLibraryRun.result.generator.strategy === "capped-coverage"
                                         ? ` (${(outcomeLibraryRun.result.coverage * 100).toFixed(4)}% of the raw space)`
                                         : ""}
-                                    {" "}(RTP {(outcomeLibraryRun.result.mode.rtp * 100).toFixed(2)}%) into{" "}
+                                    {" "}({outcomeLibraryRun.result.generator.strategy === "exact" ? "paid-spin exact RTP" : "RTP"}{" "}
+                                    {(outcomeLibraryRun.result.mode.rtp * 100).toFixed(2)}%) into{" "}
                                     {outcomeLibraryRun.result.libraryDir}.
                                 </Text>
+                                {outcomeLibraryRun.result.generator.strategy === "exact" && (
+                                    <Text size="xs" c="dimmed" mt={4}>
+                                        Exact generation enumerates paid entry spins. This table does not contain later feature payouts — for example free-game wins. Overview derives exact total RTP when the design uses supported additive free games, as well as showing the paid-spin table; Simulation remains the way to estimate whole-round hit frequency, volatility and maximum win.
+                                    </Text>
+                                )}
                                 {(outcomeLibraryFreshness.status === "stale" || outcomeLibraryFreshness.status === "wrong") && (
-                                    <Alert color="yellow" variant="light" title={outcomeLibraryFreshness.status === "stale" ? "Outcome Library is stale" : "Outcome Library belongs to another game"} mt="xs">
+                                    <Alert color="yellow" variant="light" title={outcomeLibraryFreshness.status === "stale" ? "Outcome table is stale" : "Outcome table belongs to another game"} mt="xs">
                                         <Text size="sm">{outcomeLibraryFreshness.reason}</Text>
                                     </Alert>
                                 )}
@@ -691,7 +780,7 @@ function TargetCard({
                                     {outputActionsUnavailable ? (
                                         <>
                                             <Button size="xs" variant="default" onClick={() => onCopyPath(outcomeLibraryRun.result.resolvedBundleDir)}>Copy path</Button>
-                                            <Text size="xs" c="dimmed">Opening local output is unavailable from this headless or remote Studio session.</Text>
+                                            <Text size="xs" c="dimmed">Use Copy path to open the library folder in your file manager; Inspect library opens it inside Studio.</Text>
                                         </>
                                     ) : <>
                                         <Button size="xs" variant="default" onClick={() => onOpenFolder(outcomeLibraryRun.result.resolvedBundleDir)}>Open output folder</Button>
@@ -793,7 +882,7 @@ function TargetCard({
                                     </>
                                 )}
                                 {card.artifactTarget === "blueprint" && artifactPreview.result.plan?.packageExtraction && (
-                                    <Text size="sm">Conversion details: {artifactPreview.result.destination}.conversion-evidence.json. Preview publishes no files; Save Blueprint explicitly creates a separate editable project.</Text>
+                                    <Text size="sm">Conversion details: {artifactPreview.result.destination}.conversion-evidence.json. Preview publishes no files; Save game design explicitly creates a separate editable project.</Text>
                                 )}
                                 {artifactPreview.result.plan?.packageExtraction && artifactPreview.result.plan.source.configurationProvenance?.inputBindingHash && <Text size="sm">Source link: {artifactPreview.result.plan.source.configurationProvenance.inputBindingHash}</Text>}
                                 <PackageExtractionDiagnostics extraction={artifactPreview.result.plan?.packageExtraction} />
@@ -802,14 +891,46 @@ function TargetCard({
                                 {artifactPreview.result.plan?.steps.filter((step) => step.kind === "importParWorkbook").flatMap((step) => step.losses ?? []).map((loss, index) => <Text key={index} size="sm" c="orange">PAR import boundary: {loss}</Text>)}
                                 {artifactPreview.status === "conflict" && (
                                     <div>
+                                        {existingBuildJobLookup === "loading" && (
+                                            <Text size="sm" c="dimmed" mb="sm">Checking the existing file&apos;s build record…</Text>
+                                        )}
+                                        {existingDownloadJobId !== undefined && existingOutputFreshness?.status === "stale" && (
+                                            <Alert color="yellow" variant="light" title="This output is from an earlier design" mb="sm">
+                                                <Text size="sm">{existingOutputFreshness.reason}</Text>
+                                                <Text size="sm" mt={4}>
+                                                    Downloading the old copy is still allowed, but do not use its RTP for the current design. Build a current copy to compare the new math.
+                                                </Text>
+                                            </Alert>
+                                        )}
+                                        {existingDownloadJobId !== undefined && existingOutputFreshness?.status === "unknown" && (
+                                            <Alert color="gray" variant="light" title="Studio cannot verify this file's design version" mb="sm">
+                                                <Text size="sm">{existingOutputFreshness.reason}</Text>
+                                                <Text size="sm" mt={4}>Build a current copy before sending this file for math review.</Text>
+                                            </Alert>
+                                        )}
+                                        {existingBuildJobLookup === "done" && existingDownloadJobId === undefined && (
+                                            <Alert color="gray" variant="light" title="Existing file, no build record" mb="sm">
+                                                <Text size="sm">
+                                                    This destination already contains a file, but Studio could not find its build record. Choose a new destination to build a current copy without touching the existing file.
+                                                </Text>
+                                            </Alert>
+                                        )}
                                         <ErrorState message="An output already exists at this destination. Choose a new destination; Build will not overwrite it." />
                                         <Text className="studio-technical-text" size="sm" mt={4}>
                                             Existing output: {artifactPreview.result.destination}
                                         </Text>
                                         <QuickActions>
+                                            <Button size="xs" variant="default" onClick={() => onArtifactDestinationChange(card.artifactTarget!, versionedDestination(artifactPreview.result.destination, artifactPreview.result.destinationKind))}>
+                                                {existingDownloadJobId !== undefined && existingOutputFreshness?.status === "current" ? "Use a new name" : "Build current copy"}
+                                            </Button>
                                             <Button size="xs" variant="default" onClick={() => onCopyPath(artifactPreview.result.destination)}>
                                                 Copy path
                                             </Button>
+                                            {existingDownloadJobId !== undefined && artifactPreview.result.destinationKind === "file" && (
+                                                <Anchor size="xs" href={buildArtifactBuildDownloadUrl(existingDownloadJobId)} download>
+                                                    {existingOutputFreshness?.status === "stale" ? `Download old ${card.label}` : `Download ${card.label}`}
+                                                </Anchor>
+                                            )}
                                             {!outputActionsUnavailable && (
                                                 <Button
                                                     size="xs"
@@ -822,6 +943,13 @@ function TargetCard({
                                                 </Button>
                                             )}
                                         </QuickActions>
+                                        {existingDownloadJobId !== undefined && (
+                                            <Text size="xs" c="dimmed" mt={4}>
+                                                {existingOutputFreshness?.status === "current"
+                                                    ? "This file matches the current saved design. Download serves that exact copy."
+                                                    : "Download serves the existing copy. The current design is not rebuilt until you choose Build current copy."}
+                                            </Text>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -885,7 +1013,7 @@ function TargetCard({
                         )}
                         {artifactBuildRun.status === "cancelled" && (
                             <Text size="sm" c="dimmed" mt={4}>
-                                Build cancelled. No incomplete artifact was published.
+                                Build cancelled. No incomplete output was published.
                             </Text>
                         )}
                         {artifactBuildRun.status === "error" && <ErrorState message={artifactBuildRun.message} />}
@@ -911,15 +1039,17 @@ function TargetCard({
                                 <Text size="sm" fw={600}>Build completed</Text>
                                 <Text className="studio-technical-text" size="sm" mt={4}>
                                     Built to {artifactBuildRun.result.outputPath}.
-                                    {artifactBuildRun.result.importedBlueprintPath !== undefined && ` Imported Blueprint: ${artifactBuildRun.result.importedBlueprintPath}.`}
+                                    {artifactBuildRun.result.importedBlueprintPath !== undefined && ` Imported game design: ${artifactBuildRun.result.importedBlueprintPath}.`}
                                     {artifactBuildRun.result.conversionEvidencePath !== undefined && ` Conversion details: ${artifactBuildRun.result.conversionEvidencePath}.`}
                                 </Text>
                                 <ParConversionDiagnostics report={artifactBuildRun.result.parConversion ?? artifactBuildRun.result.plan?.parConversion} />
                                 {artifactBuildRun.result.plan?.packageExtraction && <Text size="sm" c="dimmed">Extraction records this original publication. Later game-design edits keep it as historical origin.</Text>}
                                 {artifactBuildRun.result.plan !== undefined && (
-                                    <Text size="sm" c="dimmed" mt={4}>
-                                        Executed plan: {artifactBuildRun.result.plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No executable steps"}.
-                                    </Text>
+                                    <AdvancedDisclosure label="build steps">
+                                        <Text size="sm" c="dimmed" mt={4}>
+                                            Executed plan: {artifactBuildRun.result.plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No executable steps"}.
+                                        </Text>
+                                    </AdvancedDisclosure>
                                 )}
                                 {artifactBuildRun.result.stakeManifest !== undefined && (
                                     <Text size="sm" c="dimmed" mt={4}>
@@ -946,6 +1076,15 @@ function TargetCard({
                                     </Text>
                                 )}
                                 <QuickActions>
+                                    {artifactBuildRun.result.outputKind === "file" && (
+                                        <Anchor
+                                            size="xs"
+                                            href={buildArtifactBuildDownloadUrl(artifactBuildRun.jobId)}
+                                            download
+                                        >
+                                            Download {card.label}
+                                        </Anchor>
+                                    )}
                                     <Button
                                         data-pokie-lifecycle-artifact="artifact-build-output"
                                         data-pokie-lifecycle-artifact-target={artifactBuildRun.result.target}
@@ -970,7 +1109,7 @@ function TargetCard({
                                             <Button size="xs" variant="default" onClick={() => onCopyPath(artifactBuildRun.result.outputPath)}>
                                                 Copy path
                                             </Button>
-                                            <Text size="xs" c="dimmed">Opening local output is unsupported from a headless or remote Studio session.</Text>
+                                            <Text size="xs" c="dimmed">Use Copy path to open the output in your file manager; Open as Project imports it into Studio.</Text>
                                         </>
                                     ) : (
                                         <Button
@@ -1132,14 +1271,14 @@ function describeOutcomeLibraryLifecycle(job: StudioOutcomeLibraryGenerateJobVie
     const emitted = job.progress?.emittedOutcomes === undefined ? undefined : `${job.progress.emittedOutcomes} outcome record${job.progress.emittedOutcomes === "1" ? "" : "s"} evaluated`;
     switch (job.lifecycleStage) {
         case "finalization": return emitted === undefined ? "Finalizing generated outcomes…" : `Finalizing generated outcomes: ${emitted}…`;
-        case "writing": return "Writing Outcome Library records…";
-        case "analyzing": return "Analyzing Outcome Library outcomes…";
-        case "building-index": return "Building the native Outcome Library index…";
-        case "serialization": return "Serializing Outcome Library records…";
-        case "validation": return "Validating the complete Outcome Library…";
-        case "publication": return "Atomically publishing the validated Outcome Library…";
-        case "generation": return progress === undefined ? "Generating outcome library from this project's current build…" : `Generating outcome library: ${progress}…`;
-        default: return progress === undefined ? "Preparing outcome library generation…" : `Generating outcome library: ${progress}…`;
+        case "writing": return "Writing outcome table rows…";
+        case "analyzing": return "Analyzing outcome table rows…";
+        case "building-index": return "Building the native outcome-table index…";
+        case "serialization": return "Serializing outcome table rows…";
+        case "validation": return "Validating the complete outcome table…";
+        case "publication": return "Publishing the validated outcome table…";
+        case "generation": return progress === undefined ? "Generating an outcome table from this project's current build…" : `Generating outcome table: ${progress}…`;
+        default: return progress === undefined ? "Preparing outcome table generation…" : `Generating outcome table: ${progress}…`;
     }
 }
 
@@ -1147,7 +1286,7 @@ function toDurableOutcomeLibraryJob(job: StudioOutcomeLibraryGenerateJobView): S
     return {
         id: job.id,
         projectId: "outcome-library-project",
-        operation: "Outcome Library generation",
+        operation: "Outcome table generation",
         request: {},
         conflictKey: "outcome-library",
         status: job.status,
@@ -1331,7 +1470,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                 setOutcomeLibraryPreflight(result.status === "ok" ? {status: "ok", result} : {status: "error", result});
             })
             .catch((error: unknown) => {
-                if (!cancelled) setOutcomeLibraryPreflight({status: "error", message: describeProjectActionError("The outcome library check", errorMessage(error))});
+                if (!cancelled) setOutcomeLibraryPreflight({status: "error", message: describeProjectActionError("The outcome table check", errorMessage(error))});
             });
         return () => {
             cancelled = true;
@@ -1503,6 +1642,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             const initial = queue.key === undefined && queue.version === 0;
             queue.key = key;
             queue.approved = false;
+            queue.retried = false;
             const request = {version: ++queue.version, outDir, ready: initial};
             queue.pending = request;
             clearTimeout(queue.timer);
@@ -1519,10 +1659,23 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                     .then((view) => {
                         if (!scope.active || queue.version !== next.version) return;
                         queue.approved = view.status === "ok";
+                        queue.retried = false;
                         setArtifactPreviews((previews) => ({...previews, [target]: toArtifactPreviewRunView(view)}));
                     })
                     .catch((error: unknown) => {
                         if (!scope.active || queue.version !== next.version) return;
+                        if (queue.retried !== true) {
+                            queue.retried = true;
+                            const retry = {version: ++queue.version, outDir: next.outDir, ready: false};
+                            queue.pending = retry;
+                            setArtifactPreviews((previews) => ({...previews, [target]: {status: "loading"}}));
+                            queue.timer = setTimeout(() => {
+                                if (!scope.active || queue.version !== retry.version) return;
+                                retry.ready = true;
+                                drain();
+                            }, 1_000);
+                            return;
+                        }
                         setArtifactPreviews((previews) => ({...previews, [target]: {status: "error", message: describeProjectActionError("The build destination preview", errorMessage(error))}}));
                     })
                     .finally(() => {
@@ -1658,7 +1811,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                     // server's classified preflight status here so this path
                     // has the same recovery as a terminal lifecycle result.
                     ? describeOutcomeLibraryGenerationTerminalOutcome({status: error.outcomeStatus})
-                    : describeProjectActionError("The outcome library generation", errorMessage(error)),
+                    : describeProjectActionError("The outcome table generation", errorMessage(error)),
                 ...(error instanceof OutcomeLibraryGenerationStartError ? {diagnostic: error.message} : {}), browserRequestId});
             });
     }
@@ -1704,7 +1857,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                 outcomeLibraryGuard.end();
                 const observed = lastObservedOutcomeLibraryJob.current;
                 const jobId = error instanceof OutcomeLibraryGenerationPollError ? error.jobId : id;
-                setOutcomeLibraryRun({status: "error", jobId, browserRequestId, progressSnapshots, ...(observed?.id === jobId ? {durableStatus: observed.status} : {}), ...(error instanceof OutcomeLibraryGenerationPollError ? {pollHttpStatus: error.httpStatus} : {}), message: describeProjectActionError("The outcome library generation poll", errorMessage(error)), diagnostic: errorMessage(error)});
+                setOutcomeLibraryRun({status: "error", jobId, browserRequestId, progressSnapshots, ...(observed?.id === jobId ? {durableStatus: observed.status} : {}), ...(error instanceof OutcomeLibraryGenerationPollError ? {pollHttpStatus: error.httpStatus} : {}), message: describeProjectActionError("The outcome table generation poll", errorMessage(error)), diagnostic: errorMessage(error)});
             });
     }
 
@@ -1720,7 +1873,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                     progressSnapshots: retainOutcomeLibraryProgressSnapshot(outcomeLibraryRun.progressSnapshots, outcomeLibraryProgressSnapshot("poll", job)),
                 });
             })
-            .catch((error: unknown) => setOutcomeLibraryRun({status: "error", message: describeProjectActionError("Cancelling the outcome library generation", errorMessage(error))}));
+            .catch((error: unknown) => setOutcomeLibraryRun({status: "error", message: describeProjectActionError("Cancelling the outcome table generation", errorMessage(error))}));
     }
 
     function handleResumeOutcomeLibrary(): void {
@@ -1748,7 +1901,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                 // copy.
                 setOutcomeLibraryRun({status: "error", message: error instanceof OutcomeLibraryGenerationStartError
                     ? describeOutcomeLibraryGenerationTerminalOutcome({status: error.outcomeStatus})
-                    : describeProjectActionError("Resuming the outcome library generation", errorMessage(error)),
+                    : describeProjectActionError("Resuming the outcome table generation", errorMessage(error)),
                 ...(error instanceof OutcomeLibraryGenerationStartError ? {diagnostic: error.message} : {})});
             });
     }
@@ -1920,7 +2073,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         // the Home -> Project transition. A stale/cross-target response must
         // not silently navigate to another artifact's path.
         if (result.target !== target) {
-            setArtifactActionError(`The ${target} build result points to a ${result.target} artifact. Build it again before opening it.`);
+            setArtifactActionError(`The ${target} build result points to a ${result.target} build output. Build it again before opening it.`);
             return;
         }
         openAndNavigate(result.outputPath).catch((error: unknown) => setArtifactActionError(errorMessage(error)));
@@ -1962,25 +2115,107 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             ) : (
                 GROUP_ORDER.map((kind) => {
                     const groupCards = cards.filter((card) => card.kind === kind);
+                    // A local authoring tool should not reserve a permanent empty section for remote
+                    // delivery. Show the group only once a real registered target exists; the placeholder
+                    // card used to make this the last wall of "Unavailable" prose on a math-review page.
+                    if (kind === "remoteDeployment" && groupCards.length === 0) return null;
                     const generatedLibrary = outcomeLibraryRun.status === "ok" ? outcomeLibraryRun.result : undefined;
                     const emptyGroup = kind === "outcomeLibrary" && generatedLibrary !== undefined
                         ? (
                             <div>
-                                <Text size="sm">An outcome library was generated for this project.</Text>
+                                <Text size="sm">An outcome table was generated for this project.</Text>
                                 <QuickActions>
                                     <Button size="xs" onClick={() => {
                                         openAndNavigate(generatedLibrary.libraryDir).catch((error: unknown) => setArtifactActionError(errorMessage(error)));
                                     }}>
-                                        Open generated outcome library
+                                        Open generated outcome table
                                     </Button>
                                 </QuickActions>
                             </div>
                         )
                         : (
                             <EmptyState message={kind === "outcomeLibrary"
-                                ? "No outcome library generator is offered for this project. A library generated earlier can be opened from Projects."
+                                ? "No outcome table generator is offered for this project. A table generated earlier can be opened from Projects."
                                 : "Nothing in this group yet."} />
                         );
+                    const primaryCards = kind === "buildArtifact" ? groupCards.filter((card) => !isDeveloperArtifactCard(card)) : groupCards;
+                    const developerCards = kind === "buildArtifact" ? groupCards.filter(isDeveloperArtifactCard) : [];
+                    const renderTargetCard = (card: ExportDeployTargetCard) => {
+                        const artifactBuildRun: ArtifactBuildRunView =
+                                        (card.artifactTarget !== undefined ? artifactBuildRuns[card.artifactTarget] : undefined) ?? {status: "idle"};
+                        const artifactPreview: ArtifactPreviewRunView =
+                                        (card.artifactTarget !== undefined ? artifactPreviews[card.artifactTarget] : undefined) ?? {status: "loading"};
+                        const addedToProjects = artifactBuildRun.status === "ok" && addedToProjectPaths.has(artifactBuildRun.result.outputPath);
+                        let recoveryRequested = false;
+                        if (card.kind === "outcomeLibrary") {
+                            recoveryRequested = recoveryRequest !== undefined && (typeof recoveryRequest.generation === "string" || typeof recoveryRequest.maxOutcomeSpaceSize === "string" || typeof recoveryRequest.libraryId === "string");
+                        } else if (card.artifactTarget !== undefined) {
+                            recoveryRequested = recoveryRequest?.target === card.artifactTarget;
+                        } else if (card.deploymentTarget !== undefined) {
+                            recoveryRequested = recoveryRequest?.targetId === card.deploymentTarget.id;
+                        }
+
+                        return (
+                            <TargetCard
+                                key={card.id}
+                                card={card}
+                                initiallyOpened={kind === "buildArtifact" && card.id === primaryCards.find((candidate) => candidate.supported)?.id}
+                                recoveryRequest={recoveryRequested ? recoveryRequest : undefined}
+                                defaultModeName={defaultModeName}
+                                outcomeLibraryRun={outcomeLibraryRun}
+                                outcomeLibraryFreshness={outcomeLibraryFreshness}
+                                outcomeLibraryPreflight={outcomeLibraryPreflight}
+                                onGenerateOutcomeLibrary={handleGenerateOutcomeLibrary}
+                                onCancelOutcomeLibrary={handleCancelOutcomeLibrary}
+                                onResumeOutcomeLibrary={handleResumeOutcomeLibrary}
+                                onFeatureOutcomeLibraryRecoveryAction={onFeatureOutcomeLibraryRecoveryAction}
+                                onInspectOutcomeLibrary={(libraryDir) => openAndNavigate(libraryDir).catch((error: unknown) => setArtifactActionError(errorMessage(error)))}
+                                outcomeLibraryGenerationOptions={outcomeLibraryGenerationOptions}
+                                onOutcomeLibraryGenerationOptionsChange={setOutcomeLibraryGenerationOptions}
+                                deployment={deployment}
+                                onOpenFolder={handleOpenFolder}
+                                artifactPreview={artifactPreview}
+                                artifactBuildRun={artifactBuildRun}
+                                onBuildArtifact={handleBuildArtifact}
+                                onCancelArtifactBuild={handleCancelArtifactBuild}
+                                artifactDestination={card.artifactTarget === undefined ? "" : artifactDestinations[card.artifactTarget] ?? ""}
+                                onArtifactDestinationChange={(target, destination) => {
+                                    // Also guard picker callbacks opened before the job started.
+                                    if (artifactActiveBuilds.current[target]) return;
+                                    artifactRunVersions.current[target] = (artifactRunVersions.current[target] ?? 0) + 1;
+                                    clearTimeout(artifactBuildPollTimers.current[target]);
+                                    setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "idle"}}));
+                                    revokeArtifactPreview(target);
+                                    setArtifactDestinations((destinations) => ({...destinations, [target]: destination}));
+                                }}
+                                onOpenAsProject={(result) => handleOpenArtifactAsProject(card.artifactTarget!, result)}
+                                onAddToProjects={handleAddArtifactToProjects}
+                                addedToProjects={addedToProjects}
+                                onRevealOutput={handleRevealOutput}
+                                outputActionsUnavailable={outputActionsUnavailable}
+                                onCopyPath={copyOutputPath}
+                            />
+                        );
+                    };
+                    const groupContent = (() => {
+                        if (groupCards.length === 0) return emptyGroup;
+                        if (kind === "buildArtifact") {
+                            return (
+                                <>
+                                    {primaryCards.map((card) => renderTargetCard(card))}
+                                    {developerCards.length > 0 && (
+                                        <CollapsiblePageSection
+                                            legend="Developer outputs"
+                                            summary={`TypeScript game package, Stake Engine export and portably compiled WASM (${developerCards.length}) — not needed for a math review.`}
+                                        >
+                                            {developerCards.map((card) => renderTargetCard(card))}
+                                        </CollapsiblePageSection>
+                                    )}
+                                </>
+                            );
+                        }
+                        return groupCards.map((card) => renderTargetCard(card));
+                    })();
                     return (
                         <PageSection key={kind} legend={GROUP_LABELS[kind].legend}>
                             <Text size="sm" c="dimmed" mb="sm">
@@ -1991,65 +2226,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                                     ? <LoadingState label="Discovering output formats…" />
                                     : <ErrorState message={artifactTargetsView.message} />
                             )}
-                            {(kind === "remoteDeployment" || artifactTargetsView.status === "loaded" || artifactTargetsView.targets !== undefined && groupCards.length > 0) && (groupCards.length === 0 ? emptyGroup : (
-                                groupCards.map((card) => {
-                                    const artifactBuildRun: ArtifactBuildRunView =
-                                        (card.artifactTarget !== undefined ? artifactBuildRuns[card.artifactTarget] : undefined) ?? {status: "idle"};
-                                    const artifactPreview: ArtifactPreviewRunView =
-                                        (card.artifactTarget !== undefined ? artifactPreviews[card.artifactTarget] : undefined) ?? {status: "loading"};
-                                    const addedToProjects = artifactBuildRun.status === "ok" && addedToProjectPaths.has(artifactBuildRun.result.outputPath);
-                                    let recoveryRequested = false;
-                                    if (card.kind === "outcomeLibrary") {
-                                        recoveryRequested = recoveryRequest !== undefined && (typeof recoveryRequest.generation === "string" || typeof recoveryRequest.maxOutcomeSpaceSize === "string" || typeof recoveryRequest.libraryId === "string");
-                                    } else if (card.artifactTarget !== undefined) {
-                                        recoveryRequested = recoveryRequest?.target === card.artifactTarget;
-                                    } else if (card.deploymentTarget !== undefined) {
-                                        recoveryRequested = recoveryRequest?.targetId === card.deploymentTarget.id;
-                                    }
-
-                                    return (
-                                        <TargetCard
-                                            key={card.id}
-                                            card={card}
-                                            initiallyOpened={kind === "buildArtifact" && card.id === groupCards.find((candidate) => candidate.supported)?.id}
-                                            recoveryRequest={recoveryRequested ? recoveryRequest : undefined}
-                                            defaultModeName={defaultModeName}
-                                            outcomeLibraryRun={outcomeLibraryRun}
-                                            outcomeLibraryFreshness={outcomeLibraryFreshness}
-                                            outcomeLibraryPreflight={outcomeLibraryPreflight}
-                                            onGenerateOutcomeLibrary={handleGenerateOutcomeLibrary}
-                                            onCancelOutcomeLibrary={handleCancelOutcomeLibrary}
-                                            onResumeOutcomeLibrary={handleResumeOutcomeLibrary}
-                                            onFeatureOutcomeLibraryRecoveryAction={onFeatureOutcomeLibraryRecoveryAction}
-                                            onInspectOutcomeLibrary={(libraryDir) => openAndNavigate(libraryDir).catch((error: unknown) => setArtifactActionError(errorMessage(error)))}
-                                            outcomeLibraryGenerationOptions={outcomeLibraryGenerationOptions}
-                                            onOutcomeLibraryGenerationOptionsChange={setOutcomeLibraryGenerationOptions}
-                                            deployment={deployment}
-                                            onOpenFolder={handleOpenFolder}
-                                            artifactPreview={artifactPreview}
-                                            artifactBuildRun={artifactBuildRun}
-                                            onBuildArtifact={handleBuildArtifact}
-                                            onCancelArtifactBuild={handleCancelArtifactBuild}
-                                            artifactDestination={card.artifactTarget === undefined ? "" : artifactDestinations[card.artifactTarget] ?? ""}
-                                            onArtifactDestinationChange={(target, destination) => {
-                                                // Also guard picker callbacks opened before the job started.
-                                                if (artifactActiveBuilds.current[target]) return;
-                                                artifactRunVersions.current[target] = (artifactRunVersions.current[target] ?? 0) + 1;
-                                                clearTimeout(artifactBuildPollTimers.current[target]);
-                                                setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "idle"}}));
-                                                revokeArtifactPreview(target);
-                                                setArtifactDestinations((destinations) => ({...destinations, [target]: destination}));
-                                            }}
-                                            onOpenAsProject={(result) => handleOpenArtifactAsProject(card.artifactTarget!, result)}
-                                            onAddToProjects={handleAddArtifactToProjects}
-                                            addedToProjects={addedToProjects}
-                                            onRevealOutput={handleRevealOutput}
-                                            outputActionsUnavailable={outputActionsUnavailable}
-                                            onCopyPath={copyOutputPath}
-                                        />
-                                    );
-                                })
-                            ))}
+                            {(kind === "remoteDeployment" || artifactTargetsView.status === "loaded" || artifactTargetsView.targets !== undefined && groupCards.length > 0) && groupContent}
                         </PageSection>
                     );
                 })

@@ -97,8 +97,11 @@ export function CanonicalPlayerView({
         if (logicalRound?.currentStep) {
             const winLabel = elements.totalWinRow?.querySelector("dt");
             const multiplierLabel = elements.payoutMultiplierRow?.querySelector("dt");
-            if (winLabel) winLabel.textContent = "Win this step";
-            if (multiplierLabel) multiplierLabel.textContent = "Win this step / bet";
+            // A feature round shows one screen at a time. Calling the step's own win "Win" next to a
+            // paid-round total above it reads as a contradiction when the last free spin paid nothing.
+            const stepScoped = logicalRound.subrounds.length > 1;
+            if (winLabel) winLabel.textContent = stepScoped ? "Win on this screen" : "Win";
+            if (multiplierLabel) multiplierLabel.textContent = stepScoped ? "Screen win multiplier (× bet)" : "Win multiplier (× bet)";
         }
         renderPlayerRound(
             elements,
@@ -126,7 +129,7 @@ export function CanonicalPlayerView({
                 },
             },
         );
-    }, [artwork, availableBets, availableModeIds, credits, currentBet, currentModeId, featureCounters, lines, onSelectBet, onSelectMode, paytable, displayedMultiplier, displayedScreen, displayedWin, displayedCoverage, displayedWins, logicalRound?.currentStep]);
+    }, [artwork, availableBets, availableModeIds, credits, currentBet, currentModeId, featureCounters, lines, onSelectBet, onSelectMode, paytable, displayedMultiplier, displayedScreen, displayedWin, displayedCoverage, displayedWins, logicalRound?.currentStep, logicalRound?.subrounds.length]);
 
     return <><div className="pokie-player-card" ref={playerRootRef} />{sequenceSelections?.length || sequenceStatistics?.length ? <section aria-label="Reel sequence selections">
         <h4>Reel sequences</h4>

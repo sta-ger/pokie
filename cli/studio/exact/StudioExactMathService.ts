@@ -1,13 +1,36 @@
-import {OutcomeLibraryFolderReader, analyzeWeightedOutcomeWins, type OutcomeLibraryFolderReading, type WeightedOutcomeLibraryAnalysis} from "@fromstan/pokie";
+import {
+    OutcomeLibraryFolderReader,
+    analyzeWeightedOutcomeWins,
+    computeFreeGamesExactRtp,
+    computeWeightedOutcomeLibraryFeatureBreakdown,
+    loadGameBlueprint,
+    type FreeGamesExactRtp,
+    type OutcomeLibraryFolderReading,
+    type WeightedOutcomeLibraryAnalysis,
+} from "@fromstan/pokie";
+import path from "node:path";
 import type {StudioOutcomeLibraryRegistryView} from "../outcomeLibrary/StudioOutcomeLibraryRegistryView.js";
 import {resolveProjectDirectory} from "../outcomeLibrary/resolveProjectDirectory.js";
-import type {StudioExactMathContributionTable, StudioExactMathEventTable, StudioExactMathView} from "./StudioExactMathView.js";
+import type {StudioExactMathContributionTable, StudioExactMathEventTable, StudioExactMathFeatureEvent, StudioExactMathView} from "./StudioExactMathView.js";
 
 // Reading every retained outcome is only needed for the line/symbol breakdown; the exact headline
 // metrics and payout distribution are already embedded in the bundle's mode index. A very large
 // library should still open quickly and truthfully show the exact metrics even when a full scan is
 // intentionally skipped.
 const MAX_CONTRIBUTION_OUTCOMES = 25_000;
+
+/** Reads the authored cap from the current design; a non-blueprint project simply has no cap. */
+function resolveMaxFreeGames(projectRoot: string): number | undefined {
+    for (const candidate of [projectRoot, path.join(projectRoot, "blueprint.json")]) {
+        try {
+            const blueprint = loadGameBlueprint(candidate);
+            return blueprint.mechanics?.freeGames?.maxFreeGames;
+        } catch {
+            // Try the other shape: projectRoot may be a directory or the blueprint file itself.
+        }
+    }
+    return undefined;
+}
 
 /**
  * Reads the exact analysis of a compatible Outcome Library for the current saved design and augments it
@@ -37,7 +60,7 @@ export class StudioExactMathService {
         if (registry.buildStatus === "missing") {
             return {
                 status: "missing",
-                message: "No exact Outcome Library exists for this saved design yet. Compute it once to replace a sampled estimate with exact RTP, payout probabilities and line/symbol contributions.",
+                message: "No exact outcome table exists for this saved design yet. Compute it once to replace a sampled estimate with exact RTP, payout probabilities and line/symbol contributions.",
             };
         }
 
@@ -46,7 +69,7 @@ export class StudioExactMathService {
         if (mode === undefined) {
             return {
                 status: "stale",
-                message: "An Outcome Library exists, but it was computed from a different saved design or POKIE version. Recompute it before treating its numbers as exact for the current design.",
+                message: "An exact outcome table (Outcome Library) exists, but it was computed from a different saved design or POKIE version. Recompute it before treating its numbers as exact for the current design.",
             };
         }
 
@@ -59,7 +82,7 @@ export class StudioExactMathService {
             const manifest = await this.reader.readIndex(resolved.resolvedPath);
             const modeEntry = manifest.modes.find((entry) => entry.modeName === mode.modeName);
             if (modeEntry === undefined) {
-                return {status: "error", message: `The Outcome Library manifest does not contain mode "${mode.modeName}".`};
+                return {status: "error", message: `The outcome-table manifest does not contain mode "${mode.modeName}".`};
             }
             analysis = modeEntry.analysis;
             stake = modeEntry.stake;
@@ -72,10 +95,15 @@ export class StudioExactMathService {
         let events: StudioExactMathEventTable = {entries: [], truncated: false};
         let contributionNote: string | undefined;
         let eventNote: string | undefined;
+        let featureEvents: readonly StudioExactMathFeatureEvent[] | undefined;
+        let featurePayoutsIncluded: boolean | undefined;
+        let freeGamesRtp: FreeGamesExactRtp | undefined;
+        let featureNote: string | undefined;
         if (mode.outcomeCount > MAX_CONTRIBUTION_OUTCOMES) {
             const skip = `This library has ${mode.outcomeCount.toLocaleString("en-US")} outcomes. Exact metrics and the payout distribution are shown from its index; per-line, per-symbol and per-event detail was skipped because loading every outcome would be too expensive here.`;
             contributionNote = skip;
             eventNote = skip;
+            featureNote = "This library is too large to inspect feature triggers here. The exact figures cover paid entry spins; feature payouts that settle later (for example free games) are not included.";
         } else {
             try {
                 const library = await this.reader.readLibrary(resolved.resolvedPath, mode.modeName);
@@ -83,6 +111,13 @@ export class StudioExactMathService {
                 line = winAnalysis.line;
                 symbol = winAnalysis.symbol;
                 events = winAnalysis.events;
+                const featureBreakdown = computeWeightedOutcomeLibraryFeatureBreakdown(library);
+                featureEvents = featureBreakdown.featureEvents;
+                featurePayoutsIncluded = featureBreakdown.featureEvents.length === 0;
+                if (featureBreakdown.featureEvents.length > 0) {
+                    freeGamesRtp = computeFreeGamesExactRtp(library, analysis.rtp, resolveMaxFreeGames(projectRoot));
+                    featureNote = "This exact library records feature triggers, but the later feature wins are outside these paid-spin outcomes. Use Simulation for total RTP.";
+                }
                 if (winAnalysis.truncated) {
                     contributionNote = "Contribution and event tables are limited to their largest rows. The library itself remains complete.";
                     eventNote = contributionNote;
@@ -108,6 +143,10 @@ export class StudioExactMathService {
             analysis,
             contributions: {line, symbol},
             events,
+            ...(featureEvents === undefined ? {} : {featureEvents}),
+            ...(featurePayoutsIncluded === undefined ? {} : {featurePayoutsIncluded}),
+            ...(freeGamesRtp === undefined ? {} : {freeGamesRtp}),
+            ...(featureNote === undefined ? {} : {featureNote}),
             ...(contributionNote === undefined ? {} : {contributionNote}),
             ...(eventNote === undefined ? {} : {eventNote}),
         };

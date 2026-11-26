@@ -71,7 +71,11 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
     if (state.logicalRound !== undefined) {
         const invalid = validateLogicalRound(state.logicalRound);
         if (invalid) return {status: "corrupt-state", reason: invalid};
-        if (sessionId !== undefined && (state.logicalRound.entry as {sessionId?: string}).sessionId !== sessionId) return {status: "corrupt-state", reason: "Retained logical round belongs to another session."};
+        // A portable logical round may intentionally retain only its SessionCommand entry (no repository
+        // identity). Enforce session ownership only when the entry actually names one; otherwise the
+        // round belongs to the state that retained it, exactly as a direct SessionRuntime round does.
+        const entrySession = (state.logicalRound.entry as {sessionId?: string}).sessionId;
+        if (sessionId !== undefined && entrySession !== undefined && entrySession !== sessionId) return {status: "corrupt-state", reason: "Retained logical round belongs to another session."};
         const last = state.logicalRound.subrounds[state.logicalRound.cursor - 1];
         if (last.win !== state.win || last.credits !== state.credits || ((last.finalScreen ?? last.screen) !== undefined && JSON.stringify(last.finalScreen ?? last.screen) !== JSON.stringify(state.screen))) return {status: "corrupt-state", reason: "Retained logical output differs from executable capture."};
         let schema = state.stateSchema;

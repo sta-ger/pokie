@@ -23,7 +23,7 @@ export function BuildResultDisplay({view, onOpen, onOpenFolder}: {view: BuildPro
         return <ErrorState message={view.message} detail={view.status === "error" ? view.detail : undefined} />;
     }
     if (view.status === "invalid") {
-        return <ErrorState message={`Blueprint is invalid — ${view.errors.length} error(s).`} />;
+        return <ErrorState message={`Game design is invalid — ${view.errors.length} error(s).`} />;
     }
 
     return (
@@ -33,7 +33,7 @@ export function BuildResultDisplay({view, onOpen, onOpenFolder}: {view: BuildPro
                 &quot;{view.projectRoot}&quot;.
             </Text>
             <Text size="xs" c="dimmed" style={{overflowWrap: "anywhere"}}>
-                Blueprint hash: {view.buildInfo.blueprintHash}
+                Game design hash: {view.buildInfo.blueprintHash}
             </Text>
             <IssueList title="Warnings" issues={view.warnings} />
             <FileList title="Created files" files={view.createdFiles} />

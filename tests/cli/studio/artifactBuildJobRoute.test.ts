@@ -1,4 +1,4 @@
-import {activateArtifactBuild, cancelArtifactBuild, getArtifactBuild} from "../../../cli/studio-client/src/api/apiClient.js";
+import {activateArtifactBuild, buildArtifactBuildDownloadUrl, cancelArtifactBuild, getArtifactBuild} from "../../../cli/studio-client/src/api/apiClient.js";
 import {matchArtifactBuildJobRoute} from "../../../cli/studio/build/artifactBuildJobRoute.js";
 
 // Regression guard for the Studio Build/Export job lifecycle: the browser client creates a
@@ -17,16 +17,19 @@ describe("Studio artifact build job route", () => {
         await activateArtifactBuild(fetchImpl as never, "job-1");
         await cancelArtifactBuild(fetchImpl as never, "job-1");
 
-        const paths = calls.map((call) => new URL(call, "http://127.0.0.1:3200").pathname);
+        const downloadPath = new URL(buildArtifactBuildDownloadUrl("job-1"), "http://127.0.0.1:3200").pathname;
+        const paths = [...calls.map((call) => new URL(call, "http://127.0.0.1:3200").pathname), downloadPath];
         expect(paths).toEqual([
             "/api/project/build/build/job-1",
             "/api/project/build/build/job-1/activate",
             "/api/project/build/build/job-1/cancel",
+            "/api/project/build/build/job-1/download",
         ]);
         expect(paths.map((pathname) => matchArtifactBuildJobRoute(pathname))).toEqual([
             {id: "job-1"},
             {id: "job-1", action: "activate"},
             {id: "job-1", action: "cancel"},
+            {id: "job-1", action: "download"},
         ]);
     });
 
@@ -34,6 +37,7 @@ describe("Studio artifact build job route", () => {
         expect(matchArtifactBuildJobRoute("/api/project/artifacts/build/job-1")).toEqual({id: "job-1"});
         expect(matchArtifactBuildJobRoute("/api/project/artifacts/build/job-1/activate")).toEqual({id: "job-1", action: "activate"});
         expect(matchArtifactBuildJobRoute("/api/project/artifacts/build/job-1/cancel")).toEqual({id: "job-1", action: "cancel"});
+        expect(matchArtifactBuildJobRoute("/api/project/artifacts/build/job-1/download")).toEqual({id: "job-1", action: "download"});
     });
 
     it("does not claim unrelated project routes", () => {

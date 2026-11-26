@@ -2,6 +2,7 @@ import {Button, Table, Text} from "@mantine/core";
 import {useState} from "react";
 import {formatAnalysisNumber} from "../../../../../src/internal/formatAnalysisNumber";
 import {AdvancedDisclosure} from "./AdvancedDisclosure";
+import {formatOneIn} from "../../domain/formatOneIn";
 
 type PayoutBucket = {
     readonly payoutMultiplier: number;
@@ -10,13 +11,6 @@ type PayoutBucket = {
 
 const INITIAL_ROWS = 12;
 const EXPAND_BY_DEFAULT_LIMIT = 50;
-
-/** "1 in N" reads badly when N rounds to 1 for a common outcome; keep precision near the mode. */
-function formatOneIn(probability: number): string {
-    if (!Number.isFinite(probability) || probability <= 0) return "—";
-    const inverse = 1 / probability;
-    return inverse < 10 ? inverse.toFixed(2) : Math.round(inverse).toLocaleString("en-US");
-}
 
 /**
  * Exact payout probability mass function. Distinct multipliers are never binned, so the table is the

@@ -8,8 +8,10 @@ export type InfoSheetValue = {
     rows: number;
 };
 
-// Maps the "Manifest" key/value sheet (Id/Name/Version/Description/Author/Reels/Rows) to/from the
-// GameBlueprint fields it covers. Deliberately does not re-check "id must be non-empty"/"reels must
+// Maps the "Info" key/value sheet (Id/Name/Version/Description/Author/Reels/Rows) to/from the
+// GameBlueprint fields it covers. "Payline row basis" is an exported, read-only note (the Paylines
+// sheet uses 0-based row indexes); it is recognized on import but intentionally not a blueprint field.
+// Deliberately does not re-check "id must be non-empty"/"reels must
 // be a positive integer" itself — ParSheetImporter runs the assembled blueprint through the existing
 // GameBlueprintValidator for that, so this only reports problems unique to the spreadsheet shape
 // (an unrecognized or duplicated row key) that the validator has no way to see.

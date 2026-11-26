@@ -1,5 +1,5 @@
 import {emptyObservationCounters, mergeObservationCounters, type SimulationObservationRequest, type SimulationObservationCounters} from "./SimulationObservationCounters.js";
-import {emptyFeatureAnalytics, featureAnalyticsStatistics, mergeFeatureAnalytics, observeFeatureAnalytics, validateFeatureAnalytics, type AnalyticsEnvelope, type FeatureAnalyticsObservation, type FeatureAnalyticsSnapshot} from "./FeatureAnalytics.js";
+import {emptyFeatureAnalytics, featureAnalyticsStatistics, mergeFeatureAnalytics, mergeFeatureAnalyticsInPlace, observeFeatureAnalytics, validateFeatureAnalytics, type AnalyticsEnvelope, type FeatureAnalyticsObservation, type FeatureAnalyticsSnapshot} from "./FeatureAnalytics.js";
 import type {WeightedBonusStatistics} from "../session/videoslot/authored/WeightedBonus.js";
 import {mergeWeightedBonusStatistics} from "./WeightedBonusStatisticsMerging.js";
 import {mergeModifierStatistics, type ModifierStatistics} from "./ModifierStatistics.js";
@@ -9,6 +9,13 @@ import {emptyLogicalRoundStatistics, mergeLogicalRoundStatistics, mergeLogicalSa
 import {ConfidenceIntervalCalculator} from "./ConfidenceIntervalCalculator.js";
 import type {SimulationAccumulatorSnapshot} from "./SimulationAccumulatorSnapshot.js";
 import type {SimulationStatistics} from "./SimulationStatistics.js";
+
+// Fixed, human-readable payout-multiple buckets. The first four legacy keys stay accepted when
+// rehydrating an older snapshot; new runs always write the finer set.
+const PAYOUT_HISTOGRAM_BUCKETS = new Set([
+    "0", "0-1", "1-2", "2-5", "5-10", "10-25", "25-50", "50-100", "100-250", "250-500", "500-1000", "1000+",
+    "1-9", "10-99", "100+",
+]);
 
 export class SimulationAccumulator {
     private observations?: SimulationObservationCounters;
@@ -132,8 +139,18 @@ export class SimulationAccumulator {
         }
         const historical = this.rounds > 0 && !this.analytics;
         if (historical && observation) throw new Error("Cannot append identified analytics to unidentified historical rounds; start an empty accumulator.");
-        const analytics = historical ? undefined : mergeFeatureAnalytics(this.analytics, observeFeatureAnalytics(bet, payout, observation));
-        this.analytics = analytics;
+        if (!historical) {
+            const roundAnalytics = observeFeatureAnalytics(bet, payout, observation);
+            if (this.analytics) {
+                // Keep the running snapshot mutable here: cloning and validating the whole analytics
+                // snapshot on every one of 100k rounds made simulation time grow with the number of
+                // distinct win components.  The target is still validated at every snapshot/report
+                // boundary (see toSnapshot/getStatistics).
+                mergeFeatureAnalyticsInPlace(this.analytics, roundAnalytics);
+            } else {
+                this.analytics = roundAnalytics;
+            }
+        }
         this.rounds++;
         this.totalBet += bet;
         this.totalPayout += payout;
@@ -163,7 +180,9 @@ export class SimulationAccumulator {
         this.meanReturnRatio = this.totalBet > 0 ? this.totalPayout / this.totalBet : 0;
         this.meanReturnRatioSquareDelta = 0;
 
-        const bucket = this.getBucketLabel(payout);
+        // The report presents these as payout multiples (× bet). A free round has no stake to divide
+        // by, so it falls back to its payout amount, matching the pre-existing currency-only behavior.
+        const bucket = this.getBucketLabel(bet > 0 ? payout / bet : payout);
         this.payoutHistogram[bucket] = (this.payoutHistogram[bucket] ?? 0) + 1;
     }
 
@@ -245,6 +264,11 @@ export class SimulationAccumulator {
         });
     }
 
+    /** The accepted round count without materializing a full statistics/report object. */
+    public getRounds(): number {
+        return this.rounds;
+    }
+
     public getStatistics(): SimulationStatistics {
         const payoutVariance = this.rounds > 0 ? this.meanSquareDelta / this.rounds : 0;
         const payoutStandardDeviation = Math.sqrt(payoutVariance);
@@ -262,6 +286,7 @@ export class SimulationAccumulator {
             payoutStandardDeviation,
             this.rounds,
         );
+        if (this.analytics) validateFeatureAnalytics(this.analytics);
         return {
             ...(this.observations ? {observations: mergeObservationCounters(undefined, this.observations)} : {}),
             ...(this.modifiers ? {modifiers: {...this.modifiers}} : {}),
@@ -323,17 +348,19 @@ export class SimulationAccumulator {
         };
     }
 
-    private getBucketLabel(payout: number): string {
-        if (payout === 0) {
-            return "0";
-        }
-        if (payout < 10) {
-            return "1-9";
-        }
-        if (payout < 100) {
-            return "10-99";
-        }
-        return "100+";
+    private getBucketLabel(multiple: number): string {
+        if (multiple === 0) return "0";
+        if (multiple < 1) return "0-1";
+        if (multiple < 2) return "1-2";
+        if (multiple < 5) return "2-5";
+        if (multiple < 10) return "5-10";
+        if (multiple < 25) return "10-25";
+        if (multiple < 50) return "25-50";
+        if (multiple < 100) return "50-100";
+        if (multiple < 250) return "100-250";
+        if (multiple < 500) return "250-500";
+        if (multiple < 1000) return "500-1000";
+        return "1000+";
     }
 }
 
@@ -388,7 +415,7 @@ function validateSnapshot(snapshot: SimulationAccumulatorSnapshot): void {
         throw new Error(`SimulationAccumulator snapshot has invalid payoutBetCoMoment: ${snapshot.payoutBetCoMoment}.`);
     }
     for (const [bucket, count] of Object.entries(snapshot.payoutHistogram)) {
-        if (!["0", "1-9", "10-99", "100+"].includes(bucket)) throw new Error("Invalid simulation payout histogram bucket; only the four fixed buckets are supported.");
+        if (!PAYOUT_HISTOGRAM_BUCKETS.has(bucket)) throw new Error("Invalid simulation payout histogram bucket; only the fixed payout buckets are supported.");
         if (!Number.isSafeInteger(count) || count < 0) {
             throw new Error(`SimulationAccumulator snapshot has invalid payoutHistogram count for ${JSON.stringify(bucket)}: ${count}.`);
         }

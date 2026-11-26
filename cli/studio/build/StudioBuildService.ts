@@ -530,6 +530,17 @@ export class StudioBuildService {
         return common?.operation === "artifact-build" ? this.projectDurableJob(common) : undefined;
     }
 
+    /** The one file a completed single-file build (PAR workbook, game design JSON, WASM module) produced. */
+    public getDownloadForProject(projectRoot: string, id: string):
+        | {readonly status: "ok"; readonly path: string; readonly filename: string}
+        | {readonly status: "not-found"}
+        | {readonly status: "not-ready"} {
+        const job = this.getStatusForProject(projectRoot, id);
+        if (job === undefined) return {status: "not-found"};
+        if (job.status !== "completed" || job.result?.status !== "ok" || job.result.outputKind !== "file") return {status: "not-ready"};
+        return {status: "ok", path: job.result.outputPath, filename: path.basename(job.result.outputPath)};
+    }
+
     public cancelForProject(projectRoot: string, id: string): StudioBuildJobView | undefined {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.jobs.get(id);

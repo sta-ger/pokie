@@ -1,7 +1,7 @@
 import {useState} from "react";
 import {useConfirm} from "../../hooks/useConfirm";
 import {WholeSequencesEditor} from "./WholeSequencesEditor";
-import {Group, Radio, Text} from "@mantine/core";
+import {Group, Radio, Stack, Text} from "@mantine/core";
 import {getReelGenerationMode, setReelGenerationMode, type ReelGenerationMode} from "../../domain/blueprintFormOps";
 import type {BlueprintMutate, ReelGenerationModeDraftsRef, ReelStripGenerationDraftsRef} from "../../hooks/useBlueprintEditor";
 import {PageSection} from "../common/PageSection";
@@ -30,9 +30,18 @@ export function ReelGenerationModeSelector({
 
     return (
         <PageSection legend="Reel generation">
-            <Text size="sm" c="dimmed" mb="sm">
-                Optional — Default (recommended) uses the engine&apos;s weighted reel generator. Choose one of the other modes only when you need to control the reel contents yourself.
+            <Text size="sm" c="dimmed" mb="xs">
+                Choose how the reel strips are defined. Default is recommended unless you need to control the reel
+                contents yourself. Switching source keeps the values you entered for the previous source in this
+                editor session so you can switch back; only the selected source is saved.
             </Text>
+            <Stack gap={2} mb="sm">
+                <Text size="xs"><strong>Default (recommended)</strong> — the engine builds the strips from symbol weights.</Text>
+                <Text size="xs"><strong>Manual reel strips</strong> — you provide the exact stop order for each reel.</Text>
+                <Text size="xs"><strong>Per-reel modeler</strong> — build each strip step by step in a visual editor.</Text>
+                <Text size="xs"><strong>Symbol weights</strong> — set how often each symbol appears; the engine builds the strips.</Text>
+                <Text size="xs"><strong>Whole-sequence variants (advanced)</strong> — choose from alternative complete reel sequences with weights.</Text>
+            </Stack>
             <Radio.Group value={mode} onChange={(value) => {
                 const change = (): void => {
                     setSequenceDirty(false);
@@ -44,10 +53,10 @@ export function ReelGenerationModeSelector({
                 else change();
             }} mb="md">
                 <Group gap="md">
-                    <Radio value="reelSequences" label="Whole-sequence variants" />
+                    <Radio value="reelSequences" label="Whole-sequence variants (advanced)" />
                     <Radio value="default" label="Default (recommended)" />
-                    <Radio value="reelStrips" label="Reel strips" />
-                    <Radio value="reelStripGeneration" label="Per-reel (Reel Strip Modeler)" />
+                    <Radio value="reelStrips" label="Manual reel strips" />
+                    <Radio value="reelStripGeneration" label="Per-reel modeler" />
                     <Radio value="symbolWeights" label="Symbol weights" />
                 </Group>
             </Radio.Group>

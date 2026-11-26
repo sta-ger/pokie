@@ -33,7 +33,14 @@ export function FeatureChainsFieldset({blueprint, mutate}: {blueprint: Record<st
             const invalid = !object(raw) || fields.some(field => typeof raw[field] !== "number") ||
                 (key === "respins" && (!object(raw.trigger) || typeof raw.trigger.symbolId !== "string" || typeof raw.trigger.minimumCount !== "number" || (raw.retrigger !== "none" && raw.retrigger !== "reset"))) ||
                 (key === "collection" && (typeof raw.symbolId !== "string" || (raw.reset !== "zero" && raw.reset !== "subtract-threshold")));
-            return <PageSection key={key} legend={`Bounded ${key}`}>
+            const label = {cascade: "Cascades", respins: "Respins", collection: "Collection feature"}[key];
+            const description = {
+                cascade: "A win removes its symbols and refills the grid. The round continues until no new win appears or the maximum number of cascades is reached.",
+                respins: "A trigger symbol awards extra spins. A retrigger can either add more spins or reset the remaining count, up to the configured maximum.",
+                collection: "The chosen symbol adds to a counter on each accepted spin. When the counter reaches the threshold, the award is paid and the counter resets or subtracts the threshold.",
+            }[key];
+            return <PageSection key={key} legend={label}>
+                <Text size="sm" c="dimmed">{description}</Text>
                 {rule === undefined ? <Button onClick={() => set(key, defaults[key])}>Add {key}</Button> : <Stack>
                     {invalid ? <Text>Correct mechanics.{key} in JSON and Apply JSON. The current draft is saved.</Text> : <>
                         {key === "cascade" && cascade && numeric("Maximum winning cascades", cascade.maxCascades, maxCascades => set("cascade", {...cascade, maxCascades}))}
@@ -48,7 +55,7 @@ export function FeatureChainsFieldset({blueprint, mutate}: {blueprint: Record<st
                             <Select label="Collection symbol" data={symbols} value={collection.symbolId} onChange={v => set("collection", {...collection, symbolId: v ?? ""})} />
                             {(["contribution", "threshold", "cap", "payout"] as const).map(field => numeric(`Collection ${field}`, collection[field], value => set("collection", {...collection, [field]: value})))}
                             <Select label="Collection reset" data={["zero", "subtract-threshold"]} value={collection.reset} onChange={v => set("collection", {...collection, reset: v === "subtract-threshold" ? v : "zero"})} />
-                            <Text>Currency units; collect once per accepted subround from its final screen. Cap before threshold; at most one award per subround.</Text>
+                            <Text>Currency units; collect once per accepted spin from its final screen. Cap before threshold; at most one award per spin.</Text>
                         </>}
                     </>}
                     <Button onClick={() => set(key, undefined)}>Remove {key}</Button>

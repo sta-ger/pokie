@@ -1,0 +1,125 @@
+{
+    "info": {
+        "id": "free-games-scope",
+        "name": "Free Games Scope",
+        "version": "0.1.0",
+        "description": "E2E fixture: paid-spin exact math must not be presented as total RTP when free games are present."
+    },
+    "reels": 5,
+    "rows": 3,
+    "symbols": [
+        "A",
+        "K",
+        "Q",
+        "J",
+        "S"
+    ],
+    "scatters": [
+        "S"
+    ],
+    "paylines": [
+        [
+            0,
+            0,
+            0,
+            0,
+            0
+        ],
+        [
+            1,
+            1,
+            1,
+            1,
+            1
+        ],
+        [
+            2,
+            2,
+            2,
+            2,
+            2
+        ]
+    ],
+    "paytable": {
+        "A": {
+            "3": 8,
+            "4": 16,
+            "5": 32
+        },
+        "K": {
+            "3": 6,
+            "4": 12,
+            "5": 32
+        },
+        "Q": {
+            "3": 4,
+            "4": 8,
+            "5": 32
+        },
+        "J": {
+            "3": 1,
+            "4": 2,
+            "5": 6
+        }
+    },
+    "reelStrips": [
+        [
+            "A",
+            "K",
+            "Q",
+            "J",
+            "J",
+            "S",
+            "A"
+        ],
+        [
+            "K",
+            "Q",
+            "A",
+            "J",
+            "J",
+            "S",
+            "K"
+        ],
+        [
+            "Q",
+            "K",
+            "J",
+            "A",
+            "J",
+            "S",
+            "Q"
+        ],
+        [
+            "K",
+            "J",
+            "Q",
+            "A",
+            "J",
+            "A",
+            "K"
+        ],
+        [
+            "J",
+            "Q",
+            "K",
+            "J",
+            "A",
+            "A",
+            "J"
+        ]
+    ],
+    "availableBets": [
+        1,
+        2,
+        5
+    ],
+    "mechanics": {
+        "freeGames": {
+            "scatterSymbol": "S",
+            "awardsByCount": {
+                "3": 10
+            }
+        }
+    }
+}

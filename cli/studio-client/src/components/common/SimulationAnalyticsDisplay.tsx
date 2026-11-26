@@ -1,11 +1,14 @@
 import {Table, Text} from "@mantine/core";
 import type {ReactNode} from "react";
 import {FEATURE_NAMES, type AnalyticsRatio, type FeatureAnalytics} from "../../../../../src/simulation/FeatureAnalytics";
+import {formatAnalysisNumber} from "../../../../../src/internal/formatAnalysisNumber";
 import {AdvancedDisclosure} from "./AdvancedDisclosure";
 import {PageSection} from "./PageSection";
 
-// Ratios are persisted observations, not estimates to recompute in the browser.
-const ratio = (r: AnalyticsRatio): string => `${r.numerator} / ${r.denominator} = ${r.value}`;
+// Ratios are persisted observations, not estimates to recompute in the browser. Keep the exact fraction
+// visible for math review, but round the quotient: seventeen binary64 digits make the table harder to read
+// without adding information a human can use.
+const ratio = (r: AnalyticsRatio): string => `${r.numerator} / ${r.denominator} = ${formatAnalysisNumber(r.value, 6)}`;
 
 function AnalyticsTable({label, headers, rows}: {label: string; headers: string[]; rows: ReactNode[][]}) {
     return <Table.ScrollContainer minWidth={480}>
@@ -22,15 +25,15 @@ export function SimulationAnalyticsDisplay({analytics: a}: {analytics?: FeatureA
     if (!a) return <PageSection legend="Feature analytics"><Text size="sm">Feature analytics unavailable (older report or no observations).</Text></PageSection>;
     const supported = FEATURE_NAMES.filter(name => a.envelope.supportedFeatures.includes(name));
     return <PageSection legend="Feature analytics">
-        <Text size="sm" mb="sm">Accepted-subround sampling. Ratios show numerator / denominator = value; zero denominator yields 0.</Text>
+        <Text size="sm" mb="sm">Sampling uses spins (paid + free). A paid round is one paid spin plus every free spin it triggers; logical entries are paid rounds whose feature progression was observed. Ratios show numerator / denominator = value; zero denominator yields 0.</Text>
         <AnalyticsTable label="Analytics population" headers={["Population", "Count"]} rows={[
-            ["Paid entries", a.paidEntries], ["Logical entries", a.logicalEntries], ["Completed logical rounds", a.logicalCompletions],
-            ["Accepted subrounds", a.subrounds], ["Mathematical cascade steps", a.cascadeSteps], ["Carried-in subrounds", a.carriedSubrounds],
+            ["Paid entries", a.paidEntries], ["Logical entries", a.logicalEntries], ["Completed paid rounds", a.logicalCompletions],
+            ["Spins", a.subrounds], ["Mathematical cascade steps", a.cascadeSteps], ["Carried spins", a.carriedSubrounds],
         ]} />
         <Text fw={600} mt="md">Feature stages</Text>
         {!a.envelope.lifecycle ? <Text size="sm">Feature stages unavailable: entry/exit evidence is missing; an event does not measure duration.</Text>
             : <>
-                <AnalyticsTable label="Feature stages summary" headers={["Feature", "Entries / paid rounds", "Completions", "Incomplete", "Mean duration (plays)", "Mean bonus win (currency)"]}
+                <AnalyticsTable label="Feature stages summary" headers={["Feature", "Entries / paid rounds", "Completions", "Incomplete", "Mean duration (spins)", "Mean bonus win (currency)"]}
                     rows={supported.map(name => [name, ratio(a.lifecycle[name].entryPerPaidRound), a.features[name].completions,
                         a.lifecycle[name].incomplete, ratio(a.lifecycle[name].averageDuration), ratio(a.lifecycle[name].averageWin)])} />
                 {supported.filter(name => a.features[name].entries === 0).map(name => <Text size="sm" key={name}>{name}: configured and supported, no entries seen; zero does not prove absence or exact feature RTP.</Text>)}
@@ -42,23 +45,23 @@ export function SimulationAnalyticsDisplay({analytics: a}: {analytics?: FeatureA
             rows={Object.entries(a.contribution).map(([name, c]) => [name, ratio(c.rtp), ratio(c.payoutShare)])} />
         <AdvancedDisclosure label="win and feature details">
             <AnalyticsTable label="Observed wins" headers={["Metric", "Observed value"]} rows={[
-                ["Dead spins (zero-win subrounds) / subrounds", ratio(a.deadSpinRate)],
+                ["Zero-win spins / spins", ratio(a.deadSpinRate)],
                 ["Exact maximum observed win (currency; not theoretical maximum)", a.maxWin],
-                ["Maximum occurrences / subrounds", ratio(a.maxWinRate)], ["Maximum payout share", ratio(a.maxWinContribution)],
-                ["Top 10 positive subround wins (descending; ties occupy slots)", a.topWins.join(", ") || "none"],
+                ["Maximum occurrences / spins", ratio(a.maxWinRate)], ["Maximum payout share", ratio(a.maxWinContribution)],
+                ["Top 10 positive play wins (descending; ties occupy slots)", a.topWins.join(", ") || "none"],
                 ["Top wins payout share", ratio(a.topWinContribution)],
             ]} />
             {a.envelope.lifecycle && supported.map(name => {
                 const f = a.features[name],
                     r = a.lifecycle[name];
                 return <PageSection key={name} legend={name}>
-                    <AnalyticsTable label={`${name} lifecycle details`} headers={["Metric", "Observation"]} rows={[
+                    <AnalyticsTable label={`${name} feature details`} headers={["Metric", "Observation"]} rows={[
                         ["Entries / logical entries", ratio(r.entryPerLogicalRound)], ["Retriggers / feature entries", ratio(r.retriggerPerEntry)],
-                        ["Grants", f.grants], ["Executed feature plays on entry", f.entrySubrounds], ["Executed plays in completed features", f.durationSum],
+                        ["Grants", f.grants], ["Executed feature spins on entry", f.entrySubrounds], ["Executed spins in completed features", f.durationSum],
                         ["Carried-in incomplete", r.carriedIncomplete], ["Carried completions", r.carriedCompletions], ["Excluded restored completions", f.excludedCompletions],
                     ]} />
-                    <Text size="sm">Duration counts executed feature subrounds; triggering entry counts only if it executes the feature. Distributions include completed features only.</Text>
-                    <AnalyticsTable label={`${name} distributions`} headers={["Bucket", "Duration (plays)", "Win (currency)"]}
+                    <Text size="sm">Duration counts executed feature spins; the triggering entry counts only if it executes the feature. Distributions include completed features only.</Text>
+                    <AnalyticsTable label={`${name} distributions`} headers={["Bucket", "Duration (spins)", "Win (currency)"]}
                         rows={["0", "(0,10)", "[10,100)", "[100,infinity)"].map((bin, i) => [bin, f.durationHistogram[i], f.winHistogram[i]])} />
                 </PageSection>;
             })}
@@ -69,8 +72,8 @@ export function SimulationAnalyticsDisplay({analytics: a}: {analytics?: FeatureA
         </AdvancedDisclosure>
         <AdvancedDisclosure label="hits and components">
             {!a.envelope.components ? <Text size="sm">Symbol, line and scatter hit counts are not available for this report.</Text> : <>
-                <Text size="sm">Hits are counted once per accepted subround; symbols that merely land on screen are not hits.</Text>
-                <AnalyticsTable label="Hit rates" headers={["Kind", "ID", "Hits / accepted subrounds"]}
+                <Text size="sm">Hits are counted once per spin (paid or free); symbols that merely land on screen are not hits.</Text>
+                <AnalyticsTable label="Hit rates" headers={["Kind", "ID", "Hits / spins"]}
                     rows={Object.entries(a.hitRates).flatMap(([kind, group]) => Object.keys(group).length
                         ? Object.entries(group).map(([id, r]) => [kind, id, ratio(r)]) : [[kind, "No hits", `0 / ${a.subrounds} = 0`]])} />
                 <AnalyticsTable label="Component statistics" headers={["Type", "ID", "Symbol", "Samples", "Occurrences", "Amount (currency)"]}

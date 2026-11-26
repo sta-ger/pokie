@@ -10,7 +10,7 @@ import {isRuntimePreparationDiagnostic} from "./runtimeActionError";
 // (errorMessage(error), e.g. "Failed to fetch") or a hand-written request-validation rejection from the
 // server -- never a user-typed path, so classifyPathActionErrorReason's absent/permission/type reasons
 // don't apply, and never Runtime's own port-in-use case.
-export type ProjectActionErrorReason = "network" | "schema" | "other";
+export type ProjectActionErrorReason = "network" | "schema" | "settings" | "other";
 
 export function classifyProjectActionErrorReason(message: string): ProjectActionErrorReason {
     if ((/failed to fetch|networkerror|econnrefused|enotfound/i).test(message)) {
@@ -18,6 +18,9 @@ export function classifyProjectActionErrorReason(message: string): ProjectAction
     }
     if ((/is required\.|must be a non-empty string|must be a positive integer|is not valid json|unexpected token .*json/i).test(message)) {
         return "schema";
+    }
+    if ((/convergence|target precision|"rounds"|"workers"|"modeName"/i).test(message)) {
+        return "settings";
     }
     return "other";
 }
@@ -27,6 +30,10 @@ type ProjectActionIssue = {status: string; remediation: string};
 const PROJECT_ACTION_ISSUE_COPY: Record<ProjectActionErrorReason, (subject: string) => ProjectActionIssue> = {
     network: (subject) => ({status: `${subject} couldn't reach the Studio server.`, remediation: "Check your connection and try again."}),
     schema: (subject) => ({status: `${subject} was rejected as invalid.`, remediation: "Check the values entered and try again."}),
+    settings: (subject) => ({
+        status: `${subject} was rejected because a setting is invalid.`,
+        remediation: "Check the spin budget, target precision, worker count and mode, then try again.",
+    }),
     other: (subject) => ({
         status: `${subject} couldn't be completed.`,
         remediation: "Try again. If it continues, reopen the project and retry.",

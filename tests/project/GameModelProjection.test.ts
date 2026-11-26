@@ -25,4 +25,16 @@ describe("buildGameModelProjection", () => {
         expect(projection.layout.data.paylineCount).toBe(blueprint.paylines?.length);
         expect(projection.layout.data.paylines).toEqual(blueprint.paylines);
     });
+
+    it("keeps the authored paytable symbol order instead of sorting symbols alphabetically", () => {
+        const blueprint = createStarterGameBlueprint();
+        expect(Object.keys(blueprint.paytable)).toEqual(["A", "K", "Q", "J"]);
+
+        const projection = buildGameModelProjection(blueprint);
+
+        expect(projection.paytable.status).toBe("available");
+        if (projection.paytable.status !== "available") throw new Error("paytable should be available");
+        expect(projection.paytable.data.map((row) => row.symbolId)).toEqual(["A", "A", "A", "K", "K", "K", "Q", "Q", "Q", "J", "J", "J"]);
+        expect(projection.paytable.data.map((row) => row.matchCount)).toEqual([3, 4, 5, 3, 4, 5, 3, 4, 5, 3, 4, 5]);
+    });
 });

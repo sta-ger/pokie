@@ -406,7 +406,7 @@ questions; edit alternatives in Studio/JSON, then apply/save explicitly.
 
 ### Whole-sequence Studio and PAR workflow
 
-Home Design and Project Game Model → Reels share rendered whole-sequence controls.
+Home Design and Project Game design → Reels share rendered whole-sequence controls.
 Select a reel, add or remove variants, edit case-sensitive IDs and relative weights,
 and enter complete ordered symbols (one per line). Exact and weighted reels may
 coexist. Preview inspects all definitions without selecting a live strip or consuming

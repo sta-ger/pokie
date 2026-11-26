@@ -1,6 +1,6 @@
 import {Alert, Button, Stack, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
-import {useEffect, useRef, useState} from "react";
+import {useEffect, useRef, useState, type ReactNode} from "react";
 import {useLocation, useNavigate, useParams} from "react-router-dom";
 import {BlueprintEditorPage} from "../blueprintEditor/BlueprintEditorPage";
 import {DesignNavigationGuardProvider} from "../../context/DesignNavigationGuardContext";
@@ -10,7 +10,7 @@ import {NavTabs, type NavTabItem} from "../layout/NavTabs";
 import {DocumentationLinks} from "./DocumentationLinks";
 import {ProjectsPanel} from "./ProjectsPanel";
 import type {StudioJobView, StudioOpenFolderView, StudioProjectRegistryView} from "../../api/types";
-import {checkNativePickerAvailability, openOutputFolder, revealOutputPath} from "../../api/apiClient";
+import {checkNativePickerAvailability, dismissHomeSourceJob, openOutputFolder, ProjectOpenInProgressError, revealOutputPath} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {useHomeSourceJobs} from "../../hooks/useHomeSourceJobs";
 import {JobCard} from "../common/JobCard";
@@ -19,6 +19,7 @@ import {useOpenProject} from "../../hooks/useOpenProject";
 import {errorMessage} from "../../domain/errorMessage";
 import {HomeProjectJobs} from "./HomeProjectJobs";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
+import {groupHomeJobs} from "../../domain/interpret/HomeJobs";
 
 export type HomeTab = "design" | "projects";
 
@@ -26,8 +27,6 @@ const HOME_TABS: NavTabItem<HomeTab>[] = [
     {value: "design", label: "Start a game", auditControlId: "home-tab:design", panelId: "home-design-panel"},
     {value: "projects", label: "Projects", auditControlId: "home-tab:projects", panelId: "home-projects-panel"},
 ];
-
-const FINISHED_HOME_JOB_STATUSES = new Set<StudioJobView["status"]>(["completed", "failed", "cancelled"]);
 
 function isHomeTab(value: string | undefined): value is HomeTab {
     return HOME_TABS.some((tab) => tab.value === value);
@@ -119,9 +118,31 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
     const [recoveryOpeningError, setRecoveryOpeningError] = useState<string>();
     const [jobOutputNotice, setJobOutputNotice] = useState<string>();
     const [jobOutputActionsUnavailableReason, setJobOutputActionsUnavailableReason] = useState<string>();
+    const [dismissingHomeJobs, setDismissingHomeJobs] = useState<string[]>([]);
+    const [dismissHomeJobsError, setDismissHomeJobsError] = useState<string>();
     // Home does not have a current project identity.  The server therefore returns only Design and
     // project-opening records here, including retained terminal records after a reload.
     const homeJobs = useHomeSourceJobs(fetchImpl);
+    const refreshHomeJobs = () => {
+        homeJobs.refresh().catch(() => undefined);
+    };
+    const dismissHomeJobs = (ids: string[]): void => {
+        const pending = ids.filter(id => !dismissingHomeJobs.includes(id));
+        if (pending.length === 0) return;
+        setDismissingHomeJobs(previous => [...previous, ...pending]);
+        setDismissHomeJobsError(undefined);
+        Promise.allSettled(pending.map(id => dismissHomeSourceJob(fetchImpl, id))).then(async results => {
+            const failed = results.flatMap((result, index) => result.status === "rejected" ? [pending[index]!] : []);
+            const removed = pending.filter((_id, index) => results[index]?.status === "fulfilled");
+            homeJobs.forget(removed);
+            await homeJobs.refresh().catch(() => undefined);
+            if (failed.length > 0) {
+                setDismissHomeJobsError(`Couldn't dismiss ${failed.length === 1 ? "one finished job" : `${failed.length} finished jobs`}. ${errorMessage(results.find(result => result.status === "rejected")?.reason)}`);
+            }
+        }).finally(() => {
+            setDismissingHomeJobs(previous => previous.filter(id => !pending.includes(id)));
+        });
+    };
     const openingDisabledReason = (job: StudioJobView): string | undefined => {
         if (job.operation !== "project-open-materialization") return undefined;
         if (openingProject) return "Project opening is pending. Finish any confirmation, or wait for its result.";
@@ -138,7 +159,9 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
         setOpeningProject(true);
         setRecoveryOpeningError(undefined);
         openAndNavigate(sourcePath).catch((error: unknown) => {
-            setRecoveryOpeningError(`Couldn't reopen the retained project "${sourcePath}". ${errorMessage(error)} Retry if the source is available, or use Projects to Relocate it to its current location or add the game again.`);
+            setRecoveryOpeningError(error instanceof ProjectOpenInProgressError
+                ? `This project is already opening (job ${error.jobId}). Wait for the active opening to finish, then use Retry again.`
+                : `Couldn't reopen the saved project "${sourcePath}". ${errorMessage(error)} Retry if the source is available, or use Projects to Relocate it to its current location or add the game again.`);
         }).finally(() => {
             openingGuard.end();
             setOpeningProject(false);
@@ -192,29 +215,75 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
                 setJobOutputNotice(describeJobOutputAction(result, "Revealed job output."));
             }).catch(() => setJobOutputNotice("Couldn't reveal the job output."));
         }} outputActionsUnavailableReason={job.operation === "project-open-materialization" ? undefined : jobOutputActionsUnavailableReason}
-        actionsDisabledReason={openingDisabledReason(job)} />
+        onDismiss={(id) => dismissHomeJobs([id])}
+        actionsDisabledReason={openingDisabledReason(job) ?? (dismissingHomeJobs.includes(job.id) ? "Dismissing this finished job…" : undefined)} />
     );
-    const activeHomeJobs = homeJobs.jobs.filter((job) => !FINISHED_HOME_JOB_STATUSES.has(job.status));
-    const finishedHomeJobs = homeJobs.jobs.filter((job) => FINISHED_HOME_JOB_STATUSES.has(job.status));
+    const {active: activeHomeJobs, needsAttention: needsAttentionHomeJobs, archived: archivedHomeJobs} = groupHomeJobs(homeJobs.jobs);
+    const hasHomeJobAttention = activeHomeJobs.length > 0 ||
+        needsAttentionHomeJobs.length > 0 ||
+        homeJobs.connectionError !== undefined ||
+        homeJobs.actionError !== undefined ||
+        recoveryOpeningError !== undefined ||
+        jobOutputNotice !== undefined ||
+        homeJobs.jobs.some((job) => job.result?.outputs?.some((output) => output.unavailableReason !== undefined));
+    const finishedJobsOnly = archivedHomeJobs.length > 0 && !hasHomeJobAttention;
 
-    const homeJobsPanel = homeJobs.discoveryStatus !== "pending" && homeJobs.jobs.length === 0 && homeJobs.connectionError === undefined && homeJobs.actionError === undefined ? undefined : (
-        <Stack gap="xs" mt="lg" aria-label="Home jobs">
-            <Title order={3}>Home jobs</Title>
-            <Text size="sm" c="dimmed">Retained Design and project-opening work stays visible on every Home section after a reload. Active work is shown first; finished jobs are collapsed below. Cancel active work or reconstruct a server-supported recovery.</Text>
-            <JobObservationNotice discoveryStatus={homeJobs.discoveryStatus} connectionError={homeJobs.connectionError} actionError={homeJobs.actionError} onReattach={homeJobs.refresh} />
-            {recoveryOpeningError !== undefined && <Alert role="alert" color="red">{recoveryOpeningError}</Alert>}
-            {activeHomeJobs.map(renderHomeJob)}
-            {finishedHomeJobs.length > 0 && (
-                <details>
-                    <summary>Finished jobs ({finishedHomeJobs.length})</summary>
-                    {finishedHomeJobs.map(renderHomeJob)}
-                </details>
-            )}
-            {(recoveryOpeningError !== undefined || homeJobs.jobs.some((job) => job.result?.outputs?.some((output) => output.unavailableReason !== undefined))) &&
-                <Button variant="default" onClick={() => navigate("/home/projects")}>Find saved project in Projects</Button>}
-            {jobOutputNotice !== undefined && <Text size="xs" aria-live="polite" c="dimmed">{jobOutputNotice}</Text>}
-        </Stack>
-    );
+    let homeJobsPanel: ReactNode;
+    if (homeJobs.discoveryStatus !== "pending" && homeJobs.jobs.length === 0 && homeJobs.connectionError === undefined && homeJobs.actionError === undefined) {
+        homeJobsPanel = undefined;
+    } else if (finishedJobsOnly) {
+        homeJobsPanel = (
+            <details style={{marginTop: "var(--mantine-spacing-lg)"}}>
+                <summary>Advanced: older finished jobs ({archivedHomeJobs.length})</summary>
+                <Stack gap="xs" mt="xs">{archivedHomeJobs.map(renderHomeJob)}</Stack>
+            </details>
+        );
+    } else {
+        const hasUnavailableOutput = homeJobs.jobs.some((job) => job.result?.outputs?.some((output) => output.unavailableReason !== undefined));
+        const hasBackgroundDetails = archivedHomeJobs.length > 0 || hasUnavailableOutput;
+        homeJobsPanel = (
+            <Stack gap="xs" mt="lg" aria-label="Home jobs">
+                {activeHomeJobs.length > 0 && <Title order={3}>Active jobs</Title>}
+                <JobObservationNotice discoveryStatus={homeJobs.discoveryStatus} connectionError={homeJobs.connectionError} actionError={homeJobs.actionError} onReattach={homeJobs.refresh} />
+                {recoveryOpeningError !== undefined && <Alert role="alert" color="red">{recoveryOpeningError}</Alert>}
+                {activeHomeJobs.map(renderHomeJob)}
+                {needsAttentionHomeJobs.length > 0 && (
+                    <>
+                        <Title order={3}>Needs attention</Title>
+                        <Text size="sm" c="dimmed">
+                            These operations stopped before confirming a result. Retry the interrupted opening, or review the job details.
+                        </Text>
+                        {needsAttentionHomeJobs.map(renderHomeJob)}
+                        <Button variant="default" size="xs" loading={needsAttentionHomeJobs.some(job => dismissingHomeJobs.includes(job.id))} onClick={() => dismissHomeJobs(needsAttentionHomeJobs.map(job => job.id))}>
+                            Dismiss finished jobs
+                        </Button>
+                    </>
+                )}
+                {(recoveryOpeningError !== undefined || hasUnavailableOutput) &&
+                    <Button variant="default" onClick={() => navigate("/home/projects")}>Find saved project in Projects</Button>}
+                {hasBackgroundDetails && (
+                    <details>
+                        <summary>
+                            {archivedHomeJobs.length > 0
+                                ? `Advanced: background work and finished jobs (${archivedHomeJobs.length})`
+                                : "Advanced: background work"}
+                        </summary>
+                        <Stack gap="xs" mt="xs">
+                            <Text size="sm" c="dimmed">Finished jobs stay available here; active work remains visible above.</Text>
+                            {archivedHomeJobs.map(renderHomeJob)}
+                            <Button variant="subtle" size="xs" loading={archivedHomeJobs.some(job => dismissingHomeJobs.includes(job.id))} onClick={() => dismissHomeJobs(archivedHomeJobs.map(job => job.id))}>
+                                Clear finished job history
+                            </Button>
+                            {hasUnavailableOutput &&
+                                <Button variant="default" onClick={() => navigate("/home/projects")}>Find saved project in Projects</Button>}
+                        </Stack>
+                    </details>
+                )}
+                {jobOutputNotice !== undefined && <Text size="xs" aria-live="polite" c="dimmed">{jobOutputNotice}</Text>}
+                {dismissHomeJobsError !== undefined && <Alert role="alert" color="red">{dismissHomeJobsError}</Alert>}
+            </Stack>
+        );
+    }
 
     return (
         <AppShellLayout
@@ -230,10 +299,9 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
         >
             <Stack className="studio-page" gap="lg">
                 <Text className="studio-intro" size="sm" c="dimmed">
-                    POKIE is a slot-game math framework for game-math authors and producers. Studio lets you design,
-                    check the exact math, play and review games locally — no code needed for those steps. Validation is
-                    structural; simulation estimates the math. TypeScript is only for shipping the game; local artifacts
-                    do not deploy a game or certify it for real-money use.
+                    Design a game, check exact RTP, simulate, play, and export a PAR sheet — no code needed for
+                    those steps. This is a local authoring tool; it does not deploy or certify a game for real-money
+                    use. TypeScript and WASM are developer outputs.
                 </Text>
                 <div id="home-design-panel" ref={designRef} role="region" aria-labelledby="design-game-heading" tabIndex={-1} style={{display: activeTab === "design" ? undefined : "none"}}>
                     <BlueprintEditorPage
@@ -250,6 +318,7 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
                             setJustSavedManagedProject(registeredProject);
                             setProjectRegistryVersion((version) => version + 1);
                         }}
+                        onParImportSettled={refreshHomeJobs}
                     />
                 </div>
 
@@ -260,7 +329,7 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
                             Return to a game you already started, or add a game you made elsewhere. Open a game to play, test, and export it.
                         </Text>
                         <Text c="dimmed" size="sm">
-                            New here? Go to Start a game to begin with a ready-to-edit starter, a blank design, or a generated idea.
+                            New here? Go to Start a game to begin with a ready-to-edit starter, a blank design, or a generated template.
                         </Text>
                         <ProjectsPanel
                             registryVersion={projectRegistryVersion}
@@ -273,6 +342,11 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
                 {homeJobsPanel}
 
                 <HomeProjectJobs />
+
+                <Text size="md" fw={500} c="dimmed">
+                    POKIE Studio runs locally on this computer. Keep the terminal window that started it open while
+                    you work; closing that window stops the local server.
+                </Text>
 
                 <DocumentationLinks />
             </Stack>

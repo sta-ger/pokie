@@ -394,9 +394,9 @@ describe("SimCommand", () => {
         const report = JSON.parse(contents) as SimulationReport;
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
 
-        expect(report.warnings).toEqual(expect.arrayContaining([expect.stringContaining("Usable samples (1) is low")]));
+        expect(report.warnings).toEqual(expect.arrayContaining([expect.stringContaining("Completed paid rounds (1) is low")]));
         expect(printed).toContain("Warnings:");
-        expect(printed).toContain("Usable samples (1) is low");
+        expect(printed).toContain("Completed paid rounds (1) is low");
 
         logSpy.mockRestore();
     });
@@ -1427,7 +1427,7 @@ describe("SimCommand outcome-source routing (integration, real outcome-library b
         expect(report.libraryId).toBe("base-lib");
         expect(report.statistics.rounds).toBe(200);
         expect(report).toMatchObject({rounds: 200, analytics: {envelope: {lifecycle: false, components: true}}, diagnostics: {sampleUnit: "accepted-subround", samples: 200}});
-        expect((report as unknown as SimulationReport).diagnostics?.coverageLimitations.join("\n")).toContain("Feature lifecycle attribution unsupported");
+        expect((report as unknown as SimulationReport).diagnostics?.coverageLimitations.join("\n")).toContain("Feature status attribution unsupported");
         expect(report.workerSeedStrategy).toContain("derived-round-seed-v1");
         expect(report.statistics.totalBet).toBe(200);
         expect(report.statistics.rtp).toBeGreaterThanOrEqual(0);

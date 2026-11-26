@@ -13,6 +13,25 @@ npm install /absolute/path/to/pokie
 npm install /absolute/path/to/fromstan-pokie-2.0.0.tgz
 ```
 
+From a checkout, build the local CLI once and start Studio:
+
+```bash
+npm install
+npm run build-cli
+npm run studio
+```
+
+### Start without terminal commands
+
+Double-click the launcher for this computer: `Start POKIE Studio.sh` on Linux, `Start POKIE
+Studio.command` on macOS, or `Start POKIE Studio.cmd` on Windows. If Node.js 22.12 or newer is already
+installed, it is used directly. Otherwise the launcher downloads a pinned, checksum-verified portable
+Node runtime into a user cache on its first run (internet required once), installs the local
+dependencies, builds the Studio and opens it. Keep the launcher's terminal window open while you use
+Studio; closing it stops the local server. `npm run start-studio` is the equivalent one-command
+start when Node is already available. Set `POKIE_RUNTIME_DIR` to choose a different portable-runtime
+cache directory.
+
 POKIE requires Node `>=22.12.0` and ships one ESM build. ES modules and TypeScript `NodeNext`
 consumers import it directly; CommonJS `require()` loads the same build through Node's `require(esm)`
 support.
@@ -27,8 +46,10 @@ support.
 - **Game design** — one JSON file describes the symbols, reels, paytable, paylines and features.
 - **Play and test** — run real rounds locally, or simulate millions of rounds and read RTP, hit
  frequency, volatility and confidence intervals.
-- **Exact math** — an outcome library can list every possible outcome and its weight, so RTP and payout
- distributions are exact, not sampled.
+- **Exact math** — an outcome library can list every possible paid-spin outcome and its weight, so RTP and payout
+ distributions are exact, not sampled. For authored additive free games, exact math also derives total RTP
+ from the paid-spin trigger distribution and its retrigger series; other feature payouts that settle in later
+ rounds remain outside the paid-spin library and use Simulation.
 - **Build** — turn a game design into a TypeScript game package, an outcome library, a Stake Engine
  export, a PAR workbook or a WASM build.
 - **Replay and audit** — every round can be recorded, replayed and checked. Certification packs collect
@@ -45,7 +66,7 @@ support.
 | **Game design** | The JSON file where you describe the game. |
 | **Project** | A folder POKIE can open. |
 | **Game package** | A runnable package built from a game design. |
-| **Outcome library** | Every possible round outcome and how often it occurs. |
+| **Outcome library** | Every possible outcome of one paid entry spin and how often it occurs. Feature payouts that settle later are derived or simulated separately. |
 | **Round record** | What happened in one round, saved for replay or audit. |
 | **Simulation report** | RTP, hit frequency, volatility and payout statistics. |
 | **Certification pack** | The evidence folder prepared for an auditor. |
@@ -135,7 +156,9 @@ Other commands include `inspect`, `edit`, `reel`, `par`, `optimize`, `replay`, `
 ## Studio
 
 `pokie` opens a local web app for designing a game, building outputs, running simulations, replaying
-rounds and playing a game in-process. It is a local development tool, not a hosted service or production
+rounds and playing a game in-process. The guided design covers line, ways and cluster win models, and
+its **Mechanics** section holds free games, weighted bonuses, cascades, respins, collection, wild
+modifiers, Hold & Win and jackpots. It is a local development tool, not a hosted service or production
 RGS.
 
 ## Documentation

@@ -33,7 +33,7 @@ export function OutcomeBanner({
         <Alert color={color} variant="light" icon={icon} title={title} role={role} mb="sm" style={{overflowWrap: "anywhere"}}>
             <IssueList title="Errors" issues={errors} />
             <IssueList title="Warnings" issues={warnings} />
-            <IssueList title={informationTitle} issues={information} />
+            <IssueList title={informationTitle} issues={information} showCode={false} />
             {errors.length === 0 && warnings.length === 0 && information.length === 0 && (
                 <Text size="sm" c="dimmed">
                     No issues reported.

@@ -1,6 +1,10 @@
 import {ParSheetImporter} from "./ParSheetImporter.js";
 import {computeBlueprintHash} from "./computeBlueprintHash.js";
-import {parSheetConversionReport, parseParSheetConversionReport, type ParSheetConversionReport} from "./ParSheetConversionReport.js";
+import {
+    parSheetConversionReport,
+    parseParSheetConversionReport,
+    type ParSheetConversionReport,
+} from "./ParSheetConversionReport.js";
 import fs from "fs";
 import {ReelSequencesSheetMapper} from "./mapping/ReelSequencesSheetMapper.js";
 import type {ReelSequencesSheetMapping} from "./mapping/ReelSequencesSheetMapping.js";
@@ -51,7 +55,18 @@ export function prepareBlueprintForParSheetExport(
 ): ParSheetBlueprintPreparation {
     const validationIssues = validator.validate(blueprint);
     if (typeof blueprint === "object" && blueprint !== null && "screenGeometry" in blueprint) {
-        return {blueprint: undefined, issues: [...validationIssues, {code: "parsheet-screen-geometry-unsupported", severity: "error", message: "PAR workbooks do not support screenGeometry. Build a TypeScript package to preserve coordinate semantics."}]};
+        return {
+            blueprint: undefined,
+            issues: [
+                ...validationIssues,
+                {
+                    code: "parsheet-screen-geometry-unsupported",
+                    severity: "error",
+                    message:
+                        "PAR workbooks do not support screenGeometry. Build a TypeScript package to preserve coordinate semantics.",
+                },
+            ],
+        };
     }
     const unseededGenerationIssues = findUnseededGenerationIssues(blueprint);
     if (validationIssues.some((issue) => issue.severity === "error") || unseededGenerationIssues.length > 0) {
@@ -73,35 +88,54 @@ export function prepareBlueprintForParSheetExport(
                         message: `Cannot export "reelStripGeneration": ${failures
                             .map((reel) => `reelStripGeneration[${reel.reelIndex}] could not satisfy its constraints`)
                             .join("; ")}.`,
-                        suggestion: "Adjust the named reelStripGeneration entry so it can generate a strip, then export again.",
+                        suggestion:
+                            "Adjust the named reelStripGeneration entry so it can generate a strip, then export again.",
                     },
                 ],
             };
         }
         return {
             blueprint: removeSharedWeights(writeReelStrips(authored, resolution.reelStripGeneration)),
-            issues: [...validationIssues, materializationIssue(
-                "parsheet-generated-reels-materialized",
-                "Generated reelStripGeneration entries were resolved to literal ReelStrips for the PAR workbook; importing this workbook cannot restore the generated source.",
-            )],
+            issues: [
+                ...validationIssues,
+                materializationIssue(
+                    "parsheet-generated-reels-materialized",
+                    "Generated reelStripGeneration entries were resolved to literal ReelStrips for the PAR workbook; importing this workbook cannot restore the generated source.",
+                ),
+            ],
         };
     }
 
     if (authored.reelSequences !== undefined) return {blueprint: {...authored}, issues: validationIssues};
 
-    if (authored.reelStrips !== undefined) return {blueprint: removeSharedWeights({...authored}), issues: authored.symbolWeights === undefined ? validationIssues : [...validationIssues, materializationIssue("parsheet-shared-weights-ignored", "symbolWeights is ignored when literal reelStrips are authored; the workbook retains the literal reels only.")]};
+    if (authored.reelStrips !== undefined) return {
+        blueprint: removeSharedWeights({...authored}),
+        issues:
+                authored.symbolWeights === undefined
+                    ? validationIssues
+                    : [
+                        ...validationIssues,
+                        materializationIssue(
+                            "parsheet-shared-weights-ignored",
+                            "symbolWeights is ignored when literal reelStrips are authored; the workbook retains the literal reels only.",
+                        ),
+                    ],
+    };
 
     // `symbolWeights` and the omitted engine-default weighting both describe playable canonical
     // Blueprints but have no physical strip. Freeze the same deterministic sample Studio presents.
     const weighted = authored.symbolWeights !== undefined;
     return {
         blueprint: removeSharedWeights({...authored, reelStrips: convertSharedWeightsToReelStrips(authored)}),
-        issues: [...validationIssues, materializationIssue(
-            weighted ? "parsheet-weighted-reels-materialized" : "parsheet-default-reels-materialized",
-            weighted
-                ? "symbolWeights were materialized to literal ReelStrips for the PAR workbook; importing this workbook cannot restore the weighted source."
-                : "The default reel source was materialized to literal ReelStrips for the PAR workbook; importing this workbook cannot restore the default source.",
-        )],
+        issues: [
+            ...validationIssues,
+            materializationIssue(
+                weighted ? "parsheet-weighted-reels-materialized" : "parsheet-default-reels-materialized",
+                weighted
+                    ? "symbolWeights were materialized to literal ReelStrips for the PAR workbook; importing this workbook cannot restore the weighted source."
+                    : "The default reel source was materialized to literal ReelStrips for the PAR workbook; importing this workbook cannot restore the default source.",
+            ),
+        ],
     };
 }
 
@@ -119,7 +153,11 @@ function materializationIssue(code: string, message: string): ValidationIssue {
 // the shared preflight as well: a workbook is a literal snapshot, so every public PAR boundary can
 // explain the snapshot requirement in its own terms rather than relying on a later generator call.
 function findUnseededGenerationIssues(blueprint: unknown): ValidationIssue[] {
-    if (typeof blueprint !== "object" || blueprint === null || !Array.isArray((blueprint as {reelStripGeneration?: unknown}).reelStripGeneration)) {
+    if (
+        typeof blueprint !== "object" ||
+        blueprint === null ||
+        !Array.isArray((blueprint as {reelStripGeneration?: unknown}).reelStripGeneration)
+    ) {
         return [];
     }
 
@@ -132,12 +170,14 @@ function findUnseededGenerationIssues(blueprint: unknown): ValidationIssue[] {
         ) {
             return [];
         }
-        return [{
-            code: "parsheet-reel-generation-seed-required",
-            severity: "error" as const,
-            message: `Cannot export "reelStripGeneration[${index}].seed": generated PAR workbook snapshots require an authored integer seed.`,
-            suggestion: `Add an integer "seed" to "reelStripGeneration[${index}]" and export again.`,
-        }];
+        return [
+            {
+                code: "parsheet-reel-generation-seed-required",
+                severity: "error" as const,
+                message: `Cannot export "reelStripGeneration[${index}].seed": generated PAR workbook snapshots require an authored integer seed.`,
+                suggestion: `Add an integer "seed" to "reelStripGeneration[${index}]" and export again.`,
+            },
+        ];
     });
 }
 
@@ -209,7 +249,12 @@ export class ParSheetExporter implements ParSheetExporting {
     // untouched (writeWorkbook's own default implementation is itself atomic — see
     // writeFileAtomically.ts — so even a write/rename failure past this point can't leave a partial
     // file behind either). There is no "partial" export; either every sheet gets written, or none do.
-    public async exportToFile(blueprint: unknown, filePath: string, sourcePath?: string, options?: ParSheetExportOptions): Promise<ValidationIssue[]> {
+    public async exportToFile(
+        blueprint: unknown,
+        filePath: string,
+        sourcePath?: string,
+        options?: ParSheetExportOptions,
+    ): Promise<ValidationIssue[]> {
         assertNotCancelled(options);
         // Mirrors BuildCommand: a blueprint GameBlueprintValidator rejects is never treated as a
         // well-shaped GameBlueprint at all, since fields the mappers below assume exist (symbols,
@@ -222,7 +267,7 @@ export class ParSheetExporter implements ParSheetExporting {
         issues.splice(0, issues.length, ...report.issues);
         // A valid reconstructed model does not erase errors encountered while reading its source.
         // Reject the complete conversion report before allocating or serializing any output.
-        if (issues.some(issue => issue.severity === "error")) return issues;
+        if (issues.some((issue) => issue.severity === "error")) return issues;
         const priorLossless = report.losslessEligible;
 
         const ExcelJS = (await import("@xlvane/exceljs")).default;
@@ -235,26 +280,57 @@ export class ParSheetExporter implements ParSheetExporting {
         addSheet(
             workbook,
             this.symbolsMapper.sheetName,
-            this.symbolsMapper.toRows({symbols: typedBlueprint.symbols, wilds: typedBlueprint.wilds ?? [], scatters: typedBlueprint.scatters ?? []}),
+            this.symbolsMapper.toRows({
+                symbols: typedBlueprint.symbols,
+                wilds: typedBlueprint.wilds ?? [],
+                scatters: typedBlueprint.scatters ?? [],
+            }),
         );
         addSheet(workbook, this.paytableMapper.sheetName, this.paytableMapper.toRows(typedBlueprint.paytable));
         // checkReelSource above guarantees reelStrips is defined whenever we get here.
         if (typedBlueprint.reelSequences !== undefined) {
-            addSheet(workbook, this.reelSequencesMapper.sheetName, this.reelSequencesMapper.toRows(typedBlueprint.reelSequences));
+            addSheet(
+                workbook,
+                this.reelSequencesMapper.sheetName,
+                this.reelSequencesMapper.toRows(typedBlueprint.reelSequences),
+            );
         } else {
-            addSheet(workbook, this.reelStripsMapper.sheetName, this.reelStripsMapper.toRows(typedBlueprint.reelStrips as string[][]));
+            addSheet(
+                workbook,
+                this.reelStripsMapper.sheetName,
+                this.reelStripsMapper.toRows(typedBlueprint.reelStrips as string[][]),
+            );
         }
         if (typedBlueprint.paylines) {
             addSheet(workbook, this.paylinesMapper.sheetName, this.paylinesMapper.toRows(typedBlueprint.paylines));
+            // Payline values stay 0-based in the workbook (the same shape the importer reads), but a
+            // human opening the sheet must not have to guess that row 0 is the top row. Put the note
+            // on the header cell and in the Info sheet, without changing the data columns.
+            const paylinesSheet = workbook.getWorksheet(this.paylinesMapper.sheetName);
+            if (paylinesSheet !== undefined) {
+                paylinesSheet.getCell(1, 1).note =
+                    "Row numbers are 0-based: 0 = top row. Studio's Game Model and Play screens display them from 1.";
+            }
+            workbook
+                .getWorksheet(this.manifestMapper.sheetName)
+                ?.addRow(["Payline row basis", "0 = top row (0-based)"]);
         }
         if (typedBlueprint.availableBets) {
-            addSheet(workbook, this.availableBetsMapper.sheetName, this.availableBetsMapper.toRows(typedBlueprint.availableBets));
+            addSheet(
+                workbook,
+                this.availableBetsMapper.sheetName,
+                this.availableBetsMapper.toRows(typedBlueprint.availableBets),
+            );
         }
         if (typedBlueprint.winModel) {
             addSheet(workbook, this.winModelMapper.sheetName, this.winModelMapper.toRows(typedBlueprint.winModel));
         }
         if (typedBlueprint.mechanics && Object.keys(typedBlueprint.mechanics).length) {
-            addSheet(workbook, this.mechanicsMapper.sheetName, this.mechanicsMapper.toRows(typedBlueprint.mechanics.freeGames, typedBlueprint.mechanics));
+            addSheet(
+                workbook,
+                this.mechanicsMapper.sheetName,
+                this.mechanicsMapper.toRows(typedBlueprint.mechanics.freeGames, typedBlueprint.mechanics),
+            );
         }
         if (typedBlueprint.betModes) {
             addSheet(workbook, this.betModesMapper.sheetName, this.betModesMapper.toRows(typedBlueprint.betModes));
@@ -262,11 +338,13 @@ export class ParSheetExporter implements ParSheetExporting {
         if (options !== undefined && (options.includeMath === true || options.mathAnalysis !== undefined)) {
             options.onProgress?.({message: "Computing exact PAR math"});
             assertNotCancelled(options);
-            const math = options.mathAnalysis ?? await computeParSheetMathAnalysis(typedBlueprint, this.pokieVersion, {
-                ...(options.maxMathOutcomes === undefined ? {} : {maxOutcomes: options.maxMathOutcomes}),
-                ...(options.signal === undefined ? {} : {signal: options.signal}),
-                now: this.now,
-            });
+            const math =
+                options.mathAnalysis ??
+                (await computeParSheetMathAnalysis(typedBlueprint, this.pokieVersion, {
+                    ...(options.maxMathOutcomes === undefined ? {} : {maxOutcomes: options.maxMathOutcomes}),
+                    ...(options.signal === undefined ? {} : {signal: options.signal}),
+                    now: this.now,
+                }));
             assertNotCancelled(options);
             for (const sheet of buildParSheetMathSheets(math)) addSheet(workbook, sheet.name, sheet.grid);
         }
@@ -285,18 +363,24 @@ export class ParSheetExporter implements ParSheetExporting {
 
         options?.onProgress?.({message: "Serializing PAR workbook"});
         assertNotCancelled(options);
-        await writeFileAtomically(filePath, tempPath => this.writeWorkbook === defaultWriteWorkbook
-            ? workbook.xlsx.writeFile(tempPath)
-            : this.writeWorkbook(workbook, tempPath), () => {
-            options?.onProgress?.({message: "Committing PAR workbook"});
-            assertNotCancelled(options);
-        }, false, publication => {
-            options?.onPublication?.(publication);
-            assertNotCancelled(options);
-        });
+        await writeFileAtomically(
+            filePath,
+            (tempPath) =>
+                this.writeWorkbook === defaultWriteWorkbook
+                    ? workbook.xlsx.writeFile(tempPath)
+                    : this.writeWorkbook(workbook, tempPath),
+            () => {
+                options?.onProgress?.({message: "Committing PAR workbook"});
+                assertNotCancelled(options);
+            },
+            false,
+            (publication) => {
+                options?.onPublication?.(publication);
+                assertNotCancelled(options);
+            },
+        );
         return issues;
     }
-
 }
 
 const defaultWriteWorkbook = (workbook: ExcelJS.Workbook, filePath: string): Promise<void> =>
@@ -314,7 +398,12 @@ function addSheet(workbook: ExcelJS.Workbook, sheetName: string, grid: SheetGrid
 }
 
 /** Shared read-only preview of the same preparation/history consumed by the writer. */
-export async function inspectParSheetConversion(blueprint: unknown, sourcePath?: string, options?: ParSheetExportOptions, preparedIssues?: readonly ValidationIssue[]): Promise<ParSheetConversionReport> {
+export async function inspectParSheetConversion(
+    blueprint: unknown,
+    sourcePath?: string,
+    options?: ParSheetExportOptions,
+    preparedIssues?: readonly ValidationIssue[],
+): Promise<ParSheetConversionReport> {
     const issues = [...(preparedIssues ?? prepareBlueprintForParSheetExport(blueprint).issues)];
     const histories: ParSheetConversionReport[] = options?.conversionReport ? [options.conversionReport] : [];
     let eligible = options?.losslessEligible !== false;
@@ -323,11 +412,15 @@ export async function inspectParSheetConversion(blueprint: unknown, sourcePath?:
             if (fs.existsSync(`${sourcePath}.conversion-evidence.json`)) {
                 const history = JSON.parse(fs.readFileSync(`${sourcePath}.conversion-evidence.json`, "utf8"));
                 histories.push(parseParSheetConversionReport(history));
-                if (history.importedBlueprintHash !== undefined) eligible = eligible && history.importedBlueprintHash === computeBlueprintHash(blueprint as GameBlueprint);
+                if (history.importedBlueprintHash !== undefined) eligible =
+                        eligible && history.importedBlueprintHash === computeBlueprintHash(blueprint as GameBlueprint);
             } else if ((/\.xlsx$/i).test(sourcePath) && fs.existsSync(sourcePath)) {
                 const imported = await new ParSheetImporter().importFromFile(sourcePath);
                 histories.push(parSheetConversionReport(imported.issues, imported.conversionEvidence));
-                eligible = eligible && imported.conversionEvidence?.importedBlueprintHash === computeBlueprintHash(blueprint as GameBlueprint);
+                eligible =
+                    eligible &&
+                    imported.conversionEvidence?.importedBlueprintHash ===
+                        computeBlueprintHash(blueprint as GameBlueprint);
             }
         } catch {
             eligible = false;
@@ -337,6 +430,15 @@ export async function inspectParSheetConversion(blueprint: unknown, sourcePath?:
         issues.push(...history.issues);
         eligible = eligible && history.losslessEligible;
     }
-    if (!eligible) issues.push(materializationIssue("parsheet-prior-conversion-loss", "Prior conversion evidence is ineligible, changed or unavailable; re-export cannot upgrade that boundary to lossless."));
-    return parSheetConversionReport(issues, {issues: [], facts: histories.flatMap(history => history.facts), losslessEligible: eligible});
+    if (!eligible) issues.push(
+        materializationIssue(
+            "parsheet-prior-conversion-loss",
+            "Prior conversion evidence is ineligible, changed or unavailable; re-export cannot upgrade that boundary to lossless.",
+        ),
+    );
+    return parSheetConversionReport(issues, {
+        issues: [],
+        facts: histories.flatMap((history) => history.facts),
+        losslessEligible: eligible,
+    });
 }

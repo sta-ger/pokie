@@ -71,6 +71,18 @@ export class StudioJobService {
         return job?.projectId === projectId ? job : undefined;
     }
 
+    /**
+     * Remove a terminal job from durable history after the author has reviewed it. Active work is
+     * never discarded: it must be cancelled first so its executor can drain safely. Files and build
+     * outputs referenced by the job are untouched; this only forgets the Studio job record.
+     */
+    public dismiss(projectId: string, id: string): boolean {
+        const job = this.get(projectId, id);
+        if (job === undefined || !isStudioJobTerminal(job.status)) return false;
+        this.repository.remove(id);
+        return true;
+    }
+
     public start(input: StudioJobStartInput): StudioJobStartResult {
         if (!this.acceptingJobs) throw new Error("Studio is shutting down. Restart Studio before starting another job.");
         // `projectId` identifies the owner used for discovery and access
@@ -181,9 +193,9 @@ export class StudioJobService {
     }
 
     /** Record a consumed optimization preview without changing its mathematical verdict/evidence. */
-    public recordOptimizationApply(projectId: string, id: string, outputPath: string): StudioJobView | undefined {
+    public recordOptimizationApply(projectId: string, id: string, outputPath: string, sourceRevision?: string): StudioJobView | undefined {
         return this.transition(id, job => job.projectId === projectId && job.operation === "optimization" && job.status === "completed" && job.result
-            ? {...job, result: {...job.result, provenance: {...job.result.provenance, authoredApply: {path: outputPath}}}}
+            ? {...job, result: {...job.result, provenance: {...job.result.provenance, authoredApply: {path: outputPath, ...(sourceRevision === undefined ? {} : {sourceRevision})}}}}
             : job);
     }
 

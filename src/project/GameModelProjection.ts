@@ -111,6 +111,10 @@ export type GameModelLimits = {minBet?: number; maxBet?: number};
 
 export type GameModelProjection = {
     packageExtraction?: import("../generated/PackageBlueprintExtraction.js").PackageBlueprintExtractionResult;
+    // Identity of the authored source this projection was read from, using the same project inventory
+    // hash the optimizer and simulation use for freshness. Optional because some project kinds cannot
+    // be inventoried; callers must treat absence as "unknown", never as "unchanged".
+    sourceRevision?: string;
     basics: GameModelSection<GameModelBasics>;
     layout: GameModelSection<GameModelLayout>;
     symbols: GameModelSection<GameModelSymbol[]>;

@@ -6,6 +6,9 @@ Two independent concerns combine to decide whether a payline wins:
 
 - **Line definition** (`LinesDefinitionsDescribing`) — a **shape on the grid**: one row index per reel, e.g.
  `[1,1,1,1,1]` for the flat middle row, or `[0,1,2,1,0]` for a V-shape. Keyed by a `lineId` (string).
+ Studio's Game design and Play screens display these row indexes from **1** (top row = 1); the JSON form and the
+ PAR `Paylines` sheet store them **0-based**, and an exported PAR workbook records `Payline row basis: 0 = top row
+ (0-based)` in its `Info` sheet.
 - **Line pattern** (`LinesPatternsDescribing`) — a **0/1 mask over reel columns**, e.g. `[1,1,1,0,0]`. Given the
  symbols a definition picked out along a line, the pattern says which columns must match for that to count as a
  win — anchored left, anchored right, or scattered anywhere.

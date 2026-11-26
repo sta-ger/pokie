@@ -48,7 +48,7 @@ function formatBlueprintFieldValue(value: unknown): string {
     return value === undefined ? "(not present)" : JSON.stringify(value, null, 2);
 }
 
-// The "Compare built blueprint" control's own revealed content -- one row per differing top-level field
+// The "Compare built game design" control's own revealed content -- one row per differing top-level field
 // (from diffBlueprintTopLevelFields), each showing the exact value the last build used side by side with
 // the current draft's own value. Purely a rendering of the two already-known objects passed in --
 // reads `current`/`built`, never writes either, so opening/closing this view can never itself change the
@@ -79,7 +79,7 @@ function BuiltBlueprintCompareView({fields, current, built}: {fields: string[]; 
 // alive across this panel's own key={`build-${formGeneration}`} remount and across a later failed
 // rebuild (the transient `result` state going to "error"/"failed" never touches this). `changed` is a
 // content comparison of the *current* draft against the exact blueprint that produced this build, never
-// a revision-number one -- see hasBlueprintChanged's own doc comment for why "Restore built blueprint"
+// a revision-number one -- see hasBlueprintChanged's own doc comment for why "Restore built game design"
 // itself would otherwise permanently defeat a revision-based check.
 function BuiltBlueprintSummary({
     snapshot,
@@ -109,7 +109,7 @@ function BuiltBlueprintSummary({
                 {formatTimestamp(snapshot.buildInfo.generatedAt)} in &quot;{snapshot.projectRoot}&quot;.
             </Text>
             <Text size="xs" c="dimmed" style={{overflowWrap: "anywhere"}}>
-                Blueprint hash: {snapshot.buildInfo.blueprintHash}
+                Game design hash: {snapshot.buildInfo.blueprintHash}
             </Text>
             <IssueList title="Warnings" issues={snapshot.warnings} />
             <FileList title="Created files" files={snapshot.createdFiles} />
@@ -125,12 +125,12 @@ function BuiltBlueprintSummary({
                         aria-controls={compareId}
                         onClick={() => setCompareOpened((opened) => !opened)}
                     >
-                        Compare built blueprint
+                        Compare built game design
                     </Button>
                 )}
                 {changed && (
                     <Button variant="default" onClick={onRestore}>
-                        Restore built blueprint
+                        Restore built game design
                     </Button>
                 )}
             </QuickActions>
@@ -188,7 +188,7 @@ export function BlueprintBuildPanel({
     // Event-time draft identity also invalidates continuations before the remount cleanup runs.
     isCurrentDraft?: () => boolean;
     // Wholesale-replaces the draft with the exact blueprint that produced `builtSnapshot` -- both
-    // "Restore built blueprint" and "Discard unbuilt changes" in BuiltBlueprintSummary call this same one
+    // "Restore built game design" and "Discard unbuilt changes" in BuiltBlueprintSummary call this same one
     // operation, gated behind the same confirm below.
     onRestoreBuilt?: (blueprint: unknown) => void;
     // Disables only "Build Package" (never the non-destructive "Build Preview") -- set when the blueprint
@@ -418,14 +418,14 @@ export function BlueprintBuildPanel({
             .catch((error: unknown) => setResult({status: "error", message: errorMessage(error)}));
     };
 
-    // Both "Restore built blueprint" and "Discard unbuilt changes" (BuiltBlueprintSummary below) call
+    // Both "Restore built game design" and "Discard unbuilt changes" (BuiltBlueprintSummary below) call
     // this one operation -- a destructive wholesale replace of the current draft, gated behind the same
     // confirm every other destructive action in this codebase uses.
     const handleRestoreBuilt = (): void => {
         if (!builtSnapshot) {
             return;
         }
-        confirm("Discard the changes made since the last build and restore the built blueprint?", () => onRestoreBuilt?.(builtSnapshot.blueprint));
+        confirm("Discard the changes made since the last build and restore the built game design?", () => onRestoreBuilt?.(builtSnapshot.blueprint));
     };
 
     // Suppressed to "idle" once a build reaches "ok" -- BuiltBlueprintSummary below (driven by the
@@ -465,7 +465,7 @@ export function BlueprintBuildPanel({
                 </Text>
             )}
             <Text size="xs" c="dimmed" mb="sm">
-                Build creates a new package in a new or empty directory. Choose another output directory to rebuild; previous artifacts stay unchanged.
+                Build creates a new package in a new or empty directory. Choose another output directory to rebuild; previous build outputs stay unchanged.
             </Text>
 
             <BuildPreviewDisplay view={preview} />

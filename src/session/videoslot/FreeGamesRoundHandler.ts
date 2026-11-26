@@ -1,6 +1,12 @@
 import type {FreeGamesRoundHandling} from "./FreeGamesRoundHandling.js";
 import type {VideoSlotWithFreeGamesSessionHandling} from "./VideoSlotWithFreeGamesSessionHandling.js";
 
+/** Caps one grant by the feature's remaining total allowance. */
+export function capFreeGamesGrant(maxFreeGames: number | undefined, currentSum: number, grant: number): number {
+    if (maxFreeGames === undefined) return grant;
+    return Math.max(0, Math.min(grant, maxFreeGames - currentSum));
+}
+
 /** Built-in bookkeeping, shared by execution and canonical checkpoint validation. */
 export function resolveFreeGamesEntry(num: number, sum: number, bank: number, forcedGrant = 0) {
     return num === sum ? {num: 0, sum: forcedGrant, bank: 0} : {num, sum: sum + forcedGrant, bank};

@@ -1,3 +1,4 @@
+import {MAX_FREE_GAMES_CAP} from "./GameBlueprint.js";
 import {validateAuthoredMechanics} from "./validateAuthoredMechanics.js";
 import {validateBlueprintReelSequences} from "./validateBlueprintReelSequences.js";
 import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
@@ -318,6 +319,14 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                     message: `"mechanics.freeGames.awardsByCount.${count}" must be a nonnegative integer.`,
                 });
             }
+        }
+        if (f.maxFreeGames !== undefined && (!(typeof f.maxFreeGames === "number" && Number.isSafeInteger(f.maxFreeGames) && f.maxFreeGames >= 1 && f.maxFreeGames <= MAX_FREE_GAMES_CAP))) {
+            issues.push({
+                code: "blueprint-mechanics-freegames-invalid-cap",
+                severity: "error",
+                message: `"mechanics.freeGames.maxFreeGames" must be a positive integer no greater than ${MAX_FREE_GAMES_CAP}.`,
+                path: "mechanics.freeGames.maxFreeGames",
+            });
         }
     }
 

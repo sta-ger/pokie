@@ -52,17 +52,18 @@ export function WildModifiersFieldset({
         set({...data, rules: [...data.rules, rule]});
     };
     return (
-        <PageSection legend="Wilds and screen modifiers">
+        <PageSection legend="Wild modifiers">
             <Text>
-                Generate → ordered rules in the evaluated window → evaluate → product of winning wild factors →
-                aggregate → settle. Sticky lifetime includes acquisition and advances once per executed step.
+                Wild rules can replace symbols or add wilds after the reels stop. Rules run in order in the selected area,
+                and each winning wild multiplier is applied to that win. A sticky wild stays for the configured number of
+                spins and counts down once per spin.
             </Text>
             {raw === undefined && <Button onClick={() => set({wilds: [], rules: []})}>Add wild modifiers</Button>}
             {raw !== undefined && <Button onClick={() => set(undefined)}>Remove wild modifiers</Button>}
             {raw !== undefined && !editable && (
                 <Text>
                     The modifier draft is incomplete or malformed. Correct mechanics.modifiers in JSON and Apply JSON,
-                    or remove it. Your draft is retained.
+                    or remove it. Your draft is kept.
                 </Text>
             )}
             {editable && (

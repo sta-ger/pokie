@@ -116,7 +116,7 @@ describe("ParSheetImporter", () => {
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.readFile(exported);
         workbook.getWorksheet("Symbols")!.getRow(1).getCell(4).value = "Ignored input";
-        workbook.getWorksheet("Manifest")!.addRow(["Unrecognized", "discard me"]);
+        workbook.getWorksheet("Info")!.addRow(["Unrecognized", "discard me"]);
         await workbook.xlsx.writeFile(filePath);
 
         const result = await new ParSheetImporter().importFromFile(filePath);

@@ -245,12 +245,14 @@ export function NewBlueprintDialog({
                                 Start with a blank game
                             </Button>
                             <Text size="xs" c="dimmed">Build every part yourself, beginning with an empty game design.</Text>
-                            <Button variant="default" aria-label="Generate a game idea" onClick={() => setStep("random")}>
-                                Generate a game idea
+                            <Button variant="default" aria-label="Generate a structural template" onClick={() => setStep("random")}>
+                                Generate a structural template
                             </Button>
                             <Text size="xs" c="dimmed">
-                                Create an editable sample game automatically. You can regenerate it until you like the direction. Generated math is a
-                                structural starting point, not a tuned RTP — simulate it and use Optimize math before treating it as final.
+                                Create an editable sample layout and paytable automatically. It is a structural starting point, not a
+                                themed game idea or a tuned RTP — use Simulation to explore it. You can regenerate it until you like the
+                                direction. Optimize math needs manual reel strips; author manual reel strips in Game design → Reels first
+                                if you want to tune them exactly.
                             </Text>
                             <Button variant="default" onClick={() => setStep("load")}>
                                 Open a saved game design
@@ -294,7 +296,7 @@ export function NewBlueprintDialog({
                             </Button>
                         </QuickActions>
 
-                        {randomView.status === "error" && <ErrorState message={describeProjectActionError("Generating this game idea", randomView.message)} />}
+                        {randomView.status === "error" && <ErrorState message={describeProjectActionError("Generating this structural template", randomView.message)} />}
                         {randomView.status === "ok" &&
                             (() => {
                                 const summary = describeGeneratedBlueprint(randomView.result.blueprint);
@@ -312,8 +314,10 @@ export function NewBlueprintDialog({
                                             </Table.Tbody>
                                         </Table>
                                         <Text size="xs" mt="xs">
-                                            This is an editable structural draft. RTP is not tuned yet: review the paytable, run exact math or a
-                                            simulation, then use Optimize math before treating it as a finished game.
+                                            This is an editable structural draft, not a finished game. The generated name is a placeholder; no
+                                            artwork, theme or sound is included. RTP is not tuned yet: review the paytable and use Simulation to explore
+                                            it. Optimize math needs manual reel strips; author manual reel strips in Game design → Reels first if you
+                                            want to tune them exactly.
                                         </Text>
                                     </Alert>
                                 );
@@ -330,7 +334,7 @@ export function NewBlueprintDialog({
                                     </Button>
                                 )}
                                 <Button disabled={randomView.status !== "ok"} onClick={handleUseRandom}>
-                                    Use this game idea
+                                    Use this template
                                 </Button>
                             </Group>
                         </Group>

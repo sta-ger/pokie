@@ -173,6 +173,7 @@ ${forcedFeatureEntryHandlerDeclaration}        return ${wrapJackpot(`new VideoSl
         for (const [count, awarded] of Object.entries(freeGamesMechanic.awardsByCount)) {
             freeGamesConfig.setFreeGamesForScatters(freeGamesMechanic.scatterSymbol, Number(count), awarded);
         }
+        if (freeGamesMechanic.maxFreeGames !== undefined) freeGamesConfig.setMaxFreeGames(freeGamesMechanic.maxFreeGames);
     }
 `
         : "";

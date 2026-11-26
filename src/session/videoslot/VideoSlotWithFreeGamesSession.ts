@@ -4,7 +4,7 @@ import {AbstractVideoSlotSessionDecorator} from "./AbstractVideoSlotSessionDecor
 import type {BuildableFromSessionState} from "../BuildableFromSessionState.js";
 import type {ConvertableToSessionState} from "../ConvertableToSessionState.js";
 import type {StakeAmountDetermining} from "../StakeAmountDetermining.js";
-import {FreeGamesRoundHandler} from "./FreeGamesRoundHandler.js";
+import {capFreeGamesGrant, FreeGamesRoundHandler} from "./FreeGamesRoundHandler.js";
 import type {FreeGamesRoundHandling} from "./FreeGamesRoundHandling.js";
 import type {PaytableRepresenting} from "./paytable/PaytableRepresenting.js";
 import type {SymbolsCombinationsGenerating} from "./combinations/SymbolsCombinationsGenerating.js";
@@ -74,7 +74,15 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
         return this.freeGamesSum;
     }
 
+    public getMaxFreeGames(): number | undefined {
+        return this.config.getMaxFreeGames?.();
+    }
+
     public setFreeGamesSum(value: number): void {
+        const maxFreeGames = this.getMaxFreeGames();
+        if (maxFreeGames !== undefined && value > maxFreeGames) {
+            throw new Error(`Free-games sum ${value} exceeds the authored cap ${maxFreeGames}.`);
+        }
         if (this.getSequenceSelections().length && !this.hasUnfinishedFreeGames() && value > this.freeGamesNum) this.featureEntryPending = true;
         this.freeGamesSum = value;
     }
@@ -138,6 +146,7 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
             !Number.isFinite(value.freeGamesBank) || value.freeGamesBank < 0 ||
             (value.featureEntryPending !== undefined && (typeof value.featureEntryPending !== "boolean" || (value.featureEntryPending && value.freeGamesSum <= value.freeGamesNum))) ||
             (value.wonFreeGamesNumber !== undefined && (!Number.isSafeInteger(value.wonFreeGamesNumber) || value.wonFreeGamesNumber < 0)) ||
+            (this.getMaxFreeGames() !== undefined && value.freeGamesSum > this.getMaxFreeGames()!) ||
             !this.supportsSessionStateRestore(this.baseSession)) throw new Error("Invalid free-games executable state.");
         const base = this.baseSession as VideoSlotSessionHandling<T> & {validateSessionState?: (state: unknown) => void};
         base.validateSessionState?.(value.base);
@@ -253,7 +262,7 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
             );
             if (grant > 0) wonFreeGamesNumber += grant;
         }
-        return wonFreeGamesNumber;
+        return capFreeGamesGrant(this.getMaxFreeGames(), this.freeGamesSum, wonFreeGamesNumber);
     }
 
     private supportsSessionStateCapture(session: VideoSlotSessionHandling<T>): session is VideoSlotSessionHandling<T> & ConvertableToSessionState<unknown> {

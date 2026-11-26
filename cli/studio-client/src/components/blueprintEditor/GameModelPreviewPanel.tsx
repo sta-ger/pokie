@@ -65,11 +65,14 @@ export function GameModelPreviewPanel({blueprint, sourcePath, revision}: {bluepr
     }
 
     return (
-        <PageSection legend="Game Model preview">
-            <MathDefinitionDiffPreview sourcePath={sourcePath} draft={blueprint} revision={revision} />
+        <PageSection legend="Game design preview">
+            <details>
+                <summary>Compare mathematical definitions</summary>
+                <MathDefinitionDiffPreview sourcePath={sourcePath} draft={blueprint} revision={revision} />
+            </details>
             <QuickActions>
                 <Button onClick={() => handlePreview()} loading={state.status === "loading"}>
-                    Preview Game Model
+                    Preview game design
                 </Button>
             </QuickActions>
             {state.status === "error" && (

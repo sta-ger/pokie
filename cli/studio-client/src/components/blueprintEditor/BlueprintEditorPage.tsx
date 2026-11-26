@@ -1,4 +1,4 @@
-import {Anchor, Badge, Button, Collapse, Group, SegmentedControl, Text, Title} from "@mantine/core";
+import {Alert, Anchor, Badge, Button, Collapse, Group, SegmentedControl, Text, Title} from "@mantine/core";
 import {useDisclosure} from "@mantine/hooks";
 import {useCallback, useEffect, useRef, useState} from "react";
 import {useNavigate} from "react-router-dom";
@@ -9,7 +9,11 @@ import {useStudioApi} from "../../context/StudioApiProvider";
 import {clearPersistedBlueprintDraft, loadPersistedBlueprintDraft, savePersistedBlueprintDraft} from "../../domain/blueprintDraftStorage";
 import {createRecommendedBlueprint} from "../../domain/blueprintEditorState";
 import {errorMessage} from "../../domain/errorMessage";
-import {describePathActionError} from "../../domain/pathActionError";
+import {
+    describeExistingProjectOpenError,
+    describeManagedSaveFailure,
+    describePathActionError,
+} from "../../domain/pathActionError";
 import {
     describeLoadResult,
     describeSaveManagedResult,
@@ -24,7 +28,7 @@ import {useBlueprintEditor, type BlueprintMutate} from "../../hooks/useBlueprint
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useDesignFocusVisibility} from "../../hooks/useDesignFocusVisibility";
-import {useConfirmedProjectOpen} from "../../hooks/useOpenProject";
+import {useConfirmedProjectOpen, useOpenProject} from "../../hooks/useOpenProject";
 import {ErrorState} from "../common/ErrorState";
 import {QuickActions} from "../common/QuickActions";
 import {RecoveryNotice} from "../common/RecoveryNotice";
@@ -33,9 +37,11 @@ import {BlueprintBuildPanel} from "./BlueprintBuildPanel";
 import {BlueprintJsonPanel} from "./BlueprintJsonPanel";
 import {BlueprintLoadSaveControls} from "./BlueprintLoadSaveControls";
 import {BlueprintValidationPanel} from "./BlueprintValidationPanel";
-import {BlueprintMathPreviewPanel} from "./BlueprintMathPreviewPanel";
+import {BlueprintMathPreviewPanel, type BlueprintMathPreviewStatus} from "./BlueprintMathPreviewPanel";
 import {GameModelPreviewPanel} from "./GameModelPreviewPanel";
 import {GettingStartedGuide} from "./GettingStartedGuide";
+import {ReadinessChecklist} from "./ReadinessChecklist";
+import {StartingPointPanel} from "./StartingPointPanel";
 import {LayoutFieldset} from "./LayoutFieldset";
 import {MetadataFieldset} from "./MetadataFieldset";
 import {NewBlueprintDialog} from "./NewBlueprintDialog";
@@ -100,7 +106,7 @@ type SourceDrift = {kind: "changed"} | {kind: "unavailable"; message: string};
 // `guided`/`initialPath`/`initialParSheetPath` are purely additive -- omitted (the removed "Advanced
 // Tools" raw editor's own usage), this component renders exactly as it always has. `guided` adds a step
 // indicator + next-step hint and tucks JSON mode/Load-by-path/Save/PAR Sheet Import-Export/package builds
-// behind an "advanced options" disclosure. Create game saves the draft and opens its workspace;
+// behind an "advanced options" disclosure. Create game design saves the draft and opens its workspace;
 // exporting a package works directly off the draft without requiring a saved source. `initialPath`, when set, auto-loads that blueprint
 // on mount, reusing the exact same handleLoad a manual Load click would use. `initialParSheetPath` (set
 // when Home's own Projects "Import Project" action detects a PAR sheet -- see HomePage's own doc
@@ -116,6 +122,7 @@ export function BlueprintEditorPage({
     initialBuildOutDir,
     onDirtyChange,
     onManagedProjectSaved,
+    onParImportSettled,
     isVisible = true,
 }: {
     guided?: boolean;
@@ -130,12 +137,15 @@ export function BlueprintEditorPage({
     initialBuildOutDir?: string;
     onDirtyChange?: (dirty: boolean) => void;
     onManagedProjectSaved?: (registeredProject?: StudioProjectRegistryView) => void;
+    /** Home refreshes its job observation after a PAR import reaches a terminal response. */
+    onParImportSettled?: () => void;
     isVisible?: boolean;
 } = {}) {
     const designRegion = useRef<HTMLDivElement>(null);
     useDesignFocusVisibility(designRegion, guided && isVisible);
     const fetchImpl = useStudioApi();
     const openWithConfirmation = useConfirmedProjectOpen();
+    const openProject = useOpenProject();
     const navigate = useNavigate();
     const allowNextDesignNavigation = useAllowNextDesignNavigation();
     const confirm = useConfirm();
@@ -158,6 +168,7 @@ export function BlueprintEditorPage({
     // whenever this action's own result needs to be seen.
     const [managedSaveView, setManagedSaveView] = useState<BlueprintSaveView>({status: "idle"});
     const [workspaceOpenError, setWorkspaceOpenError] = useState<string>();
+    const [existingProjectOpenError, setExistingProjectOpenError] = useState<string>();
     const [workspaceOpenPending, setWorkspaceOpenPending] = useState(false);
     // A successful managed save immediately continues into its Workspace. Keep that terminal
     // navigation separate from the creator's save-result UI: once the Workspace has accepted the
@@ -165,6 +176,7 @@ export function BlueprintEditorPage({
     const workspaceOpenRequestIdRef = useRef(0);
     const [showManagedConflictComparison, setShowManagedConflictComparison] = useState(false);
     const [validationView, setValidationView] = useState<BlueprintValidationView>({status: "idle"});
+    const [mathPreviewStatus, setMathPreviewStatus] = useState<BlueprintMathPreviewStatus>("idle");
     // Read this tab's recovery slot once on mount. An explicit source route owns its initial
     // document. Restore remains an explicit replacement through the same dirty guards as Load;
     // mounting or validating the starter must not overwrite the pending recovery choice.
@@ -197,6 +209,17 @@ export function BlueprintEditorPage({
     const saveGuard = useDoubleSubmitGuard();
     const {begin: beginValidate, end: endValidate, isBlocked: isValidateBlocked} = useDoubleSubmitGuard();
     const [advancedOpened, {toggle: toggleAdvanced, open: openAdvanced}] = useDisclosure(Boolean(initialParSheetPath || recoveryRequest !== undefined));
+    // The guided landing's three launch cards disappear once the author has committed to a path or
+    // started editing. They are a launcher, not a permanent banner on top of every later screen.
+    const [startingPointDismissed, setStartingPointDismissed] = useState(false);
+    const [starterModeNotice, setStarterModeNotice] = useState<"ways" | "clusters" | undefined>(undefined);
+    // The PAR path from Projects -> "Open in Start a game" is a one-shot request. Once the user
+    // replaces the draft with Blank/Starter/Random/Load, it must not auto-import again into the new
+    // draft and leave a stale "Imported — not applied yet" panel beside unrelated content.
+    const [pendingParSheetPath, setPendingParSheetPath] = useState(initialParSheetPath);
+    useEffect(() => {
+        setPendingParSheetPath(initialParSheetPath);
+    }, [initialParSheetPath]);
     // useDisclosure's own initial value above only ever covers a fresh mount -- Projects -> Design (both
     // under the same `/home/:tab` route, see HomePage's own routing doc comment) never remounts this page,
     // so a *second* "Import Project" -> "Open in Design Game" click while already on the Design tab would
@@ -298,12 +321,22 @@ export function BlueprintEditorPage({
     const validateRequestIdRef = useRef(0);
     const validationAbortRef = useRef<AbortController | undefined>(undefined);
     const validationMountedRef = useRef(true);
+    // A transient validation-request failure (for example while a parallel simulation is saturating
+    // the local server) must not leave the guided Create action permanently disabled. Retry exactly
+    // once for the revision that failed; a second failure remains visible and the explicit Retry
+    // validation control stays available. Never retry a superseded revision.
+    const autoRetriedValidationRevisionRef = useRef<number | undefined>(undefined);
+    const autoRetryValidationTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     useEffect(() => {
         validationMountedRef.current = true;
         return () => {
             validationMountedRef.current = false;
             validateRequestIdRef.current++;
             validationAbortRef.current?.abort();
+            if (autoRetryValidationTimerRef.current !== undefined) {
+                clearTimeout(autoRetryValidationTimerRef.current);
+                autoRetryValidationTimerRef.current = undefined;
+            }
         };
     }, []);
     // Bind a completed check to the exact model snapshot. A rendered ok control may lose
@@ -339,6 +372,10 @@ export function BlueprintEditorPage({
         if (!beginValidate()) {
             return;
         }
+        if (autoRetryValidationTimerRef.current !== undefined) {
+            clearTimeout(autoRetryValidationTimerRef.current);
+            autoRetryValidationTimerRef.current = undefined;
+        }
         // Captured now, at request-send time -- compared against the *current* refs at response time, so
         // a response for a blueprint that's since changed (an edit, New, Load, JSON Apply -- anything
         // that bumped revision) or been superseded by a newer validate request is discarded rather than
@@ -361,6 +398,7 @@ export function BlueprintEditorPage({
                 }
                 const validation = describeValidation(result);
                 completedValidationRef.current = {revision: requestedRevision, blueprint: currentState.blueprint, validation};
+                autoRetriedValidationRevisionRef.current = undefined;
                 setValidationView(validation);
             })
             .catch((error: unknown) => {
@@ -370,6 +408,15 @@ export function BlueprintEditorPage({
                 const validation: BlueprintValidationView = {status: "error", message: errorMessage(error)};
                 completedValidationRef.current = {revision: requestedRevision, blueprint: currentState.blueprint, validation};
                 setValidationView(validation);
+                if (guided && isVisible && autoRetriedValidationRevisionRef.current !== requestedRevision) {
+                    autoRetriedValidationRevisionRef.current = requestedRevision;
+                    autoRetryValidationTimerRef.current = setTimeout(() => {
+                        autoRetryValidationTimerRef.current = undefined;
+                        if (validationMountedRef.current && requestedRevision === editor.getCurrentState().revision) {
+                            handleValidateRef.current();
+                        }
+                    }, 1_000);
+                }
             })
             .finally(() => {
                 endValidate();
@@ -600,7 +647,7 @@ export function BlueprintEditorPage({
                             prev.status === "ok" || prev.status === "invalid" || prev.status === "stale" ? {status: "stale"} : prev,
                         );
                         handleValidateRef.current();
-                        setSourceDrift({kind: "unavailable", message: describePathActionError("The opened blueprint source", result.error)});
+                        setSourceDrift({kind: "unavailable", message: describePathActionError("The opened game design source", result.error)});
                     }
                 })
                 .catch(() => undefined)
@@ -677,6 +724,7 @@ export function BlueprintEditorPage({
     const handleChooseBlank = (): void => {
         const snapshot = captureReplaceSnapshot();
         resetDraftIdentity();
+        setPendingParSheetPath(undefined);
         const revisionBeforeReplace = editor.state.revision;
         nextFormGenerationIsClean.current = true;
         editor.newBlueprint();
@@ -709,6 +757,7 @@ export function BlueprintEditorPage({
     const handleUseRandomBlueprint = (blueprint: unknown): void => {
         const snapshot = captureReplaceSnapshot();
         resetDraftIdentity();
+        setPendingParSheetPath(undefined);
         const revisionBeforeReplace = editor.state.revision;
         nextFormGenerationIsClean.current = true;
         editor.loadFrom(blueprint);
@@ -771,6 +820,7 @@ export function BlueprintEditorPage({
                         return;
                     }
                     resetDraftIdentity();
+                    setPendingParSheetPath(undefined);
                     nextFormGenerationIsClean.current = true;
                     editor.loadFrom(result.blueprint);
                     setBlueprintPath(result.path);
@@ -802,7 +852,7 @@ export function BlueprintEditorPage({
     };
 
     const handleLoad = (path: string): void => {
-        if (sequenceDraftDirty) confirm("Load another Blueprint and discard unapplied whole-sequence edits?", () => runLoad(path));
+        if (sequenceDraftDirty) confirm("Load another game design and discard unapplied whole-sequence edits?", () => runLoad(path));
         else runLoad(path);
     };
 
@@ -818,6 +868,7 @@ export function BlueprintEditorPage({
         }
         const restore = (): void => {
             resetDraftIdentity();
+            setPendingParSheetPath(undefined);
             nextFormGenerationIsClean.current = false;
             importedParBlueprintRevisionRef.current = editor.getCurrentState().revision + 1;
             editor.loadFrom(persistedDraft.blueprint);
@@ -845,6 +896,10 @@ export function BlueprintEditorPage({
     // a JSON path Save has ever confirmed overwriting.
     const applyImportedBlueprint = (importedBlueprint: unknown, sourcePath: string, conversionEvidence: ParSheetConversionEvidence): void => {
         resetDraftIdentity();
+        // The Projects -> "Open in Start a game" path is one-shot. Clear it before the form-generation
+        // remount so the import panel does not reopen on the just-applied draft and offer to import it
+        // again (which previously made Apply look as though it had not taken effect).
+        setPendingParSheetPath(undefined);
         nextFormGenerationIsClean.current = true;
         editor.loadFrom(importedBlueprint);
         setBlueprintPath(sourcePath);
@@ -994,7 +1049,7 @@ export function BlueprintEditorPage({
     };
 
     const handleOverwrite = (path: string): void => {
-        confirm(`Overwrite the blueprint at "${path}"?`, () => runSave(path, true));
+        confirm(`Overwrite the game design at "${path}"?`, () => runSave(path, true));
     };
 
     // Only activation of the terminal ok control saves this exact validated model. The first
@@ -1015,6 +1070,7 @@ export function BlueprintEditorPage({
             || Boolean(editor.modeDrafts.current.wholeSequenceDraft?.dirty)
             || jsonDraftDirtyRef.current;
         setWorkspaceOpenError(undefined);
+        setExistingProjectOpenError(undefined);
         setManagedSaveView({status: "loading"});
         const alreadyOwnsPath = blueprintPath !== undefined && overwriteConfirmedForPath === blueprintPath;
         // Kept as `{raw, view}` pairs (rather than mapping straight to `describeSaveResult`/
@@ -1093,7 +1149,10 @@ export function BlueprintEditorPage({
                             allowNextDesignNavigation();
                             // Commit the saved workspace before retiring the pending editor action.
                             // A deferred route render otherwise leaves Home actionable under Overview.
-                            navigate(`/project/${encodeURIComponent(context.projectRoot)}/overview`, {flushSync: true});
+                            navigate(`/project/${encodeURIComponent(context.projectRoot)}/overview`, {
+                                flushSync: true,
+                                ...(mathPreviewStatus === "ok" ? {state: {exactMathAfterOpen: true}} : {}),
+                            });
                         })
                         .catch((error: unknown) => {
                             if (workspaceOpenRequestId === workspaceOpenRequestIdRef.current) {
@@ -1174,6 +1233,7 @@ export function BlueprintEditorPage({
     // Mantine hides a Button's label while `loading` is true. During validation that left the primary
     // action as an unlabeled spinner, so keep the validation phase disabled-but-labelled and reserve
     // the loading treatment for the actual save/open writes.
+    const savingBackToSource = blueprintPath !== undefined && overwriteConfirmedForPath === blueprintPath;
     let guidedActionLabel: string;
     if (validationView.status === "loading") {
         guidedActionLabel = "Checking design…";
@@ -1182,7 +1242,7 @@ export function BlueprintEditorPage({
     } else if (workspaceOpenPending) {
         guidedActionLabel = "Opening…";
     } else {
-        guidedActionLabel = blueprintPath === undefined || overwriteConfirmedForPath !== blueprintPath ? "Create game" : "Save game";
+        guidedActionLabel = savingBackToSource ? "Save to source file" : "Create game design";
     }
     const validationDescriptionId = validationView.status !== "ok" ? "blueprint-create-game-validation" : undefined;
     let guidedActionDescriptionId = validationDescriptionId;
@@ -1193,13 +1253,13 @@ export function BlueprintEditorPage({
     } else if (sequenceDraftDirty) {
         guidedActionDescriptionId = "blueprint-create-game-sequences";
     }
-    let validationGuidance = "Studio is checking this game design automatically. Create game becomes available when the check succeeds.";
+    let validationGuidance = "Studio is checking this game design automatically — usually a few seconds. Create game design becomes available when the check succeeds.";
     if (validationView.status === "inconclusive") {
         validationGuidance = "Analysis is inconclusive. Review its limits and retry validation before creating the game.";
     } else if (validationView.status === "invalid") {
         validationGuidance = "Fix the highlighted design errors before creating your game. Studio checks your changes automatically.";
     } else if (validationView.status === "error") {
-        validationGuidance = "Studio couldn't check this design. Review the validation error below and edit the design to check it again.";
+        validationGuidance = "Studio couldn't check this design. It retries once automatically; if the error continues, use Retry validation below.";
     }
     let buildBlockedMessage: string | undefined;
     if (guided) {
@@ -1215,18 +1275,200 @@ export function BlueprintEditorPage({
         }
     }
 
+    const showStartingPoint = guided &&
+        !startingPointDismissed &&
+        blueprintPath === undefined &&
+        !isDirty &&
+        persistedDraft === undefined &&
+        importedFromParSheetPath === undefined &&
+        !advancedOpened &&
+        initialParSheetPath === undefined &&
+        recoveryRequest === undefined;
+
     return (
         <div ref={designRegion} className="studio-design-editor">
             {guided && (
-                <div>
+                <>
                     <Title id="design-game-heading" order={2}>Design Your Game</Title>
                     <Text c="dimmed" size="sm" mb="md">
-                        Start with the ready-to-edit starter game, then make it your own. Edit its layout, symbols,
-                        reels, prizes, and bets. Studio checks your design as you work; Create game saves it and opens
-                        its workspace, where you can play, test, and export it.
+                        Start with the ready-to-edit starter, then make it your own. Studio checks the design as you
+                        work; Create game design saves it and opens the workspace.
                     </Text>
+                    <Text c="dimmed" size="xs" mb="md">
+                        This is a new design draft, not the last saved project. To continue an existing game, open it
+                        from Projects.
+                    </Text>
+                    <div className="studio-create-action-bar" data-pokie-primary-action-bar>
+                        <QuickActions>
+                            <Button
+                                id="blueprint-create-game"
+                                data-pokie-validation-state={validationView.status}
+                                onClick={handleGuidedSave}
+                                disabled={sequenceDraftDirty || guidedActionPending || validationView.status !== "ok"}
+                                aria-describedby={guidedActionDescriptionId}
+                                loading={managedSaveView.status === "loading" || workspaceOpenPending}
+                                aria-busy={guidedActionPending || undefined}
+                            >
+                                {guidedActionLabel}
+                            </Button>
+                            {savingBackToSource && (
+                                <Button variant="default" onClick={openAdvanced}>
+                                Save a copy
+                                </Button>
+                            )}
+                        </QuickActions>
+                        {savingBackToSource && (
+                            <Text size="xs" c="dimmed" mb="sm">
+                            This design is open from <strong style={{overflowWrap: "anywhere"}}>{blueprintPath}</strong>.
+                            Saving writes back to that file. Use Save a copy under Advanced options if you want to keep the original unchanged.
+                            </Text>
+                        )}
+                        {mathPreviewStatus === "ok" && !savingBackToSource && (
+                            <Text size="xs" c="dimmed" mb="sm">
+                            Exact math above is a preview of this draft only. After saving, the project will compute its own exact outcome table
+                            on Overview; you can cancel that generation there if you do not need it.
+                            </Text>
+                        )}
+                        {managedSaveView.status === "loading" && !workspaceOpenPending && (
+                            <Text id="blueprint-create-game-saving" role="status" c="dimmed" size="sm" mb="sm">
+                            Studio is saving your game before opening its workspace.
+                            </Text>
+                        )}
+                        {workspaceOpenPending && (
+                            <Text id="blueprint-create-game-opening" role="status" c="dimmed" size="sm" mb="sm">
+                            Your game was saved. Studio is opening its workspace.
+                            </Text>
+                        )}
+                        {validationView.status !== "ok" && (
+                            <Text id="blueprint-create-game-validation" c="dimmed" size="sm" mb="sm">
+                                {validationGuidance}
+                            </Text>
+                        )}
+                        {sequenceDraftDirty && (
+                            <Text id="blueprint-create-game-sequences" c="dimmed" size="sm" mb="sm">
+                            Apply or cancel whole-sequence edits before saving.
+                            </Text>
+                        )}
+                        {workspaceOpenError && (
+                            <RecoveryNotice
+                                title="Your game was saved, but Studio couldn't open its workspace"
+                                message="Return to Your projects and open the game again. Your saved work is safe."
+                                actionLabel="Go to Your projects"
+                                onAction={() => navigate("/home/projects")}
+                            />
+                        )}
+                        {managedSaveView.status === "conflict" && managedSaveView.reason === "stale" && (
+                            <div>
+                                <RecoveryNotice
+                                    title="This saved game design changed while you were editing"
+                                    message={managedSaveView.message}
+                                    actionLabel="Reload saved version"
+                                    onAction={() => handleLoad(managedSaveView.path)}
+                                    secondaryActionLabel="Compare"
+                                    onSecondaryAction={() => setShowManagedConflictComparison((shown) => !shown)}
+                                />
+                                {managedSaveView.canSaveAs && (
+                                    <Button variant="default" size="xs" mb="sm" onClick={openAdvanced}>
+                                    Save a copy
+                                    </Button>
+                                )}
+                                {showManagedConflictComparison && (
+                                    <Text component="pre" size="xs" mb="sm" style={{whiteSpace: "pre-wrap", overflowWrap: "anywhere"}}>
+                                        {JSON.stringify(
+                                            {
+                                                currentHash: managedSaveView.currentHash,
+                                                editedHash: managedSaveView.editedHash,
+                                                currentBlueprint: managedSaveView.currentBlueprint,
+                                                editedBlueprint: managedSaveView.editedBlueprint,
+                                            },
+                                            null,
+                                            2,
+                                        )}
+                                    </Text>
+                                )}
+                            </div>
+                        )}
+                        {managedSaveView.status === "failed" && managedSaveView.existingProjectPath !== undefined ? (
+                            <div>
+                                <RecoveryNotice
+                                    title="Game id already in use"
+                                    message="A POKIE project with this Game id already exists. Open it, or change the Game id and create a new design."
+                                    actionLabel="Open existing project"
+                                    onAction={() => {
+                                        setExistingProjectOpenError(undefined);
+                                        openProject(managedSaveView.existingProjectPath as string).catch((error: unknown) => {
+                                            setExistingProjectOpenError(describeExistingProjectOpenError(error));
+                                        });
+                                    }}
+                                />
+                                {existingProjectOpenError !== undefined && (
+                                    <Text size="sm" c="red" role="alert" mb="sm">
+                                        {existingProjectOpenError}
+                                    </Text>
+                                )}
+                            </div>
+                        ) : (managedSaveView.status === "failed" || managedSaveView.status === "error") && (
+                            <ErrorState message={describeManagedSaveFailure(managedSaveView.message)} />
+                        )}
+                    </div>
+
+                    {showStartingPoint && (
+                        <div data-pokie-starting-point>
+                            <StartingPointPanel
+                                onStartLine={() => {
+                                    setStarterModeNotice(undefined);
+                                    setStartingPointDismissed(true);
+                                    window.setTimeout(() => document.querySelector('[data-pokie-primary-action-bar]')?.scrollIntoView({behavior: "smooth", block: "center"}), 50);
+                                }}
+                                onStartWays={() => {
+                                    setStarterModeNotice("ways");
+                                    setStartingPointDismissed(true);
+                                    mutateBlueprint((draft) => {
+                                        draft.winModel = {type: "ways"};
+                                    });
+                                    window.setTimeout(() => (document.querySelector('[data-pokie-starter-mode-notice]') ?? document.querySelector('[data-pokie-primary-action-bar]'))?.scrollIntoView({behavior: "smooth", block: "center"}), 100);
+                                }}
+                                onStartClusters={() => {
+                                    setStarterModeNotice("clusters");
+                                    setStartingPointDismissed(true);
+                                    mutateBlueprint((draft) => {
+                                        draft.winModel = {type: "clusters", minimumClusterSize: 5};
+                                    });
+                                    window.setTimeout(() => (document.querySelector('[data-pokie-starter-mode-notice]') ?? document.querySelector('[data-pokie-primary-action-bar]'))?.scrollIntoView({behavior: "smooth", block: "center"}), 100);
+                                }}
+                                onImportPar={() => {
+                                    setStartingPointDismissed(true);
+                                    openAdvanced();
+                                    window.setTimeout(() => {
+                                        const panel = document.getElementById("par-sheet-import-export");
+                                        panel?.scrollIntoView({behavior: "smooth", block: "start"});
+                                        // The launcher says "Open PAR import"; put the caret on the path field so
+                                        // the next action is obvious instead of leaving the user to find Browse.
+                                        panel?.querySelector<HTMLInputElement>("input")?.focus({preventScroll: true});
+                                    }, 120);
+                                }}
+                                onOpenProject={() => navigate("/home/projects")}
+                                onMoreStarts={() => {
+                                    setStartingPointDismissed(true);
+                                    openNewDialog();
+                                }}
+                            />
+                        </div>
+                    )}
+                    {starterModeNotice !== undefined && (
+                        <Alert color="yellow" variant="light" title={`${starterModeNotice === "ways" ? "Ways" : "Clusters"} starter is a structural demo`} mb="md" data-pokie-starter-mode-notice={starterModeNotice}>
+                            This starter keeps the 3-line paytable and only changes the win model. Ways/clusters can
+                            pay far more combinations, so exact RTP will look unusual (often far above 100%) until you
+                            retune the paytable or reel weights. Use <strong>Calculate exact math</strong> below and treat
+                            this as a starting point, not a balanced game.
+                            <Text size="xs" mt={4}>
+                                <Anchor component="button" type="button" onClick={() => setStarterModeNotice(undefined)}>Dismiss</Anchor>
+                            </Text>
+                        </Alert>
+                    )}
+                    <ReadinessChecklist validationView={validationView} mathPreviewStatus={mathPreviewStatus} />
                     <GettingStartedGuide />
-                </div>
+                </>
             )}
 
             {persistedDraft && !draftRecoveryDismissed && (
@@ -1241,9 +1483,9 @@ export function BlueprintEditorPage({
 
             {guided && recoveredDestination !== undefined && (
                 <Text size="sm" mb="sm" style={{overflowWrap: "anywhere"}}>
-                    Recovered the draft for the previous artifact destination: {recoveredDestination}.
+                    Recovered the draft for the previous build output destination: {recoveredDestination}.
                     Save this design and open its workspace to build or export again in Build/Export.
-                    No artifact was published by this recovery.
+                    No build output was published by this recovery.
                 </Text>
             )}
 
@@ -1254,86 +1496,6 @@ export function BlueprintEditorPage({
                         Source: {importedFromParSheetPath}
                     </Text>
                 </Group>
-            )}
-
-            {guided && (
-                <div>
-                    <QuickActions>
-                        <Button
-                            id="blueprint-create-game"
-                            data-pokie-validation-state={validationView.status}
-                            onClick={handleGuidedSave}
-                            disabled={sequenceDraftDirty || guidedActionPending || validationView.status !== "ok"}
-                            aria-describedby={guidedActionDescriptionId}
-                            loading={managedSaveView.status === "loading" || workspaceOpenPending}
-                            aria-busy={guidedActionPending || undefined}
-                        >
-                            {guidedActionLabel}
-                        </Button>
-                    </QuickActions>
-                    {managedSaveView.status === "loading" && !workspaceOpenPending && (
-                        <Text id="blueprint-create-game-saving" role="status" c="dimmed" size="sm" mb="sm">
-                            Studio is saving your game before opening its workspace.
-                        </Text>
-                    )}
-                    {workspaceOpenPending && (
-                        <Text id="blueprint-create-game-opening" role="status" c="dimmed" size="sm" mb="sm">
-                            Your game was saved. Studio is opening its workspace.
-                        </Text>
-                    )}
-                    {validationView.status !== "ok" && (
-                        <Text id="blueprint-create-game-validation" c="dimmed" size="sm" mb="sm">
-                            {validationGuidance}
-                        </Text>
-                    )}
-                    {sequenceDraftDirty && (
-                        <Text id="blueprint-create-game-sequences" c="dimmed" size="sm" mb="sm">
-                            Apply or cancel whole-sequence edits before saving.
-                        </Text>
-                    )}
-                    {workspaceOpenError && (
-                        <RecoveryNotice
-                            title="Your game was saved, but Studio couldn't open its workspace"
-                            message="Return to Your projects and open the game again. Your saved work is safe."
-                            actionLabel="Go to Your projects"
-                            onAction={() => navigate("/home/projects")}
-                        />
-                    )}
-                    {managedSaveView.status === "conflict" && managedSaveView.reason === "stale" && (
-                        <div>
-                            <RecoveryNotice
-                                title="This saved game design changed while you were editing"
-                                message={managedSaveView.message}
-                                actionLabel="Reload saved version"
-                                onAction={() => handleLoad(managedSaveView.path)}
-                                secondaryActionLabel="Compare"
-                                onSecondaryAction={() => setShowManagedConflictComparison((shown) => !shown)}
-                            />
-                            {managedSaveView.canSaveAs && (
-                                <Button variant="default" size="xs" mb="sm" onClick={openAdvanced}>
-                                    Save a copy
-                                </Button>
-                            )}
-                            {showManagedConflictComparison && (
-                                <Text component="pre" size="xs" mb="sm" style={{whiteSpace: "pre-wrap", overflowWrap: "anywhere"}}>
-                                    {JSON.stringify(
-                                        {
-                                            currentHash: managedSaveView.currentHash,
-                                            editedHash: managedSaveView.editedHash,
-                                            currentBlueprint: managedSaveView.currentBlueprint,
-                                            editedBlueprint: managedSaveView.editedBlueprint,
-                                        },
-                                        null,
-                                        2,
-                                    )}
-                                </Text>
-                            )}
-                        </div>
-                    )}
-                    {(managedSaveView.status === "failed" || managedSaveView.status === "error") && (
-                        <ErrorState message={describePathActionError("Your game", managedSaveView.message)} />
-                    )}
-                </div>
             )}
 
             {guided && (
@@ -1413,24 +1575,27 @@ export function BlueprintEditorPage({
                         {label: "JSON", value: "json"},
                     ]}
                     mb="md"
-                    aria-label="Blueprint editor mode"
+                    aria-label="Game design editor mode"
                 />
-                <ParSheetImportExportPanel
-                    // A wholesale blueprint replace (New/Load/a successful JSON apply) must reset this
-                    // panel's own in-progress import/export state entirely -- same "remount via a
-                    // formGeneration-keyed ancestor" technique ReelStripGenerationEditor relies on (see
-                    // useBlueprintEditor's own doc comment), since this panel otherwise lives outside the
-                    // Form/JSON content's own key={editor.formGeneration} boundary.
-                    key={editor.formGeneration}
-                    blueprint={blueprint}
-                    blueprintPath={blueprintPath}
-                    allowExport={!guided}
-                    revision={revision}
-                    onApplyImportedBlueprint={handleApplyImportedBlueprint}
-                    initialImportPath={recoverParImport ? undefined : initialParSheetPath}
-                    initialImportFieldPath={recoverParImport ? initialParSheetPath : undefined}
-                    initialExportPath={typeof recoveryRequest?.destinationPath === "string" && recoveryRequest.blueprint !== undefined ? recoveryRequest.destinationPath : undefined}
-                />
+                <div id="par-sheet-import-export">
+                    <ParSheetImportExportPanel
+                        // A wholesale blueprint replace (New/Load/a successful JSON apply) must reset this
+                        // panel's own in-progress import/export state entirely -- same "remount via a
+                        // formGeneration-keyed ancestor" technique ReelStripGenerationEditor relies on (see
+                        // useBlueprintEditor's own doc comment), since this panel otherwise lives outside the
+                        // Form/JSON content's own key={editor.formGeneration} boundary.
+                        key={editor.formGeneration}
+                        blueprint={blueprint}
+                        blueprintPath={blueprintPath}
+                        allowExport={!guided}
+                        revision={revision}
+                        onApplyImportedBlueprint={handleApplyImportedBlueprint}
+                        initialImportPath={recoverParImport ? undefined : pendingParSheetPath}
+                        initialImportFieldPath={recoverParImport ? pendingParSheetPath : undefined}
+                        initialExportPath={typeof recoveryRequest?.destinationPath === "string" && recoveryRequest.blueprint !== undefined ? recoveryRequest.destinationPath : undefined}
+                        onImportSettled={onParImportSettled}
+                    />
+                </div>
             </Collapse>
 
             {mode === "form" ? (
@@ -1449,7 +1614,7 @@ export function BlueprintEditorPage({
                     jsonText={editor.state.jsonText}
                     jsonError={editor.state.jsonError}
                     onApply={text => {
-                        if (sequenceDraftDirty) confirm("Replace the Blueprint and discard unapplied whole-sequence edits?", () => editor.applyJson(text));
+                        if (sequenceDraftDirty) confirm("Replace the game design and discard unapplied whole-sequence edits?", () => editor.applyJson(text));
                         else editor.applyJson(text);
                     }}
                     onDraftDirtyChange={reportJsonDraftDirty}
@@ -1463,12 +1628,16 @@ export function BlueprintEditorPage({
                 setValidationView({status: "error", message: "Validation cancelled. Retry to check the current design."});
             }} />
             <GameModelPreviewPanel key={`gamemodel-${editor.formGeneration}`} blueprint={blueprint} sourcePath={blueprintPath} revision={editor.state.revision} />
-            <BlueprintMathPreviewPanel key={`mathpreview-${editor.formGeneration}`} blueprint={blueprint} revision={editor.state.revision} />
+            <BlueprintMathPreviewPanel
+                key={`mathpreview-${editor.formGeneration}`}
+                blueprint={blueprint}
+                onStatusChange={setMathPreviewStatus}
+            />
             <Collapse expanded={!guided || advancedOpened}>
                 {guided && <Text size="sm" c="dimmed" mb="sm">
-                    Create game saves this design and opens its workspace. Build Package exports the current
-                    validated draft to a new or empty directory without saving it. Export PAR sheets from the
-                    workspace’s Build/Export section after saving. Saving does not mean an artifact was built.
+                    {savingBackToSource
+                        ? <>This design is open from <strong style={{overflowWrap: "anywhere"}}>{blueprintPath}</strong>. Save writes back to that file; use Save to path below to keep a separate copy. Build Package exports the current validated draft without saving it.</>
+                        : <>Create game design saves this design and opens its workspace. Build Package exports the current validated draft to a new or empty directory without saving it. Export PAR sheets from the workspace’s Build/Export section after saving. Saving does not mean a build output was created.</>}
                 </Text>}
                 <BlueprintBuildPanel
                     // Same reasoning as BlueprintJsonPanel above -- Output directory/Build Preview/current

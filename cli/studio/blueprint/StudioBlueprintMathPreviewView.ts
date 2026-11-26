@@ -1,4 +1,4 @@
-import type {WeightedOutcomeLibraryAnalysis} from "@fromstan/pokie";
+import type {FreeGamesExactRtp, WeightedOutcomeLibraryAnalysis, WeightedOutcomeLibraryFeatureBreakdown} from "@fromstan/pokie";
 
 // Design Game's own on-demand exact math preview. "available" means one complete enumeration of the
 // current draft finished successfully; it never represents a sampled Simulation and nothing was saved.
@@ -11,6 +11,10 @@ export type StudioBlueprintMathPreviewView =
           readonly totalWeight: number;
           readonly stake: number;
           readonly analysis: WeightedOutcomeLibraryAnalysis;
+          /** Feature triggers in the paid-spin records; see BlueprintMathAnalysis. */
+          readonly featureBreakdown: WeightedOutcomeLibraryFeatureBreakdown;
+          /** Exact total RTP derived from additive free-game triggers, when available. */
+          readonly freeGamesRtp: FreeGamesExactRtp;
           readonly generatedAt: string;
           readonly maxOutcomes: number;
           readonly note?: string;

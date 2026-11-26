@@ -32,8 +32,9 @@ A worked walkthrough of using POKIE to balance RTP, hit frequency, and volatilit
 
 - **RTP (Return to Player)** — the percentage of wagered money players can expect to recoup over time (e.g. 93%
  means, on average, 93 credits return for every 100 wagered).
-- **Hit frequency** — how often a round produces any win at all (e.g. 0.62 means roughly 62% of rounds pay
- something).
+- **Hit frequency** — how often a paid round produces any win at all (e.g. 0.62 means roughly 62% of paid
+ rounds pay something). When a game has free games, distinguish **Hit frequency (paid spins)** from
+ **Hit frequency — whole paid round, incl. features**; they count different units.
 - **Volatility** — low volatility means frequent, smaller wins; high volatility means rarer, bigger wins. Measured
  via the standard deviation of round payouts.
 

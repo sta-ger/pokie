@@ -14,15 +14,15 @@ import {RoundWinsTable} from "./RoundWinsTable";
 import {describeRoundPresentation} from "./roundPresentation";
 
 const DIMENSION_LABELS: Record<keyof ReplayComparisonDimensions, string> = {
-    source: "Library source",
+    source: "Source identity",
     selection: "Selection inputs",
     recordedResult: "Selected outcome",
-    screen: "Visible screen",
-    wins: "Wins",
+    screen: "Screen shown",
+    wins: "Wins and amounts",
     totalPayout: "Mathematical win",
-    steps: "Round steps",
+    steps: "Round screens (cascades / free games)",
     featureEvents: "Feature events",
-    state: "State transition",
+    state: "Session state after the round",
     rngReelStops: "RNG / reel stops",
 };
 
@@ -36,9 +36,9 @@ const DIMENSION_WHY_IT_MATTERS: Record<keyof ReplayComparisonDimensions, string>
     screen: "The visible symbols are what the player actually saw -- a difference means the recreated round landed a different outcome.",
     wins: "Wins are what turns the outcome into a payout -- a difference here means credits would be awarded differently.",
     totalPayout: "Mathematical win is distinct from wallet payout and credits. A feature bank may settle at a later boundary.",
-    steps: "Round steps capture cascades/re-spins/free-game progression -- a difference means the round played out differently even if the final screen and total payout happen to match.",
+    steps: "Round screens capture cascades/re-spins/free-game progression -- a difference means the round played out differently even if the final screen and total payout happen to match.",
     featureEvents: "Feature events (free spins triggered, bonus entered, ...) drive what happens in later rounds -- a difference here can change downstream game state without changing this round's payout.",
-    state: "The session state transition is what every subsequent round is computed from -- a difference here would silently affect every round that follows, not just this one.",
+    state: "The session state after this round is what every subsequent round is computed from -- a difference here would silently affect every round that follows, not just this one.",
     rngReelStops: "The underlying RNG/reel-stop trace is the actual source of the outcome -- matching it, when it's recorded at all, is the strongest evidence the recreation is faithful rather than coincidentally similar.",
 };
 
@@ -82,6 +82,7 @@ export function RoundRecordInspector({
     paytable,
     sequenceStatistics,
     omitScreen = false,
+    recordScope = "round",
 }: {
     artifact: RoundRecordDisplayView;
     sequenceStatistics?: readonly import("../../../../../src/session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceStatistics[];
@@ -102,21 +103,35 @@ export function RoundRecordInspector({
     // interactive copy of the same grid. Replay/record-only surfaces leave this false and keep the
     // screen as their primary view.
     omitScreen?: boolean;
+    // A Play step record can be one spin inside a multi-spin paid round. Label it as a step so a
+    // free spin's zero stake is not mistaken for the whole round's stake.
+    recordScope?: "round" | "step";
 }) {
     const [stepIndex, setStepIndex] = useState(0);
 
     const step = artifact.steps[stepIndex] ?? artifact.steps[0];
     const hasMultipleSteps = artifact.steps.length > 1;
+    let detailLegend = "Round detail";
+    if (hasMultipleSteps) detailLegend = `Screen ${stepIndex + 1} of ${artifact.steps.length}`;
+    else if (recordScope === "step") detailLegend = "Spin detail";
     const presentation = describeRoundPresentation(stateBefore, stateAfter, artifact.betMode, artifact.steps[artifact.steps.length - 1]?.featureEvents);
+    let comparisonBanner = comparison === undefined ? undefined : COMPARISON_BANNER[comparison.status];
+    if (comparison?.status === "partial" && comparison.auditVerified === true) {
+        comparisonBanner = {
+            color: "teal",
+            icon: <IconCircleCheck size={16} />,
+            title: "Audit verified — complete operation; only an optional side snapshot could not be compared",
+        };
+    }
 
     return (
         <div>
-            {comparison && (
+            {comparison && comparisonBanner && (
                 <Alert
-                    color={COMPARISON_BANNER[comparison.status].color}
+                    color={comparisonBanner.color}
                     variant="light"
-                    icon={COMPARISON_BANNER[comparison.status].icon}
-                    title={COMPARISON_BANNER[comparison.status].title}
+                    icon={comparisonBanner.icon}
+                    title={comparisonBanner.title}
                     mb="md"
                 >
                     {/* What's actually being compared -- named and dated on both sides -- shown regardless of
@@ -182,7 +197,7 @@ export function RoundRecordInspector({
             {artifact.sequenceSelections && <PageSection legend="Whole-sequence selections">
                 {artifact.sequenceSelections.map(selection => <Text key={selection.reelIndex}>Reel {selection.reelIndex + 1}: {selection.variantId} ({selection.context})</Text>)}
             </PageSection>}
-            <PageSection legend={hasMultipleSteps ? `Step ${stepIndex + 1} of ${artifact.steps.length}` : "Round detail"}>
+            <PageSection legend={detailLegend}>
                 {hasMultipleSteps && (
                     <QuickActions>
                         <Button variant="default" size="xs" disabled={stepIndex === 0} onClick={() => setStepIndex((index) => index - 1)}>
@@ -223,7 +238,7 @@ export function RoundRecordInspector({
                 )}
             </PageSection>
 
-            <AdvancedDisclosure detail="raw JSON, debug data">
+            <AdvancedDisclosure detail="technical data">
                 {(stateBefore !== undefined || stateAfter !== undefined) && (
                     <div>
                         {stateBefore !== undefined && (
@@ -257,8 +272,16 @@ export function RoundRecordInspector({
                         <CodeBlock>{JSON.stringify(artifact.debug, null, 2)}</CodeBlock>
                     </div>
                 )}
+                {artifact.origin.configHash && (
+                    <div>
+                        <Text size="sm" fw={600} mt="sm" mb={4}>
+                            Config hash
+                        </Text>
+                        <CodeBlock>{artifact.origin.configHash}</CodeBlock>
+                    </div>
+                )}
                 <Text size="sm" fw={600} mt="sm" mb={4}>
-                    Full artifact
+                    Full round record
                 </Text>
                 <CodeBlock>{JSON.stringify(artifact.canonicalArtifact ?? artifact, null, 2)}</CodeBlock>
             </AdvancedDisclosure>

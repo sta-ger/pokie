@@ -22,11 +22,18 @@ export type SimulationProgressView = {
     error?: string;
 };
 
+const SIMULATION_PHASE_LABELS: Record<string, string> = {
+    preparing: "Preparing the game runtime",
+    simulation: "Playing rounds",
+    "finalizing / cleanup": "Finalizing and cleanup",
+};
+
 export function describeSimulationProgress(job: StudioSimulationJobView): SimulationProgressView {
     const percent = job.rounds > 0 ? Math.min(100, Math.round((job.roundsCompleted / job.rounds) * 100)) : 0;
+    const stage = job.progress?.stage;
     return {
         jobId: job.id,
-        phase: job.progress?.stage,
+        phase: stage === undefined ? undefined : SIMULATION_PHASE_LABELS[stage] ?? stage,
         status: job.status,
         roundsCompleted: job.roundsCompleted,
         rounds: job.rounds,
@@ -113,6 +120,18 @@ export type SimulationReportSetView = {
     modes: Record<string, SingleSimulationReportView>;
 };
 export type SimulationReportView = SingleSimulationReportView | SimulationReportSetView;
+
+/** True when this report observed any feature play, so whole-round metrics differ from paid-spin metrics. */
+export function simulationHasFeatures(view: SingleSimulationReportView): boolean {
+    const features = view.analytics?.features;
+    if (features !== undefined) return Object.values(features).some((feature) => feature.entries > 0);
+    return view.breakdown?.some((row) => row.category === "feature" && row.rounds > 0) ?? false;
+}
+
+/** A short, explicit suffix for labels whose exact and sampled scopes would otherwise look identical. */
+export function simulationScopeSuffix(view: SingleSimulationReportView): string {
+    return simulationHasFeatures(view) ? " — whole paid round, incl. features" : "";
+}
 
 // Bundles a completed job's SimulationReport with the extra statistics Studio surfaces alongside it
 // (see StudioSimulationStatisticsView) into the one shape dom.ts renders — old reports/games without

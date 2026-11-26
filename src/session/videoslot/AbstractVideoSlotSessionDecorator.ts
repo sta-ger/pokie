@@ -31,7 +31,7 @@ implements VideoSlotSessionHandling<T> {
             "getChargedBetModeId", "getSimulationCategory", "getJackpotStatisticsSnapshot", "getJackpotPools",
             "getJackpotLastRoundOutcome", "getJackpotPoolStatistics", "getJackpotAwardCount", "getJackpotTotalAwarded", "getJackpotTotalContributed",
             "isHoldAndWinActive", "getHoldAndWinEntryBet", "getHoldAndWinLastRoundOutcome", "getLockedHoldAndWinSymbols", "getHoldAndWinRespinsRemaining", "getHoldAndWinPayout",
-            "getFreeGamesNum", "getFreeGamesSum", "getFreeGamesBank", "getWonFreeGamesNumber"]) {
+            "getFreeGamesNum", "getFreeGamesSum", "getFreeGamesBank", "getMaxFreeGames", "getWonFreeGamesNumber"]) {
             const method: unknown = Reflect.get(baseSession, name);
             if (!(name in this) && typeof method === "function") Reflect.defineProperty(this, name, {value: name === "getModifierObservation"
                 ? () => this.stepResultValid ? Reflect.apply(method, baseSession, []) : undefined : method.bind(baseSession)});

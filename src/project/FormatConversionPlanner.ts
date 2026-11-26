@@ -1101,7 +1101,7 @@ export class FormatConversionPlanner {
         const generation = target === "outcomeLibrary" || (target === "stakeAdapter" && (source === "blueprint" || source === "tsPackage"));
         let losses: readonly string[] = [];
         if (target === "parWorkbook") {
-            losses = ["PAR is a one-way exchange snapshot."];
+            losses = ["PAR is an exchange snapshot, not a live project link."];
         } else if (target === "stakeAdapter") {
             losses = ["Stake export does not retain a game model or runtime."];
         }

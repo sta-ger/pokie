@@ -30,7 +30,7 @@ const GENERATION_ERROR_COPY: Record<string, GenerationErrorCopy> = {
 };
 
 const GENERATION_ERROR_FALLBACK: GenerationErrorCopy = {
-    status: "Generating this outcome library failed.",
+    status: "Generating this outcome table failed.",
     remediation: "Check the settings above and try again. If it continues, reopen the project and retry.",
 };
 

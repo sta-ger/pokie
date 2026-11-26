@@ -1,10 +1,10 @@
-import {Button, Checkbox, Group, Table, Text, TextInput} from "@mantine/core";
+import {Alert, Button, Checkbox, Group, Table, Text, TextInput} from "@mantine/core";
 import {notifications} from "@mantine/notifications";
 import {useState} from "react";
 import {importSymbolArtwork, pickNativePath} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {asStringList} from "../../domain/asStringList";
-import {addSymbol, duplicateSymbolAt, getSymbolDeletionBlockers, moveSymbolAt, removeSymbolAt, renameSymbol, toggleScatterSymbol, toggleWildSymbol} from "../../domain/blueprintFormOps";
+import {addSymbol, duplicateSymbolAt, getSymbolDeletionBlockers, moveSymbolAt, payingScatterSymbols, removeSymbolAt, renameSymbol, toggleScatterSymbol, toggleWildSymbol} from "../../domain/blueprintFormOps";
 import type {BlueprintMutate} from "../../hooks/useBlueprintEditor";
 import {BufferedTextInput} from "../common/BufferedTextInput";
 import {PageSection} from "../common/PageSection";
@@ -18,6 +18,7 @@ export function SymbolsTable({blueprint, mutate}: {blueprint: Record<string, unk
     const symbols = asStringList(blueprint.symbols);
     const wilds = asStringList(blueprint.wilds);
     const scatters = asStringList(blueprint.scatters);
+    const payingScatters = payingScatterSymbols(blueprint);
     const [newSymbolId, setNewSymbolId] = useState("");
     const [diagnostic, setDiagnostic] = useState<string>();
     const [renameRevision, setRenameRevision] = useState(0);
@@ -118,6 +119,16 @@ export function SymbolsTable({blueprint, mutate}: {blueprint: Record<string, unk
                                     />
                                 </Table.Td>
                                 <Table.Td>
+                                    <Checkbox
+                                        aria-label={`Symbol ${index + 1} is scatter`}
+                                        checked={scatters.includes(symbolId)}
+                                        onChange={() => {
+                                            setDiagnostic(undefined);
+                                            mutate((b) => toggleScatterSymbol(b, symbolId));
+                                        }}
+                                    />
+                                </Table.Td>
+                                <Table.Td>
                                     {typeof artwork[symbolId] === "string" ? (
                                         <Group gap="xs" wrap="nowrap">
                                             <SymbolPresentation symbolId={symbolId} artwork={artwork} size={32} />
@@ -138,16 +149,6 @@ export function SymbolsTable({blueprint, mutate}: {blueprint: Record<string, unk
                                             selectArtwork(symbolId);
                                         }}>Select PNG</Button>
                                     )}
-                                </Table.Td>
-                                <Table.Td>
-                                    <Checkbox
-                                        aria-label={`Symbol ${index + 1} is scatter`}
-                                        checked={scatters.includes(symbolId)}
-                                        onChange={() => {
-                                            setDiagnostic(undefined);
-                                            mutate((b) => toggleScatterSymbol(b, symbolId));
-                                        }}
-                                    />
                                 </Table.Td>
                                 <Table.Td>
                                     <RowActions
@@ -172,8 +173,15 @@ export function SymbolsTable({blueprint, mutate}: {blueprint: Record<string, unk
                 </Table>
             </Table.ScrollContainer>
             <Text size="xs" c="dimmed" mt="xs">
-                A symbol cannot be both wild and scatter. Renaming updates all reel, paytable, generated-reel, and free-games references; referenced symbols cannot be deleted.
+                A scatter pays anywhere on the screen when its paytable has entries, and can trigger features. Marking a paying symbol as scatter therefore adds scatter pays across the whole screen. A symbol cannot be both wild and scatter. Renaming updates all reel, paytable, generated-reel, and free-games references; referenced symbols cannot be deleted.
             </Text>
+            {payingScatters.length > 0 && (
+                <Alert color="yellow" variant="light" title="Scatter pays anywhere" mt="xs">
+                    <Text size="sm">
+                        {payingScatters.join(", ")} {payingScatters.length === 1 ? "is" : "are"} also in the paytable. A scatter pays anywhere on the screen, so this can raise RTP sharply. Check Exact math before saving this design.
+                    </Text>
+                </Alert>
+            )}
             {diagnostic && <Text role="alert" size="sm" c="red" mt="xs">{diagnostic}</Text>}
             <PathBrowseModal
                 opened={artworkBrowserSymbolId !== undefined}

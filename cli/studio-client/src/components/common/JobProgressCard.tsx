@@ -1,4 +1,5 @@
 import {Alert, Button, Group, Progress, Text} from "@mantine/core";
+import {describeJobOperation} from "../../domain/jobLabels";
 import {useEffect, useRef, useState} from "react";
 import type {StudioJobView} from "../../api/types.js";
 
@@ -27,6 +28,17 @@ function measuredProgress(progress: StudioJobView["progress"]): {current: bigint
     const total = count(progress.total);
     if (current === undefined || total === undefined || total <= BigInt(0) || current > total) return undefined;
     return {current, total};
+}
+
+function formatProgressValue(value: number | string): string {
+    if (typeof value === "number") return value.toLocaleString("en-US");
+    return (/^\d+$/).test(value) ? Number(value).toLocaleString("en-US") : value;
+}
+
+function formatElapsed(ms: number): string {
+    if (ms < 1000) return `${ms}ms`;
+    if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+    return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
 }
 
 export function JobProgressCard({job, onCancel, cancellationPending = false}: {job: StudioJobView; onCancel?: (id: string) => void; cancellationPending?: boolean}) {
@@ -96,18 +108,18 @@ export function JobProgressCard({job, onCancel, cancellationPending = false}: {j
     if (job.status === "cancelling") description = "Cancellation requested; waiting for cleanup.";
     else if (cancellationPending) description = "Sending cancellation request…";
     return (
-        <Alert className="studio-job-card" color={job.status === "cancelling" ? "orange" : "blue"} title={`${job.operation} · ${statusLabel(job.status)}`} role="status" aria-live="polite">
+        <Alert className="studio-job-card" color={job.status === "cancelling" ? "orange" : "blue"} title={`${describeJobOperation(job.operation)} · ${statusLabel(job.status)}`} role="status" aria-live="polite">
             <Group justify="space-between" align="start" wrap="wrap">
                 <div style={{flex: "1 1 12rem", minWidth: 0}}>
                     <Text size="sm" data-job-detail>{description}</Text>
-                    {progress !== undefined && <Text size="xs" data-job-detail>{progress.current}{measured === undefined ? " / unknown" : ` / ${progress.total}`} {progress.unit}{progress.message === undefined ? "" : ` · ${progress.message}`}</Text>}
-                    {measured === undefined && job.status !== "queued" && <Text size="xs" data-job-detail>Progress is indeterminate; the current phase has no compatible measured total.</Text>}
-                    {elapsedMs !== undefined && <Text size="xs" c="dimmed">Elapsed: {elapsedMs}ms</Text>}
+                    {progress !== undefined && <Text size="xs" data-job-detail>{formatProgressValue(progress.current)}{measured === undefined ? ` ${progress.unit} so far` : ` / ${formatProgressValue(progress.total)} ${progress.unit}`}{progress.message === undefined ? "" : ` · ${progress.message}`}</Text>}
+                    {measured === undefined && job.status !== "queued" && <Text size="xs" data-job-detail>Total work is not measured for this phase; the count above is still real progress.</Text>}
+                    {elapsedMs !== undefined && <Text size="xs" c="dimmed">Elapsed: {formatElapsed(elapsedMs)}</Text>}
                     {visibleRate !== undefined && <Text size="xs" c="dimmed">Throughput: {visibleRate.perSecond.toFixed(2)} {progress?.unit}/s · ETA: {Math.ceil(visibleRate.etaMs)}ms</Text>}
                 </div>
                 {onCancel !== undefined && <Button size="xs" variant="light" color="red" disabled={cancellationPending || job.status === "cancelling"} onClick={() => onCancel(job.id)}>Cancel</Button>}
             </Group>
-            {percent !== undefined && <Progress value={percent} mt="xs" aria-label={`${job.operation} progress`} />}
+            {percent !== undefined && <Progress value={percent} mt="xs" aria-label={`${describeJobOperation(job.operation)} progress`} />}
         </Alert>
     );
 }

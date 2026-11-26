@@ -1,12 +1,13 @@
 import {resolveSessionPayout} from "../../runtime/internal/resolveSessionPayout.js";
 import {determineChargedBetMode} from "../../session/determineChargedBetMode.js";
 import {updateAuditDisposition} from "../../replay/updateAuditDisposition.js";
-import {auditBoundaryFromState, buildAuditRoundRecording, captureAuditDelivery, validateAuditRoundRecording} from "../../replay/AuditRoundReplay.js";
+import {auditBoundaryFromState, buildAuditRoundRecording, captureAuditDelivery} from "../../replay/AuditRoundReplay.js";
 import {AuditReplayError} from "../../replay/AuditReplayError.js";
 import type {AuditDisposition} from "../../replay/AuditRoundRecording.js";
 import {emptyLogicalRoundStatistics, mergeLogicalRoundStatistics} from "../../simulation/LogicalRoundStatistics.js";
 import {commandEnvelope} from "../../runtime/commandEnvelope.js";
 import {buildLogicalRoundRecord} from "../../roundrecord/buildLogicalRoundRecord.js";
+import {decorateSettledLogicalRound} from "../../runtime/internal/decorateSettledLogicalRound.js";
 import {isExternalRoundStore, type ExternalRoundStore, type ExternalRoundPreparation, type ExternalRoundCandidate} from "../storage/ExternalRoundStore.js";
 import {InMemoryWallet} from "../wallet/InMemoryWallet.js";
 import type {TransactionalRoundStore} from "../storage/TransactionalRoundStore.js";
@@ -19,7 +20,8 @@ import {validateRepositoryCommand, type RepositoryCommand, type RepositoryComman
 import {validatePersistedSession} from "../../runtime/validatePersistedSession.js";
 import {SessionStateCorruptError} from "../session/FileSessionRepository.js";
 import {isSessionStateRestorable, resolveSessionStateSchema, sessionStateSchemasMatch} from "../../session/SessionStateRestoring.js";
-import {SessionRuntime, type PreparedSessionCommand} from "../../runtime/SessionRuntime.js";
+import {SessionRuntime} from "../../runtime/SessionRuntime.js";
+import type {SessionCommandResult} from "../../runtime/SessionRuntimeHandling.js";
 import crypto from "crypto";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import type {GameSessionSerializing} from "../../net/GameSessionSerializing.js";
@@ -169,6 +171,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
     private readonly sessionSerializer: GameSessionSerializing | undefined;
     private readonly capturePolicy: SessionCapturePolicy;
     private readonly pokieVersion: string;
+    private readonly atomicCompositeDelivery: boolean;
     // A process-local executable object is valid only for the repository version it executed from.
     // Keeping that binding beside the object is what makes two handlers sharing one versioned store
     // converge instead of alternately replaying stale RNG/feature progress.
@@ -178,7 +181,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
 
     /** Explicit local reference atomicity or durable external reconciliation; never distributed ACID. */
     constructor(game: PokieGame, store: TransactionalRoundStore | ExternalRoundStore, options?: {
-        captureDebugSessionData?: boolean; sessionCapturePolicyMode?: SessionCaptureMode; pokieVersion?: string;
+        captureDebugSessionData?: boolean; sessionCapturePolicyMode?: SessionCaptureMode; pokieVersion?: string; atomicCompositeDelivery?: boolean;
     });
     // Overload 1 (current, preferred): singleInstanceDeployment (see the class doc comment's own
     // "Multi-instance safety" section) — defaults to false, the safe posture for any deployment that
@@ -204,6 +207,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         captureDebugSessionData?: boolean,
         sessionCapturePolicyMode?: SessionCaptureMode,
         pokieVersion?: string,
+        atomicCompositeDelivery?: boolean,
     );
     // Overload 2 (legacy — kept only for backward compatibility, see the implementation below): the
     // signature from before singleInstanceDeployment existed, where a caller's own already-constructed
@@ -233,10 +237,11 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         captureDebugSessionData = true,
         sessionCapturePolicyMode: SessionCaptureMode = "partial",
         pokieVersion = "unknown",
+        atomicCompositeDelivery = false,
     ) {
         if ("transact" in sessionRepository || "externalSettlement" in sessionRepository) {
             if (arguments.length > 3 || (wallet !== undefined && (wallet === null || typeof wallet !== "object" ||
-                Object.keys(wallet).some(key => !["captureDebugSessionData", "sessionCapturePolicyMode", "pokieVersion"].includes(key)) || "getBalance" in wallet))) {
+                Object.keys(wallet).some(key => !["captureDebugSessionData", "sessionCapturePolicyMode", "pokieVersion", "atomicCompositeDelivery"].includes(key)) || "getBalance" in wallet))) {
                 throw new Error("Transactional round store owns every participant; only capture options may accompany it.");
             }
             if ("externalSettlement" in sessionRepository) {
@@ -244,13 +249,14 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                 this.externalStore = sessionRepository;
             } else this.transactionalStore = sessionRepository;
             const store = sessionRepository;
-            const options = wallet as {captureDebugSessionData?: boolean; sessionCapturePolicyMode?: SessionCaptureMode; pokieVersion?: string} | undefined;
+            const options = wallet as {captureDebugSessionData?: boolean; sessionCapturePolicyMode?: SessionCaptureMode; pokieVersion?: string; atomicCompositeDelivery?: boolean} | undefined;
             const forbidden = (): Promise<never> => Promise.reject(new Error("Local participants are owned exclusively by the selected round store."));
             sessionRepository = {load: async id => (await store.readSession(id))?.state, save: forbidden};
             wallet = {getBalance: id => store.getBalance(id), setBalance: forbidden, debit: forbidden, credit: forbidden, reverse: forbidden};
             captureDebugSessionData = options?.captureDebugSessionData ?? true;
             sessionCapturePolicyMode = options?.sessionCapturePolicyMode ?? "partial";
             pokieVersion = options?.pokieVersion ?? "unknown";
+            atomicCompositeDelivery = options?.atomicCompositeDelivery ?? false;
         }
         if (wallet === undefined || !("debit" in wallet)) throw new Error("SpinCommandHandler requires a wallet or an explicit transactional round store.");
         const legacyReconciliationService =
@@ -284,6 +290,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         this.sessionSerializer = resolveGameSessionSerializer(game);
         this.capturePolicy = buildSessionCapturePolicy(sessionCapturePolicyMode, captureDebugSessionData);
         this.pokieVersion = pokieVersion;
+        this.atomicCompositeDelivery = atomicCompositeDelivery;
     }
 
     public primeSession(sessionId: string, session: GameSessionHandling, committedVersion?: number): void {
@@ -476,7 +483,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             ...(snapshot.retainedRoundId ? {loadRound: (_sessionId: string, roundId: string) => Promise.resolve(roundId === snapshot.retainedRoundId ? snapshot.retainedRound : undefined)} : {})}, undefined, false, undefined, this.capturePolicy.captureDebugPayloads, this.capturePolicy.mode, this.pokieVersion);
         inner.atomicExecution = true;
         let result = await inner.dispatch(command);
-        if (result.status === "played" && result.audit) result = {...result, audit: updateAuditDisposition(result.audit, {status: "pending", durability: "external-provider"})};
+        if (result.status === "played" && result.audit) result = {...result, audit: updateAuditDisposition(result.audit, {status: "pending", durability: "external-provider"}, {validate: false})};
         return {result, settlement: debit !== undefined && payout !== undefined ? {debit, payout} : undefined};
     }
 
@@ -660,7 +667,8 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         } catch (error) {
             return {status: "corrupt-state", sessionId, reason: error instanceof Error ? error.message : String(error)};
         }
-        const selectionError = runtime.validateSelection(intent ?? {kind: "spin", bet, mode});
+        const runtimeIntent = intent ?? {kind: "spin" as const, bet, mode};
+        const selectionError = runtime.validateSelection(runtimeIntent);
         if (selectionError !== undefined) return {status: "invalid-command", sessionId, reason: selectionError};
         let balanceBeforePlay: number;
         try {
@@ -669,7 +677,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             throw new RuntimeCommandError("settlement-error", error);
         }
         if (!Number.isFinite(balanceBeforePlay) || balanceBeforePlay < 0) throw new RuntimeCommandError("settlement-error", new Error("Wallet balance must be finite and non-negative."));
-        const command = runtime.prepare(intent ?? {kind: "spin", bet, mode}, balanceBeforePlay);
+        const command = runtime.prepare(runtimeIntent, balanceBeforePlay);
         if (command.status === "blocked") {
             // A rejected command is normally reversible and deliberately leaves the live instance
             // usable (an omitted-command retry must observe the old bet/mode).  A setter may however
@@ -702,7 +710,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             let record: SpinOperationRecord = {sessionId, requestId, command: intent, attemptId,
                 debitTransactionId: `${sessionId}:${attemptId}:debit`, creditTransactionId: `${sessionId}:${attemptId}:credit`, stakeAmount: 0,
                 expectedVersion: version, checkpoint: "settled", startedAt, updatedAt: startedAt,
-                capturedResult: {...auditEvidence, ...(auditEvidence.audit ? {audit: updateAuditDisposition(auditEvidence.audit, {status: "pending"})} : {}), deliveryOnly: true, previousState: state, newState: nextState, win: state.win, credits: state.credits!, stake: 0}};
+                capturedResult: {...auditEvidence, ...(auditEvidence.audit ? {audit: updateAuditDisposition(auditEvidence.audit, {status: "pending"}, {validate: false})} : {}), deliveryOnly: true, previousState: state, newState: nextState, win: state.win, credits: state.credits!, stake: 0}};
             let result: Extract<SpinCommandResult, {status: "played"}> | undefined;
             try {
                 // Retain the computed transition before either independent write. Recovery uses
@@ -724,7 +732,19 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                     ...(result && round ? {committedResult: cloneSessionData(result), committedProgress: {roundId: round.id, cursor: round.deliveryCursor, requestId}} : {})};
             }
         }
-        return this.playAndSettle(sessionId, resolvedSession.session, state, version, balanceBeforePlay, requestId, command.rollback, command.execute, intent);
+        // Complete a composite request through the same prepared command/boundary. The prepared
+        // closure deliberately executes one domain subround; finishing the logical round here keeps
+        // one settlement, one audit delivery and one wallet transaction for the whole paid round.
+        const executePrepared = this.atomicCompositeDelivery && intent?.delivery === "composite" ? () => {
+            const result = runtime.executePreparedCommand(runtimeIntent, command);
+            // The runtime's own logical round uses portable SessionCommands. A repository settlement
+            // retains its request identity on every accepted subround, so a composite still has one
+            // audit delivery while recovery can verify the last subround against the request.
+            return result.status === "played" && result.logicalRound !== undefined
+                ? {...result, logicalRound: decorateSettledLogicalRound(result.logicalRound, runtimeIntent, state.logicalRound?.cursor ?? 0)}
+                : result;
+        } : command.execute;
+        return this.playAndSettle(sessionId, resolvedSession.session, state, version, balanceBeforePlay, requestId, command.rollback, executePrepared, intent);
     }
 
     // Reads both the state and, when sessionRepository supports it, the version it was read at — a
@@ -822,8 +842,10 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         const delivery = captureAuditDelivery(this.game, session, command, before, executed, disposition, "accepted-boundary");
         const prior = command.continuation ? await this.idempotencyRepository.loadRound?.(command.sessionId, command.continuation.roundId) : undefined;
         if (prior?.status === "played" && prior.audit) {
-            validateAuditRoundRecording(prior.audit, this.game);
-            return {audit: buildAuditRoundRecording(this.game, state.context, [...prior.audit.deliveries, delivery])};
+            // `prior.audit` was built and validated at its own accepted boundary; every later delivery
+            // in this same handler is captured from the live session. Revalidating the whole growing
+            // history here (and again below) is what made long free-game rounds quadratic.
+            return {audit: buildAuditRoundRecording(this.game, state.context, [...prior.audit.deliveries, delivery], undefined, {validate: false})};
         }
         try {
             return {audit: buildAuditRoundRecording(this.game, state.context, [delivery])};
@@ -841,7 +863,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         balanceBeforePlay: number,
         requestId: string | undefined,
         rollbackCommand: () => boolean,
-        executeCommand: Extract<PreparedSessionCommand, {status: "ready"}>["execute"],
+        executeCommand: () => SessionCommandResult,
         intent?: RepositoryCommand,
     ): Promise<SpinCommandResult> {
         const roundId = requestId ?? crypto.randomUUID();
@@ -904,6 +926,11 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             failureCode = "execution-error";
             playStarted = true;
             const executed = executeCommand();
+            if (executed.status !== "played") {
+                // A prepared command only returns a non-played result for a logical successor failure.
+                // Surface it before wallet reconciliation; the outer delivery loop owns prefix recovery.
+                throw new Error("The prepared logical round did not complete: " + executed.reason);
+            }
             const win = executed.win;
             if (!Number.isFinite(win) || win < 0 || !Number.isFinite(session.getCreditsAmount()) || session.getCreditsAmount() < 0) throw new Error("Domain result contains invalid win or credits.");
             const creditAmount = resolveSessionPayout(session, balanceBeforePlay, stakeAmount);
@@ -961,7 +988,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             await checkpoint({
                 checkpoint: "settled",
                 updatedAt: new Date().toISOString(),
-                capturedResult: {...auditEvidence, ...(auditEvidence.audit ? {audit: updateAuditDisposition(auditEvidence.audit, {status: "pending"})} : {}), previousState: state, newState, win, credits: newBalance, stake: stakeAmount, mode: betMode},
+                capturedResult: {...auditEvidence, ...(auditEvidence.audit ? {audit: updateAuditDisposition(auditEvidence.audit, {status: "pending"}, {validate: false})} : {}), previousState: state, newState, win, credits: newBalance, stake: stakeAmount, mode: betMode},
             });
 
             let newVersion: number | undefined;
@@ -974,7 +1001,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             await checkpoint({
                 checkpoint: "session-saved",
                 updatedAt: new Date().toISOString(),
-                capturedResult: {...auditEvidence, ...(auditEvidence.audit ? {audit: updateAuditDisposition(auditEvidence.audit, {status: "pending"})} : {}), previousState: state, newState, win, credits: newBalance, newVersion, stake: stakeAmount, mode: betMode},
+                capturedResult: {...auditEvidence, ...(auditEvidence.audit ? {audit: updateAuditDisposition(auditEvidence.audit, {status: "pending"}, {validate: false})} : {}), previousState: state, newState, win, credits: newBalance, newVersion, stake: stakeAmount, mode: betMode},
             });
 
             const result: SpinCommandResult = {
@@ -1055,7 +1082,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                     } else {
                         await checkpoint?.({checkpoint: "compensated", updatedAt: new Date().toISOString(),
                             ...(capturedResult ? {capturedResult: {...capturedResult,
-                                ...(capturedResult.audit ? {audit: updateAuditDisposition(capturedResult.audit, {status: "compensated"})} : {})}} : {})});
+                                ...(capturedResult.audit ? {audit: updateAuditDisposition(capturedResult.audit, {status: "compensated"}, {validate: false})} : {})}} : {})});
                     }
                 } catch {
                     // Cleanup is deliberately best-effort.  The command's original failure is the response

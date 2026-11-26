@@ -1,4 +1,4 @@
-import {describeDesignCompatibility, describeReportListEntry, shortSourceRevision} from "../../../cli/studio-client/src/domain/interpret/Reports.js";
+import {describeDesignCompatibility, describeReportListEntry, describeRunDesignState, shortSourceRevision} from "../../../cli/studio-client/src/domain/interpret/Reports.js";
 import type {StudioSimulationReportListEntry} from "../../../cli/studio-client/src/api/types.js";
 
 function entry(overrides: Partial<StudioSimulationReportListEntry> = {}): StudioSimulationReportListEntry {
@@ -20,12 +20,17 @@ describe("describeReportListEntry", () => {
     it("shows the round count and seed that distinguish otherwise similar runs", () => {
         const label = describeReportListEntry(entry({actualRounds: 100_000, seed: "valera-1"}));
         expect(label).toContain("starter-slot v0.1.0");
-        expect(label).toContain("100000 rounds");
+        expect(label).toContain("100000 paid rounds / 10000 spins");
         expect(label).toContain("seed valera-1");
     });
 
     it("makes a missing seed explicit", () => {
         expect(describeReportListEntry(entry({seed: "  "}))).toContain("seed no seed");
+    });
+
+    it("omits an unrecorded design revision from the scan-friendly run label", () => {
+        expect(describeReportListEntry(entry({}))).not.toContain("design revision");
+        expect(describeReportListEntry(entry({}))).not.toContain("design ");
     });
 
     it("includes the mode when the report has one", () => {
@@ -38,5 +43,12 @@ describe("describeReportListEntry", () => {
         expect(describeDesignCompatibility("sha256:a", "sha256:b")).toBe("different");
         expect(describeDesignCompatibility(undefined, "sha256:b")).toBe("unknown");
         expect(shortSourceRevision("sha256:0123456789abcdef")).toBe("0123456789ab");
+    });
+
+    it("labels a run list relative to the currently loaded design without asking the reader to compare hashes", () => {
+        expect(describeRunDesignState("sha256:a", "sha256:a")).toBe("current design");
+        expect(describeRunDesignState("sha256:a", "sha256:b")).toBe("earlier design");
+        expect(describeRunDesignState(undefined, "sha256:b")).toBe("design version not recorded");
+        expect(describeRunDesignState("sha256:a", undefined)).toBe("design version not recorded");
     });
 });

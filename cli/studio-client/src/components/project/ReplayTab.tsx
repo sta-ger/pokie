@@ -1,9 +1,11 @@
-import {Alert, Anchor, Badge, Button, Group, List, NumberInput, Progress, SegmentedControl, Select, Table, Text, Textarea, TextInput} from "@mantine/core";
+import {Alert, Anchor, Badge, Button, Checkbox, Group, List, NumberInput, Progress, SegmentedControl, Select, Table, Text, Textarea, TextInput} from "@mantine/core";
 import {useForm} from "@mantine/form";
 import {useMediaQuery} from "@mantine/hooks";
-import {useEffect, useRef, useState} from "react";
-import {buildReplayDownloadUrl} from "../../api/apiClient";
+import {Fragment, useEffect, useRef, useState} from "react";
+import {buildReplayDownloadUrl, getGameModel} from "../../api/apiClient";
 import type {OutcomeSourceReplayDescriptorView, RoundRecord, StudioRuntimeSessionView, StudioSimulationReportListEntry} from "../../api/types";
+import {useStudioApi} from "../../context/StudioApiProvider";
+import {type PaytableData, paytableDataFromRows} from "../../domain/paytableData";
 import {
     describeLoadedReplay,
     describeReplayEntryLabel,
@@ -22,6 +24,7 @@ import {
 } from "../../domain/interpret/Replay";
 import type {ReportListView} from "../../domain/interpret/Reports";
 import {describeRuntimeScreen, type RecentSpinsListView} from "../../domain/interpret/Runtime";
+import {formatCount} from "../../domain/formatCount";
 import {describeReplayActionError} from "../../domain/replayActionError";
 import {useConfirm} from "../../hooks/useConfirm";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
@@ -101,12 +104,14 @@ const COMPARISON_STATUS_LABEL: Record<ReplayComparisonView["status"], string> = 
     unavailable: "Exact comparison unavailable",
 };
 
-// The four capabilities the Loaded replay card below shows for every source -- same order regardless
+// The five capabilities the Loaded replay card below shows for every source -- same order regardless
 // of which is actually available, so a reader can compare across a source switch without the rows
-// reshuffling.
+// reshuffling. Audit replay and seed replay are separate rows: a recorded audit can be replayed without
+// a seed, while a seeded forward replay is a different guarantee.
 const CAPABILITY_ROWS: {key: keyof ReplayCapabilitiesView; label: string}[] = [
     {key: "inspectable", label: "Inspectable"},
-    {key: "reproducible", label: "Reproducible"},
+    {key: "auditReplay", label: "Audit replay"},
+    {key: "seedReplay", label: "Seed replay"},
     {key: "comparable", label: "Comparable"},
     {key: "exportable", label: "Exportable"},
 ];
@@ -115,12 +120,21 @@ const CAPABILITY_STATUS_LABEL: Record<ReplayCapabilityStatus, string> = {
     available: "Available",
     bestEffort: "Best effort",
     unavailable: "Unavailable",
+    mismatch: "Mismatch",
 };
+
+function capabilityStatusLabel(key: keyof ReplayCapabilitiesView, status: ReplayCapabilityStatus): string {
+    // "Comparable: Unavailable" reads like a broken product. Before reproduction it simply means
+    // "nothing has been compared yet"; after a failed comparison the reason line carries the detail.
+    if (key === "comparable" && status === "unavailable") return "Not compared yet";
+    return CAPABILITY_STATUS_LABEL[status];
+}
 
 const CAPABILITY_STATUS_COLOR: Record<ReplayCapabilityStatus, string> = {
     available: "teal",
     bestEffort: "yellow",
     unavailable: "gray",
+    mismatch: "red",
 };
 const REPLAY_LIST_PAGE_SIZE = 50;
 
@@ -133,6 +147,21 @@ function downloadJsonBlob(filename: string, data: unknown): void {
     anchor.click();
     URL.revokeObjectURL(url);
 }
+
+// A recorded entry carries the whole paid round's totalStake, so that figure cannot tell the paid
+// trigger apart from a free spin. The entry's own RoundRecord (and, as a fallback, its current logical
+// subround) carries the stake actually charged for this screen: > 0 for the paid entry, 0 for a free
+// spin. Replay uses this to put "Open paid round" on the right row and to avoid offering a paid-round
+// replay for a free-game step that has no paid boundary of its own.
+function recordedSpinStake(entry: StudioRuntimeSessionView): number {
+    const artifactStake = entry.debug?.artifact?.stake;
+    if (typeof artifactStake === "number" && Number.isFinite(artifactStake)) return artifactStake;
+    const round = entry.logicalRound;
+    const subround = round?.subrounds?.find(candidate => candidate.index === (round.mathematicalCursor ?? 0) - 1);
+    return subround?.stake ?? 0;
+}
+
+
 
 // Replay has no single sequential order shared by every source, so this doesn't use a Stepper (the
 // previous design's Find -> Load -> Reproduce -> Inspect -> Export pages). "Session Spin" is already
@@ -232,6 +261,29 @@ export function ReplayTab({
         }
     }, [availableModes, selectedMode]);
 
+    // A recorded Play session stores its evaluated wins, not the game's static paytable. The current
+    // project's own Game Model is the authoritative table for those session spins; pass it to the
+    // inspector instead of making the author leave Replay for another tab. Pasted/foreign artifacts
+    // keep their own record scope and never borrow this project's paytable.
+    const fetchImpl = useStudioApi();
+    const [projectPaytable, setProjectPaytable] = useState<PaytableData>();
+    useEffect(() => {
+        let cancelled = false;
+        getGameModel(fetchImpl).then((model) => {
+            if (cancelled || model.paytable.status !== "available") return;
+            setProjectPaytable(paytableDataFromRows(model.paytable.data));
+        }).catch(() => undefined);
+        return () => {
+            cancelled = true;
+        };
+    }, [fetchImpl]);
+    const expectedMatchesCurrentGame = expected.status === "loaded" && expected.artifact !== undefined &&
+        currentGame !== undefined &&
+        expected.artifact.origin.game.id === currentGame.id &&
+        expected.artifact.origin.game.version === currentGame.version;
+    const resultMatchesCurrentGame = result !== undefined && currentGame !== undefined &&
+        result.game.id === currentGame.id && result.game.version === currentGame.version;
+
     const [findMethod, setFindMethod] = useState<FindMethod>("seedRound");
     const [replayListPage, setReplayListPage] = useState(0);
     const replayListEntries = listView.status === "loaded" ? listView.entries : [];
@@ -272,10 +324,10 @@ export function ReplayTab({
     const simulationRoundLimit = selectedSimEntry?.sampling?.acceptedSubrounds ?? selectedSimEntry?.modes?.[selectedSimulationMode ?? ""]?.rounds ?? selectedSimEntry?.actualRounds;
     let simulationUnavailableReason: string | undefined;
     if (selectedSimEntry !== undefined) {
-        if (!selectedSimEntry.seed?.trim()) simulationUnavailableReason = "This simulation has no recorded seed. Run a new simulation with an explicit seed and one worker to replay its subrounds.";
-        else if (selectedSimEntry.workers !== 1) simulationUnavailableReason = "This simulation used multiple workers with independent sessions. Run a new simulation with an explicit seed and one worker to replay its subrounds.";
+        if (!selectedSimEntry.seed?.trim()) simulationUnavailableReason = "This simulation has no recorded seed. Run a new simulation with an explicit seed and one worker to replay those spins.";
+        else if (selectedSimEntry.workers !== 1) simulationUnavailableReason = "This simulation used multiple workers with independent sessions. Run a new simulation with an explicit seed and one worker to replay those spins.";
         else if (selectedSimEntry.modes !== undefined && selectedSimEntry.modes[selectedSimulationMode ?? ""] === undefined) simulationUnavailableReason = "Select a concrete simulation bet mode to replay.";
-        else if (!Number.isInteger(simRound) || simRound < 1 || simulationRoundLimit === undefined || simRound > simulationRoundLimit) simulationUnavailableReason = "Select an accepted subround within this simulation's range.";
+        else if (!Number.isInteger(simRound) || simRound < 1 || simulationRoundLimit === undefined || simRound > simulationRoundLimit) simulationUnavailableReason = "Select a spin within this simulation's range.";
     }
     // Recent spins can span several distinct Play sessions (a new session created by "New session"/
     // "Reset", etc.) all interleaved newest-first in one list -- this narrows that
@@ -283,6 +335,10 @@ export function ReplayTab({
     // scanning past every other session's rounds first. "all" (the default) shows the unfiltered list,
     // same newest-first order recentSpins already arrives in.
     const [spinSessionFilter, setSpinSessionFilter] = useState<string>("all");
+    // A paid round can contain many free-game steps (retriggers, cascades, ...). Those are real audit
+    // records, but showing every step by default turned a session list into a wall of near-identical
+    // rows. Default to one row per paid round; the explicit checkbox reveals every recorded step.
+    const [showFreeGameSteps, setShowFreeGameSteps] = useState(false);
     // Resets the filter back to "all" the moment its selected session no longer appears in the list at
     // all (e.g. its rounds aged out past StudioRoundRecorder.MAX_RECORDS) -- otherwise the picker
     // would be stuck silently showing an empty list with no way back to "all" other than knowing to
@@ -297,7 +353,18 @@ export function ReplayTab({
     // session interleaved. Keep the inspector's navigation in that session so Previous/Next always
     // means adjacent rounds rather than a surprising jump into another player's session.
     const loadedSpins = recentSpins.status === "loaded" ? recentSpins.entries : [];
-    const spinSessionIds = Array.from(new Set(loadedSpins.map((entry) => entry.sessionId)));
+    const sessionFirstRecordedAt = new Map<string, number>();
+    for (const entry of loadedSpins) {
+        const rawRecordedAt = entry.studioRecordedAt;
+        let parsedRecordedAt = Number.NaN;
+        if (typeof rawRecordedAt === "number") parsedRecordedAt = rawRecordedAt;
+        else if (rawRecordedAt !== undefined) parsedRecordedAt = Date.parse(rawRecordedAt);
+        const recordedAt = Number.isFinite(parsedRecordedAt) ? parsedRecordedAt : Number.MAX_SAFE_INTEGER;
+        const current = sessionFirstRecordedAt.get(entry.sessionId);
+        if (current === undefined || recordedAt < current) sessionFirstRecordedAt.set(entry.sessionId, recordedAt);
+    }
+    const spinSessionIds = Array.from(new Set(loadedSpins.map((entry) => entry.sessionId)))
+        .sort((left, right) => (sessionFirstRecordedAt.get(left) ?? 0) - (sessionFirstRecordedAt.get(right) ?? 0));
     const describeSpinSession = (sessionId: string): string => `Session ${spinSessionIds.indexOf(sessionId) + 1}`;
     const filteredSpins = spinSessionFilter === "all" ? loadedSpins : loadedSpins.filter((entry) => entry.sessionId === spinSessionFilter);
     const selectedSessionSpins = selectedSpin
@@ -313,10 +380,39 @@ export function ReplayTab({
                   (entry.studioRound ?? entry.studioRequestId) === (selectedSpin.studioRound ?? selectedSpin.studioRequestId),
         )
         : -1;
+    // The paid trigger entry is a historical snapshot: its own logical round was still pending and
+    // says "1 spin". Show the completed round's later cursor/totals alongside it when the recorder
+    // still has that later screen, so a paid trigger never looks like a one-spin round.
+    const selectedRoundLatest = selectedSpin?.logicalRound?.roundId === undefined
+        ? selectedSpin
+        : loadedSpins
+            .filter(entry => entry.sessionId === selectedSpin.sessionId && entry.logicalRound?.roundId === selectedSpin.logicalRound?.roundId)
+            .reduce<StudioRuntimeSessionView | undefined>((latest, entry) =>
+                latest === undefined || (entry.logicalRound?.cursor ?? 0) > (latest.logicalRound?.cursor ?? 0) ? entry : latest, undefined);
 
     function inspectSpin(entry: StudioRuntimeSessionView): void {
         setSelectedSpin(entry);
         markLoaded("spin", false);
+    }
+
+    // A recorded screen carries its own audit descriptor and the public session snapshots captured with
+    // it. Merge the snapshots into the descriptor before loading so the comparison can verify state, and
+    // so a completed last screen can replay the whole paid round rather than looking like a lone step.
+    function openRecordedRound(entry: StudioRuntimeSessionView, paidEntry?: StudioRuntimeSessionView): void {
+        const debug = entry.debug;
+        if (debug?.recording === undefined) return;
+        // A completed last screen's audit covers the whole paid round, but its own stateBefore is the
+        // state before that last free spin. Use the paid trigger's stateBefore for a whole-round replay;
+        // the completed last screen's stateAfter is the round's final state.
+        const stateBefore = paidEntry?.debug?.stateBefore ?? debug.stateBefore;
+        const stateAfter = debug.stateAfter ?? paidEntry?.debug?.stateAfter;
+        setFindMethod("artifact");
+        onLoadExpectedFromPaste(JSON.stringify({
+            ...debug.recording,
+            ...(stateBefore !== undefined ? {stateBefore} : {}),
+            ...(stateAfter !== undefined ? {stateAfter} : {}),
+        }), "session-spin");
+        markLoaded("artifact", false);
     }
 
     function isSelectedSpin(entry: StudioRuntimeSessionView): boolean {
@@ -442,14 +538,14 @@ export function ReplayTab({
     }
 
     return (
-        <div>
+        <div data-pokie-replay-project-paytable={projectPaytable === undefined ? "unavailable" : `available:${Object.keys(projectPaytable).length}`}>
             <Text size="sm" c="dimmed" mb="sm">
                 Best-effort reproducibility: replay plays a fresh session forward from round 1 using the same seed, and
                 matches exactly for deterministic games. A game whose logic doesn&apos;t depend solely on the seed (e.g. it
                 reads external state) may not reproduce the original round.
             </Text>
             <Text size="sm" c="dimmed" mb="sm">
-                To inspect a round you just played, choose Session Spin and select it from the list. Once a round is
+                To inspect a spin you just played, choose Session Spin and select it from the list. Once a spin is
                 loaded, its grid, wins, paylines, paytable, and export download are available below.
             </Text>
 
@@ -506,8 +602,8 @@ export function ReplayTab({
                     </QuickActions>
                     {availableModes !== undefined && availableModes.length > 0 && (
                         <Select
-                            label="Outcome library mode"
-                            description="Which real mode of this outcome library this reproduction draws against."
+                            label="Outcome table mode"
+                            description="Which real mode of this outcome table this reproduction draws against."
                             data={availableModes}
                             value={selectedMode}
                             onChange={setSelectedMode}
@@ -524,7 +620,7 @@ export function ReplayTab({
                     <Textarea
                         id="replay-artifact-json"
                         data-pokie-lifecycle-field="replay-artifact-json"
-                        label="Paste a round record JSON (downloaded from Export)"
+                        label="Paste a saved round record (exported as JSON)"
                         minRows={6}
                         autosize
                         maxRows={16}
@@ -607,7 +703,7 @@ export function ReplayTab({
                     {recentSpins.status === "loading" && recentSpinsError === undefined && <LoadingState label="Loading recent spins…" />}
                     {recentSpinsError && <ErrorState message={describeReplayActionError("The spin list", recentSpinsError)} />}
                     {recentSpins.status === "empty" && (
-                        <EmptyState message="No spins recorded yet in this Studio session — play a round in the Play tab first." />
+                        <EmptyState message="No spins recorded yet in this Studio session — play a paid round in the Play tab first." />
                     )}
                     {recentSpins.status === "loaded" && (
                         <div>
@@ -636,42 +732,107 @@ export function ReplayTab({
                                 return filteredSpins.length === 0 ? (
                                     <EmptyState message="No spins recorded for the selected session." />
                                 ) : (
-                                    <List listStyleType="none" spacing={4}>
-                                        {filteredSpins.map((entry) => (
-                                            // `studioRound` (this session's own stable round index -- see
-                                            // StudioRuntimeSessionView's own doc comment) makes this key stable across
-                                            // a refresh, unlike the array index it replaces: a duplicate (sessionId,
-                                            // studioRequestId) pair (an idempotency-protected retry) is deduplicated
-                                            // into the *same* round by StudioRoundRecorder.record() before
-                                            // it ever reaches this list, so (sessionId, studioRound) alone is already
-                                            // unique here -- never conflated with a legitimate round from a different
-                                            // session, since the pairing always includes sessionId. Falling back to
-                                            // studioRequestId (still per-session-unique by construction) covers an
-                                            // entry that predates studioRound existing at all.
-                                            <List.Item key={`${entry.sessionId}-${entry.studioRound ?? entry.studioRequestId ?? "unknown"}`}>
-                                                <Anchor
-                                                    component="button"
-                                                    type="button"
-                                                    onClick={() => inspectSpin(entry)}
-                                                    aria-current={isSelectedSpin(entry) ? "true" : undefined}
-                                                    style={{
-                                                        overflowWrap: "anywhere",
-                                                        whiteSpace: "normal",
-                                                        textAlign: "left",
-                                                        fontWeight: isSelectedSpin(entry) ? 700 : undefined,
-                                                    }}
-                                                >
-                                                    {describeSpinSession(entry.sessionId)} — Round {entry.studioRound ?? "?"} — {describeStudioRoundOperation(entry.studioOperation ?? "spin")} —
-                                                    win {entry.win ?? 0} — {entry.studioRecordedAt ? new Date(entry.studioRecordedAt).toLocaleString() : "time unavailable"}
-                                                    {isSelectedSpin(entry) && (
-                                                        <Badge size="xs" variant="light" ml={6}>
-                                                                Selected
-                                                        </Badge>
-                                                    )}
-                                                </Anchor>
-                                            </List.Item>
-                                        ))}
-                                    </List>
+                                    <>
+                                        <Text size="xs" c="dimmed" mb="xs">Spins from the same paid round are grouped under one header.</Text>
+                                        <Checkbox
+                                            mb="sm"
+                                            size="xs"
+                                            label="Show free-game steps"
+                                            checked={showFreeGameSteps}
+                                            onChange={(event) => setShowFreeGameSteps(event.currentTarget.checked)}
+                                        />
+                                        <List listStyleType="none" spacing={4}>
+                                            {filteredSpins.map((entry) => {
+                                                const roundId = entry.logicalRound?.roundId;
+                                                // The list is newest-first. Work from the whole group rather than the
+                                                // visible row: the paid trigger is its oldest stake-bearing screen, and
+                                                // the last recorded screen carries the completed-round cursor/status.
+                                                const roundEntries = roundId === undefined
+                                                    ? [entry]
+                                                    : filteredSpins.filter((candidate) => candidate.logicalRound?.roundId === roundId);
+                                                const groupLastEntry = roundEntries[0] ?? entry;
+                                                const paidScreens = roundEntries.filter((candidate) => recordedSpinStake(candidate) > 0);
+                                                const paidEntry = paidScreens.length === 0 ? undefined : paidScreens[paidScreens.length - 1];
+                                                const isFreeGameStep = recordedSpinStake(entry) === 0;
+                                                if (!showFreeGameSteps && isFreeGameStep) return null;
+                                                const firstVisibleEntry = showFreeGameSteps ? roundEntries[0] : paidScreens[0];
+                                                const showHeader = entry === firstVisibleEntry;
+                                                const paidRoundSpinCount = groupLastEntry.logicalRound?.mathematicalCursor ?? paidEntry?.logicalRound?.mathematicalCursor;
+                                                // `studioRound` (this session's own stable spin index) keeps the key stable
+                                                // across refreshes. A duplicate (sessionId, studioRequestId) pair is
+                                                // deduplicated by StudioRoundRecorder.record before it reaches this list.
+                                                return (
+                                                    <Fragment key={`${entry.sessionId}-${entry.studioRound ?? entry.studioRequestId ?? "unknown"}`}>
+                                                        {showHeader && (() => {
+                                                            return (
+                                                                <List.Item data-pokie-paid-round-id={roundId} data-pokie-paid-round-spins={paidRoundSpinCount}>
+                                                                    <Group gap="xs" align="center">
+                                                                        <Text size="xs" c="dimmed" fw={600}>
+                                                                            Paid round · {paidRoundSpinCount === undefined ? "?" : formatCount(paidRoundSpinCount, "spin")}
+                                                                        </Text>
+                                                                        {paidEntry !== undefined && (
+                                                                            <Button
+                                                                                size="xs"
+                                                                                variant="default"
+                                                                                title="Inspect the paid trigger screen and this paid round's total stake and payout."
+                                                                                onClick={() => inspectSpin(paidEntry)}
+                                                                            >
+                                                                                Inspect paid round
+                                                                            </Button>
+                                                                        )}
+                                                                        {groupLastEntry.logicalRound?.status === "completed" && (groupLastEntry.logicalRound?.cursor ?? 0) > 1 && groupLastEntry.debug?.recording !== undefined && (
+                                                                            <Button
+                                                                                size="xs"
+                                                                                variant="subtle"
+                                                                                title="Replay the complete recorded paid round. The loaded screen may be a free-game step with stake 0."
+                                                                                onClick={() => openRecordedRound(groupLastEntry, paidEntry)}
+                                                                            >
+                                                                                Replay recorded round
+                                                                            </Button>
+                                                                        )}
+                                                                    </Group>
+                                                                    {paidEntry !== undefined && (
+                                                                        <Text size="xs" c="dimmed" mt={4}>
+                                                                            {describeSpinSession(paidEntry.sessionId)} · {paidEntry.studioRecordedAt ? new Date(paidEntry.studioRecordedAt).toLocaleString() : "time unavailable"}
+                                                                        </Text>
+                                                                    )}
+                                                                    {(paidRoundSpinCount ?? 0) > 1 && (
+                                                                        <Text size="xs" c="dimmed" mt={4}>
+                                                                            This paid round contains free-game steps with stake 0. Use Inspect paid round for the round total, or Replay recorded round to reproduce it.
+                                                                        </Text>
+                                                                    )}
+                                                                </List.Item>
+                                                            );
+                                                        })()}
+                                                        <List.Item>
+                                                            <Anchor
+                                                                component="button"
+                                                                type="button"
+                                                                onClick={() => inspectSpin(entry)}
+                                                                aria-current={isSelectedSpin(entry) ? "true" : undefined}
+                                                                data-pokie-recorded-spin-round-id={roundId}
+                                                                data-pokie-recorded-spin-stake={recordedSpinStake(entry)}
+                                                                style={{
+                                                                    overflowWrap: "anywhere",
+                                                                    whiteSpace: "normal",
+                                                                    textAlign: "left",
+                                                                    fontWeight: isSelectedSpin(entry) ? 700 : undefined,
+                                                                }}
+                                                            >
+                                                                {describeSpinSession(entry.sessionId)} — Spin {entry.studioRound ?? "?"} — {describeStudioRoundOperation(entry.studioOperation ?? "spin")} —
+                                                            win {entry.win ?? 0} — {entry.studioRecordedAt ? new Date(entry.studioRecordedAt).toLocaleString() : "time unavailable"}
+                                                                {isSelectedSpin(entry) && (
+                                                                    <Badge size="xs" variant="light" ml={6}>
+                                                                    Selected
+                                                                    </Badge>
+                                                                )}
+                                                            </Anchor>
+                                                        </List.Item>
+                                                    </Fragment>
+                                                );
+                                            })}
+                                        </List>
+                                    </>
                                 );
                             })()}
                         </div>
@@ -705,7 +866,7 @@ export function ReplayTab({
                                         }}
                                         style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
                                     >
-                                        {entry.game.id} v{entry.game.version} — seed {entry.seed ?? "(none)"}, {entry.actualRounds ?? "per-mode"} {entry.sampling ? `logical rounds, ${entry.sampling.acceptedSubrounds} subrounds` : "rounds"}
+                                        {entry.game.id} v{entry.game.version} — seed {entry.seed ?? "(none)"}, {entry.actualRounds ?? "per-mode"} {entry.sampling ? `paid rounds, ${entry.sampling.acceptedSubrounds} spins` : "paid rounds"}
                                         {entry.modeName ? `, mode ${entry.modeName}` : ""}, {new Date(entry.startedAt).toLocaleString()}
                                     </Anchor>
                                 </List.Item>
@@ -717,7 +878,7 @@ export function ReplayTab({
                             {simulationUnavailableReason && <Alert color="yellow" title="Simulation replay unavailable" mb="sm">{simulationUnavailableReason}</Alert>}
                             <QuickActions>
                                 <NumberInput
-                                    label={selectedSimEntry.sampling ? "Subround" : "Round"}
+                                    label={selectedSimEntry.sampling ? "Play" : "Paid round"}
                                     min={1}
                                     max={simulationRoundLimit}
                                     step={1}
@@ -748,58 +909,65 @@ export function ReplayTab({
                             const card: LoadedReplayCardView = loadedReplayCard;
                             return (
                                 <PageSection legend="Loaded replay">
-                                    <Table withRowBorders={false} mb="sm">
-                                        <Table.Tbody>
-                                            <Table.Tr>
-                                                <Table.Th>Source</Table.Th>
-                                                <Table.Td>{card.source}</Table.Td>
-                                            </Table.Tr>
-                                            <Table.Tr>
-                                                <Table.Th>Identities</Table.Th>
-                                                <Table.Td style={{overflowWrap: "anywhere"}}>{card.identities}</Table.Td>
-                                            </Table.Tr>
-                                            <Table.Tr>
-                                                <Table.Th>Seed</Table.Th>
-                                                <Table.Td style={{overflowWrap: "anywhere"}}>{card.seed}</Table.Td>
-                                            </Table.Tr>
-                                            <Table.Tr>
-                                                <Table.Th>Version / hash</Table.Th>
-                                                <Table.Td style={{overflowWrap: "anywhere"}}>{card.versionHash}</Table.Td>
-                                            </Table.Tr>
-                                            <Table.Tr>
-                                                <Table.Th>Timestamp</Table.Th>
-                                                <Table.Td>{card.timestamp}</Table.Td>
-                                            </Table.Tr>
-                                            <Table.Tr>
-                                                <Table.Th>Completeness</Table.Th>
-                                                <Table.Td>{card.completeness}</Table.Td>
-                                            </Table.Tr>
-                                            {CAPABILITY_ROWS.map(({key, label}) => (
-                                                <Table.Tr key={key}>
-                                                    <Table.Th>{label}</Table.Th>
-                                                    <Table.Td>
-                                                        <Badge size="xs" variant="light" color={CAPABILITY_STATUS_COLOR[card.capabilities[key].status]} mr={6}>
-                                                            {CAPABILITY_STATUS_LABEL[card.capabilities[key].status]}
-                                                        </Badge>
-                                                        {card.capabilities[key].reason}
-                                                    </Table.Td>
+                                    <Text size="sm"><strong>Source:</strong> {card.source}</Text>
+                                    <Text size="sm"><strong>Seed:</strong> {card.seed}</Text>
+                                    <Text size="sm"><strong>Recorded:</strong> {card.timestamp}</Text>
+                                    <Text size="sm" mt={4}>
+                                        <strong>Inspect:</strong>{" "}
+                                        <Badge size="xs" variant="light" color={CAPABILITY_STATUS_COLOR[card.capabilities.inspectable.status]}>
+                                            {capabilityStatusLabel("inspectable", card.capabilities.inspectable.status)}
+                                        </Badge>{" "}
+                                        {card.capabilities.inspectable.reason}
+                                    </Text>
+                                    <details>
+                                        <summary>Show audit details (identity, version, completeness, replay capabilities)</summary>
+                                        <Table withRowBorders={false} mt="sm">
+                                            <Table.Tbody>
+                                                <Table.Tr>
+                                                    <Table.Th>Identities</Table.Th>
+                                                    <Table.Td style={{overflowWrap: "anywhere"}}>{card.identities}</Table.Td>
                                                 </Table.Tr>
-                                            ))}
-                                        </Table.Tbody>
-                                    </Table>
+                                                <Table.Tr>
+                                                    <Table.Th>Version / hash</Table.Th>
+                                                    <Table.Td style={{overflowWrap: "anywhere"}}>{card.versionHash}</Table.Td>
+                                                </Table.Tr>
+                                                <Table.Tr>
+                                                    <Table.Th>Completeness</Table.Th>
+                                                    <Table.Td>{card.completeness}</Table.Td>
+                                                </Table.Tr>
+                                                {CAPABILITY_ROWS.map(({key, label}) => (
+                                                    <Table.Tr key={key}>
+                                                        <Table.Th>{label}</Table.Th>
+                                                        <Table.Td>
+                                                            <Badge size="xs" variant="light" color={CAPABILITY_STATUS_COLOR[card.capabilities[key].status]} mr={6}>
+                                                                {capabilityStatusLabel(key, card.capabilities[key].status)}
+                                                            </Badge>
+                                                            {card.capabilities[key].reason}
+                                                        </Table.Td>
+                                                    </Table.Tr>
+                                                ))}
+                                            </Table.Tbody>
+                                        </Table>
+                                    </details>
                                 </PageSection>
                             );
                         })()}
 
                     {findMethod === "spin" && selectedSpin && (
                         <div>
-                            <PageSection legend="Round inspector">
+                            <PageSection legend="Spin inspector">
                                 <Group gap="xs" mb="xs">
                                     <Badge variant="light">Selected</Badge>
                                     <Text size="sm" fw={600}>
-                                        Round {selectedSpinIndex + 1} of {selectedSessionSpins.length}
+                                        Spin {selectedSpin.studioRound ?? selectedSpinIndex + 1}
+                                    </Text>
+                                    <Text size="xs" c="dimmed">
+                                        List position {selectedSpinIndex + 1} of {selectedSessionSpins.length}.
                                     </Text>
                                 </Group>
+                                <Text size="xs" c="dimmed" mb="xs">
+                                    Each recorded entry is one spin/screen. A paid round can contain several spins when free games retrigger.
+                                </Text>
                                 <QuickActions>
                                     <Button
                                         variant="default"
@@ -819,12 +987,17 @@ export function ReplayTab({
                                     </Button>
                                 </QuickActions>
                             </PageSection>
-                            {selectedSpin.debug?.recording && (
-                                <Button variant="default" onClick={() => {
-                                    setFindMethod("artifact");
-                                    onLoadExpectedFromPaste(JSON.stringify(selectedSpin.debug!.recording), "session-spin");
-                                    markLoaded("artifact", false);
-                                }}>Open recorded round for replay</Button>
+                            {selectedSpin.debug?.recording && recordedSpinStake(selectedSpin) > 0 && (
+                                <Button variant="default" onClick={() => openRecordedRound(selectedSpin)}>
+                                    {selectedSpin.logicalRound?.status === "completed" ? "Replay recorded round" : "Replay paid trigger"}
+                                </Button>
+                            )}
+                            {selectedSpin.debug?.recording && recordedSpinStake(selectedSpin) === 0 && (
+                                <Text size="sm" c="dimmed">
+                                    {selectedSpin.logicalRound?.status === "completed"
+                                        ? "This is a free-game step with stake 0. Use “Inspect paid round” for the trigger and the round total, or “Replay recorded round” above to reproduce the whole paid round."
+                                        : "This is a free-game step. Use “Inspect paid round” for the trigger; the completed round becomes available after the feature ends."}
+                                </Text>
                             )}
                             {/* The Loaded replay card's Reproducible row above already says there's nothing to reproduce;
                                 its Identities/Timestamp rows already name the session/round/request/recorded-at/source/mode. */}
@@ -836,6 +1009,32 @@ export function ReplayTab({
                                 // raw-JSON view. `credits` is passed through separately since it's a wallet/session
                                 // concept RoundRecord itself never carries.
                                 <div>
+                                    {selectedSpin.logicalRound && (
+                                        <PageSection legend="Paid-round context">
+                                            <Table withRowBorders={false} mb="xs" aria-label="Paid-round context">
+                                                <Table.Tbody>
+                                                    <Table.Tr><Table.Th>Round id</Table.Th><Table.Td style={{overflowWrap: "anywhere"}}>{selectedSpin.logicalRound.roundId}</Table.Td></Table.Tr>
+                                                    <Table.Tr><Table.Th>Status</Table.Th><Table.Td>{selectedSpin.logicalRound.status}</Table.Td></Table.Tr>
+                                                    <Table.Tr><Table.Th>Spins / screens at this step</Table.Th><Table.Td>{selectedSpin.logicalRound.mathematicalCursor} / {selectedSpin.logicalRound.cursor}</Table.Td></Table.Tr>
+                                                    <Table.Tr><Table.Th>Total stake</Table.Th><Table.Td>{selectedSpin.logicalRound.totalStake}</Table.Td></Table.Tr>
+                                                    <Table.Tr><Table.Th>Total payout</Table.Th><Table.Td>{selectedSpin.logicalRound.totalPayout}</Table.Td></Table.Tr>
+                                                </Table.Tbody>
+                                            </Table>
+                                            {selectedRoundLatest !== undefined && selectedRoundLatest !== selectedSpin && (
+                                                <Table withRowBorders={false} mb="xs" aria-label="Completed paid-round context">
+                                                    <Table.Tbody>
+                                                        <Table.Tr><Table.Th>Completed paid round</Table.Th><Table.Td>{selectedRoundLatest.logicalRound?.mathematicalCursor} spins / {selectedRoundLatest.logicalRound?.cursor} screens</Table.Td></Table.Tr>
+                                                        <Table.Tr><Table.Th>Completed total stake</Table.Th><Table.Td>{selectedRoundLatest.logicalRound?.totalStake}</Table.Td></Table.Tr>
+                                                        <Table.Tr><Table.Th>Completed total payout</Table.Th><Table.Td>{selectedRoundLatest.logicalRound?.totalPayout}</Table.Td></Table.Tr>
+                                                    </Table.Tbody>
+                                                </Table>
+                                            )}
+                                            <Text size="xs" c="dimmed">
+                                                This entry is one spin/screen of that paid round. A free-game spin has stake 0; the paid-round total stake is shown here.
+                                                {selectedRoundLatest !== undefined && selectedRoundLatest !== selectedSpin ? " The completed rows show what the round eventually became." : ""}
+                                            </Text>
+                                        </PageSection>
+                                    )}
                                     {(selectedSpin.studioSource || selectedSpin.studioOperation) && (
                                         // RoundRecordInspector below shows the artifact's own provenance, but
                                         // never which Studio tab/action recorded it -- an artifact-backed round
@@ -860,15 +1059,17 @@ export function ReplayTab({
                                     )}
                                     <RoundRecordInspector
                                         artifact={describeRoundRecord(selectedSpin.debug.artifact)}
+                                        recordScope="step"
                                         stateBefore={selectedSpin.debug.stateBefore}
                                         stateAfter={selectedSpin.debug.stateAfter}
                                         credits={selectedSpin.credits}
+                                        paytable={projectPaytable}
                                     />
                                 </div>
                             ) : (
                                 <div>
                                     {selectedSpin.debug?.artifactUnavailableReason && (
-                                        <Alert color="yellow" variant="light" title="Round record unavailable" mb="sm">
+                                        <Alert color="yellow" variant="light" title="Spin record unavailable" mb="sm">
                                             <Text size="sm">{selectedSpin.debug.artifactUnavailableReason}</Text>
                                         </Alert>
                                     )}
@@ -882,9 +1083,9 @@ export function ReplayTab({
                                             </Table.Tr>
                                             {selectedSpin.studioRound !== undefined && (
                                                 <Table.Tr>
-                                                    <Table.Th>Round</Table.Th>
+                                                    <Table.Th>Spin</Table.Th>
                                                     <Table.Td>
-                                                        {selectedSpin.studioRound} — this session&apos;s own round count, not a global one.
+                                                        {selectedSpin.studioRound} — this session&apos;s own spin count, not a global one.
                                                     </Table.Td>
                                                 </Table.Tr>
                                             )}
@@ -914,7 +1115,7 @@ export function ReplayTab({
                                             )}
                                             {selectedSpin.studioModeName && (
                                                 <Table.Tr>
-                                                    <Table.Th>Outcome library mode</Table.Th>
+                                                    <Table.Th>Outcome table mode</Table.Th>
                                                     <Table.Td style={{overflowWrap: "anywhere"}}>{selectedSpin.studioModeName}</Table.Td>
                                                 </Table.Tr>
                                             )}
@@ -943,7 +1144,7 @@ export function ReplayTab({
                                         </Text>
                                     )}
 
-                                    <AdvancedDisclosure detail="raw JSON, debug data, raw state">
+                                    <AdvancedDisclosure detail="technical data">
                                         {selectedSpin.debug?.debugData && (
                                             <div>
                                                 <Group gap="xs" mb={4}>
@@ -1026,12 +1227,23 @@ export function ReplayTab({
                                         down, which does carry `comparison`). A malformed artifact (artifactWarnings
                                         non-empty) is never rendered here -- the warnings above already explain why. */}
                                     {expected.artifact && expected.artifactWarnings.length === 0 && (
-                                        <RoundRecordInspector
-                                            artifact={describeRoundRecord(expected.artifact)}
-                                            credits={expected.credits}
-                                            stateBefore={expected.stateBefore}
-                                            stateAfter={expected.stateAfter}
-                                        />
+                                        <>
+                                            {expected.artifact.stake === 0 && (
+                                                <Alert color="blue" variant="light" title="This recording is a free-game step" mb="sm">
+                                                    <Text size="sm">
+                                                        The recorded stake is 0 because this screen is a free spin, not the paid trigger.
+                                                        Use Session Spin → Inspect paid round to see the paid round&apos;s total stake and payout.
+                                                    </Text>
+                                                </Alert>
+                                            )}
+                                            <RoundRecordInspector
+                                                artifact={describeRoundRecord(expected.artifact)}
+                                                credits={expected.credits}
+                                                stateBefore={expected.stateBefore}
+                                                stateAfter={expected.stateAfter}
+                                                paytable={expectedMatchesCurrentGame ? projectPaytable : undefined}
+                                            />
+                                        </>
                                     )}
                                 </div>
                             )}
@@ -1115,7 +1327,7 @@ export function ReplayTab({
                                         >
                                             <Text size="sm" mb="xs">
                                                 Replay stopped before a completed result could be published. Inspect the server message and
-                                                any retained execution prefix before retrying with the same parameters.
+                                                any earlier execution prefix before retrying with the same parameters.
                                             </Text>
                                             <AdvancedDisclosure detail="server message">
                                                 <Text size="sm">{progress.error ?? "Replay failed."}</Text>
@@ -1186,10 +1398,10 @@ export function ReplayTab({
                                             <Table.Td>{result.seed ?? "(none)"}</Table.Td>
                                         </Table.Tr>
                                         {result.modePolicy && <Table.Tr><Table.Th>Package bet mode</Table.Th><Table.Td>{result.modePolicy.betModeId}</Table.Td></Table.Tr>}
-                                        {result.modePolicy && <Table.Tr><Table.Th>Mode policy</Table.Th><Table.Td>{result.modePolicy.selection}; {result.commands?.length ?? 0} executed step commands</Table.Td></Table.Tr>}
+                                        {result.modePolicy && <Table.Tr><Table.Th>Mode policy</Table.Th><Table.Td>{result.modePolicy.selection}; {result.commands?.length ?? 0} executed commands</Table.Td></Table.Tr>}
                                         {result.modeName && (
                                             <Table.Tr>
-                                                <Table.Th>Outcome library mode</Table.Th>
+                                                <Table.Th>Outcome table mode</Table.Th>
                                                 <Table.Td style={{overflowWrap: "anywhere"}}>{result.modeName}</Table.Td>
                                             </Table.Tr>
                                         )}
@@ -1214,6 +1426,7 @@ export function ReplayTab({
                                         stateBefore={result.stateBefore}
                                         stateAfter={result.stateAfter}
                                         credits={result.credits}
+                                        paytable={resultMatchesCurrentGame ? projectPaytable : undefined}
                                     />
                                 </div>
                             )}

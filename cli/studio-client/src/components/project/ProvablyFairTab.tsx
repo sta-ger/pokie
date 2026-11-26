@@ -241,7 +241,7 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
         <PageSection legend="Provably Fair">
             <Text size="sm" c="dimmed" mb="sm">
                 Configure a round&apos;s seeds, generate and inspect its round proof, then verify it against its
-                commitment and live source bundle -- everything shown here is computed by pokie&apos;s own
+                commitment and live source library -- everything shown here is computed by pokie&apos;s own
                 commit-reveal services, never re-derived in this UI.
             </Text>
             {!diagnosticsReachable && (
@@ -279,10 +279,10 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
                         </Alert>
                     )}
                     <PathInput
-                        label="Source outcome-library bundle directory"
+                        label="Source outcome table directory"
                         placeholder="./outcomes/bundle"
                         kind="directory"
-                        browseTitle="Browse for a source outcome-library bundle directory"
+                        browseTitle="Browse for a source outcome table directory"
                         browseId="provably-fair-configure-bundle-dir"
                         relevantDirectory={projectRoot}
                         value={fields.libraryDir}
@@ -324,10 +324,10 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
                         </Button>
                     </QuickActions>
                     {configureView.status === "error" && (
-                        <ErrorState message={describePathActionError("The Provably Fair bundle directory", configureView.message)} />
+                        <ErrorState message={describePathActionError("The Provably Fair folder", configureView.message)} />
                     )}
                     {configureView.status === "load-error" && (
-                        <ErrorState message={describePathActionError("The Provably Fair bundle directory", configureView.error)} />
+                        <ErrorState message={describePathActionError("The Provably Fair folder", configureView.error)} />
                     )}
                     {configureView.status === "invalid" && <ErrorState message={configureView.message} />}
                     {configureView.status === "ok" && (
@@ -381,10 +381,10 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
                             </Button>
                         </QuickActions>
                         {generateView.status === "error" && (
-                            <ErrorState message={describePathActionError("The Provably Fair bundle directory", generateView.message)} />
+                            <ErrorState message={describePathActionError("The Provably Fair folder", generateView.message)} />
                         )}
                         {generateView.status === "load-error" && (
-                            <ErrorState message={describePathActionError("The Provably Fair bundle directory", generateView.error)} />
+                            <ErrorState message={describePathActionError("The Provably Fair folder", generateView.error)} />
                         )}
                         {generateView.status === "build-error" && <ErrorState message={`${generateView.code}: ${generateView.message}`} />}
                         {generateView.status === "ok" && (
@@ -464,9 +464,9 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
                         </div>
                     )}
                     <PathInput
-                        label="Source outcome-library bundle directory"
+                        label="Source outcome table directory"
                         kind="directory"
-                        browseTitle="Browse for a source outcome-library bundle directory"
+                        browseTitle="Browse for a source outcome table directory"
                         browseId="provably-fair-verify-bundle-dir"
                         relevantDirectory={projectRoot}
                         value={verifyBundleDir}
@@ -490,10 +490,10 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
                         </Button>
                     </QuickActions>
                     {verifyView.status === "error" && (
-                        <ErrorState message={describePathActionError("The Provably Fair bundle directory", verifyView.message)} />
+                        <ErrorState message={describePathActionError("The Provably Fair folder", verifyView.message)} />
                     )}
                     {verifyView.status === "load-error" && (
-                        <ErrorState message={describePathActionError("The Provably Fair bundle directory", verifyView.error)} />
+                        <ErrorState message={describePathActionError("The Provably Fair folder", verifyView.error)} />
                     )}
                     {verifyOutcome !== undefined && (
                         <div>

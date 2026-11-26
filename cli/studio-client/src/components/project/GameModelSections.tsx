@@ -22,13 +22,22 @@ import type {
     ValidationIssue,
 } from "../../api/types";
 import type {BlueprintValidationView} from "../../domain/interpret/BlueprintEditor";
-import {classifyIssuesBySection, crossFieldOnly, type BlueprintSectionId} from "../../domain/interpret/BlueprintSections";
-import type {BlueprintMutate, ReelGenerationModeDraftsRef, ReelStripGenerationDraftsRef} from "../../hooks/useBlueprintEditor";
+import {
+    classifyIssuesBySection,
+    crossFieldOnly,
+    type BlueprintSectionId,
+} from "../../domain/interpret/BlueprintSections";
+import type {
+    BlueprintMutate,
+    ReelGenerationModeDraftsRef,
+    ReelStripGenerationDraftsRef,
+} from "../../hooks/useBlueprintEditor";
 import {BlueprintMathPreviewPanel} from "../blueprintEditor/BlueprintMathPreviewPanel";
 import {BetsList} from "../blueprintEditor/BetsList";
 import {BetModesEditor} from "../blueprintEditor/BetModesEditor";
 import {FreeGamesFieldset} from "../blueprintEditor/FreeGamesFieldset";
 import {LayoutFieldset} from "../blueprintEditor/LayoutFieldset";
+import {isLineWinModel, WinModelFieldset} from "../blueprintEditor/WinModelFieldset";
 import {MetadataFieldset} from "../blueprintEditor/MetadataFieldset";
 import {PaylinesEditor} from "../blueprintEditor/PaylinesEditor";
 import {PaytableEditor} from "../blueprintEditor/PaytableEditor";
@@ -41,19 +50,17 @@ import {IssueList} from "../common/IssueList";
 import {PageSection} from "../common/PageSection";
 import {SymbolPresentation} from "../common/SymbolPresentation";
 
-// GameModelSections offers Edit on "basics"/"layout"/"symbols"/"reels"/"paytable"/"bets" (the
-// BlueprintSectionId values with an existing, canonical field editor to reuse from the guided Design
-// Game editor -- see SectionedFormEditor.tsx, whose own 6 tabs these mirror one-for-one) plus
-// "mechanics" (GameModelSectionId's own extra member, below) -- Mechanics is real, persisted
-// GameBlueprint data (GameBlueprintMechanics.freeGames) with its own validator rules
-// (GameBlueprintValidator's "blueprint-mechanics-*" codes), so leaving it read-only here left it
-// reachable only through the standalone `pokie edit` CLI wizard, never through Studio. FreeGamesFieldset
-// is wired into this tab's own existing Edit/Save/Cancel-per-section, single-whole-blueprint-write flow
-// (the same one PaytableEditor/BetsList already use) -- not a second, competing editor or mutation path
-// the way the old, deleted MechanicsEditorTab (its own separate apply/commit/publish backend) was.
-// "Limits" stays read-only: it isn't a stored GameBlueprint field at all,
-// only a derived min/max of Bets & Modes' own `availableBets` (see GameModelLimits's own doc comment) --
-// there is no separate field to edit, so LimitsSection below says so truthfully instead of inventing one.
+// GameModelSections offers Edit on every BlueprintSectionId value -- the guided Design Game editor's
+// own tabs (see SectionedFormEditor.tsx) -- including "mechanics": free games, weighted bonuses,
+// cascades/respins/collection, wild modifiers, Hold & Win and jackpots. Mechanics is real, persisted
+// GameBlueprint data with its own validator rules ("blueprint-mechanics-*" and "weighted-bonus-*"),
+// so leaving it read-only left it reachable only through the standalone `pokie edit` CLI wizard.
+// FreeGamesFieldset is wired into this tab's own existing Edit/Save/Cancel-per-section,
+// single-whole-blueprint-write flow (the same one PaytableEditor/BetsList already use) -- not a
+// second, competing editor or mutation path. "Limits" stays read-only: it isn't a stored GameBlueprint
+// field at all, only a derived min/max of Bets & Modes' own `availableBets` (see GameModelLimits's own
+// doc comment) -- there is no separate field to edit, so LimitsSection below says so truthfully instead
+// of inventing one.
 //
 // Everything GameModelSections needs to render Edit/Save/Cancel per section and swap an editable
 // section's read-only body for the exact same field-editor component the guided Design Game editor uses
@@ -62,7 +69,7 @@ import {SymbolPresentation} from "../common/SymbolPresentation";
 // Undefined (the default) everywhere GameModelSections renders a projection that isn't a saved, in-place-
 // editable Blueprint Project -- GameModelPreviewPanel's own live Design Game preview never passes this,
 // so it renders exactly as it always has, purely read-only.
-export type GameModelSectionId = BlueprintSectionId | "mechanics";
+export type GameModelSectionId = BlueprintSectionId;
 
 export type GameModelEditController = {
     // Set the instant Edit is clicked (before the fresh source has even loaded) through to Save/Cancel --
@@ -112,24 +119,60 @@ function SectionEditAction({id, edit}: {id: GameModelSectionId; edit: GameModelE
     if (edit.activeSection === id) {
         if (!edit.ready) {
             return (
-                <Button id={`game-model-${id}-edit`} data-pokie-game-model-action="edit" data-pokie-game-model-section={id} size="xs" variant="default" loading disabled>
+                <Button
+                    id={`game-model-${id}-edit`}
+                    data-pokie-game-model-action="edit"
+                    data-pokie-game-model-section={id}
+                    size="xs"
+                    variant="default"
+                    loading
+                    disabled
+                >
                     Edit
                 </Button>
             );
         }
         return (
             <Group gap="xs" wrap="nowrap">
-                <Button id={`game-model-${id}-save`} data-pokie-game-model-action="save" data-pokie-game-model-section={id} size="xs" onClick={edit.onSave} loading={edit.saving} disabled={edit.sequenceDraftDirty || validateAuthoredMechanics(edit.blueprint).some(issue => issue.severity === "error") || edit.validationView.status === "invalid"}>
+                <Button
+                    id={`game-model-${id}-save`}
+                    data-pokie-game-model-action="save"
+                    data-pokie-game-model-section={id}
+                    size="xs"
+                    onClick={edit.onSave}
+                    loading={edit.saving}
+                    disabled={
+                        edit.sequenceDraftDirty ||
+                        validateAuthoredMechanics(edit.blueprint).some((issue) => issue.severity === "error") ||
+                        edit.validationView.status === "invalid"
+                    }
+                >
                     Save
                 </Button>
-                <Button id={`game-model-${id}-cancel`} data-pokie-game-model-action="cancel" data-pokie-game-model-section={id} size="xs" variant="default" onClick={edit.onCancel} disabled={edit.saving}>
+                <Button
+                    id={`game-model-${id}-cancel`}
+                    data-pokie-game-model-action="cancel"
+                    data-pokie-game-model-section={id}
+                    size="xs"
+                    variant="default"
+                    onClick={edit.onCancel}
+                    disabled={edit.saving}
+                >
                     Cancel
                 </Button>
             </Group>
         );
     }
     return (
-        <Button id={`game-model-${id}-edit`} data-pokie-game-model-action="edit" data-pokie-game-model-section={id} size="xs" variant="default" onClick={() => edit.onEdit(id)} disabled={edit.activeSection !== undefined}>
+        <Button
+            id={`game-model-${id}-edit`}
+            data-pokie-game-model-action="edit"
+            data-pokie-game-model-section={id}
+            size="xs"
+            variant="default"
+            onClick={() => edit.onEdit(id)}
+            disabled={edit.activeSection !== undefined}
+        >
             Edit
         </Button>
     );
@@ -159,27 +202,10 @@ function sectionFieldIssues(id: BlueprintSectionId, edit: GameModelEditControlle
     return classifyIssuesBySection([...errors, ...warnings]).bySection[id];
 }
 
-// Mechanics' own slice of GameModelTab's own last validateBlueprint() result -- "mechanics" isn't one of
-// BlueprintSectionId's own six members (see GameModelSectionId's own doc comment on why), so it has no
-// entry in classifyIssuesBySection's shared, code-prefix-driven categorization; every
-// "blueprint-mechanics-*" code (GameBlueprintValidator.validateMechanics/validateFreeGames) plus the one
-// cross-field code a buyFeature bet mode raises when free games isn't configured
-// ("blueprint-betmodes-buyfeature-requires-freegames") is filtered directly here instead.
-function isMechanicsIssue(issue: ValidationIssue): boolean {
-    return issue.code.startsWith("blueprint-mechanics-") || issue.code.startsWith("weighted-bonus-") || issue.code === "blueprint-betmodes-buyfeature-requires-freegames";
-}
-
-function mechanicsIssues(edit: GameModelEditController): ValidationIssue[] {
-    const view = edit.validationView;
-    const errors = view.status === "invalid" ? view.errors : [];
-    const warnings = view.status === "invalid" || view.status === "ok" ? view.warnings : [];
-    return [...errors, ...warnings].filter(isMechanicsIssue);
-}
-
 function describeReelGenerationMode(mode: GameModelReelGenerationMode): string {
     if (mode === "reelSequences") return "Whole-sequence variants";
     if (mode === "reelStrips") {
-        return "Literal reel strips";
+        return "Manual reel strips";
     }
     if (mode === "reelStripGeneration") {
         return "Per-reel generation (literal or generated per reel)";
@@ -209,22 +235,31 @@ function UnavailableSection({reason}: {reason: string}) {
     return (
         <div>
             <Text size="sm" c="dimmed">
-                This part of the Game Model isn&apos;t available yet. Check the game design, then try viewing the Game Model again.
+                This part of the game design isn&apos;t available yet. Check the game design, then try viewing it again.
             </Text>
             <TechnicalDetails reason={reason} />
         </div>
     );
 }
 
-function UnresolvedReelNotice({reel, includeDiagnostics = false}: {reel: GameModelUnresolvedReel; includeDiagnostics?: boolean}) {
+function UnresolvedReelNotice({
+    reel,
+    includeDiagnostics = false,
+}: {
+    reel: GameModelUnresolvedReel;
+    includeDiagnostics?: boolean;
+}) {
     return (
         <div>
             <Text size="sm" c="red" mb="xs">
                 {reel.source === "weighted"
-                    ? "This reel has no positive-weight variant to inspect. Check its whole-sequence settings, then try viewing the Game Model again."
-                    : "This reel couldn't be generated. Check its generation settings, then try viewing the Game Model again."}
+                    ? "This reel has no positive-weight variant to inspect. Check its whole-sequence settings, then try viewing the game design again."
+                    : "This reel couldn't be generated. Check its generation settings, then try viewing the game design again."}
             </Text>
-            <TechnicalDetails reason={reel.reason} diagnostics={includeDiagnostics ? reel.generationDiagnostics : undefined} />
+            <TechnicalDetails
+                reason={reel.reason}
+                diagnostics={includeDiagnostics ? reel.generationDiagnostics : undefined}
+            />
         </div>
     );
 }
@@ -277,7 +312,9 @@ function PaytableSection({section}: {section: GameModelProjection["paytable"]}) 
                 <Table.Tbody>
                     {section.data.map((row) => (
                         <Table.Tr key={`${row.symbolId}-${row.matchCount}`}>
-                            <Table.Td><SymbolPresentation symbolId={row.symbolId} /></Table.Td>
+                            <Table.Td>
+                                <SymbolPresentation symbolId={row.symbolId} />
+                            </Table.Td>
                             <Table.Td>{row.matchCount}</Table.Td>
                             <Table.Td>{row.payout}</Table.Td>
                         </Table.Tr>
@@ -342,7 +379,11 @@ function isResolvedReel(reel: GameModelReel): reel is GameModelResolvedReel {
 // resolution ReelStrip.getSymbolAt uses server-side (see GameModelGameWindow's own doc comment), computed
 // here purely so the Game Window view can move its own stop client-side without a round trip for every
 // position: the projection already carries the complete ordered symbols.
-function reelWindowColumn(positions: readonly GameModelReelWindowCell[], stop: number, rows: number): GameModelReelWindowCell[] {
+function reelWindowColumn(
+    positions: readonly GameModelReelWindowCell[],
+    stop: number,
+    rows: number,
+): GameModelReelWindowCell[] {
     if (positions.length === 0 || rows <= 0) {
         return [];
     }
@@ -357,7 +398,15 @@ function reelWindowColumn(positions: readonly GameModelReelWindowCell[], stop: n
 // (a single scrub control, not one per reel) purely so moving it reads as one coherent spin outcome to
 // inspect; each reel's own window still wraps independently around its own length via reelWindowColumn
 // above. Wild/scatter cells are highlighted as the window's own overlay.
-function GameWindowView({gameWindow, reels, symbols}: {gameWindow: GameModelGameWindow; reels: GameModelReel[]; symbols: GameModelSymbol[]}) {
+function GameWindowView({
+    gameWindow,
+    reels,
+    symbols,
+}: {
+    gameWindow: GameModelGameWindow;
+    reels: GameModelReel[];
+    symbols: GameModelSymbol[];
+}) {
     const [stop, setStop] = useState(0);
     const [inspectionVariants, setInspectionVariants] = useState<Record<number, string>>({});
     if (gameWindow.reels === 0 || reels.length === 0) {
@@ -365,51 +414,84 @@ function GameWindowView({gameWindow, reels, symbols}: {gameWindow: GameModelGame
     }
     // Keep only the reader's choice of ID. Symbols and eligibility always come
     // from the current projection, including after an edit or project switch.
-    const inspectedVariant = (reel: GameModelReel) => reel.weightedVariants?.find(variant => variant.id === inspectionVariants[reel.reelIndex] && variant.weight > 0)
-        ?? reel.weightedVariants?.find(variant => variant.weight > 0);
-    const weightedReels = reels.filter(reel => reel.weightedVariants !== undefined);
+    const inspectedVariant = (reel: GameModelReel) =>
+        reel.weightedVariants?.find(
+            (variant) => variant.id === inspectionVariants[reel.reelIndex] && variant.weight > 0,
+        ) ?? reel.weightedVariants?.find((variant) => variant.weight > 0);
+    const weightedReels = reels.filter((reel) => reel.weightedVariants !== undefined);
     const grid = reels.map((reel) => {
-        const positions = isResolvedReel(reel) ? reel.positions : inspectedVariant(reel)?.symbols.map(symbolId => {
-            const symbol = symbols.find(item => item.id === symbolId);
-            return {symbolId, isWild: symbol?.isWild ?? false, isScatter: symbol?.isScatter ?? false};
-        }) ?? [];
-        return reelWindowColumn(positions, stop + Math.floor(gameWindow.screenGeometry?.visible.rowOffset ?? 0), gameWindow.rows);
+        const positions = isResolvedReel(reel)
+            ? reel.positions
+            : inspectedVariant(reel)?.symbols.map((symbolId) => {
+                const symbol = symbols.find((item) => item.id === symbolId);
+                return {symbolId, isWild: symbol?.isWild ?? false, isScatter: symbol?.isScatter ?? false};
+            }) ?? [];
+        return reelWindowColumn(
+            positions,
+            stop + Math.floor(gameWindow.screenGeometry?.visible.rowOffset ?? 0),
+            gameWindow.rows,
+        );
     });
     return (
         <div>
-            {weightedReels.length > 0 && <>
-                <Text size="sm" c="dimmed" mb="sm">
-                    Inspection only: choose a whole-sequence variant for each weighted reel. During play, the runtime
-                    selects a variant once per logical round using its relative weight. These choices do not change
-                    the saved design or predict the next round.
-                </Text>
-                <Group gap="sm" mb="sm" align="end">
-                    {weightedReels.map(reel => <NativeSelect
-                        key={reel.reelIndex}
-                        label={`Reel ${reel.reelIndex + 1} inspection variant`}
-                        value={inspectedVariant(reel)?.id ?? ""}
-                        disabled={inspectedVariant(reel) === undefined}
-                        data={reel.weightedVariants!.map(variant => ({value: variant.id, label: `${variant.id} (relative weight ${variant.weight})`, disabled: variant.weight <= 0}))}
-                        onChange={event => {
-                            const id = event.currentTarget.value;
-                            setInspectionVariants(current => ({...current, [reel.reelIndex]: id}));
-                        }}
-                    />)}
-                </Group>
-            </>}
-            {reels.filter((reel): reel is GameModelUnresolvedReel => !isResolvedReel(reel) && inspectedVariant(reel) === undefined).map(reel => (
-                <PageSection key={reel.reelIndex} legend={`Reel ${reel.reelIndex + 1}`}>
-                    <UnresolvedReelNotice reel={reel} />
-                </PageSection>
-            ))}
+            {weightedReels.length > 0 && (
+                <>
+                    <Text size="sm" c="dimmed" mb="sm">
+                        Inspection only: choose a whole-sequence variant for each weighted reel. During play, the
+                        runtime selects a variant once per paid round using its relative weight. These choices do not
+                        change the saved design or predict the next round.
+                    </Text>
+                    <Group gap="sm" mb="sm" align="end">
+                        {weightedReels.map((reel) => (
+                            <NativeSelect
+                                key={reel.reelIndex}
+                                label={`Reel ${reel.reelIndex + 1} inspection variant`}
+                                value={inspectedVariant(reel)?.id ?? ""}
+                                disabled={inspectedVariant(reel) === undefined}
+                                data={reel.weightedVariants!.map((variant) => ({
+                                    value: variant.id,
+                                    label: `${variant.id} (relative weight ${variant.weight})`,
+                                    disabled: variant.weight <= 0,
+                                }))}
+                                onChange={(event) => {
+                                    const id = event.currentTarget.value;
+                                    setInspectionVariants((current) => ({...current, [reel.reelIndex]: id}));
+                                }}
+                            />
+                        ))}
+                    </Group>
+                </>
+            )}
+            {reels
+                .filter(
+                    (reel): reel is GameModelUnresolvedReel =>
+                        !isResolvedReel(reel) && inspectedVariant(reel) === undefined,
+                )
+                .map((reel) => (
+                    <PageSection key={reel.reelIndex} legend={`Reel ${reel.reelIndex + 1}`}>
+                        <UnresolvedReelNotice reel={reel} />
+                    </PageSection>
+                ))}
             <Text size="sm" c="dimmed" mb="sm">
-                {gameWindow.reels} reel column(s) × {gameWindow.rows} row(s) (row 0 on top) -- every reel wraps back
-                to its own start once it runs past its own end. Move the stop position below to inspect the current
+                {gameWindow.reels} reel column(s) × {gameWindow.rows} row(s) (the top row is row 1) -- every reel wraps
+                back to its own start once it runs past its own end. Move the stop position below to inspect the current
                 strips or chosen variants. Wild/scatter symbols are highlighted.
             </Text>
-            {gameWindow.screenGeometry && <Text size="sm" mb="sm">Generated rows: {gameWindow.screenGeometry.generated.rows}. Visible offset: {gameWindow.screenGeometry.visible.rowOffset}. Evaluation rows: {gameWindow.screenGeometry.evaluated.rows}, starting at generated row {gameWindow.screenGeometry.evaluated.rowOffset}. Paylines use evaluation-local rows.</Text>}
+            {gameWindow.screenGeometry && (
+                <Text size="sm" mb="sm">
+                    Generated rows: {gameWindow.screenGeometry.generated.rows}. Visible offset:{" "}
+                    {gameWindow.screenGeometry.visible.rowOffset}. Evaluation rows:{" "}
+                    {gameWindow.screenGeometry.evaluated.rows}, starting at generated row{" "}
+                    {gameWindow.screenGeometry.evaluated.rowOffset}. Paylines use evaluation-local rows.
+                </Text>
+            )}
             <Group gap="xs" mb="sm" wrap="nowrap">
-                <Button size="xs" variant="default" aria-label="Previous stop" onClick={() => setStop((current) => current - 1)}>
+                <Button
+                    size="xs"
+                    variant="default"
+                    aria-label="Previous stop"
+                    onClick={() => setStop((current) => current - 1)}
+                >
                     ‹ Prev stop
                 </Button>
                 <NumberInput
@@ -420,7 +502,12 @@ function GameWindowView({gameWindow, reels, symbols}: {gameWindow: GameModelGame
                     onChange={(value) => setStop(typeof value === "number" ? value : 0)}
                     w={120}
                 />
-                <Button size="xs" variant="default" aria-label="Next stop" onClick={() => setStop((current) => current + 1)}>
+                <Button
+                    size="xs"
+                    variant="default"
+                    aria-label="Next stop"
+                    onClick={() => setStop((current) => current + 1)}
+                >
                     Next stop ›
                 </Button>
             </Group>
@@ -432,11 +519,24 @@ function GameWindowView({gameWindow, reels, symbols}: {gameWindow: GameModelGame
                                 {grid.map((column, reelIndex) => {
                                     const cell = column[rowIndex];
                                     return (
-                                        <Table.Td key={reelIndex} ta="center" title={gameWindow.visibleRowCoverage?.[rowIndex] !== undefined ? `${Math.round(gameWindow.visibleRowCoverage[rowIndex] * 100)}% visible` : undefined}>
+                                        <Table.Td
+                                            key={reelIndex}
+                                            ta="center"
+                                            title={
+                                                gameWindow.visibleRowCoverage?.[rowIndex] !== undefined
+                                                    ? `${Math.round(
+                                                        gameWindow.visibleRowCoverage[rowIndex] * 100,
+                                                    )}% visible`
+                                                    : undefined
+                                            }
+                                        >
                                             {cell === undefined ? (
                                                 "—"
                                             ) : (
-                                                <Badge variant={cell.isWild || cell.isScatter ? "filled" : "outline"} color={describeGameWindowCellColor(cell)}>
+                                                <Badge
+                                                    variant={cell.isWild || cell.isScatter ? "filled" : "outline"}
+                                                    color={describeGameWindowCellColor(cell)}
+                                                >
                                                     <SymbolPresentation symbolId={cell.symbolId} />
                                                 </Badge>
                                             )}
@@ -489,10 +589,20 @@ function ReelPositionsTable({reel}: {reel: GameModelResolvedReel}) {
                     <Text size="sm" c="dimmed">
                         Showing positions {start}–{lastVisible - 1} of {reel.positions.length}.
                     </Text>
-                    <Button size="xs" variant="default" disabled={start === 0} onClick={() => setStart((current) => Math.max(0, current - REEL_POSITIONS_RENDER_LIMIT))}>
+                    <Button
+                        size="xs"
+                        variant="default"
+                        disabled={start === 0}
+                        onClick={() => setStart((current) => Math.max(0, current - REEL_POSITIONS_RENDER_LIMIT))}
+                    >
                         Previous 100
                     </Button>
-                    <Button size="xs" variant="default" disabled={start >= maxStart} onClick={() => setStart((current) => Math.min(maxStart, current + REEL_POSITIONS_RENDER_LIMIT))}>
+                    <Button
+                        size="xs"
+                        variant="default"
+                        disabled={start >= maxStart}
+                        onClick={() => setStart((current) => Math.min(maxStart, current + REEL_POSITIONS_RENDER_LIMIT))}
+                    >
                         Next 100
                     </Button>
                 </Group>
@@ -512,7 +622,9 @@ function ReelPositionsTable({reel}: {reel: GameModelResolvedReel}) {
                         {visiblePositions.map((position) => (
                             <Table.Tr key={position.index}>
                                 <Table.Td>{position.index}</Table.Td>
-                                <Table.Td><SymbolPresentation symbolId={position.symbolId} /></Table.Td>
+                                <Table.Td>
+                                    <SymbolPresentation symbolId={position.symbolId} />
+                                </Table.Td>
                                 <Table.Td>{describeSpecialCell(position)}</Table.Td>
                                 <Table.Td>{position.stackSize > 1 ? `${position.stackSize}×` : "—"}</Table.Td>
                                 <Table.Td>{position.locked ? "Locked" : "—"}</Table.Td>
@@ -537,19 +649,28 @@ function FullStripsView({reels}: {reels: GameModelReel[]}) {
         <div>
             {reels.map((reel) => (
                 <PageSection key={reel.reelIndex} legend={`Reel ${reel.reelIndex + 1}`}>
-                    {reel.weightedVariants && <>
-                        <Text>Whole-sequence alternatives, selected once per logical round.</Text>
-                        {reel.weightedVariants.map(variant => <Text key={variant.id}>{variant.id}: weight {variant.weight}; [{variant.symbols.join(", ")}]</Text>)}
-                    </>}
-                    {!reel.weightedVariants && (isResolvedReel(reel) ? (
+                    {reel.weightedVariants && (
                         <>
-                            <Text size="sm" c="dimmed" mb="xs">
-                                {describeReelSource(reel.source)} {reel.positions.length} position(s), circular (wraps
-                                from the last position back to index 0).
-                            </Text>
-                            <ReelPositionsTable reel={reel} />
+                            <Text>Whole-sequence alternatives, selected once per paid round.</Text>
+                            {reel.weightedVariants.map((variant) => (
+                                <Text key={variant.id}>
+                                    {variant.id}: weight {variant.weight}; [{variant.symbols.join(", ")}]
+                                </Text>
+                            ))}
                         </>
-                    ) : <UnresolvedReelNotice reel={reel} />)}
+                    )}
+                    {!reel.weightedVariants &&
+                        (isResolvedReel(reel) ? (
+                            <>
+                                <Text size="sm" c="dimmed" mb="xs">
+                                    {describeReelSource(reel.source)} {reel.positions.length} position(s), circular
+                                    (wraps from the last position back to index 0).
+                                </Text>
+                                <ReelPositionsTable reel={reel} />
+                            </>
+                        ) : (
+                            <UnresolvedReelNotice reel={reel} />
+                        ))}
                 </PageSection>
             ))}
         </div>
@@ -598,7 +719,13 @@ function SharedWeightsConversionTable({sample}: {sample: GameModelSharedWeightsS
 // reel's own ReelStripAnalyzer output (counts/shares/distances/possible stop windows) and, for a
 // "generated" reel, its own generation constraint diagnostics -- reusing AnalysisTable/DiagnosticsList
 // verbatim from the Reel Strip Modeler rather than a second implementation of either.
-function AnalysisView({reels, sharedWeightsSample}: {reels: GameModelReel[]; sharedWeightsSample: GameModelSharedWeightsSample | undefined}) {
+function AnalysisView({
+    reels,
+    sharedWeightsSample,
+}: {
+    reels: GameModelReel[];
+    sharedWeightsSample: GameModelSharedWeightsSample | undefined;
+}) {
     if (reels.length === 0) {
         return <EmptyState message="No reels configured yet." />;
     }
@@ -607,19 +734,30 @@ function AnalysisView({reels, sharedWeightsSample}: {reels: GameModelReel[]; sha
             {sharedWeightsSample !== undefined && <SharedWeightsConversionTable sample={sharedWeightsSample} />}
             {reels.map((reel) => (
                 <PageSection key={reel.reelIndex} legend={`Reel ${reel.reelIndex + 1} analysis`}>
-                    {reel.weightedVariants && <>
-                        <Text>Whole-sequence alternatives, selected once per logical round.</Text>
-                        {reel.weightedVariants.map(variant => <Text key={variant.id}>{variant.id}: weight {variant.weight}; [{variant.symbols.join(", ")}]</Text>)}
-                    </>}
-                    {!reel.weightedVariants && (isResolvedReel(reel) ? (
+                    {reel.weightedVariants && (
                         <>
-                            <Text size="sm" c="dimmed" mb="xs">
-                                {reel.analysis.length} possible stop position(s) (this reel&apos;s own length).
-                            </Text>
-                            <AnalysisTable analysis={reel.analysis} />
-                            {reel.generationDiagnostics !== undefined && <DiagnosticsList diagnostics={reel.generationDiagnostics} />}
+                            <Text>Whole-sequence alternatives, selected once per paid round.</Text>
+                            {reel.weightedVariants.map((variant) => (
+                                <Text key={variant.id}>
+                                    {variant.id}: weight {variant.weight}; [{variant.symbols.join(", ")}]
+                                </Text>
+                            ))}
                         </>
-                    ) : <UnresolvedReelNotice reel={reel} includeDiagnostics />)}
+                    )}
+                    {!reel.weightedVariants &&
+                        (isResolvedReel(reel) ? (
+                            <>
+                                <Text size="sm" c="dimmed" mb="xs">
+                                    {reel.analysis.length} possible stop position(s) (this reel&apos;s own length).
+                                </Text>
+                                <AnalysisTable analysis={reel.analysis} />
+                                {reel.generationDiagnostics !== undefined && (
+                                    <DiagnosticsList diagnostics={reel.generationDiagnostics} />
+                                )}
+                            </>
+                        ) : (
+                            <UnresolvedReelNotice reel={reel} includeDiagnostics />
+                        ))}
                 </PageSection>
             ))}
         </div>
@@ -632,7 +770,15 @@ function AnalysisView({reels, sharedWeightsSample}: {reels: GameModelReel[]; sha
 // own doc comment) -- an explicit note plus each view's own "sample" labeling, a "New sample" reroll, and
 // (when `sampleControls` wires it up) an explicit "Convert to generated reels" action make that
 // unmistakable rather than ever presenting the sample as a fixed strip.
-function ReelsSection({section, sampleControls, symbols}: {section: GameModelSection<GameModelReels>; sampleControls?: GameModelReelsSampleControls; symbols: GameModelSymbol[]}) {
+function ReelsSection({
+    section,
+    sampleControls,
+    symbols,
+}: {
+    section: GameModelSection<GameModelReels>;
+    sampleControls?: GameModelReelsSampleControls;
+    symbols: GameModelSymbol[];
+}) {
     if (section.status === "unavailable") {
         return <UnavailableSection reason={section.reason} />;
     }
@@ -654,10 +800,20 @@ function ReelsSection({section, sampleControls, symbols}: {section: GameModelSec
                     </Text>
                     {sampleControls && (
                         <Group gap="xs" mb="sm">
-                            <Button size="xs" variant="default" aria-label="New sample" loading={sampleControls.loading} onClick={sampleControls.onNewSample}>
+                            <Button
+                                size="xs"
+                                variant="default"
+                                aria-label="New sample"
+                                loading={sampleControls.loading}
+                                onClick={sampleControls.onNewSample}
+                            >
                                 Another deterministic sample
                             </Button>
-                            {sampleControls.onEditWeights && <Button size="xs" variant="default" onClick={sampleControls.onEditWeights}>Edit weights</Button>}
+                            {sampleControls.onEditWeights && (
+                                <Button size="xs" variant="default" onClick={sampleControls.onEditWeights}>
+                                    Edit weights
+                                </Button>
+                            )}
                             {sampleControls.onConvertToGeneratedReels && (
                                 <Button
                                     size="xs"
@@ -694,13 +850,22 @@ function ReelsSection({section, sampleControls, symbols}: {section: GameModelSec
 
 function MechanicsSection({section}: {section: GameModelProjection["mechanics"]}) {
     if (section.status === "invalid") {
-        return <ErrorState message="These mechanics can't be previewed yet. Correct the rule fields, then preview again. The authored draft is unchanged." detail={section.reason} />;
+        return (
+            <ErrorState
+                message="These mechanics can't be previewed yet. Correct the rule fields, then preview again. The authored draft is unchanged."
+                detail={section.reason}
+            />
+        );
     }
     if (section.status === "unavailable") {
         return <UnavailableSection reason={section.reason} />;
     }
     const {freeGames, holdAndWin, jackpot, modifiers, cascade, respins, collection, weightedBonus} = section.data;
-    if ([freeGames, holdAndWin, jackpot, modifiers, cascade, respins, collection, weightedBonus].every(rule => rule === undefined)) {
+    if (
+        [freeGames, holdAndWin, jackpot, modifiers, cascade, respins, collection, weightedBonus].every(
+            (rule) => rule === undefined,
+        )
+    ) {
         return (
             <Text size="sm" c="dimmed">
                 No mechanics/features configured.
@@ -709,45 +874,124 @@ function MechanicsSection({section}: {section: GameModelProjection["mechanics"]}
     }
     return (
         <div>
-            {cascade && <Text size="sm">Cascade: maximum {cascade.maxCascades} winning removals; a terminal losing evaluation completes the cascade. A further win rejects and rolls back the subround.</Text>}
-            {respins && <>
-                <Text size="sm">Respins: trigger symbol {respins.trigger.symbolId}, minimum count {respins.trigger.minimumCount}; grant {respins.grant}; retrigger {respins.retrigger}; maximum executed respins {respins.maxRespins}.</Text>
-                <Text size="sm">Continuation stake is zero. Each accepted subround pays its own win; retrigger grants are clipped to the remaining lifetime limit.</Text>
-            </>}
-            {weightedBonus && <>
-                <Text size="sm">Weighted bonus: {weightedBonus.id}; {weightedBonus.context}; trigger {weightedBonus.trigger.symbolId} × {weightedBonus.trigger.minimumCount}; feature {weightedBonus.feature.id}; maximum duration {weightedBonus.feature.maxDuration}.</Text>
-                {weightedBonus.outcomes.map(o => <Text key={o.id} size="sm">Outcome {o.id}: weight {o.weight}; payout {o.payout} {o.payoutUnits}; duration {o.duration}; target {o.targetId}.</Text>)}
-            </>}
-            {collection && <>
-                <Text size="sm">Collection: symbol {collection.symbolId}; contribution {collection.contribution} per symbol; threshold {collection.threshold}; cap {collection.cap}; reset {collection.reset}; payout {collection.payout}.</Text>
-                <Text size="sm">Currency units; collect once per accepted subround from its final screen. Cap before threshold; at most one award per subround.</Text>
-            </>}
-            {freeGames && <><Text size="sm">Scatter-triggered free games — scatter symbol: {freeGames.scatterSymbol || "(none)"}</Text>
+            {cascade && (
                 <Text size="sm">
-                Awards:{" "}
-                    {Object.entries(freeGames.awardsByCount).length > 0
-                        ? Object.entries(freeGames.awardsByCount)
-                            .map(([count, awarded]) => `${count}x → ${awarded} free games`)
-                            .join(", ")
-                        : "(none)"}
-                </Text></>}
-            {section.data.modifiers && <>
-                <Text>Screen modifiers: ordered after generation, confined to evaluation. Winning wild factors multiply before aggregation. Sticky lifetime counts executed steps.</Text>
-                <Text>Supported: lines, ways, clusters; exact/weighted reels; free games, modes and jackpot. Value evaluators, Hold & Win and WASM are unsupported; sticky prevents independent-spin enumeration.</Text>
-                {section.data.modifiers.wilds.map(wild => <Text key={wild.symbol}>Wild {wild.symbol}: substitutes {wild.substitutes === undefined ? "any regular symbol" : wild.substitutes.join(", ") || "none"}; factor {wild.factor ?? 1}.</Text>)}
-                {section.data.modifiers.rules.map((rule, index) => {
-                    let detail: string;
-                    if (rule.type === "transform") detail = `${rule.from} → ${rule.to}`;
-                    else {
-                        detail = rule.symbol;
-                        if (rule.type === "sticky") detail += `, lifetime ${rule.lifetime}`;
-                        if (rule.type === "reel") detail += `, reels ${rule.reels.join(", ")}`;
-                    }
-                    return <Text key={rule.id}>Rule {index + 1}: {rule.id}, {rule.type}, {rule.space} {JSON.stringify(rule.positions)}; {detail}.</Text>;
-                })}
-            </>}
-            {section.data.holdAndWin && <Text>Hold & Win: {section.data.holdAndWin.minimumCount} locks, {section.data.holdAndWin.initialRespins} respins; reset-on-new-lock.</Text>}
-            {section.data.jackpot && <Text>Jackpot: {section.data.jackpot.pool.id} ({section.data.jackpot.pool.type}), contribution {section.data.jackpot.contribution.percentage}; single-tier.</Text>}
+                    Cascade: maximum {cascade.maxCascades} winning removals; a terminal losing evaluation completes the
+                    cascade. A further win rejects and rolls back the spin.
+                </Text>
+            )}
+            {respins && (
+                <>
+                    <Text size="sm">
+                        Respins: trigger symbol {respins.trigger.symbolId}, minimum count {respins.trigger.minimumCount}
+                        ; grant {respins.grant}; retrigger {respins.retrigger}; maximum executed respins{" "}
+                        {respins.maxRespins}.
+                    </Text>
+                    <Text size="sm">
+                        Continuation stake is zero. Each accepted spin pays its own win; retrigger grants are clipped to
+                        the remaining lifetime limit.
+                    </Text>
+                </>
+            )}
+            {weightedBonus && (
+                <>
+                    <Text size="sm">
+                        Weighted bonus: {weightedBonus.id}; {weightedBonus.context}; trigger{" "}
+                        {weightedBonus.trigger.symbolId} × {weightedBonus.trigger.minimumCount}; feature{" "}
+                        {weightedBonus.feature.id}; maximum duration {weightedBonus.feature.maxDuration}.
+                    </Text>
+                    {weightedBonus.outcomes.map((o) => (
+                        <Text key={o.id} size="sm">
+                            Outcome {o.id}: weight {o.weight}; payout {o.payout} {o.payoutUnits}; duration {o.duration};
+                            target {o.targetId}.
+                        </Text>
+                    ))}
+                </>
+            )}
+            {collection && (
+                <>
+                    <Text size="sm">
+                        Collection: symbol {collection.symbolId}; contribution {collection.contribution} per symbol;
+                        threshold {collection.threshold}; cap {collection.cap}; reset {collection.reset}; payout{" "}
+                        {collection.payout}.
+                    </Text>
+                    <Text size="sm">
+                        Currency units; collect once per accepted spin from its final screen. Cap before threshold; at
+                        most one award per spin.
+                    </Text>
+                </>
+            )}
+            {freeGames && (
+                <>
+                    <Text size="sm">
+                        Scatter-triggered free games — scatter symbol: {freeGames.scatterSymbol || "(none)"}
+                    </Text>
+                    <Text size="sm">
+                        Awards:{" "}
+                        {Object.entries(freeGames.awardsByCount).length > 0
+                            ? Object.entries(freeGames.awardsByCount)
+                                .map(
+                                    ([count, awarded]) =>
+                                        `${count} scatters → ${awarded} free ${awarded === 1 ? "game" : "games"}`,
+                                )
+                                .join(", ")
+                            : "(none)"}
+                    </Text>
+                    <Text size="sm">
+                        {freeGames.maxFreeGames === undefined
+                            ? "Cap: uncapped (additive retriggers have no hard limit)."
+                            : `Cap: ${freeGames.maxFreeGames} free games per feature, including the trigger award and retriggers.`}
+                    </Text>
+                </>
+            )}
+            {section.data.modifiers && (
+                <>
+                    <Text>
+                        Screen modifiers: ordered after generation, confined to evaluation. Winning wild factors
+                        multiply before aggregation. Sticky lifetime counts executed steps.
+                    </Text>
+                    <Text>
+                        Supported: lines, ways, clusters; exact/weighted reels; free games, modes and jackpot. Value
+                        evaluators, Hold & Win and WASM are unsupported; sticky prevents independent-spin enumeration.
+                    </Text>
+                    {section.data.modifiers.wilds.map((wild) => (
+                        <Text key={wild.symbol}>
+                            Wild {wild.symbol}: substitutes{" "}
+                            {wild.substitutes === undefined
+                                ? "any regular symbol"
+                                : wild.substitutes.join(", ") || "none"}
+                            ; factor {wild.factor ?? 1}.
+                        </Text>
+                    ))}
+                    {section.data.modifiers.rules.map((rule, index) => {
+                        let detail: string;
+                        if (rule.type === "transform") detail = `${rule.from} → ${rule.to}`;
+                        else {
+                            detail = rule.symbol;
+                            if (rule.type === "sticky") detail += `, lifetime ${rule.lifetime}`;
+                            if (rule.type === "reel") detail += `, reels ${rule.reels.join(", ")}`;
+                        }
+                        return (
+                            <Text key={rule.id}>
+                                Rule {index + 1}: {rule.id}, {rule.type}, {rule.space} {JSON.stringify(rule.positions)};{" "}
+                                {detail}.
+                            </Text>
+                        );
+                    })}
+                </>
+            )}
+            {section.data.holdAndWin && (
+                <Text>
+                    Hold & Win: {section.data.holdAndWin.minimumCount} locks, {section.data.holdAndWin.initialRespins}{" "}
+                    respins; reset-on-new-lock.
+                </Text>
+            )}
+            {section.data.jackpot && (
+                <Text>
+                    Jackpot: {section.data.jackpot.pool.id} ({section.data.jackpot.pool.type}), contribution{" "}
+                    {section.data.jackpot.contribution.percentage}; single-tier.
+                </Text>
+            )}
         </div>
     );
 }
@@ -785,12 +1029,21 @@ function LayoutSection({section}: {section: GameModelProjection["layout"]}) {
                     ? ` (minimum cluster size ${section.data.winModel.minimumClusterSize})`
                     : ""}
             </Text>
-            <Text size="sm">Paylines: {section.data.winModel.type === "lines" ? (section.data.paylineCount ?? 0) : "n/a for this win model"}</Text>
-            {section.data.winModel.type === "lines" && section.data.paylines !== undefined && section.data.paylines.length > 0 && (
+            <Text size="sm">
+                Paylines:{" "}
+                {section.data.winModel.type === "lines" ? section.data.paylineCount ?? 0 : "n/a for this win model"}
+            </Text>
+            {section.data.winModel.type === "lines" &&
+                section.data.paylines !== undefined &&
+                section.data.paylines.length > 0 && (
                 <div>
-                    <Text size="xs" c="dimmed" mt="xs">Rows per reel, 0 = top row:</Text>
+                    <Text size="xs" c="dimmed" mt="xs">
+                            Rows per reel, numbered from 1 (top row = 1):
+                    </Text>
                     {section.data.paylines.map((line, index) => (
-                        <Text size="sm" key={index}>Line {index + 1}: {line.join(" → ")}</Text>
+                        <Text size="sm" key={index}>
+                                Payline {index + 1}: {line.map((row) => row + 1).join(" → ")}
+                        </Text>
                     ))}
                 </div>
             )}
@@ -806,7 +1059,8 @@ function BetsAndModesSection({section}: {section: GameModelProjection["betsAndMo
     return (
         <>
             <Text size="sm" mb="xs">
-                Available bets: {section.data.availableBets.length > 0 ? section.data.availableBets.join(", ") : "(none)"}
+                Available bets:{" "}
+                {section.data.availableBets.length > 0 ? section.data.availableBets.join(", ") : "(none)"}
             </Text>
             <BetModesTable betModes={section.data.betModes} />
         </>
@@ -865,10 +1119,21 @@ function LimitsSection({section}: {section: GameModelSection<GameModelLimits>}) 
 export function GameModelSections({
     projection,
     edit,
+    previewBlueprint,
+    previewDisabledReason,
+    onPreviewRetry,
     reelsSampleControls,
 }: {
     projection: GameModelProjection;
     edit?: GameModelEditController;
+    /**
+     * Raw saved design used only by the view-mode math preview. `edit.blueprint` is an editable draft
+     * and starts empty until an Edit action loads it; the saved preview must never reuse that empty
+     * placeholder as if it were the project's design.
+     */
+    previewBlueprint?: unknown;
+    previewDisabledReason?: string;
+    onPreviewRetry?: () => void;
     reelsSampleControls?: GameModelReelsSampleControls;
 }) {
     const editingBasics = edit?.ready === true && edit.activeSection === "basics";
@@ -886,7 +1151,12 @@ export function GameModelSections({
                 {editingBasics && edit ? (
                     <fieldset disabled={edit.saving} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
                         <SectionValidationIssues id="basics" edit={edit} />
-                        <MetadataFieldset blueprint={edit.blueprint} mutate={edit.mutate} legend="Game basics" issues={sectionFieldIssues("basics", edit)} />
+                        <MetadataFieldset
+                            blueprint={edit.blueprint}
+                            mutate={edit.mutate}
+                            legend="Game basics"
+                            issues={sectionFieldIssues("basics", edit)}
+                        />
                     </fieldset>
                 ) : (
                     <BasicsSection section={projection.basics} />
@@ -897,8 +1167,15 @@ export function GameModelSections({
                 {editingLayout && edit ? (
                     <fieldset disabled={edit.saving} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
                         <SectionValidationIssues id="layout" edit={edit} />
-                        <LayoutFieldset blueprint={edit.blueprint} mutate={edit.mutate} issues={sectionFieldIssues("layout", edit)} />
-                        <PaylinesEditor blueprint={edit.blueprint} mutate={edit.mutate} />
+                        <LayoutFieldset
+                            blueprint={edit.blueprint}
+                            mutate={edit.mutate}
+                            issues={sectionFieldIssues("layout", edit)}
+                        />
+                        <WinModelFieldset blueprint={edit.blueprint} mutate={edit.mutate} />
+                        {isLineWinModel(edit.blueprint) && (
+                            <PaylinesEditor blueprint={edit.blueprint} mutate={edit.mutate} />
+                        )}
                     </fieldset>
                 ) : (
                     <LayoutSection section={projection.layout} />
@@ -918,12 +1195,26 @@ export function GameModelSections({
 
             <PageSection legend="Reels" action={edit && <SectionEditAction id="reels" edit={edit} />}>
                 {editingReels && edit ? (
-                    <fieldset disabled={edit.saving && getReelGenerationMode(edit.blueprint) !== "reelSequences"} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
+                    <fieldset
+                        disabled={edit.saving && getReelGenerationMode(edit.blueprint) !== "reelSequences"}
+                        style={{border: 0, padding: 0, margin: 0, minWidth: 0}}
+                    >
                         <SectionValidationIssues id="reels" edit={edit} />
-                        <ReelGenerationModeSelector blueprint={edit.blueprint} mutate={edit.mutate} drafts={edit.drafts} modeDrafts={edit.modeDrafts} revision={edit.revision} onDirtyChange={edit.onSequenceDirtyChange} />
+                        <ReelGenerationModeSelector
+                            blueprint={edit.blueprint}
+                            mutate={edit.mutate}
+                            drafts={edit.drafts}
+                            modeDrafts={edit.modeDrafts}
+                            revision={edit.revision}
+                            onDirtyChange={edit.onSequenceDirtyChange}
+                        />
                     </fieldset>
                 ) : (
-                    <ReelsSection section={projection.reels} sampleControls={reelsSampleControls} symbols={projection.symbols.status === "available" ? projection.symbols.data : []} />
+                    <ReelsSection
+                        section={projection.reels}
+                        sampleControls={reelsSampleControls}
+                        symbols={projection.symbols.status === "available" ? projection.symbols.data : []}
+                    />
                 )}
             </PageSection>
 
@@ -932,11 +1223,24 @@ export function GameModelSections({
                     <fieldset disabled={edit.saving} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
                         <SectionValidationIssues id="paytable" edit={edit} />
                         <PaytableEditor blueprint={edit.blueprint} mutate={edit.mutate} />
-                        <BlueprintMathPreviewPanel blueprint={edit.blueprint} revision={edit.revision} />
                     </fieldset>
                 ) : (
                     <PaytableSection section={projection.paytable} />
                 )}
+                {edit && (() => {
+                    // `activeSection` flips the instant Edit is clicked, while the editable blueprint is
+                    // still loading. Do not switch the preview to that empty draft during that window --
+                    // keep showing the last saved design until the editable source is ready.
+                    const previewUsesDraft = edit.activeSection !== undefined && edit.ready;
+                    return (
+                        <BlueprintMathPreviewPanel
+                            blueprint={previewUsesDraft ? edit.blueprint : previewBlueprint ?? edit.blueprint}
+                            mode={previewUsesDraft ? "draft" : "saved"}
+                            disabledReason={previewUsesDraft ? undefined : previewDisabledReason}
+                            onRetryDisabled={previewUsesDraft ? undefined : onPreviewRetry}
+                        />
+                    );
+                })()}
             </PageSection>
 
             <PageSection legend="Bets & Modes" action={edit && <SectionEditAction id="bets" edit={edit} />}>
@@ -954,7 +1258,17 @@ export function GameModelSections({
             <PageSection legend="Mechanics" action={edit && <SectionEditAction id="mechanics" edit={edit} />}>
                 {editingMechanics && edit ? (
                     <fieldset disabled={edit.saving} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
-                        <FreeGamesFieldset blueprint={edit.blueprint} mutate={edit.mutate} issues={mechanicsIssues(edit)} />
+                        <SectionValidationIssues id="mechanics" edit={edit} />
+                        <FreeGamesFieldset
+                            blueprint={edit.blueprint}
+                            mutate={edit.mutate}
+                            issues={sectionFieldIssues("mechanics", edit)}
+                            onRequestSymbols={() =>
+                                document
+                                    .getElementById("game-model-symbols-edit")
+                                    ?.scrollIntoView({behavior: "smooth", block: "center"})
+                            }
+                        />
                         <ExistingMechanicsFieldset blueprint={edit.blueprint} mutate={edit.mutate} />
                     </fieldset>
                 ) : (

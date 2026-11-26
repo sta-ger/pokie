@@ -1,4 +1,7 @@
 import {
+    displayLineId,
+    formatPaytableMatchCount,
+    formatPaytablePays,
     highlightHoverColor,
     highlightPersistentColor,
     type FeatureCounter,
@@ -36,6 +39,17 @@ const PLAYER_PRESENTATION_CSS = `
 .pokie-player button:disabled { cursor: not-allowed; opacity: .65; }
 .player-bet-option-selected, .player-mode-option-selected { font-weight: 700; }
 .player-highlight-item { display: inline-block; padding-right: 1rem; padding-bottom: .5rem; }
+.player-wins-help { margin: 0 0 .5rem; font-size: .875rem; color: #495057; }
+.player-features:not([hidden]) { display: grid; grid-template-columns: max-content max-content; gap: .25rem .75rem; align-items: baseline; margin-bottom: 1rem; }
+.player-features dt, .player-features dd { margin: 0; }
+.player-features dd { font-weight: 700; }
+.player-symbol-legend { margin-bottom: 1rem; }
+.player-symbol-legend h2 { margin: 0 0 .5rem; font-size: 1rem; font-weight: 700; }
+.player-symbol-legend-items { display: flex; flex-wrap: wrap; gap: .5rem; }
+.player-symbol-legend-item { display: inline-flex; align-items: center; gap: .4rem; padding: .3rem .5rem; border: 1px solid currentColor; border-radius: .35rem; background: light-dark(#fffdf6, #2b2b2b); }
+.player-symbol-legend-id { font-weight: 800; }
+.player-symbol-legend-pays { font-size: .8rem; color: #52636a; }
+.player-cell[data-winning="true"] { box-shadow: inset 0 0 0 3px #2e7d32; font-weight: 800; }
 .player-paytable-scroll { max-width: 100%; overflow-x: auto; }
 .player-paytable { border-collapse: collapse; width: 100%; }
 .player-paytable th, .player-paytable td { border: 1px solid currentColor; padding: .35rem .6rem; text-align: center; }
@@ -79,7 +93,12 @@ export type PlayerRoundElements = {
     payoutMultiplier?: HTMLElement;
     gridContainer: HTMLElement;
     winsSection: HTMLElement;
+    winsHelp?: HTMLElement;
     winsList: HTMLElement;
+    // Added after the original Player DOM contract. Optional so a host that built its own elements
+    // object before the legend existed keeps rendering; createPlayerRoundElements always provides them.
+    symbolLegend?: HTMLElement;
+    symbolLegendItems?: HTMLElement;
     linesDetails?: HTMLDetailsElement;
     linesList: HTMLElement;
     features: HTMLElement;
@@ -137,11 +156,19 @@ export function createPlayerRoundElements(root: HTMLElement): PlayerRoundElement
     overview.append(gridScroll, totals);
 
     const features = create("dl", "player-features");
+    const symbolLegend = create("section", "player-symbol-legend");
+    symbolLegend.setAttribute("aria-label", "Symbol legend");
+    const symbolLegendHeading = create("h2");
+    symbolLegendHeading.textContent = "Symbols on screen";
+    const symbolLegendItems = create("div", "player-symbol-legend-items");
+    symbolLegend.append(symbolLegendHeading, symbolLegendItems);
     const winsSection = create("section", "player-wins");
     const winsHeading = create("h2");
     winsHeading.textContent = "Wins";
+    const winsHelp = create("p", "player-wins-help");
+    winsHelp.textContent = "Winning cells are outlined and tinted. Hover a win below to trace its cells.";
     const winsList = create("div", "player-wins-list");
-    winsSection.append(winsHeading, winsList);
+    winsSection.append(winsHeading, winsHelp, winsList);
 
     const linesDetails = create("details", "player-lines-details");
     const linesSummary = create("summary");
@@ -162,7 +189,7 @@ export function createPlayerRoundElements(root: HTMLElement): PlayerRoundElement
     paytableScroll.appendChild(paytable);
     paytableDetails.append(paytableSummary, paytableScroll);
 
-    root.append(betInfo, modeInfo, overview, features, winsSection, linesDetails, paytableDetails);
+    root.append(betInfo, modeInfo, overview, symbolLegend, features, winsSection, linesDetails, paytableDetails);
     return {
         totals,
         creditsRow: credits.row,
@@ -173,7 +200,10 @@ export function createPlayerRoundElements(root: HTMLElement): PlayerRoundElement
         payoutMultiplier: payoutMultiplier.value,
         gridContainer,
         winsSection,
+        winsHelp,
         winsList,
+        symbolLegend,
+        symbolLegendItems,
         linesDetails,
         linesList,
         features,
@@ -292,6 +322,9 @@ export function applyPersistentHighlights(gridEl: HTMLElement, highlights: WinHi
             if (cell) {
                 cell.style.backgroundColor = color;
                 cell.baseColor = color;
+                cell.dataset.winning = "true";
+                const label = highlight.label;
+                cell.title = cell.title === "" ? label : `${cell.title}; ${label}`;
             }
         });
     });
@@ -332,7 +365,9 @@ export function renderWinHighlightsList(listEl: HTMLElement, gridEl: HTMLElement
     highlights.forEach((highlight) => {
         if (highlight.kind === "line" && highlight.paylinePositions) {
             const paylinePositions = highlight.paylinePositions;
-            const winningPositions = new Set(highlight.positions.map(([reelIndex, rowIndex]) => cellId(reelIndex, rowIndex)));
+            const winningPositions = new Set(
+                highlight.positions.map(([reelIndex, rowIndex]) => cellId(reelIndex, rowIndex)),
+            );
             addHoverRow(
                 listEl,
                 highlight.label,
@@ -342,7 +377,9 @@ export function renderWinHighlightsList(listEl: HTMLElement, gridEl: HTMLElement
                         if (!cell) {
                             return;
                         }
-                        cell.style.backgroundColor = winningPositions.has(cellId(reelIndex, rowIndex)) ? "#00FF00" : "#999999";
+                        cell.style.backgroundColor = winningPositions.has(cellId(reelIndex, rowIndex))
+                            ? "#00FF00"
+                            : "#999999";
                     });
                 },
                 () => {
@@ -393,7 +430,7 @@ export function renderLineDefinitionsList(listEl: HTMLElement, gridEl: HTMLEleme
     lines.forEach((line) => {
         addHoverRow(
             listEl,
-            `Line ${line.lineId} · rows ${line.definition.join(" → ")}`,
+            `Line ${displayLineId(line.lineId)} · rows ${line.definition.map((row) => row + 1).join(" → ")}`,
             () => {
                 line.definition.forEach((rowIndex, reelIndex) => {
                     const cell = getCell(gridEl, reelIndex, rowIndex);
@@ -427,6 +464,56 @@ export function renderFeatureCounters(el: HTMLElement, counters: FeatureCounter[
     });
 }
 
+// A compact symbol legend gives a non-programmer the missing bridge between a letter grid and the
+// paytable: every symbol currently on screen, with its real artwork when the project has any and the
+// paying match counts from the round's own paytable. It is presentation only -- no symbol is invented.
+export function renderSymbolLegend(
+    sectionEl: HTMLElement,
+    itemsEl: HTMLElement,
+    reelsSymbols: string[][],
+    paytable: PaytableView | undefined,
+    artworkUrlForSymbol?: (symbolId: string) => string | undefined,
+): void {
+    clearChildren(itemsEl);
+    const doc = itemsEl.ownerDocument;
+    const seen = new Set<string>();
+    const rows = new Map((paytable?.rows ?? []).map((row) => [row.symbolId, row]));
+    reelsSymbols.flat().forEach((symbol) => {
+        if (seen.has(symbol)) return;
+        seen.add(symbol);
+        const item = doc.createElement("span");
+        item.className = "player-symbol-legend-item";
+        item.dataset.symbol = symbol;
+        const artworkUrl = artworkUrlForSymbol?.(symbol);
+        if (artworkUrl !== undefined) {
+            const image = doc.createElement("img");
+            image.className = "player-symbol-artwork";
+            image.src = artworkUrl;
+            image.alt = "";
+            image.width = 24;
+            image.height = 24;
+            image.style.objectFit = "contain";
+            item.appendChild(image);
+        }
+        const id = doc.createElement("span");
+        id.className = "player-symbol-legend-id";
+        id.textContent = symbol;
+        item.appendChild(id);
+        const row = rows.get(symbol);
+        if (row !== undefined) {
+            const pays = doc.createElement("span");
+            pays.className = "player-symbol-legend-pays";
+            pays.textContent = row.amounts
+                .map((amount, index) => amount === undefined ? undefined : formatPaytablePays(paytable!.multipliers[index]!, amount))
+                .filter((value): value is string => value !== undefined)
+                .join(" · ");
+            if (pays.textContent !== "") item.appendChild(pays);
+        }
+        itemsEl.appendChild(item);
+    });
+    sectionEl.hidden = seen.size === 0;
+}
+
 export function renderPaytable(headEl: HTMLElement, bodyEl: HTMLElement, paytable: PaytableView | undefined): void {
     clearChildren(headEl);
     clearChildren(bodyEl);
@@ -439,7 +526,7 @@ export function renderPaytable(headEl: HTMLElement, bodyEl: HTMLElement, paytabl
     headEl.appendChild(symbolHeader);
     paytable.multipliers.forEach((multiplier) => {
         const th = document.createElement("th");
-        th.textContent = String(multiplier);
+        th.textContent = formatPaytableMatchCount(multiplier);
         headEl.appendChild(th);
     });
 
@@ -506,7 +593,12 @@ function renderOptionsRow(
 // bet parameter (see cli/client/apiClient.ts and src/server/spin/SpinCommandHandling.ts) so the next
 // spin actually runs staked at that amount, not just displays it. A single available bet renders as
 // plain text -- nothing to choose between, so no button.
-export function renderBetInfo(el: HTMLElement, availableBets: number[], currentBet: number | undefined, onSelectBet: (bet: number) => void): void {
+export function renderBetInfo(
+    el: HTMLElement,
+    availableBets: number[],
+    currentBet: number | undefined,
+    onSelectBet: (bet: number) => void,
+): void {
     renderOptionsRow(
         el,
         "player-bet",
@@ -522,7 +614,12 @@ export function renderBetInfo(el: HTMLElement, availableBets: number[], currentB
 // session that never opted into bet-mode selection at all, so this renders nothing rather than an
 // invented single "base" choice). Clicking a mode other than the round's own current one calls
 // onSelectMode(modeId), wired the same way onSelectBet is -- see renderBetInfo above.
-export function renderModeInfo(el: HTMLElement, availableModeIds: string[], currentModeId: string | undefined, onSelectMode: (modeId: string) => void): void {
+export function renderModeInfo(
+    el: HTMLElement,
+    availableModeIds: string[],
+    currentModeId: string | undefined,
+    onSelectMode: (modeId: string) => void,
+): void {
     // A generic RoundRecord can name its implicit engine mode (for example "base") even when
     // its session never exposed a bet-mode selector. That diagnostic/default must not create a
     // player-facing affordance on Studio that a VideoSlot wire consumer cannot render.
@@ -568,7 +665,8 @@ export function renderPlayerRound(elements: PlayerRoundElements, view: PlayerRou
         view.formatPayoutMultiplier,
     );
     if (elements.totals !== undefined) {
-        const hasTotals = view.credits !== undefined || view.totalWin !== undefined || view.payoutMultiplier !== undefined;
+        const hasTotals =
+            view.credits !== undefined || view.totalWin !== undefined || view.payoutMultiplier !== undefined;
         elements.totals.hidden = !hasTotals;
         if (!hasTotals) {
             elements.totals.querySelectorAll("dd").forEach((value) => {
@@ -590,11 +688,19 @@ export function renderPlayerRound(elements: PlayerRoundElements, view: PlayerRou
     }
     renderReelsGrid(elements.gridContainer, view.reelsSymbols, view.artworkUrlForSymbol, view.visibleRowCoverage);
     applyPersistentHighlights(elements.gridContainer, view.highlights);
+    if (elements.symbolLegend !== undefined && elements.symbolLegendItems !== undefined) {
+        renderSymbolLegend(elements.symbolLegend, elements.symbolLegendItems, view.reelsSymbols, view.paytable, view.artworkUrlForSymbol);
+    }
     renderWinsSection(elements.winsSection, view.highlights.length > 0);
     renderWinHighlightsList(elements.winsList, elements.gridContainer, view.highlights);
     renderFeatureCounters(elements.features, view.featureCounters ?? []);
     renderBetInfo(elements.betInfo, view.availableBets ?? [], view.currentBet, view.onSelectBet ?? (() => undefined));
-    renderModeInfo(elements.modeInfo, view.availableModeIds ?? [], view.currentModeId, view.onSelectMode ?? (() => undefined));
+    renderModeInfo(
+        elements.modeInfo,
+        view.availableModeIds ?? [],
+        view.currentModeId,
+        view.onSelectMode ?? (() => undefined),
+    );
     renderLineDefinitionsList(elements.linesList, elements.gridContainer, view.lines ?? []);
     renderPaytable(elements.paytableHead, elements.paytableBody, view.paytable);
     if (elements.linesDetails !== undefined) {

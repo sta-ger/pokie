@@ -304,6 +304,8 @@ export type OutcomeLibraryGenerationRequest = {
     readonly onPostEnumeration?: () => void;
     readonly onPostEnumerationProgress?: (emittedOutcomes: bigint) => void;
     readonly recordValidator?: ValidationRule<RoundRecord>;
+    /** Safe only for a design whose every paid spin settles in one step; see the generator option. */
+    readonly reuseFeaturelessExactSession?: boolean;
     readonly now?: () => Date;
     readonly heapUsedLimitBytes?: number;
     readonly getHeapUsedBytes?: () => number;

@@ -66,9 +66,14 @@ export class FileStudioProjectRegistry implements StudioProjectRegistry {
     }
 
     public remove(location: string): Promise<void> {
+        return this.removeMany([location]);
+    }
+
+    public removeMany(locations: readonly string[]): Promise<void> {
         return this.enqueue(async () => {
+            const removed = new Set(locations);
             const entries = await this.read();
-            await this.write(entries.filter((existing) => existing.location !== location));
+            await this.write(entries.filter((existing) => !removed.has(existing.location)));
         });
     }
 

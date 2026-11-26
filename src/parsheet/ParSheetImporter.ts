@@ -33,16 +33,21 @@ import type {SheetGrid} from "./SheetGrid.js";
 import {cellToText} from "./mapping/sheetCellParsing.js";
 import {PAR_SHEET_MATH_SHEET_NAMES} from "./ParSheetMathSheetNames.js";
 
-// "Manifest"/"Symbols"/"Paytable" are the minimum needed to describe a playable blueprint at all
+// "Info"/"Symbols"/"Paytable" are the minimum needed to describe a playable blueprint at all
 // (mirrors GameBlueprint's own required fields); the rest are optional, matching reelStrips/
 // paylines/availableBets/winModel/mechanics/betModes being optional on GameBlueprint itself. "Meta"
 // is provenance-only — see ProvenanceSheetMapping.
 // Exported so ProjectTargetResolver's parWorkbook adapter (see project/internal/looksLikeParWorkbookFile.ts)
 // can recognize "this .xlsx has the required PAR sheets" against the exact same list this importer itself
 // requires, rather than maintaining a second copy that could silently drift out of sync.
-export const REQUIRED_SHEETS = ["Manifest", "Symbols", "Paytable"];
+// The first sheet used to be called "Manifest". It is now "Info" to match the glossary's user-facing
+// vocabulary; both names are still recognized so existing workbooks keep importing. New exports always
+// write "Info".
+export const INFO_SHEET_NAMES = ["Info", "Manifest"] as const;
+export const REQUIRED_SHEET_GROUPS: readonly (readonly string[])[] = [INFO_SHEET_NAMES, ["Symbols"], ["Paytable"]];
+export const REQUIRED_SHEETS = REQUIRED_SHEET_GROUPS.map((group) => group[0]);
 const OPTIONAL_SHEETS = ["ReelSequences", "ReelStrips", "Paylines", "AvailableBets", "WinModel", "Mechanics", "BetModes", "Meta"];
-const KNOWN_SHEETS = [...REQUIRED_SHEETS, ...OPTIONAL_SHEETS, ...PAR_SHEET_MATH_SHEET_NAMES];
+const KNOWN_SHEETS = [...REQUIRED_SHEET_GROUPS.flat(), ...OPTIONAL_SHEETS, ...PAR_SHEET_MATH_SHEET_NAMES];
 const BLUEPRINT_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/;
 type ConversionFact = NonNullable<ParSheetImportResult["conversionEvidence"]>["facts"][number];
 
@@ -115,8 +120,9 @@ export class ParSheetImporter implements ParSheetImporting {
                 });
             }
         }
-        for (const name of REQUIRED_SHEETS) {
-            if (!sheetsByName.has(name)) {
+        for (const group of REQUIRED_SHEET_GROUPS) {
+            if (!group.some((name) => sheetsByName.has(name))) {
+                const name = group[0];
                 facts.push({kind: "inferredOrDefaulted", code: "parsheet-missing-sheet", message: `Required sheet "${name}" is missing.`, details: {sheet: name}});
                 issues.push({
                     code: "parsheet-missing-sheet",
@@ -132,9 +138,10 @@ export class ParSheetImporter implements ParSheetImporting {
             return worksheet ? sheetToGrid(worksheet, name, issues, facts) : [];
         };
 
-        const manifestRows = gridFor("Manifest");
+        const manifestSheetName = INFO_SHEET_NAMES.find((name) => sheetsByName.has(name)) ?? "Info";
+        const manifestRows = gridFor(manifestSheetName);
         const manifestResult = this.manifestMapper.fromRows(manifestRows);
-        recordManifestDefaults(manifestRows, facts);
+        recordManifestDefaults(manifestRows, facts, manifestSheetName);
         const symbolsResult = this.symbolsMapper.fromRows(gridFor("Symbols"));
         const paytableResult = this.paytableMapper.fromRows(gridFor("Paytable"));
         issues.push(...manifestResult.issues, ...symbolsResult.issues, ...paytableResult.issues);
@@ -358,7 +365,7 @@ function conversionFactKindForIssue(issue: ValidationIssue): ConversionFact["kin
 // why that model is invalid).  Preserve each such materialization as an
 // explicit conversion fact: users must never have to infer a default from a
 // later generic validation error.
-function recordManifestDefaults(rows: SheetGrid, facts: ConversionFact[]): void {
+function recordManifestDefaults(rows: SheetGrid, facts: ConversionFact[], sheetName = "Info"): void {
     const [header, ...dataRows] = rows;
     const keyIndex = (header ?? []).findIndex((cell) => cellToText(cell)?.toLowerCase() === "key");
     const valueIndex = (header ?? []).findIndex((cell) => cellToText(cell)?.toLowerCase() === "value");
@@ -376,8 +383,8 @@ function recordManifestDefaults(rows: SheetGrid, facts: ConversionFact[]): void 
             facts.push({
                 kind: "inferredOrDefaulted",
                 code: "parsheet-manifest-defaulted-value",
-                message: `Sheet "Manifest" has no usable "${key}" value; imported Blueprint uses ${JSON.stringify(value)}.`,
-                details: {sheet: "Manifest", key, value},
+                message: `Sheet "${sheetName}" has no usable "${key}" value; imported Blueprint uses ${JSON.stringify(value)}.`,
+                details: {sheet: sheetName, key, value},
             });
         }
     }

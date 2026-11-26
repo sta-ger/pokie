@@ -106,7 +106,7 @@ export async function runChunkedSimulation(
                 jackpot = mergeJackpotStatisticsSnapshots(jackpot, chunkJackpot);
             }
 
-            const chunkRoundsPlayed = chunkAccumulator.getStatistics().rounds;
+            const chunkRoundsPlayed = chunkAccumulator.getRounds();
             roundsCompleted += chunkRoundsPlayed;
             const stoppedEarly = chunkRoundsPlayed < chunkRounds;
             roundsRemaining -= chunkRounds;

@@ -319,7 +319,25 @@ export class StudioOutcomeLibraryGenerateJobService {
             if (!stageChanged && !complete && now - lastPublishedAt < 250) return;
             lastPublishedAt = now;
             lastPublishedStage = progress.stage;
-            this.jobService?.progress(record.id, progress);
+            // The stream writer knows how many outcome records it has written but
+            // not how many the source will yield. The enumeration cursor already
+            // recorded the maximum number of outcomes this mode can emit. Use it
+            // as the writing-stage denominator so the exact-math card and the
+            // shared Project work card cannot report contradictory totals
+            // ("1,961 / 3,125" beside "1,961 / unknown"). Other stages keep their
+            // own honest indeterminate denominator until the phase supplies one.
+            const writingTotal = progress.total === "indeterminate"
+                && progress.current !== "indeterminate"
+                && progress.message?.startsWith("Writing Outcome mode ") === true
+                ? record.progress?.progressTotal
+                : undefined;
+            const measuredWritingTotal = writingTotal !== undefined
+                && (/^[0-9]+$/).test(writingTotal)
+                && (/^[0-9]+$/).test(String(progress.current))
+                && BigInt(String(progress.current)) <= BigInt(writingTotal)
+                ? writingTotal
+                : undefined;
+            this.jobService?.progress(record.id, measuredWritingTotal === undefined ? progress : {...progress, total: measuredWritingTotal});
         };
         const result = await this.generateService.generate(record.projectRoot, {
             ...record.request,

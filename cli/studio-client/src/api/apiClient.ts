@@ -62,6 +62,7 @@ import type {
     StudioStakeEngineExportValidateView,
     StudioStakeEngineExportView,
 } from "./types.js";
+import {toSimulationConvergenceRequest} from "../domain/simulationConvergence.js";
 
 export async function listProjectJobs(fetchImpl: FetchLike, signal?: AbortSignal, expectedProjectRoot?: string): Promise<StudioJobView[]> {
     const response = await fetchImpl("/api/project/jobs", {cache: "no-store", ...(signal === undefined ? {} : {signal})});
@@ -103,6 +104,13 @@ export async function recoverHomeSourceJob(fetchImpl: FetchLike, id: string, sou
     return await response.json() as StudioJobView;
 }
 
+/** Forget a finished Home job. The server refuses active work; files and outputs are not deleted. */
+export async function dismissHomeSourceJob(fetchImpl: FetchLike, id: string, sourcePath?: string, signal?: AbortSignal): Promise<void> {
+    const query = sourcePath === undefined ? "" : `?sourcePath=${encodeURIComponent(sourcePath)}`;
+    const response = await fetchImpl(`/api/home/jobs/${encodeURIComponent(id)}/dismiss${query}`, {method: "POST", signal});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to dismiss Home Studio job"));
+}
+
 export async function getProjectJob(fetchImpl: FetchLike, id: string, signal?: AbortSignal): Promise<StudioJobView> {
     const response = await fetchImpl(`/api/project/jobs/${encodeURIComponent(id)}`, {cache: "no-store", signal});
     if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to load Studio job"));
@@ -142,6 +150,21 @@ export class ProjectTransitionConflict extends Error {
         super(message);
         this.name = "ProjectTransitionConflict";
         this.operations = operations;
+    }
+}
+
+/**
+ * The same source is already being opened. This is an ordinary, recoverable state after a restart
+ * (the prior opening may still be finishing) -- not a generic open failure. Callers can point the
+ * author at the existing active job instead of implying that Open is broken.
+ */
+export class ProjectOpenInProgressError extends Error {
+    public readonly jobId: string;
+
+    public constructor(jobId: string, message: string) {
+        super(message);
+        this.name = "ProjectOpenInProgressError";
+        this.jobId = jobId;
     }
 }
 
@@ -306,6 +329,18 @@ export async function removeProjectRegistryEntry(fetchImpl: FetchLike, location:
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to remove the project from the registry"));
     }
+}
+
+// Removes every registry entry whose own path is missing. Registry-only: project files stay on disk.
+// The server performs one bulk registry write, so this is safe even when a machine accumulated
+// thousands of stale test paths over time.
+export async function removeMissingProjectRegistryEntries(fetchImpl: FetchLike): Promise<number> {
+    const response = await fetchImpl("/api/home/projects/registry/remove-missing", {method: "POST"});
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to remove missing projects"));
+    }
+    const body = await response.json() as {removed?: unknown};
+    return typeof body.removed === "number" && Number.isSafeInteger(body.removed) ? body.removed : 0;
 }
 
 // Repairs a missing entry after a project was moved outside Studio.  This is registry-only: the server
@@ -566,14 +601,20 @@ export async function openProject(fetchImpl: FetchLike, projectRoot: string, con
         body: JSON.stringify({projectRoot, ...(confirmActiveJobs ? {confirmActiveJobs: true} : {})}),
     });
     if (!response.ok) {
-        let body: {error?: string; detail?: string; code?: string; operations?: unknown} = {};
+        let body: {error?: string; detail?: string; code?: string; operations?: unknown; activeJobId?: unknown; reattached?: unknown} = {};
         try {
-            body = (await response.json()) as {error?: string; detail?: string};
+            body = (await response.json()) as typeof body;
         } catch {
             // Falls through to the generic fallback message below.
         }
         if (response.status === 409 && body.code === "active-jobs-require-confirmation") {
             throw new ProjectTransitionConflict(body.error ?? "Active Studio jobs require confirmation.", Array.isArray(body.operations) ? body.operations.filter((operation): operation is string => typeof operation === "string") : []);
+        }
+        if (response.status === 409 && typeof body.activeJobId === "string") {
+            throw new ProjectOpenInProgressError(
+                body.activeJobId,
+                body.error ?? "This project is already opening. Wait for the current opening to finish, then choose Open again.",
+            );
         }
         throw new ProjectOpenError(body.error ?? `Failed to open project (HTTP ${response.status}).`, body.detail);
     }
@@ -732,6 +773,9 @@ export async function startSimulation(
     modeName?: string,
     convergence?: StudioSimulationJobView["convergence"],
 ): Promise<StartSimulationResult> {
+    // A report's saved convergence also carries result-only fields. The server accepts only the
+    // policy fields, so narrow here as the single outbound boundary rather than every caller.
+    const convergenceRequest = toSimulationConvergenceRequest(convergence);
     const response = await fetchImpl("/api/project/simulations", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
@@ -740,7 +784,7 @@ export async function startSimulation(
             ...(seed === undefined ? {} : {seed}),
             ...(workers === undefined ? {} : {workers}),
             ...(modeName === undefined ? {} : {modeName}),
-            ...(convergence === undefined ? {} : {convergence}),
+            ...(convergenceRequest === undefined ? {} : {convergence: convergenceRequest}),
         }),
     });
 
@@ -874,6 +918,13 @@ export async function listReplays(fetchImpl: FetchLike): Promise<StudioReplayLis
 // the server's Content-Disposition header does the rest.
 export function buildReplayDownloadUrl(id: string): string {
     return `/api/project/replays/${encodeURIComponent(id)}/download`;
+}
+
+// A completed single-file build (PAR workbook, game design JSON, WASM module) is downloadable directly
+// from its own durable job id; the server resolves the job's published output and never accepts a
+// caller-supplied filesystem path.
+export function buildArtifactBuildDownloadUrl(id: string): string {
+    return `/api/project/build/build/${encodeURIComponent(id)}/download`;
 }
 
 export type InspectReplayArtifactResult = {

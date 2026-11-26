@@ -187,7 +187,7 @@ describe("ProjectTargetResolver", () => {
             type: "parWorkbook",
             rootPath: workbookFile,
             capabilities: ["parWorkbook.exchange", "wasm.export"],
-            provenance: expect.stringContaining("Manifest"),
+            provenance: expect.stringContaining("Info"),
         });
         expect(project?.configurationProvenance).toMatchObject({
             configurationHash: expect.stringMatching(/^sha256:/),

@@ -2,12 +2,14 @@ import {Alert, Button, Group, NumberInput, Select, Table, Text} from "@mantine/c
 import {useState} from "react";
 import type {ValidationIssue} from "../../api/types";
 import {asStringList} from "../../domain/asStringList";
-import {addFreeGames, readFreeGames, removeFreeGames, removeFreeGamesAward, setFreeGamesAward, setFreeGamesScatterSymbol} from "../../domain/blueprintFormOps";
+import {MAX_FREE_GAMES_CAP} from "../../../../../src/generated/GameBlueprint.js";
+import {addFreeGames, readFreeGames, removeFreeGames, removeFreeGamesAward, setFreeGamesAward, setFreeGamesMaxFreeGames, setFreeGamesScatterSymbol} from "../../domain/blueprintFormOps";
 import type {BlueprintMutate} from "../../hooks/useBlueprintEditor";
 import {IssueList} from "../common/IssueList";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 import {RowActions} from "../common/RowActions";
+import {ScatterFreeGamesWizard} from "./ScatterFreeGamesWizard";
 
 // The Mechanics section's own field editor -- scatter-triggered free games, the one mechanic
 // GameBlueprint's own schema supports today (GameBlueprintMechanics.freeGames, see
@@ -19,15 +21,19 @@ export function FreeGamesFieldset({
     blueprint,
     mutate,
     issues = [],
+    onRequestSymbols,
 }: {
     blueprint: Record<string, unknown>;
     mutate: BlueprintMutate;
     issues?: ValidationIssue[];
+    /** Optional: jump to the Symbols editor when free games need a scatter symbol. */
+    onRequestSymbols?: () => void;
 }) {
     const freeGames = readFreeGames(blueprint);
     const scatters = asStringList(blueprint.scatters);
     const [newMatchCount, setNewMatchCount] = useState<number | string>("");
     const [newAwarded, setNewAwarded] = useState<number | string>("");
+    const [wizardOpen, setWizardOpen] = useState(false);
     const errors = issues.filter((issue) => issue.severity === "error");
     const warnings = issues.filter((issue) => issue.severity !== "error");
 
@@ -35,14 +41,32 @@ export function FreeGamesFieldset({
     const scatterHint = (
         <Alert color="yellow" variant="light" title="Add a scatter symbol first" mb="xs">
             <Text size="sm">
-                Free games need a scatter symbol to trigger. Add one in the Symbols section, then return here.
+                Free games need a scatter symbol to trigger. Add both in one guided step, or edit Symbols and Reels yourself.
             </Text>
+            <Group mt={6} gap="xs">
+                <Button size="xs" onClick={() => setWizardOpen(true)}>
+                    Set up scatter + free games
+                </Button>
+                {onRequestSymbols !== undefined && (
+                    <Button variant="subtle" size="xs" onClick={onRequestSymbols}>
+                        Open Symbols
+                    </Button>
+                )}
+            </Group>
         </Alert>
     );
 
     if (freeGames === undefined) {
         return (
             <PageSection legend="Free games">
+                {wizardOpen && (
+                    <ScatterFreeGamesWizard
+                        blueprint={blueprint}
+                        mutate={mutate}
+                        opened
+                        onClose={() => setWizardOpen(false)}
+                    />
+                )}
                 {hasScatter ? (
                     <Text size="sm" c="dimmed" mb="xs">
                         No scatter-triggered free games configured.
@@ -67,10 +91,47 @@ export function FreeGamesFieldset({
 
     return (
         <PageSection legend="Free games">
+            {wizardOpen && (
+                <ScatterFreeGamesWizard
+                    blueprint={blueprint}
+                    mutate={mutate}
+                    opened
+                    onClose={() => setWizardOpen(false)}
+                />
+            )}
             <IssueList title="Errors" issues={errors} />
             <IssueList title="Warnings" issues={warnings} />
             {!hasScatter && scatterHint}
-            <Text>Retrigger policy: additive.</Text>
+            <Text>Free games can retrigger; awards add together.</Text>
+            <Text size="xs" c="dimmed" mb="sm">
+                Each row is an exact scatter count. Only the counts listed below trigger free games; any unlisted count awards 0.
+            </Text>
+            <NumberInput
+                label="Maximum free games per feature (optional)"
+                description="Caps the trigger award and every retrigger. Leave blank for uncapped additive retriggers."
+                aria-label="Maximum free games per feature"
+                min={1}
+                max={MAX_FREE_GAMES_CAP}
+                allowDecimal={false}
+                value={freeGames.maxFreeGames ?? ""}
+                onChange={(value) => mutate((b) => setFreeGamesMaxFreeGames(b, typeof value === "number" && Number.isSafeInteger(value) && value >= 1 ? value : undefined))}
+                mb="sm"
+                style={{maxWidth: 320}}
+            />
+            {freeGames.maxFreeGames === undefined ? (
+                <Alert color="yellow" variant="light" title="Additive retriggers have no hard cap" mb="sm">
+                    <Text size="xs">
+                        Exact total RTP is an expected value. The project&apos;s feature check will warn that not every possible round is proven to end.
+                        Set a maximum free-games cap to make feature termination provable.
+                    </Text>
+                </Alert>
+            ) : (
+                <Alert color="green" variant="light" title={`Capped at ${freeGames.maxFreeGames} free games per feature`} mb="sm">
+                    <Text size="xs">
+                        The cap covers the trigger award and every retrigger, so the feature cannot exceed it. Exact total RTP remains finite even when the retrigger factor is 1 or higher.
+                    </Text>
+                </Alert>
+            )}
             <Select
                 label="Scatter symbol"
                 placeholder="Scatter symbol"
@@ -83,7 +144,7 @@ export function FreeGamesFieldset({
                 <Table>
                     <Table.Thead>
                         <Table.Tr>
-                            <Table.Th>Match count</Table.Th>
+                            <Table.Th>Scatters on screen (exact)</Table.Th>
                             <Table.Th>Free games awarded</Table.Th>
                             <Table.Th />
                         </Table.Tr>
@@ -94,7 +155,7 @@ export function FreeGamesFieldset({
                                 <Table.Td>{count}</Table.Td>
                                 <Table.Td>
                                     <NumberInput
-                                        aria-label={`${count}x free games awarded`}
+                                        aria-label={`${count} scatters free games awarded`}
                                         defaultValue={awarded}
                                         onBlur={(event) => {
                                             const value = Number(event.currentTarget.value);
@@ -106,7 +167,7 @@ export function FreeGamesFieldset({
                                 </Table.Td>
                                 <Table.Td>
                                     <RowActions
-                                        itemLabel={`${count}x free games award`}
+                                        itemLabel={`${count} scatters free games award`}
                                         onRemove={() => mutate((b) => removeFreeGamesAward(b, Number(count)))}
                                     />
                                 </Table.Td>

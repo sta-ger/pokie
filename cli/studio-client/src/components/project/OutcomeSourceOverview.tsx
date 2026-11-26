@@ -96,7 +96,7 @@ export function OutcomeSourceOverview({header, onRoundRecorded}: {header: Outcom
                             <Table.Th>Mode</Table.Th>
                             <Table.Th>RTP</Table.Th>
                             <Table.Th>Hit frequency</Table.Th>
-                            <Table.Th>Volatility (std. deviation)</Table.Th>
+                            <Table.Th>Volatility (std. deviation, bet units)</Table.Th>
                             <Table.Th>Max win (× bet)</Table.Th>
                             {canSample && <Table.Th></Table.Th>}
                         </Table.Tr>

@@ -294,7 +294,7 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                     "targetRtp",
                 ]),
             );
-            checkKeys(model.mechanics?.freeGames, "mechanics.freeGames", ["scatterSymbol", "awardsByCount", "retriggerPolicy"]);
+            checkKeys(model.mechanics?.freeGames, "mechanics.freeGames", ["scatterSymbol", "awardsByCount", "retriggerPolicy", "maxFreeGames"]);
             if (descriptor.unsupported !== undefined) {
                 if (!Array.isArray(descriptor.unsupported)) throw new Error("unsupported: expected diagnostic array");
                 for (const boundary of descriptor.unsupported as PackageExtractionDiagnostic[]) {

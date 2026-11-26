@@ -27,12 +27,20 @@ export type GameBlueprintWinModel =
     | {type: "ways"}
     | {type: "clusters"; minimumClusterSize?: number};
 
+// A cap of 1,000 is deliberately far above normal authored awards while keeping the exact
+// capped-RTP derivation bounded in time and memory.
+export const MAX_FREE_GAMES_CAP = 1_000;
+
 // One scatter-triggered free games award. "scatterSymbol" must be one of blueprint.scatters.
 // "awardsByCount" mirrors paytable's shape: matchCount (as a string key) -> free games awarded.
+// "maxFreeGames", when present, caps the total free games in one feature (initial award plus every
+// additive retrigger). It makes feature termination provable and keeps a supercritical retrigger
+// series finite.
 export type GameBlueprintFreeGames = {
     scatterSymbol: string;
     awardsByCount: Record<string, number>;
     retriggerPolicy?: "additive";
+    maxFreeGames?: number;
 };
 
 export type GameBlueprintHoldAndWin = {

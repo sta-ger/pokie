@@ -2,8 +2,8 @@ import {Table} from "@mantine/core";
 import type {RoundRecordDisplayView} from "../../domain/interpret/Replay";
 
 // The shared round-level "what game, what was staked, what it paid out" summary -- game/pokie
-// version/config hash provenance, bet mode, and stake, straight from the round's own
-// RoundRecordDisplayView. The canonical Player directly below owns the player-facing balance and
+// version, bet mode, and stake, straight from the round's own RoundRecordDisplayView. The technical
+// configuration hash stays in the inspector's Advanced details, not in this player-facing summary. The canonical Player directly below owns the player-facing balance and
 // total-win/multiple output, so every round-inspection surface keeps those values on the same path as
 // its screen and individual wins.
 export function RoundDetailsTable({
@@ -26,12 +26,6 @@ export function RoundDetailsTable({
                     <Table.Th>Pokie version</Table.Th>
                     <Table.Td>{artifact.origin.pokieVersion}</Table.Td>
                 </Table.Tr>
-                {artifact.origin.configHash && (
-                    <Table.Tr>
-                        <Table.Th>Config hash</Table.Th>
-                        <Table.Td style={{overflowWrap: "anywhere"}}>{artifact.origin.configHash}</Table.Td>
-                    </Table.Tr>
-                )}
                 <Table.Tr>
                     <Table.Th>Bet mode</Table.Th>
                     <Table.Td>{artifact.betMode}</Table.Td>

@@ -1,5 +1,7 @@
 import {analyzeBlueprintMath, DEFAULT_BLUEPRINT_MATH_OUTCOME_CAP} from "../weightedoutcome/BlueprintMathAnalysis.js";
 import type {WeightedOutcomeLibraryAnalysis} from "../weightedoutcome/WeightedOutcomeLibraryAnalysis.js";
+import type {WeightedOutcomeLibraryFeatureBreakdown} from "../weightedoutcome/WeightedOutcomeLibraryFeatureBreakdown.js";
+import type {FreeGamesExactRtp} from "../weightedoutcome/computeFreeGamesExactRtp.js";
 import {displayLineNumber, type WeightedOutcomeWinAnalysis} from "../weightedoutcome/WeightedOutcomeWinAnalysis.js";
 import {PAR_SHEET_MATH_SHEET_NAMES} from "./ParSheetMathSheetNames.js";
 import type {SheetGrid} from "./SheetGrid.js";
@@ -9,6 +11,10 @@ export type ParSheetMathAnalysis =
           readonly status: "ok";
           readonly analysis: WeightedOutcomeLibraryAnalysis;
           readonly wins: WeightedOutcomeWinAnalysis;
+          /** Feature events recorded by the enumerated paid-spin records. See BlueprintMathAnalysisResult. */
+          readonly featureBreakdown: WeightedOutcomeLibraryFeatureBreakdown;
+          /** Exact total RTP derived from additive free-game triggers, when available. */
+          readonly freeGamesRtp: FreeGamesExactRtp;
           readonly outcomeCount: number;
           readonly totalWeight: number;
           readonly stake: number;
@@ -47,17 +53,28 @@ export async function computeParSheetMathAnalysis(
     if (result.status === "unavailable") {
         return {status: "unavailable", reason: result.reason, maxOutcomes};
     }
+    const featureEvents = result.featureBreakdown.featureEvents;
+    const freeGamesRtp = result.freeGamesRtp;
+    const freeGamesReason = freeGamesRtp.status === "available" ? "" : freeGamesRtp.reason;
+    let featureNote = "";
+    if (featureEvents.length > 0 && freeGamesRtp.status === "available") {
+        featureNote = ` Total RTP includes additive free-game retriggers (paid-spin trigger distribution): ${(freeGamesRtp.totalRtp * 100).toFixed(4)}% total = ${(freeGamesRtp.baseRtp * 100).toFixed(4)}% paid + ${(freeGamesRtp.featureRtp * 100).toFixed(4)}% free games. Hit frequency, volatility, max win, payout distribution, win events and contributions are paid-spin figures; later free-game wins are not included in those tables. The Max win row is the paid-spin maximum. ${freeGamesRtp.maxFreeGames === undefined ? "Without a free-games cap, the theoretical whole-round maximum is unbounded even when expected RTP is finite." : `The whole-round maximum row is an upper bound: the paid-spin maximum plus the ${freeGamesRtp.maxFreeGames}-free-game cap, each at the paid-spin maximum.`} Free-games awards are exact scatter counts: a count that is not listed awards 0 free games.`;
+    } else if (featureEvents.length > 0) {
+        featureNote = ` Paid-spin only: feature payouts (${featureEvents.map((entry) => entry.key).join(", ")}) are not included in hit frequency, volatility, max win, payout distribution, win events or contributions; ${freeGamesReason}`;
+    }
     return {
         status: "ok",
         analysis: result.analysis,
         wins: result.wins,
+        featureBreakdown: result.featureBreakdown,
+        freeGamesRtp,
         outcomeCount: result.outcomeCount,
         totalWeight: result.totalWeight,
         stake: result.stake,
         generatedAt: result.generatedAt,
         // The draft preview's note says "nothing was saved" because it deliberately writes no project.
         // This workbook, by contrast, is the saved artifact, so use a PAR-specific note instead.
-        note: `Exact enumeration of ${result.outcomeCount.toLocaleString("en-US")} outcomes.`,
+        note: `Exact enumeration of ${result.outcomeCount.toLocaleString("en-US")} outcomes.${featureNote}`,
     };
 }
 
@@ -73,21 +90,48 @@ export function buildParSheetMathSheets(math: ParSheetMathAnalysis): ParSheetMat
         }];
     }
     const {analysis, wins} = math;
+    const featureEvents = math.featureBreakdown.featureEvents;
+    const featureScope = featureEvents.length > 0;
+    const totalRtp = math.freeGamesRtp.status === "available" ? math.freeGamesRtp : undefined;
+    let wholeRoundMaxRows: SheetGrid = [];
+    if (totalRtp !== undefined) {
+        if (totalRtp.maxFreeGames === undefined) {
+            wholeRoundMaxRows = [["Max whole-round win", "Unbounded without a cap", "retriggers can chain indefinitely"]];
+        } else {
+            wholeRoundMaxRows = [[
+                "Max whole-round win (upper bound, capped)",
+                round((analysis.maxWin / math.stake) * (1 + totalRtp.maxFreeGames)),
+                "× bet; paid-spin maximum plus the cap in free spins",
+            ]];
+        }
+    }
     const summary: SheetGrid = [
         ["Metric", "Value", "Unit"],
-        ["RTP", round(analysis.rtp * 100), "%"],
-        ["Hit frequency", round(analysis.hitFrequency * 100), "%"],
-        ["Volatility (std. dev.)", round(analysis.standardDeviation), ""],
-        ["Max win", round(analysis.maxWin / math.stake), "× bet"],
-        ["Outcome count", math.outcomeCount, ""],
+        ["Scope", featureScope ? "Paid-spin metrics are labelled; Total RTP is the only whole-game figure" : "Whole game (no later feature payouts recorded)", ""],
+        [featureScope ? "RTP (paid spins)" : "RTP", round(analysis.rtp * 100), "%"],
+        ...(totalRtp === undefined ? [] : [
+            ["Free-games RTP", round(totalRtp.featureRtp * 100), "%"],
+            ["Total RTP (paid + free games)", round(totalRtp.totalRtp * 100), "%"],
+            ["Free-games model", totalRtp.maxFreeGames === undefined ? "Additive retrigger" : "Additive retrigger, capped", `trigger ${round(totalRtp.triggerProbability * 100, 4)}%; award ${round(totalRtp.expectedAward, 4)}; ${round(totalRtp.expectedFreeSpins, 4)} free spins per trigger`],
+            ...(totalRtp.maxFreeGames === undefined ? [] : [["Free-games cap", totalRtp.maxFreeGames, "total free games per feature (initial award + retriggers)"]]),
+            ["Free-games award counts", "Exact scatter counts", "A scatter count that is not listed awards 0 free games"],
+        ]),
+        ...(featureScope && totalRtp === undefined ? [["Feature payouts", "Not included", featureEvents.map((entry) => entry.key).join(", ")]] : []),
+        [featureScope ? "Hit frequency (paid spins)" : "Hit frequency", round(analysis.hitFrequency * 100), "%"],
+        [featureScope ? "Volatility (std. deviation, bet units, paid spins)" : "Volatility (std. deviation, bet units)", round(analysis.standardDeviation), ""],
+        [featureScope ? "Max win (paid spins)" : "Max win", round(analysis.maxWin / math.stake), "× bet"],
+        ...wholeRoundMaxRows,
+        [featureScope ? "Outcome count (paid spins)" : "Outcome count", math.outcomeCount, ""],
         ["Total weight", math.totalWeight, ""],
         ["Stake", math.stake, ""],
         ["Strategy", "exact", ""],
+        ["Table order", "Win events: probability, highest first; contributions: RTP contribution, highest first; ties by line or symbol", ""],
+        ["Contribution tables", "Line and symbol contributions overlap; do not add them together. Each table is its own view of the same wins.", ""],
         ["Generated at", math.generatedAt, ""],
         ...(math.note === undefined ? [] : [["Note", math.note, ""]]),
     ];
     const payoutDistribution: SheetGrid = [
-        ["Payout (× bet)", "Probability (%)", "1 in"],
+        [featureScope ? "Payout (× bet; paid spins only)" : "Payout (× bet)", "Probability (%)", "1 in"],
         ...analysis.payoutDistribution.map((bucket) => [
             round(bucket.payoutMultiplier),
             round(bucket.probability * 100),
@@ -95,7 +139,7 @@ export function buildParSheetMathSheets(math: ParSheetMathAnalysis): ParSheetMat
         ]),
     ];
     const winEvents: SheetGrid = [
-        ["Kind", "Event", "Win type", "Match count", "Probability (%)", "1 in", "RTP contribution (%)", "Outcomes"],
+        [featureScope ? "Kind (paid spins)" : "Kind", "Event", "Win type", "Match count", "Probability (%)", "1 in", "RTP contribution (%)", "Outcomes"],
         ...wins.events.entries.map((event) => [
             event.kind,
             event.label,
@@ -108,7 +152,7 @@ export function buildParSheetMathSheets(math: ParSheetMathAnalysis): ParSheetMat
         ]),
     ];
     const lineContributions: SheetGrid = [
-        ["Line", "Label", "RTP contribution (%)", "Hit frequency (%)", "Outcomes"],
+        [featureScope ? "Line (paid spins)" : "Line", "Label", "RTP contribution (%)", "Hit frequency (%)", "Outcomes"],
         ...wins.line.entries.map((entry) => [
             displayLineNumber(entry.key.split(":")[1] ?? entry.key),
             entry.label,
@@ -118,7 +162,7 @@ export function buildParSheetMathSheets(math: ParSheetMathAnalysis): ParSheetMat
         ]),
     ];
     const symbolContributions: SheetGrid = [
-        ["Symbol", "Label", "RTP contribution (%)", "Hit frequency (%)", "Outcomes"],
+        [featureScope ? "Symbol (paid spins)" : "Symbol", "Label", "RTP contribution (%)", "Hit frequency (%)", "Outcomes"],
         ...wins.symbol.entries.map((entry) => [
             entry.symbolId ?? entry.key.replace(/^symbol:/, ""),
             entry.label,

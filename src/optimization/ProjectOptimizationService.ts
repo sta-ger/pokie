@@ -53,6 +53,24 @@ import {
     sourceInventory,
 } from "./internal/optimizationData.js";
 
+function hasAuthoredFeatures(model: unknown): boolean {
+    const mechanics = (model as {mechanics?: Record<string, unknown>} | undefined)?.mechanics;
+    return mechanics !== undefined && Object.values(mechanics).some((value) => value !== undefined);
+}
+
+function assertScopeSupportsTargets(request: OptimizationRequest, model: unknown): void {
+    if (request.policy.scope !== "logical-round" || !hasAuthoredFeatures(model)) return;
+    if (request.targets.some((target) => target.metric !== "rtp")) throw new OptimizationUnsupportedError(
+        "Exact whole-round search supports RTP only. Use paid-entry scope for other exact metrics, or use Simulation for whole-round estimates.",
+    );
+}
+
+function describeOptimizationScope(scope: OptimizationPolicy["scope"]): string {
+    if (scope === "logical-round") return "whole paid rounds (including configured features)";
+    if (scope === "native-outcomes") return "native outcomes";
+    return "paid spins";
+}
+
 export const OPTIMIZATION_EXIT_CODES = {
     success: 0,
     attained: 0,
@@ -130,12 +148,15 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
         const discovery = {adapter: `${project.type}:v1`, writable: adapter.writable};
         try {
             checkPolicyPaths(adapter.model, validated.policy, adapter.writable);
+            assertScopeSupportsTargets(validated, adapter.model);
             preflightConstraints(adapter.model, validated.policy);
+            const scopeLabel = describeOptimizationScope(validated.policy.scope);
+            const metrics = [...new Set(validated.targets.map((target) => target.metric === "rtp" && validated.policy.scope === "logical-round" ? "total RTP" : target.metric))].join(", ");
             return {
                 supported: true,
                 reason: validated.policy.strategy === "seeded-search-v1"
-                    ? "Supported sampled search. Studio evaluates a repeatable sample and uses a held-out confidence check to decide whether the target is met."
-                    : "Supported exact search. Studio evaluates each candidate value you listed and reports its exact RTP; the target applies only to the scope you submitted.",
+                    ? `Supported sampled search over ${scopeLabel}. Studio evaluates a repeatable sample and uses a held-out confidence check to decide whether the target is met.`
+                    : `Supported exact search over ${scopeLabel}. Studio evaluates each candidate value you listed and reports exact ${metrics}; the target applies only to the scope you submitted.`,
                 ...discovery,
             };
         } catch (error) {
@@ -176,6 +197,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
             } catch (error) {
                 throw new OptimizationInputError([{path: "policy", message: (error as Error).message}]);
             }
+            assertScopeSupportsTargets(request, adapter.model);
             preflightConstraints(adapter.model, request.policy);
             const executableRevision = project.type === "tsPackage" && request.policy.strategy === "exact-finite-v1" ? await packageExecutableRevision(project.rootPath) : undefined;
             const domainSize = request.policy.tunables.reduce(
@@ -532,6 +554,10 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
             const name = candidate.type === "tsPackage" ? path.relative(candidate.sourcePath, item.file).split(path.sep).join("/") : path.basename(item.file);
             committedInventory[name] = digest(item.after);
         }
+        // The source bytes above are exactly what Apply is about to replace. Let the caller persist or
+        // export them before the mutation; a rejection here leaves the authored source untouched.
+        await options.onBeforeApply?.(files);
+        assertActive();
         applyAuthoredFiles(files, assertCurrent, path.dirname(candidate.sourcePath), stages, () => {
             assertActive();
             if (projectRevision(source) !== jsonHash(committedInventory) || projectRevision({type: candidate.type, rootPath: candidate.path}) !== candidate.revision) {

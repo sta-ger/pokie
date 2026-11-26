@@ -24,12 +24,28 @@ export function describeDesignCompatibility(current: string | undefined, compari
     return current === comparison ? "same" : "different";
 }
 
+/**
+ * Human label for a saved report's relationship to the currently loaded design. The raw optimizer
+ * hash is useful for exact replay/audit, but it is not a useful scan target in a run list; this keeps
+ * "this is the current design" vs "this is an earlier design" visible without asking the reader to
+ * compare hex strings.
+ */
+export function describeRunDesignState(
+    entryRevision: string | undefined,
+    currentRevision: string | undefined,
+): "current design" | "earlier design" | "design version not recorded" {
+    if (entryRevision === undefined || currentRevision === undefined) return "design version not recorded";
+    return entryRevision === currentRevision ? "current design" : "earlier design";
+}
+
 /** Enough identity to pick the intended comparison target: design, round count and seed all matter. */
 export function describeReportListEntry(entry: StudioSimulationReportListEntry): string {
     const rounds = entry.actualRounds ?? entry.requestedRounds;
     const seed = entry.seed === undefined || entry.seed.trim().length === 0 ? "no seed" : entry.seed;
     const mode = entry.modeName === undefined ? "" : ` — mode ${entry.modeName}`;
     const revision = shortSourceRevision(entry.sourceRevision);
-    const design = revision === undefined ? " — design revision unavailable" : ` — design ${revision}`;
-    return `${entry.game.id} v${entry.game.version} — ${rounds} rounds — seed ${seed}${mode}${design} — ${new Date(entry.startedAt).toLocaleString()}`;
+    // A run list should stay scannable. When the source snapshot was not recorded, saying so in
+    // every row is noise; the detail view still reports that the version is unknown.
+    const design = revision === undefined ? "" : ` — design ${revision}`;
+    return `${entry.game.id} v${entry.game.version} — ${rounds} paid rounds / ${entry.requestedRounds} spins — seed ${seed}${mode}${design} — ${new Date(entry.startedAt).toLocaleString()}`;
 }

@@ -1,4 +1,9 @@
-import {classifyPathActionErrorReason, describePathActionError} from "../../../cli/studio-client/src/domain/pathActionError.js";
+import {
+    classifyPathActionErrorReason,
+    describeExistingProjectOpenError,
+    describeManagedSaveFailure,
+    describePathActionError,
+} from "../../../cli/studio-client/src/domain/pathActionError.js";
 
 describe("describePathActionError", () => {
     it("turns a rejected managed-project default into an actionable destination message", () => {
@@ -10,11 +15,19 @@ describe("describePathActionError", () => {
         );
     });
 
-    it("turns an exhausted managed-project name into a name-specific message", () => {
+    it("turns an existing managed Game id into a name-specific message", () => {
+        const raw = 'A POKIE project with Game id "starter-slot" already exists at "/home/valera/POKIE Projects/starter-slot/blueprint.json". Choose a different Game id, or open the existing project instead.';
+        expect(classifyPathActionErrorReason(raw)).toBe("name");
+        expect(describePathActionError("Your game", raw)).toBe(
+            "That Game id is already taken. Choose a different Game id, or open the existing project.",
+        );
+    });
+
+    it("still recognizes the older exhausted managed-project wording", () => {
         const raw = 'No free managed project name for "starter-slot" after 1000 attempts. Choose a different Game id.';
         expect(classifyPathActionErrorReason(raw)).toBe("name");
         expect(describePathActionError("Your game", raw)).toBe(
-            "Your game name is already taken. Choose a different Game id; Studio could not find a free project folder after 1000 attempts.",
+            "That Game id is already taken. Choose a different Game id, or open the existing project.",
         );
     });
 
@@ -28,5 +41,33 @@ describe("describePathActionError", () => {
         expect(classifyPathActionErrorReason("ENOENT: no such file or directory")).toBe("absent");
         expect(classifyPathActionErrorReason("EACCES: permission denied")).toBe("permission");
         expect(classifyPathActionErrorReason("Failed to fetch")).toBe("network");
+    });
+
+    it("turns a legacy project's ENOTDIR into recovery copy instead of raw filesystem text", () => {
+        const raw =
+            'Could not read "/home/valera/POKIE Projects/starter-slot/blueprint.json/package.json": ENOTDIR: not a directory, open \'/home/valera/POKIE Projects/starter-slot/blueprint.json/package.json\'';
+        const message = describeExistingProjectOpenError(new Error(raw));
+        expect(message).toMatch(/could not be opened/i);
+        expect(message).toMatch(/older POKIE project or a damaged file/i);
+        expect(message).toMatch(/Choose a different Game id/i);
+        expect(message).not.toMatch(/ENOTDIR|package\.json/);
+    });
+
+    it("uses ProjectOpenError.detail when the friendly message alone does not identify the failure", () => {
+        const message = describeExistingProjectOpenError({
+            message: "Failed to open project",
+            detail: 'Could not read "/tmp/starter-slot/blueprint.json/package.json": ENOTDIR: not a directory',
+        });
+        expect(message).toMatch(/older POKIE project or a damaged file/i);
+        expect(message).not.toMatch(/ENOTDIR|package\.json/);
+    });
+
+    it("does not promise an open action when the colliding file is not a current project", () => {
+        const message = describeManagedSaveFailure(
+            'A game design with Game id "starter-slot" already exists at "/tmp/starter-slot/blueprint.json", but it cannot be opened as a current POKIE project. Choose a different Game id, or move or repair the old file if you still need it.',
+        );
+        expect(message).toMatch(/can't open as a current project/i);
+        expect(message).toMatch(/Choose a different Game id/i);
+        expect(message).not.toMatch(/open the existing project/i);
     });
 });

@@ -111,6 +111,19 @@ describe("VideoSlotWithBetModesSession", () => {
         }
     });
 
+    it("caps a forced buy-feature grant at the authored maximum", () => {
+        const config = createFreeGamesConfigWithNoNaturalTriggers();
+        config.setMaxFreeGames?.(3);
+        const free = new VideoSlotWithFreeGamesSession(config, new SymbolsCombinationsGenerator(config), new VideoSlotWinCalculator(config));
+        const session = new VideoSlotWithBetModesSession(free, buyBonusModesConfig(), new FreeGamesForcedFeatureEntryHandler(FREE_GAMES_TO_GRANT));
+        session.setCreditsAmount(10000);
+        session.setBetMode("buy-bonus");
+
+        session.play();
+
+        expect(free.getFreeGamesSum()).toBe(3);
+    });
+
     it("restores an explicit purchase when a custom forced-entry handler rejects after granting", () => {
         const free = createFreeGamesSessionWithNoNaturalTriggers();
         let reject = true;

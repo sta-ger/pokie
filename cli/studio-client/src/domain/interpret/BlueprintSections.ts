@@ -7,7 +7,7 @@ import type {BlueprintValidationView} from "./BlueprintEditor";
 // human-readable `message` -- location info is only inferable from `code` prefixes, so that's what this
 // classifies on. This is a pure display categorization over results the validator already produced, not
 // a re-implementation of any check: the canonical rules stay exactly where they are, server-side.
-export type BlueprintSectionId = "basics" | "layout" | "symbols" | "reels" | "paytable" | "bets";
+export type BlueprintSectionId = "basics" | "layout" | "symbols" | "reels" | "paytable" | "bets" | "mechanics";
 
 export const BLUEPRINT_SECTIONS: {id: BlueprintSectionId; label: string}[] = [
     {id: "basics", label: "Game basics"},
@@ -16,6 +16,7 @@ export const BLUEPRINT_SECTIONS: {id: BlueprintSectionId; label: string}[] = [
     {id: "reels", label: "Reels"},
     {id: "paytable", label: "Paytable"},
     {id: "bets", label: "Bets"},
+    {id: "mechanics", label: "Mechanics"},
 ];
 
 // Every `blueprint-*` issue code from GameBlueprintValidator.ts falls under exactly one of these
@@ -24,12 +25,13 @@ export const BLUEPRINT_SECTIONS: {id: BlueprintSectionId; label: string}[] = [
 // below rather than being force-matched into an arbitrary bucket.
 const SECTION_CODE_PREFIXES: Record<BlueprintSectionId, string[]> = {
     basics: ["blueprint-info-"],
-    layout: ["blueprint-reels-", "blueprint-rows-", "blueprint-paylines-", "blueprint-payline-"],
+    layout: ["blueprint-reels-", "blueprint-rows-", "blueprint-winmodel-", "blueprint-paylines-", "blueprint-payline-"],
     symbols: ["blueprint-symbols-", "blueprint-wilds-", "blueprint-scatters-"],
     // "blueprint-reelstrip" (no trailing "s") covers reelstrip-/reelstrips-/reelstripgeneration- alike.
     reels: ["blueprint-reel-sequences-", "blueprint-reelstrip", "blueprint-symbolweights-", "blueprint-weighting-"],
     paytable: ["blueprint-paytable-", "blueprint-symbol-missing-payout"],
-    bets: ["weighted-bonus-", "blueprint-mechanics-", "blueprint-availablebets-", "blueprint-betmode-", "blueprint-betmodes-"],
+    bets: ["blueprint-availablebets-", "blueprint-betmode-", "blueprint-betmodes-"],
+    mechanics: ["blueprint-mechanics-", "weighted-bonus-"],
 };
 
 function sectionForIssue(issue: ValidationIssue): BlueprintSectionId | undefined {

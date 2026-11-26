@@ -877,6 +877,16 @@ describe("GameBlueprintValidator", () => {
             );
         });
 
+        it.each([1, 5, 1_000])("accepts a positive maxFreeGames cap of %j", (maxFreeGames) => {
+            expect(validator.validate(withFreeGames({maxFreeGames})).filter((issue) => issue.severity === "error")).toEqual([]);
+        });
+
+        it.each([0, -1, 0.5, 1_001, NaN, Infinity, "5", null])("rejects an invalid maxFreeGames cap of %j", (maxFreeGames) => {
+            expect(validator.validate(withFreeGames({maxFreeGames}))).toContainEqual(
+                expect.objectContaining({code: "blueprint-mechanics-freegames-invalid-cap", severity: "error", path: "mechanics.freeGames.maxFreeGames"}),
+            );
+        });
+
         it("flags a non-object mechanics", () => {
             const blueprint = {...validBlueprint(), mechanics: "nope"} as unknown as GameBlueprint;
 

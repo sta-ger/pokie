@@ -58,7 +58,9 @@
         "build-cli": "npm run generate-barrels && npm run build-esm:compile && npm run build-cli:compile",
         "prebuild": "npm run lint",
         "build": "npm run generate-barrels && shx rm -rf ./dist && npm run build-esm:compile && npm run build-cli:compile",
-        "prepack": "npm run build"
+        "prepack": "npm run build",
+        "studio": "node dist/cli/pokie.js",
+        "start-studio": "node scripts/start-studio.mjs"
     },
     "repository": {
         "type": "git",

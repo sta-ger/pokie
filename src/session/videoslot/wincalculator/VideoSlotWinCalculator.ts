@@ -260,6 +260,9 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
     }
 
     private getConfiguredSharedMath(bet: number): OwnedSharedSlotMath {
+        // The config and its Paytable are deliberately mutable (the UI can change a payout in place).
+        // Re-resolve every round and compare the stable model key, so an in-place paytable edit can
+        // never silently reuse a stale lowered model.
         const model = resolveConfiguredSharedSlotMath(this.config, this.sharedMath!.model.winModel, bet);
         const key = stableSlotMathJson(model);
         const cached = this.configuredSharedMath.get(bet);

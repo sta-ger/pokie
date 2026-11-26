@@ -235,6 +235,7 @@ export class MathDefinitionDiffer implements MathDefinitionDiffing {
                 !zeroOmission &&
                 !representation &&
                 keys[0] !== "manifest" &&
+                keys[0] !== "info" &&
                 !(keys[0] === "maxWinPolicy" && keys[1] === "authority");
             const classification = mathematical ? "mathematical" : "representation";
             changes.push({

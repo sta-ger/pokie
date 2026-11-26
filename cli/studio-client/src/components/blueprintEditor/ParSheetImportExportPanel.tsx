@@ -1,9 +1,8 @@
-import {Button, Stepper, Text} from "@mantine/core";
+import {Alert, Button, Stepper, Text} from "@mantine/core";
 import {IconAlertTriangle, IconCircleCheck} from "@tabler/icons-react";
 import {useCallback, useEffect, useRef, useState, type ReactNode} from "react";
-import {exportParSheet, importParSheet, previewBlueprintBuild} from "../../api/apiClient";
+import {exportParSheet, importParSheet} from "../../api/apiClient";
 import {errorMessage} from "../../domain/errorMessage";
-import {describeBuildPreview, type BuildPreviewView} from "../../domain/interpret/Home";
 import {describePathActionError} from "../../domain/pathActionError";
 import {
     describeParSheetExportOutcome,
@@ -18,22 +17,23 @@ import {
     type ParSheetImportView,
 } from "../../domain/interpret/ParSheetImportExport";
 import {useStudioApi} from "../../context/StudioApiProvider";
-import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
-import {BuildPreviewDisplay} from "../common/BuildPreviewDisplay";
 import {CodeBlock} from "../common/CodeBlock";
 import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
+import {MathDefinitionDiffPreview} from "../common/MathDefinitionDiffPreview";
+import {ParSheetImportMathComparison} from "./ParSheetImportMathComparison";
+import {ParSheetImportModelSummary} from "./ParSheetImportModelSummary";
 import {OutcomeBanner} from "../common/OutcomeBanner";
 import {PageSection} from "../common/PageSection";
 import {PathInput} from "../common/PathInput";
 import {QuickActions} from "../common/QuickActions";
 
 const IMPORT_OUTCOME_BANNER: Record<ParSheetImportOutcome, {color: string; icon: ReactNode; title: string}> = {
-    success: {color: "green", icon: <IconCircleCheck size={16} />, title: "Imported successfully"},
-    partial: {color: "blue", icon: <IconAlertTriangle size={16} />, title: "Imported with warnings"},
+    success: {color: "green", icon: <IconCircleCheck size={16} />, title: "Imported — not applied yet"},
+    partial: {color: "blue", icon: <IconAlertTriangle size={16} />, title: "Imported with warnings — not applied yet"},
     invalid: {color: "red", icon: <IconAlertTriangle size={16} />, title: "This sheet has unsupported/invalid data"},
 };
 
@@ -66,9 +66,9 @@ function parSheetExportDefaultPath(blueprintPath: string | undefined): string | 
 // the same Studio API/pokie services "pokie par import"/"pokie par export" themselves use (see
 // StudioBlueprintService.importParSheet()/exportParSheet()) -- no spreadsheet parsing, column mapping, or
 // blueprint-shape math is reimplemented here; every diagnostic/summary shown is exactly what those
-// services already computed. "Preview model" specifically reuses previewBlueprintBuild/
-// BuildPreviewDisplay (the same summary the Home nav's own Build-from-Blueprint flow shows) rather than
-// inventing a second "what does this blueprint contain" computation.
+// services already computed. "Preview model" shows the imported workbook's model summary and a
+// mathematical definition diff. It deliberately does not build a package: a PAR import review must
+// not turn into a TypeScript build-output preview (README.md, dist/index.js, package.json, ...).
 //
 // Import and Export are two genuinely independent concerns sharing one guided flow: an import result
 // describes a freshly read file and has nothing to do with the editor's current blueprint (bumping the
@@ -87,6 +87,7 @@ export function ParSheetImportExportPanel({
     initialImportFieldPath,
     initialExportPath,
     allowExport = true,
+    onImportSettled,
 }: {
     blueprint: Record<string, unknown>;
     /** Home imports designs; saved-project Build/Export owns public artifact publication. */
@@ -106,26 +107,14 @@ export function ParSheetImportExportPanel({
     initialImportFieldPath?: string;
     /** Restores a retained export destination without publishing it automatically. */
     initialExportPath?: string;
+    /** Lets Home refresh its durable-job observation after a PAR import has reached a terminal response. */
+    onImportSettled?: () => void;
 }) {
     const fetchImpl = useStudioApi();
-    const confirm = useConfirm();
     const [activeStep, setActiveStep] = useState(0);
 
-    // ---- Preview model state (declared ahead of Import below since invalidateImport/
-    // runImportFor both need to invalidate a stale preview the moment the import it was built from
-    // changes) ----
-    const [buildPreview, setBuildPreview] = useState<BuildPreviewView>({status: "idle"});
-    const previewRequestIdRef = useRef(0);
-    const {begin: beginPreview, end: endPreview} = useDoubleSubmitGuard();
-
-    // Bumping the ref both marks any in-flight preview request stale (so its late response is ignored,
-    // see runCanonicalPreview's own check) and frees the guard immediately, so a fresh preview can start
-    // right away instead of waiting for that now-superseded request to settle.
-    const invalidatePreview = useCallback((): void => {
-        previewRequestIdRef.current++;
-        setBuildPreview({status: "idle"});
-        endPreview();
-    }, [endPreview]);
+    // The review step is the model summary/diff itself; no package build preview is requested here.
+    const [previewReviewed, setPreviewReviewed] = useState(false);
 
     // ---- Import ----
     const [importPath, setImportPath] = useState("");
@@ -140,9 +129,9 @@ export function ParSheetImportExportPanel({
     const invalidateImport = useCallback((): void => {
         importRequestIdRef.current++;
         setImportView({status: "idle"});
+        setPreviewReviewed(false);
         endImport();
-        invalidatePreview();
-    }, [endImport, invalidatePreview]);
+    }, [endImport]);
 
     function handleImportPathChange(value: string): void {
         setImportPath(value);
@@ -156,7 +145,7 @@ export function ParSheetImportExportPanel({
             return;
         }
         const requestId = ++importRequestIdRef.current;
-        invalidatePreview();
+        setPreviewReviewed(false);
         setImportView({status: "loading"});
         importParSheet(fetchImpl, path.trim())
             .then((result) => {
@@ -168,6 +157,7 @@ export function ParSheetImportExportPanel({
                 if (result.status === "ok") {
                     setActiveStep(1);
                 }
+                onImportSettled?.();
             })
             .catch((error: unknown) => {
                 if (requestId !== importRequestIdRef.current) {
@@ -175,8 +165,9 @@ export function ParSheetImportExportPanel({
                 }
                 endImport();
                 setImportView({status: "error", message: errorMessage(error)});
+                onImportSettled?.();
             });
-    }, [beginImport, endImport, fetchImpl, invalidatePreview]);
+    }, [beginImport, endImport, fetchImpl, onImportSettled]);
 
     function runImport(): void {
         runImportFor(importPath);
@@ -216,42 +207,18 @@ export function ParSheetImportExportPanel({
     const importOutcome = importResult ? describeParSheetImportOutcome(importResult) : undefined;
     const diagnoseReachable = importView.status !== "idle" && importView.status !== "loading";
 
-    // ---- Preview model (reuses the exact same previewBlueprintBuild/BuildPreviewDisplay the
-    // Home nav's own Build-from-Blueprint flow already shows; state/invalidatePreview declared above,
-    // ahead of Import) ----
-    function runCanonicalPreview(): void {
-        if (importResult === undefined || !beginPreview()) {
-            return;
-        }
-        const requestId = ++previewRequestIdRef.current;
-        setBuildPreview({status: "loading"});
-        previewBlueprintBuild(fetchImpl, importResult.blueprint, undefined, importResult.path)
-            .then((result) => {
-                if (requestId !== previewRequestIdRef.current) {
-                    return;
-                }
-                endPreview();
-                setBuildPreview(describeBuildPreview(result));
-            })
-            .catch((error: unknown) => {
-                if (requestId !== previewRequestIdRef.current) {
-                    return;
-                }
-                endPreview();
-                setBuildPreview({status: "error", message: errorMessage(error)});
-            });
-    }
-
     const previewReachable = importOutcome !== undefined && importOutcome !== "invalid";
+
+    useEffect(() => {
+        if (activeStep === 2 && previewReachable) setPreviewReviewed(true);
+    }, [activeStep, previewReachable]);
 
     // ---- Apply ----
     function handleApply(): void {
         if (importResult === undefined) {
             return;
         }
-        confirm("Replace the current blueprint with the imported one? Unsaved changes in the editor will be lost.", () => {
-            onApplyImportedBlueprint(importResult.blueprint, importResult.path, importResult.conversionEvidence);
-        });
+        onApplyImportedBlueprint(importResult.blueprint, importResult.path, importResult.conversionEvidence);
     }
 
     // ---- Export ----
@@ -345,7 +312,12 @@ export function ParSheetImportExportPanel({
                     disabled={!previewReachable}
                     aria-current={activeStep === 2 ? "step" : undefined}
                 />
-                <Stepper.Step label={allowExport ? "Apply / Export" : "Apply"} description={allowExport ? "Commit or write out" : "Update the draft"} aria-current={activeStep === 3 ? "step" : undefined} />
+                <Stepper.Step
+                    label={allowExport ? "Apply / Export" : "Apply"}
+                    description={allowExport ? "Commit or write out" : "Update the draft"}
+                    disabled={!allowExport && !previewReviewed}
+                    aria-current={activeStep === 3 ? "step" : undefined}
+                />
             </Stepper>
 
             {activeStep === 0 && (
@@ -387,19 +359,28 @@ export function ParSheetImportExportPanel({
                             informationTitle="Verified integrity"
                         />
 
+                        <Alert color="blue" variant="light" title="Your current draft is unchanged">
+                            <Text size="sm">
+                                The form below still shows your current draft. Preview model compares that draft with the workbook;
+                                Apply on the final step is the only action that replaces it.
+                            </Text>
+                        </Alert>
+
                         <PageSection legend="Origin / source">
                             <Text size="sm">{describeParSheetProvenanceSummary(importResult.provenance)}</Text>
                         </PageSection>
 
                         {previewReachable && (
                             <QuickActions>
-                                <Button onClick={() => setActiveStep(2)}>Continue to preview the game model</Button>
+                                <Button onClick={() => setActiveStep(2)}>
+                                    Continue to preview the game model
+                                </Button>
                             </QuickActions>
                         )}
 
-                        <AdvancedDisclosure detail="raw blueprint, raw import response">
+                        <AdvancedDisclosure detail="raw game design, raw import response">
                             <Text size="sm" fw={600} mb={4}>
-                                Raw imported blueprint
+                                Raw imported game design
                             </Text>
                             <CodeBlock>{JSON.stringify(importResult.blueprint, null, 2)}</CodeBlock>
                             <Text size="sm" fw={600} mt="sm" mb={4}>
@@ -415,39 +396,62 @@ export function ParSheetImportExportPanel({
                     <EmptyState message="Import a valid PAR sheet first." />
                 ) : (
                     <div>
+                        <Alert color="blue" variant="light" title="Nothing is applied yet">
+                            <Text size="sm">
+                                The form below still shows your current draft. This step previews the imported workbook;
+                                Apply on the next step is the only action that replaces the draft.
+                            </Text>
+                        </Alert>
+                        <ParSheetImportModelSummary current={blueprint} imported={importResult.blueprint} />
+                        <ParSheetImportMathComparison current={blueprint} imported={importResult.blueprint} />
+                        <PageSection legend="Mathematical differences from the current draft">
+                            <Text size="sm" c="dimmed" mb="xs">
+                                Detailed comparison: the current draft is the left side; the imported workbook is the right side.
+                                The summary above uses the same orientation. Differences are informational; nothing is written until Apply.
+                            </Text>
+                            <MathDefinitionDiffPreview
+                                sourcePath={importResult.path}
+                                draft={blueprint}
+                                revision={revision}
+                                leftLabel="Current draft"
+                                rightLabel="Imported PAR"
+                                swapSides
+                                autoCompare
+                            />
+                        </PageSection>
                         <QuickActions>
-                            <Button onClick={runCanonicalPreview} loading={buildPreview.status === "loading"}>
-                                Preview model
-                            </Button>
+                            <Button onClick={() => setActiveStep(3)}>{allowExport ? "Continue to Apply / Export" : "Continue to Apply"}</Button>
                         </QuickActions>
-                        <BuildPreviewDisplay view={buildPreview} />
-                        {buildPreview.status === "ok" && (
-                            <QuickActions>
-                                <Button onClick={() => setActiveStep(3)}>{allowExport ? "Continue to Apply / Export" : "Continue to Apply"}</Button>
-                            </QuickActions>
-                        )}
                     </div>
                 ))}
 
             {activeStep === 3 && (
                 <div>
-                    <PageSection legend="Apply imported blueprint">
+                    <PageSection legend="Apply imported game design">
                         {importResult === undefined ? (
                             <EmptyState message="Nothing imported yet -- go back to Import first." />
                         ) : (
                             <div>
                                 <Text size="sm" mb="sm">
-                                    Replaces the blueprint currently open in this editor with the one imported from{" "}
+                                    Replaces the game design currently open in this editor with the one imported from{" "}
                                     <strong style={{overflowWrap: "anywhere"}}>{importResult.path}</strong>.
                                 </Text>
+                                <Text size="sm" c="orange" mb="sm">
+                                    Unsaved changes in the current draft will be lost.
+                                </Text>
                                 <QuickActions>
-                                    <Button onClick={handleApply} disabled={importOutcome === "invalid"}>
+                                    <Button onClick={handleApply} disabled={importOutcome === "invalid" || !previewReviewed}>
                                         Apply
                                     </Button>
                                 </QuickActions>
                                 {importOutcome === "invalid" && (
                                     <Text size="sm" c="dimmed">
                                         Fix the errors on Diagnose &amp; map before applying this import.
+                                    </Text>
+                                )}
+                                {importOutcome !== "invalid" && !previewReviewed && (
+                                    <Text size="sm" c="dimmed">
+                                        Open Preview model and review the model summary before applying. Nothing in your current draft changes until then.
                                     </Text>
                                 )}
                             </div>
@@ -482,7 +486,7 @@ export function ParSheetImportExportPanel({
                             <ErrorState message={describePathActionError("The PAR sheet export destination", exportView.message)} />
                         )}
                         {exportView.status === "conflict" && (
-                            <ErrorState message={`${exportView.error} Choose a different export path; existing artifacts are never overwritten.`} />
+                            <ErrorState message={`${exportView.error} Choose a different export path; existing files are never overwritten.`} />
                         )}
                         {exportOutcome !== undefined && (exportView.status === "ok" || exportView.status === "invalid") && (
                             <OutcomeBanner

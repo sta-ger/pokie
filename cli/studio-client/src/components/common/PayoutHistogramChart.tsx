@@ -10,7 +10,12 @@ export function PayoutHistogramChart({histogram}: {histogram?: Record<string, nu
     return (
         <section aria-label="Payout distribution chart" className="studio-payout-histogram">
             <Text component="h3" size="sm" fw={600} mb={4}>Payout distribution</Text>
-            <Text size="xs" c="dimmed" mb="sm">Share of the sampled rounds in each payout bucket (× bet).</Text>
+            <Text size="xs" c="dimmed" mb="sm">
+                Share of the sampled paid rounds by payout multiple (× bet). Buckets are half-open:
+                [a, b) includes a and excludes b; the first positive bucket is (0, 1), and the top
+                bucket is [1,000, ∞). Legacy bucket names are marked (legacy). Exact math shows the
+                complete per-payout distribution.
+            </Text>
             <div style={{display: "grid", gridTemplateColumns: "7rem 1fr 4.5rem", gap: "0.4rem 0.6rem", alignItems: "center"}}>
                 {rows.map((row) => (
                     <div key={row.bucket} style={{display: "contents"}}>

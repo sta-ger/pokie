@@ -1,5 +1,5 @@
 import type ExcelJS from "@xlvane/exceljs";
-import {REQUIRED_SHEETS} from "../../parsheet/ParSheetImporter.js";
+import {REQUIRED_SHEET_GROUPS} from "../../parsheet/ParSheetImporter.js";
 
 export type ParWorkbookRecognition =
     | {readonly status: "recognized"}
@@ -26,11 +26,13 @@ export async function recognizeParWorkbookFile(filePath: string): Promise<ParWor
     }
 
     const sheetNames = new Set(workbook.worksheets.map((worksheet) => worksheet.name));
-    const missingSheets = REQUIRED_SHEETS.filter((name) => !sheetNames.has(name));
+    const missingSheets = REQUIRED_SHEET_GROUPS
+        .filter((group) => !group.some((name) => sheetNames.has(name)))
+        .map((group) => group[0]);
     if (missingSheets.length === 0) return {status: "recognized"};
     // A workbook with no PAR sheet names is an ordinary spreadsheet, not a
     // malformed PAR source. Keep the resolver's established non-PAR behavior.
-    if (missingSheets.length === REQUIRED_SHEETS.length) return {status: "unrelated"};
+    if (missingSheets.length === REQUIRED_SHEET_GROUPS.length) return {status: "unrelated"};
     return {status: "incomplete", missingSheets};
 }
 

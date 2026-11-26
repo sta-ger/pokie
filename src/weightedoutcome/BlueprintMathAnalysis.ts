@@ -8,6 +8,9 @@ import {estimateExactOutcomeSpaceSize} from "./generate/estimateExactOutcomeSpac
 import {generateExactWeightedOutcomeLibrary} from "./generate/generateExactWeightedOutcomeLibrary.js";
 import {WeightedOutcomeLibraryAnalyzer} from "./WeightedOutcomeLibraryAnalyzer.js";
 import type {WeightedOutcomeLibraryAnalysis} from "./WeightedOutcomeLibraryAnalysis.js";
+import {computeWeightedOutcomeLibraryFeatureBreakdown} from "./computeWeightedOutcomeLibraryFeatureBreakdown.js";
+import {computeFreeGamesExactRtp, type FreeGamesExactRtp} from "./computeFreeGamesExactRtp.js";
+import type {WeightedOutcomeLibraryFeatureBreakdown} from "./WeightedOutcomeLibraryFeatureBreakdown.js";
 import {analyzeWeightedOutcomeWins, type WeightedOutcomeWinAnalysis} from "./WeightedOutcomeWinAnalysis.js";
 
 /** The largest exact space Studio will enumerate on demand for a draft/preview or PAR math sheet. */
@@ -31,6 +34,14 @@ export type BlueprintMathAnalysisResult =
           readonly stake: number;
           readonly analysis: WeightedOutcomeLibraryAnalysis;
           readonly wins: WeightedOutcomeWinAnalysis;
+          /**
+           * Which feature events occur in the enumerated paid-spin records. A non-empty list means the
+           * library records feature triggers (for example freeGamesTriggered) but does not contain the
+           * later feature wins those triggers produce, so the RTP above covers paid spins only.
+           */
+          readonly featureBreakdown: WeightedOutcomeLibraryFeatureBreakdown;
+          /** Exact total RTP when the only feature is authored additive-retrigger free games. */
+          readonly freeGamesRtp: FreeGamesExactRtp;
           readonly strategy: "exact";
           readonly generatedAt: string;
           readonly note?: string;
@@ -120,6 +131,8 @@ export async function analyzeBlueprintMath(
         });
         const analysis = new WeightedOutcomeLibraryAnalyzer().analyze(generated.library);
         const wins = analyzeWeightedOutcomeWins(generated.library);
+        const featureBreakdown = computeWeightedOutcomeLibraryFeatureBreakdown(generated.library);
+        const freeGamesRtp = computeFreeGamesExactRtp(generated.library, analysis.rtp, authored.mechanics?.freeGames?.maxFreeGames);
         return {
             status: "ok",
             blueprint: materialized,
@@ -128,6 +141,8 @@ export async function analyzeBlueprintMath(
             stake: generated.library.outcomes[0]?.record.stake ?? 1,
             analysis,
             wins,
+            featureBreakdown,
+            freeGamesRtp,
             strategy: "exact",
             generatedAt,
             note: `Exact enumeration of ${generated.library.outcomes.length.toLocaleString("en-US")} outcomes. Nothing was saved.`,

@@ -5,6 +5,7 @@ import {
     WinEvaluationResult,
     WinningValue,
     buildRoundRecord,
+    type RoundRecordFeatureEventInput,
 } from "@fromstan/pokie";
 
 export const testProvenance: RoundRecordOrigin = {
@@ -29,13 +30,18 @@ export function artifactWith(options: {
     stake?: number;
     betMode?: string;
     origin?: RoundRecordOrigin;
+    featureEvents?: readonly RoundRecordFeatureEventInput[];
 }): RoundRecord<string> {
     return buildRoundRecord({
         roundId: options.roundId,
         origin: options.origin ?? testProvenance,
         betMode: options.betMode,
         stake: options.stake ?? 1,
-        steps: [{screen: [["A"]], winEvaluationResult: winEvaluationResultFor(options.totalWin)}],
+        steps: [{
+            screen: [["A"]],
+            winEvaluationResult: winEvaluationResultFor(options.totalWin),
+            ...(options.featureEvents === undefined ? {} : {featureEvents: options.featureEvents}),
+        }],
     });
 }
 

@@ -40,12 +40,20 @@ function projectMechanics(blueprint: GameBlueprint): GameModelProjection["mechan
 // displays, so no downstream caller re-derives this from the nested record itself.
 function flattenPaytable(paytable: GameBlueprint["paytable"]): GameModelPaytableRow[] {
     const rows: GameModelPaytableRow[] = [];
+    const authoredSymbolOrder = new Map(Object.keys(paytable).map((symbolId, index) => [symbolId, index]));
     for (const [symbolId, payouts] of Object.entries(paytable)) {
         for (const [matchCount, payout] of Object.entries(payouts)) {
             rows.push({symbolId, matchCount: Number(matchCount), payout});
         }
     }
-    return rows.sort((a, b) => (a.symbolId === b.symbolId ? a.matchCount - b.matchCount : a.symbolId.localeCompare(b.symbolId)));
+    // Keep the authored symbol order: slot math is normally written high-to-low (A, K, Q, J), not
+    // alphabetically, and the editor and PAR workbook already show that order. Sorting symbol ids
+    // here would make the read-only Game Model silently present a different table.
+    return rows.sort((a, b) => {
+        const left = authoredSymbolOrder.get(a.symbolId) ?? Number.MAX_SAFE_INTEGER;
+        const right = authoredSymbolOrder.get(b.symbolId) ?? Number.MAX_SAFE_INTEGER;
+        return left === right ? a.matchCount - b.matchCount : left - right;
+    });
 }
 
 // Pure min/max of `availableBets` -- see GameModelLimits' own doc comment for why this never invents a
@@ -186,12 +194,12 @@ export function buildPackageGameModelProjection(extraction: PackageBlueprintExtr
             projection.limits = available(deriveLimits(model.availableBets));
         }
     }
-    const sections: Record<string, keyof Omit<GameModelProjection, "packageExtraction">> = {
+    const sections: Record<string, keyof Omit<GameModelProjection, "packageExtraction" | "sourceRevision">> = {
         manifest: "basics", reels: "layout", rows: "layout", screenGeometry: "layout", winModel: "layout", paylines: "layout",
         symbols: "symbols", wilds: "symbols", scatters: "symbols", reelStrips: "reels", reelSequences: "reels", paytable: "paytable",
         availableBets: "betsAndModes", betModes: "betsAndModes", mechanics: "mechanics",
     };
-    const sectionDiagnostics = new Map<keyof Omit<GameModelProjection, "packageExtraction">, string[]>();
+    const sectionDiagnostics = new Map<keyof Omit<GameModelProjection, "packageExtraction" | "sourceRevision">, string[]>();
     for (const diagnostic of extraction.diagnostics.filter(issue => issue.severity === undefined || issue.severity === "error")) {
         const section = sections[diagnostic.path.split(".")[0]];
         if (section) {

@@ -9,7 +9,7 @@ export function PackageExtractionDiagnostics({extraction}: {extraction?: Package
                 Package model: {extraction.status} ({extraction.source.kind})
             </Text>
             <Text size="sm">Source: {extraction.source.location ?? "caller-owned game"} ({extraction.source.gameId ?? "unknown id"}, v{extraction.source.gameVersion ?? "unknown"})</Text>
-            {extraction.blueprintHash && <Text size="sm">Extracted Blueprint hash: {extraction.blueprintHash}</Text>}
+            {extraction.blueprintHash && <Text size="sm">Extracted game design hash: {extraction.blueprintHash}</Text>}
             {extraction.diagnostics.map((issue, index) => (
                 <Text key={index} size="sm" c="orange">
                     {issue.path}: {issue.code}: {issue.message}

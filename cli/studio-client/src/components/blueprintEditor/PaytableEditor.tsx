@@ -124,14 +124,14 @@ export function PaytableEditor({blueprint, mutate}: {blueprint: Record<string, u
                                 <Table.Td>{row.matchCount}</Table.Td>
                                 <Table.Td>
                                     <PayoutInput
-                                        label={`${row.symbolId} x${row.matchCount} payout`}
+                                        label={`${row.symbolId}, ${row.matchCount} symbols payout`}
                                         value={row.payout}
                                         onCommit={(value) => mutate((b) => setPaytablePayout(b, row.symbolId, row.matchCount, value))}
                                     />
                                 </Table.Td>
                                 <Table.Td>
                                     <RowActions
-                                        itemLabel={`${row.symbolId} x${row.matchCount} payout`}
+                                        itemLabel={`${row.symbolId}, ${row.matchCount} symbols payout`}
                                         onDuplicate={() => mutate((b) => duplicatePaytablePayout(b, row.symbolId, row.matchCount, maxMatchCount))}
                                         onRemove={() => mutate((b) => removePaytablePayout(b, row.symbolId, row.matchCount))}
                                     />

@@ -46,7 +46,10 @@ export type StudioRoundProvenance = {
 type RecordedIdentity = Pick<StudioRuntimeSessionView, "studioRound" | "studioRecordedAt" | "studioSource" | "studioOperation" | "studioProjectRoot" | "studioSeed" | "studioModeName"> & {cursor: number};
 
 export class StudioRoundRecorder {
-    private static readonly MAX_RECORDS = 20;
+    // A paid round can legitimately contain dozens of free spins/cascade screens. Keep enough history
+    // for the Replay tab to show the paid entry and its feature screens together, instead of evicting
+    // the paid trigger before the feature finishes.
+    private static readonly MAX_RECORDS = 100;
 
     private readonly identities = new Map<string, RecordedIdentity>();
     private records: StudioRuntimeSessionView[] = [];
@@ -56,16 +59,18 @@ export class StudioRoundRecorder {
     // different producers' sessions can never collide on the same key here.
     private roundCounters = new Map<string, number>();
 
-    // Retrying the *same* (sessionId, studioRequestId) pair replays the same underlying round rather
-    // than filing a new one -- the retry's own view is stamped with the original entry's identity fields
-    // and the call returns without touching the list. A round made without a requestId (every Play tab
+    // Retrying the *same* accepted screen -- same (sessionId, logical round, delivery cursor) -- replays
+    // that screen rather than filing a new one. Every distinct screen of a paid round (the paid trigger,
+    // each free spin, each cascade stage) is its own recorded entry, so Replay can group them under one
+    // paid-round header and still inspect every screen. A round made without a requestId (every Play tab
     // round, every outcome-source-sample draw, every simulation-sample reproduction) can't be identified
     // as a retry of anything, so it's always recorded as its own new entry.
     public record(session: StudioRuntimeSessionView, provenance: StudioRoundProvenance): void {
-        const requestId = session.logicalRound?.roundId ?? session.studioRequestId;
-        const key = requestId === undefined ? undefined : `${session.sessionId}:${requestId}`;
-        if (requestId !== undefined) {
-            const duplicate = this.identities.get(key!);
+        const roundId = session.logicalRound?.roundId ?? session.studioRequestId;
+        const cursor = session.logicalRound?.cursor ?? 0;
+        const key = roundId === undefined ? undefined : `${session.sessionId}:${roundId}:${cursor}`;
+        if (key !== undefined) {
+            const duplicate = this.identities.get(key);
             if (duplicate !== undefined) {
                 session.studioRound = duplicate.studioRound;
                 session.studioRecordedAt = duplicate.studioRecordedAt;
@@ -74,11 +79,11 @@ export class StudioRoundRecorder {
                 session.studioProjectRoot = duplicate.studioProjectRoot;
                 session.studioSeed = duplicate.studioSeed;
                 session.studioModeName = duplicate.studioModeName;
-                if (session.logicalRound && session.logicalRound.cursor > duplicate.cursor) {
-                    const index = this.records.findIndex(record => record.sessionId === session.sessionId && record.studioRound === duplicate.studioRound);
-                    if (index >= 0) this.records[index] = session;
-                    this.identities.set(key!, this.identity(session));
-                }
+                // A retried screen may carry a newer terminal/result projection. Replace the stored view
+                // while keeping the original stable identity and list position.
+                const index = this.records.findIndex(record => record.sessionId === session.sessionId && record.studioRound === duplicate.studioRound);
+                if (index >= 0) this.records[index] = session;
+                this.identities.set(key, this.identity(session));
                 return;
             }
         }

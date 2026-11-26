@@ -33,6 +33,38 @@ import {
 } from "./DefaultVideoSlotWithFreeGamesSessionTestCases.js";
 
 describe("VideoSlotWithFreeGamesSession", () => {
+    it("caps total free games per feature and stops granting retriggers at the cap", () => {
+        const config = new VideoSlotWithFreeGamesConfig();
+        config.setReelsNumber(3);
+        config.setReelsSymbolsNumber(1);
+        config.setAvailableBets([1]);
+        config.setBet(1);
+        config.setScatterSymbols(["S"]);
+        config.setSymbolsSequences(Array.from({length: 3}, () => new SymbolsSequence().fromArray(["S"])));
+        config.setFreeGamesForScatters("S", 3, 3);
+        config.setMaxFreeGames(5);
+        const paytable = new Paytable([1]);
+        paytable.setPayoutForSymbol("S", 3, 0);
+        config.setPaytable(paytable);
+        const session = new VideoSlotWithFreeGamesSession(config, new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(31)));
+        session.setCreditsAmount(100);
+
+        session.play(); // paid trigger: normally 3, unchanged by the 5-game cap
+        expect(session.getFreeGamesSum()).toBe(3);
+        expect(session.getWonFreeGamesNumber()).toBe(3);
+
+        session.play(); // first free spin: another 3 would exceed the cap, so only 2 are granted
+        expect(session.getFreeGamesNum()).toBe(1);
+        expect(session.getFreeGamesSum()).toBe(5);
+        expect(session.getWonFreeGamesNumber()).toBe(2);
+
+        for (let index = 0; index < 4; index++) session.play();
+        expect(session.getFreeGamesNum()).toBe(5);
+        expect(session.getFreeGamesSum()).toBe(5);
+        expect(session.canPlayNextGame()).toBe(true);
+        expect(session.getFreeGamesNum()).toBe(session.getFreeGamesSum());
+    });
+
     it("rolls back a rejected custom round handler without requiring persistence certification", () => {
         const config = new VideoSlotWithFreeGamesConfig();
         const standard = new FreeGamesRoundHandler();

@@ -609,6 +609,28 @@ describe("logical-round delivery and mathematical boundaries", () => {
         }
     });
 
+    it("settles one composite paid round as one audit delivery with total stake and payout", async () => {
+        const model = game(0);
+        const repository = new api.InMemorySessionRepository();
+        const wallet = new api.InMemoryWallet(100);
+        await repository.save("session", api.captureInitialPokieSessionState({seed: 7}, model.createSession({seed: 7}), model.getSessionSerializer?.(), false, model));
+        const handler = new api.SpinCommandHandler(model, repository, wallet, undefined, undefined, true, undefined, true, "full", "2.0.0", true);
+        const result = settled(await handler.execute({kind: "spin", sessionId: "session", requestId: "entry", roundId: "round", delivery: "composite", mode: "buy"}));
+
+        expect(result.state.logicalRound).toMatchObject({status: "completed", cursor: 3, totalStake: 0.25});
+        // A long feature must not append one audit delivery (and re-validate the whole history) per
+        // free spin. The settled paid round is one composite delivery with the totals of the whole round.
+        expect(result.audit?.deliveries).toHaveLength(1);
+        expect(result.audit?.deliveries[0]).toMatchObject({command: {delivery: "composite", mode: "buy"}, result: {stake: 0.25}});
+        expect(result.audit?.deliveries[0].result.payout).toBeCloseTo(result.state.logicalRound!.totalPayout, 9);
+        expect(result.win).toBeCloseTo(result.state.logicalRound!.totalWin, 9);
+        expect(result.stake).toBe(0.25);
+        const replay = new api.AuditRoundReplay().replay(model, result.audit!);
+        expect(replay.verification).toBe("verified");
+        expect(replay.completion).toBe("completed");
+        expect(replay.deliveries).toHaveLength(1);
+    });
+
     it("rejects corrupt retained artifacts, commands, cursors and executable progress before effects", async () => {
         const model = game(0);
         const repository = new api.InMemorySessionRepository();

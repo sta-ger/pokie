@@ -5,10 +5,10 @@ import type {InfoSheetMapping, InfoSheetValue} from "./InfoSheetMapping.js";
 import {cellToNumber, cellToText, isBlankRow, resolveColumnIndexes} from "./sheetCellParsing.js";
 
 const COLUMNS = ["Key", "Value"];
-const KNOWN_KEYS = ["Id", "Name", "Version", "Description", "Author", "Reels", "Rows"];
+const KNOWN_KEYS = ["Id", "Name", "Version", "Description", "Author", "Reels", "Rows", "Payline row basis"];
 
 export class InfoSheetMapper implements InfoSheetMapping {
-    public readonly sheetName = "Manifest";
+    public readonly sheetName = "Info";
 
     public fromRows(rows: SheetGrid): {value: InfoSheetValue; issues: ValidationIssue[]} {
         const issues: ValidationIssue[] = [];

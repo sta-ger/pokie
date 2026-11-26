@@ -1,4 +1,5 @@
 import {Table, Text} from "@mantine/core";
+import {formatPaytableMatchCount} from "../../../../client/player";
 import {SymbolPresentation} from "./SymbolPresentation";
 
 // Mirrors GameBlueprint.paytable's own shape (src/generated/GameBlueprint.ts) and Paytable.toJSON's own
@@ -18,7 +19,7 @@ export function PaytableView({paytable}: {paytable?: PaytableData}) {
     if (symbolIds.length === 0) {
         return (
             <Text size="sm" c="dimmed">
-                Paytable unavailable — this round&apos;s own artifact records its already-evaluated wins, not the game&apos;s payout table itself. Open the matching design in Game Model to inspect its paytable.
+                Paytable unavailable — this round&apos;s own record contains its already-evaluated wins, not the game&apos;s payout table itself. Open the matching game design to inspect its paytable.
             </Text>
         );
     }
@@ -26,27 +27,32 @@ export function PaytableView({paytable}: {paytable?: PaytableData}) {
     const matchCounts = Array.from(new Set(symbolIds.flatMap((symbolId) => Object.keys(paytable![symbolId])))).sort((a, b) => Number(a) - Number(b));
 
     return (
-        <Table.ScrollContainer minWidth={400}>
-            <Table withColumnBorders>
-                <Table.Thead>
-                    <Table.Tr>
-                        <Table.Th>Symbol</Table.Th>
-                        {matchCounts.map((matchCount) => (
-                            <Table.Th key={matchCount}>{matchCount}×</Table.Th>
-                        ))}
-                    </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                    {symbolIds.map((symbolId) => (
-                        <Table.Tr key={symbolId}>
-                            <Table.Td><SymbolPresentation symbolId={symbolId} /></Table.Td>
+        <>
+            <Text size="xs" c="dimmed" mb={4}>Payouts are multiples of the bet.</Text>
+            <Table.ScrollContainer minWidth={400}>
+                <Table withColumnBorders>
+                    <Table.Thead>
+                        <Table.Tr>
+                            <Table.Th>Symbol</Table.Th>
                             {matchCounts.map((matchCount) => (
-                                <Table.Td key={matchCount}>{paytable![symbolId][matchCount] ?? "—"}</Table.Td>
+                                <Table.Th key={matchCount}>{formatPaytableMatchCount(Number(matchCount))}</Table.Th>
                             ))}
                         </Table.Tr>
-                    ))}
-                </Table.Tbody>
-            </Table>
-        </Table.ScrollContainer>
+                    </Table.Thead>
+                    <Table.Tbody>
+                        {symbolIds.map((symbolId) => (
+                            <Table.Tr key={symbolId}>
+                                <Table.Td><SymbolPresentation symbolId={symbolId} /></Table.Td>
+                                {matchCounts.map((matchCount) => (
+                                    <Table.Td key={matchCount}>
+                                        {paytable![symbolId][matchCount] === undefined ? "—" : `×${paytable![symbolId][matchCount]}`}
+                                    </Table.Td>
+                                ))}
+                            </Table.Tr>
+                        ))}
+                    </Table.Tbody>
+                </Table>
+            </Table.ScrollContainer>
+        </>
     );
 }

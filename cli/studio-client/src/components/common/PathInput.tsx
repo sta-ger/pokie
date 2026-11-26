@@ -109,8 +109,8 @@ function describePathIssue(reason: StudioFsBrowseErrorReason | "network", path: 
 // "." (or any relative path) always has a concrete, current location shown alongside it instead of being
 // opaque. Browse itself tries a real, system-native OS dialog first (see StudioNativePickerService) --
 // the only way to get an actual filesystem path back, since a browser deliberately never exposes one --
-// and only opens PathBrowseModal's honestly-labelled "Server filesystem browser" once the native dialog
-// is confirmed unavailable (a headless/remote Studio server) or itself fails. `kind: "any"` skips the
+// and only opens PathBrowseModal's "Studio file browser" once the native dialog is confirmed unavailable
+// (a headless/remote Studio server) or itself fails. `kind: "any"` skips the
 // native dialog entirely and always goes straight to that fallback modal instead -- StudioNativePickerService
 // only ever asks the OS for a folder dialog or a file dialog, never both at once, so there's no truthful
 // native call this kind could make; the fallback modal, unlike the native dialog, already lets a "any"
@@ -242,7 +242,7 @@ export const PathInput = forwardRef<HTMLInputElement, PathInputProps>(({
     };
 
     // A deliberately opt-in native shortcut for a specific member of an otherwise generic path
-    // field. Its fallback remains the same server filesystem browser as ordinary Browse, while
+    // field. Its fallback remains the same Studio file browser as ordinary Browse, while
     // retaining this shortcut's narrower selection kind so a PAR-sheet action cannot select a
     // directory when the native picker is unavailable.
     const handleNativePickerClick = async (): Promise<void> => {

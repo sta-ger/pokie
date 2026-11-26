@@ -48,7 +48,7 @@ outcome-library/Stake targets. See [the current WASM boundary](wasm-compatibilit
 
 PAR fidelity coverage reopens actual XLSX workbooks for every existing mechanic, bounded
 progression composition, modifier and weighted bonus in the authored catalogues, using exact/weighted
-reel sequences and fractional bets. Represented hashes, Game Model view and seeded
+reel sequences and fractional bets. Represented hashes, Game design view and seeded
 runtime/restoration are checked together. Empty optional arrays canonicalize to absence; empty
 paytable symbol maps are represented by symbol-only rows. Geometry/custom mechanics/unknown policies
 are rejected rather than treated as lossless.

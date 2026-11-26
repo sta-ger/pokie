@@ -5,12 +5,20 @@ import {
     formatOptimizationMetricValue,
     formatOptimizationTolerance,
     formatTunableValues,
+    freeGamesAwardPath,
+    hasFreeGames,
     nearestOptimizationCandidate,
     optimizationDomainSize,
+    optimizationScopeLabel,
+    optimizationTargetLabel,
+    optimizationTunablePaths,
+    parseFreeGamesAwardPath,
     parsePaytablePath,
     parseTunableValues,
     paytablePath,
+    recommendsWholeRoundScope,
     suggestedPaytableValues,
+    tunableCurrentValue,
 } from "../../../cli/studio-client/src/domain/optimizationRequest.js";
 import type {GameModelProjection} from "../../../cli/studio-client/src/api/types.js";
 
@@ -32,13 +40,39 @@ const model: GameModelProjection = {
     limits: {status: "unavailable", reason: "not needed"},
 };
 
+const freeGamesModel: GameModelProjection = {
+    ...model,
+    mechanics: {
+        status: "available",
+        data: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 10, 4: 15}}},
+    },
+};
+
 describe("optimization request helpers", () => {
     it("escapes and round-trips paytable paths", () => {
         const path = paytablePath({symbolId: "A/B~C", matchCount: 3});
         expect(path).toBe("/paytable/A~1B~0C/3");
         expect(parsePaytablePath(path)).toEqual({symbolId: "A/B~C", matchCount: 3});
-        expect(describeTunablePath("/paytable/A/3")).toBe("A × 3 payout");
+        expect(describeTunablePath("/paytable/A/3")).toBe("A, 3 symbols payout");
         expect(describeTunablePath("/modes/base/outcomes/x/weight")).toBe("/modes/base/outcomes/x/weight");
+    });
+
+    it("exposes free-game awards as ordinary named fields, not JSON pointers", () => {
+        const path = freeGamesAwardPath(3);
+        expect(path).toBe("/mechanics/freeGames/awardsByCount/3");
+        expect(parseFreeGamesAwardPath(path)).toBe("3");
+        expect(describeTunablePath(path)).toBe("3 scatters → free games");
+        expect(hasFreeGames(freeGamesModel)).toBe(true);
+        expect(optimizationTunablePaths(freeGamesModel)).toContain(path);
+        expect(tunableCurrentValue(path, freeGamesModel)).toBe(10);
+    });
+
+    it("labels paid-spin and whole-round RTP as different populations", () => {
+        const target = {metric: "rtp" as const, unit: "ratio" as const, value: 0.96, tolerance: {kind: "absolute" as const, value: 0.001}};
+        expect(optimizationTargetLabel(target, "paid-entry")).toBe("Paid-spin RTP");
+        expect(optimizationTargetLabel(target, "logical-round")).toBe("Total RTP (paid + free games)");
+        expect(optimizationTargetLabel(target, "native-outcomes")).toBe("RTP (native outcomes)");
+        expect(optimizationScopeLabel("logical-round")).toBe("Whole paid round (incl. free games)");
     });
 
     it("suggests nearby values and keeps decimal payouts at a finer step", () => {
@@ -76,7 +110,21 @@ describe("optimization request helpers", () => {
         expect(request.policy.tunables).toEqual([{path: "/paytable/A/3", values: [6, 7, 8, 9, 10]}]);
         expect(request.policy.budget).toBe(5);
         expect(request.policy.mode).toBe("base");
+        expect(request.policy.scope).toBe("paid-entry");
         expect(optimizationDomainSize(request.policy)).toBe(5);
+    });
+
+    it("defaults a free-games game to the whole paid round, where total RTP lives", () => {
+        const request = buildDefaultOptimizationRequest(freeGamesModel);
+        expect(request.policy.scope).toBe("logical-round");
+        expect(request.policy.tunables[0]).toEqual({path: "/paytable/A/3", values: [6, 7, 8, 9, 10]});
+    });
+
+    it("recommends whole-round RTP when features exist but a request still targets paid spins", () => {
+        expect(recommendsWholeRoundScope("paid-entry", true)).toBe(true);
+        expect(recommendsWholeRoundScope("logical-round", true)).toBe(false);
+        expect(recommendsWholeRoundScope("paid-entry", false)).toBe(false);
+        expect(recommendsWholeRoundScope("native-outcomes", true)).toBe(false);
     });
 
     it("keeps a usable fallback when no model paytable is available", () => {

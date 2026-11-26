@@ -143,6 +143,12 @@ function canUseAuthoredExactRuntime(blueprint: GameBlueprint): boolean {
 // (the writer's own writeToDirectory always atomically replaces the whole directory -- see its own doc
 // comment -- so every mode not being regenerated is first read back in full and re-supplied alongside the
 // freshly generated one).
+// Small exact designs do not benefit from the disk-partitioned exact sweep used for huge spaces.
+// Keeping their distinct grids and records in memory removes the external bucket staging/read-back
+// pass while remaining bounded: 10,000 raw combinations is far below the external path's own safety
+// ceiling, and the in-memory result is handed to the same OutcomeLibraryFolderWriter for validation.
+const MAX_IN_MEMORY_EXACT_OUTCOME_SPACE_SIZE = BigInt(10_000);
+
 //
 export class StudioOutcomeLibraryGenerateService {
     public static readonly DEFAULT_BUNDLE_DIR = "outcomelibrary";
@@ -232,7 +238,8 @@ export class StudioOutcomeLibraryGenerateService {
     // outcomelibrary generate --estimate" itself runs (see OutcomeLibraryCommand.executeEstimate), so the
     // Generate step's own "estimate/cost" panel never disagrees with what the CLI would report for the
     // same package/options.
-    public async estimate(projectRoot: string, request: ValidatedOutcomeLibraryGenerateEstimateRequest): Promise<StudioOutcomeLibraryGenerateEstimateView> {
+    public async estimate(projectRoot: string, request: ValidatedOutcomeLibraryGenerateEstimateRequest, retainGameForGeneration = false): Promise<StudioOutcomeLibraryGenerateEstimateView> {
+        let retainedGame = false;
         const wasmDiagnostic = this.wasmBoundaryDiagnostic(projectRoot);
         if (wasmDiagnostic !== undefined) {
             return {status: "load-error", error: wasmDiagnostic, plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
@@ -302,6 +309,7 @@ export class StudioOutcomeLibraryGenerateService {
                     plan,
                 };
             }
+            const retainThisGame = retainGameForGeneration && plan.source.kind === "blueprint";
             this.preflightSnapshots.set(preflightToken, {
                 binding: {
                     requestKey: generationRequestKey(request), gameId: game.getInfo().id, gameVersion: game.getInfo().version,
@@ -311,7 +319,9 @@ export class StudioOutcomeLibraryGenerateService {
                 plan,
                 allowsExistingBundleUpdate: existingBundle.allowed,
                 ...(managedBlueprint === undefined ? {} : {managedBlueprint}),
+                ...(retainThisGame ? {validatedGame: game} : {}),
             });
+            retainedGame = retainThisGame;
             return {
                 status: "ok",
                 game: game.getInfo(),
@@ -347,7 +357,7 @@ export class StudioOutcomeLibraryGenerateService {
                 preflightToken,
             };
         } finally {
-            await loadedGame?.release();
+            if (!retainedGame) await loadedGame?.release();
         }
     }
 
@@ -497,7 +507,7 @@ export class StudioOutcomeLibraryGenerateService {
         // runtime preparation, when materializer cleanup can make a separate
         // directory probe transiently unavailable.
         if (request.preflightToken === undefined) {
-            const preflight = await this.estimate(projectRoot, request);
+            const preflight = await this.estimate(projectRoot, request, true);
             if (preflight.status !== "ok") return this.preflightFailureResult(projectRoot, preflight);
             if (preflight.plan.source.kind === "blueprint") {
                 return this.generate(projectRoot, {...request, preflightToken: preflight.preflightToken});
@@ -524,6 +534,7 @@ export class StudioOutcomeLibraryGenerateService {
         let game: PokieGame;
         let ownsGameLease = false;
         let releaseGame: (() => Promise<void>) | undefined;
+        let retainedPreflightToken: string | undefined;
         let domainRequest: OutcomeLibraryGenerationRequest;
         let preparedRequest;
         try {
@@ -535,6 +546,7 @@ export class StudioOutcomeLibraryGenerateService {
                     ownsGameLease = true;
                 } else {
                     game = this.rebindManagedBlueprintRuntime(snapshot);
+                    retainedPreflightToken = request.preflightToken;
                 }
             } else {
                 game = await this.loadGame(this.runtimeSourcePath(projectRoot));
@@ -542,6 +554,7 @@ export class StudioOutcomeLibraryGenerateService {
                 ownsGameLease = true;
             }
         } catch (error) {
+            await this.releasePreflightGame(retainedPreflightToken);
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
         try {
@@ -734,10 +747,13 @@ export class StudioOutcomeLibraryGenerateService {
                         return {status: "terminal", view: {status: "load-error", error: "The prepared conversion has no executable Outcome Library generation or reuse step. Refresh the preview and retry.", plan}};
                     }
                     const libraryId = domainRequest.libraryId;
+                    const useSmallInMemoryExact = this.generateLibrary === generateWeightedOutcomeLibrary &&
+                        preparedRequest.preflight.strategy === "exact" &&
+                        preparedRequest.preflight.estimate.totalOutcomeSpaceSize <= MAX_IN_MEMORY_EXACT_OUTCOME_SPACE_SIZE;
                     try {
                         const otherModes = await this.readOtherModes(boundDestination, modeName);
                         if (otherModes.status === "error") return {status: "terminal", view: {status: "load-error", error: otherModes.message, plan}};
-                        if (this.generateLibrary !== generateWeightedOutcomeLibrary) {
+                        if (this.generateLibrary !== generateWeightedOutcomeLibrary || useSmallInMemoryExact) {
                             const generated = await this.generateLibrary(domainRequest);
                             return {
                                 status: "ready",
@@ -885,6 +901,7 @@ export class StudioOutcomeLibraryGenerateService {
         }
         } finally {
             if (ownsGameLease) await (releaseGame ?? (() => releasePokieGame(game)))().catch(() => undefined);
+            await this.releasePreflightGame(retainedPreflightToken);
         }
     }
 
@@ -1171,6 +1188,20 @@ export class StudioOutcomeLibraryGenerateService {
      * lose its recognized Blueprint provenance when Outcome Library preflight
      * or registry work starts.
      */
+    private isFeaturelessBlueprintSource(projectRoot: string): boolean {
+        try {
+            const blueprint = loadGameBlueprint(this.runtimeSourcePath(projectRoot));
+            return canUseAuthoredExactRuntime(blueprint) &&
+                Object.keys(blueprint.mechanics ?? {}).length === 0 &&
+                blueprint.reelStrips !== undefined &&
+                blueprint.reelSequences === undefined &&
+                blueprint.reelStripGeneration === undefined &&
+                blueprint.symbolWeights === undefined;
+        } catch {
+            return false;
+        }
+    }
+
     private runtimeSourcePath(projectRoot: string): string {
         if (!this.isDirectory(projectRoot)) return projectRoot;
         const managedBlueprintPath = path.join(projectRoot, "blueprint.json");
@@ -1363,6 +1394,14 @@ export class StudioOutcomeLibraryGenerateService {
      * `prepareOutcomeLibraryGeneration` then resolves both into the immutable
      * request consumed by preflight and execution.
      */
+    private async releasePreflightGame(token: string | undefined): Promise<void> {
+        if (token === undefined) return;
+        const snapshot = this.preflightSnapshots.get(token);
+        if (snapshot?.validatedGame === undefined) return;
+        this.preflightSnapshots.delete(token);
+        await releasePokieGame(snapshot.validatedGame).catch(() => undefined);
+    }
+
     private createDomainRequest(
         game: PokieGame,
         request: ValidatedOutcomeLibraryGenerateTransportRequest | ValidatedOutcomeLibraryGenerateRequest,
@@ -1390,6 +1429,9 @@ export class StudioOutcomeLibraryGenerateService {
             libraryId: request.libraryId ?? `${manifest.id}${modeIdentity.mode !== undefined ? `-${modeIdentity.mode}` : ""}`,
             game,
             pokieVersion: this.pokieVersion,
+            // Only a managed Blueprint with no mechanics settles every paid spin in one step. Keeping
+            // that guarantee here lets the small exact fast path reuse one enumeration session.
+            ...(this.isFeaturelessBlueprintSource(projectRoot) ? {reuseFeaturelessExactSession: true} : {}),
             ...(request.configHash === undefined ? {} : {configHash: request.configHash}),
             ...(modeIdentity.mode === undefined ? {} : {mode: modeIdentity.mode}),
             // `mode` alone is a historical storage label.  Only an explicit

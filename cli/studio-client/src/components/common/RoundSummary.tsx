@@ -4,6 +4,7 @@ import {useState} from "react";
 import {deriveBetModeId} from "../../../../client/player";
 import type {StudioRuntimeSessionView} from "../../api/types";
 import {describeRoundRecord} from "../../domain/interpret/Replay";
+import {formatCount} from "../../domain/formatCount";
 import {describeRuntimeScreen, extractAdditionalRoundFields} from "../../domain/interpret/Runtime";
 import {AdvancedDisclosure} from "./AdvancedDisclosure";
 import {CodeBlock} from "./CodeBlock";
@@ -11,6 +12,46 @@ import {GameScreenView} from "./GameScreenView";
 import {PageSection} from "./PageSection";
 import {RoundRecordInspector} from "./RoundRecordInspector";
 import {describeRoundPresentation} from "./roundPresentation";
+
+function PaidRoundBreakdown({round}: {round: NonNullable<StudioRuntimeSessionView["logicalRound"]>}) {
+    if (round.subrounds.length <= 1) return null;
+    return (
+        <PageSection legend="Paid round breakdown">
+            <Text size="xs" c="dimmed" mb="xs">
+                The screen above is the current step. Every spin in this paid round is listed here.
+            </Text>
+            <Table.ScrollContainer minWidth={520}>
+                <Table aria-label="Paid round breakdown">
+                    <Table.Thead>
+                        <Table.Tr>
+                            <Table.Th>Spin</Table.Th>
+                            <Table.Th>Kind</Table.Th>
+                            <Table.Th>Stake</Table.Th>
+                            <Table.Th>Win</Table.Th>
+                            <Table.Th>Payout</Table.Th>
+                            <Table.Th>Credits</Table.Th>
+                        </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                        {round.subrounds.map((subround, index) => (
+                            <Table.Tr key={subround.id}>
+                                <Table.Td>{index + 1}</Table.Td>
+                                <Table.Td>{subround.stake === 0 ? "Free spin" : "Paid spin"}</Table.Td>
+                                <Table.Td>{subround.stake.toFixed(2)}</Table.Td>
+                                <Table.Td>{subround.win.toFixed(2)}</Table.Td>
+                                <Table.Td>{subround.payout.toFixed(2)}</Table.Td>
+                                <Table.Td>{subround.credits === undefined ? "—" : subround.credits.toFixed(2)}</Table.Td>
+                            </Table.Tr>
+                        ))}
+                    </Table.Tbody>
+                </Table>
+            </Table.ScrollContainer>
+            <Text size="xs" c="dimmed" mt={4}>
+                Win is the evaluated win for that spin; payout is the amount applied to the paid round. A free spin has stake 0.
+            </Text>
+        </PageSection>
+    );
+}
 
 function formatFieldValue(value: unknown): string {
     if (typeof value === "string") {
@@ -55,23 +96,24 @@ export function RoundSummary({
     onSelectBet?: (bet: number) => void;
     onSelectBetMode?: (modeId: string) => void;
 }) {
-    let roundTitle = "Round complete";
-    if (session.logicalRound?.status === "pending") roundTitle = "Round in progress";
-    if (session.logicalRound?.status === "exhausted") roundTitle = "Round stopped at its bound";
+    let roundTitle = "Paid round complete";
+    if (session.logicalRound?.status === "pending") roundTitle = "Paid round in progress";
+    if (session.logicalRound?.status === "exhausted") roundTitle = "Paid round stopped at its bound";
     const [artifactInspectorOpen, setArtifactInspectorOpen] = useState(false);
     const roundWin = session.logicalRound?.totalWin ?? session.debug?.artifact?.totalWin ?? session.win;
     const roundOutcome = roundWin !== undefined && roundWin > 0 ? (
         <Alert color="green" variant="light" icon={<IconCircleCheck size={16} />} title={roundTitle} mb="md">
-            {session.logicalRound ? `Round win ${roundWin.toFixed(2)}. Payout ${session.logicalRound.totalPayout.toFixed(2)}.` : `You won ${roundWin.toFixed(2)}.`}
+            {session.logicalRound ? `Paid-round win ${roundWin.toFixed(2)}. Payout ${session.logicalRound.totalPayout.toFixed(2)}.` : `You won ${roundWin.toFixed(2)}.`}
         </Alert>
     ) : (
         <Text size="sm" c="dimmed" mb="md">
-            {roundTitle} — {session.logicalRound ? `no win ${session.logicalRound.status === "completed" ? "in" : "so far in"} this round. Payout ${session.logicalRound.totalPayout.toFixed(2)}.` : "no win this round."}
+            {roundTitle} — {session.logicalRound ? `no win ${session.logicalRound.status === "completed" ? "in" : "so far in"} this paid round. Payout ${session.logicalRound.totalPayout.toFixed(2)}.` : "no win this round."}
         </Text>
     );
     if (session.debug?.artifact) {
         const artifact = describeRoundRecord(session.debug.artifact);
         const presentation = describeRoundPresentation(session.debug.stateBefore, session.debug.stateAfter, artifact.betMode, artifact.steps[artifact.steps.length - 1]?.featureEvents, session);
+        const stepScoped = session.logicalRound !== undefined && artifact.stake !== session.logicalRound.totalStake;
         return (
             <div>
                 {roundOutcome}
@@ -98,16 +140,29 @@ export function RoundSummary({
                     currentModeId={selectedBetMode ?? presentation.currentModeId}
                     onSelectMode={onSelectBetMode}
                 />
+                <Text size="xs" c="dimmed" mt={4}>
+                    Paylines, reels and rows are numbered from 1 here.
+                </Text>
 
                 {/* Structured win rows, state snapshots and raw feature payloads are inspection data,
                     not a second player screen.  Keep them behind this explicit disclosure; the
                     player above already owns the player-facing win/highlight, payline and
                     feature-counter presentation. */}
+                {stepScoped && (
+                    <Text size="xs" c="dimmed" mb="xs">
+                        This screen is the current step. The paid round contains{" "}
+                        {formatCount(session.logicalRound?.mathematicalCursor ?? 0, "spin")} with total stake{" "}
+                        {formatFieldValue(session.logicalRound?.totalStake)} and total payout{" "}
+                        {formatFieldValue(session.logicalRound?.totalPayout)}; the breakdown below lists every spin.
+                    </Text>
+                )}
+                {stepScoped && session.logicalRound !== undefined && <PaidRoundBreakdown round={session.logicalRound} />}
                 <details onToggle={(event) => setArtifactInspectorOpen(event.currentTarget.open)}>
-                    <summary>Inspect round record</summary>
+                    <summary>{stepScoped ? "Inspect current spin record" : "Inspect round record"}</summary>
                     {artifactInspectorOpen && (
                         <RoundRecordInspector
                             artifact={artifact}
+                            recordScope={stepScoped ? "step" : "round"}
                             sequenceStatistics={session.sequenceStatistics}
                             credits={session.credits}
                             stateBefore={session.debug.stateBefore}
@@ -191,7 +246,7 @@ export function RoundSummary({
                 </PageSection>
             )}
 
-            <AdvancedDisclosure detail="raw JSON, debug data">
+            <AdvancedDisclosure detail="technical data">
                 <Text size="sm" fw={600} mb={4}>
                     Public response
                 </Text>

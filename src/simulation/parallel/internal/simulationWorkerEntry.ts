@@ -24,7 +24,6 @@ async function main(): Promise<void> {
     }
     const port = parentPort;
     const request = workerData as SimulationWorkerRequest;
-
     let game: Awaited<ReturnType<typeof loadPokieGame>> | undefined;
     let terminal: SimulationWorkerMessage;
     try {
@@ -97,6 +96,15 @@ async function main(): Promise<void> {
     // The coordinator terminates workers immediately after their terminal message. Publish only after
     // releasing the invocation-owned snapshot, otherwise that termination races the worker's cleanup.
     port.postMessage(terminal!);
+
+    // Keep the worker alive until the coordinator consumes that terminal message and terminates us.
+    // Without this, a worker whose event loop becomes empty can emit its own 'exit' before the parent
+    // processes the already-queued 'message'. The coordinator then sees results[index] === undefined
+    // and reports a false "runtime release acknowledgement absent" failure even though the simulation
+    // finished and released its game normally. The coordinator owns the termination boundary; this
+    // keep-alive only prevents a natural-exit race, and clears as soon as the parent port closes.
+    const keepAlive = setInterval(() => undefined, 1_000);
+    port.once("close", () => clearInterval(keepAlive));
 }
 
 main().catch((error) => {

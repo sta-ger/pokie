@@ -76,3 +76,18 @@ export function paytablePaths(model: {paytable: Record<string, Record<string, nu
         Object.keys(amounts).map((count) => `/paytable/${escape(symbol)}/${escape(count)}`),
     );
 }
+/** Authored free-games awards are numeric leaves too, but only for the simple finite free-games mechanic. */
+export function freeGamesAwardPaths(model: {
+    mechanics?: {freeGames?: {awardsByCount?: Record<string, number>}};
+}): string[] {
+    const awards = model.mechanics?.freeGames?.awardsByCount;
+    if (awards === undefined) return [];
+    return Object.keys(awards).map((count) => `/mechanics/freeGames/awardsByCount/${count.replace(/~/g, "~0").replace(/\//g, "~1")}`);
+}
+/** Paytable leaves plus the free-games award leaves a Studio Blueprint can tune exactly. */
+export function tunablePaths(model: {
+    paytable: Record<string, Record<string, number>>;
+    mechanics?: {freeGames?: {awardsByCount?: Record<string, number>}};
+}): string[] {
+    return [...paytablePaths(model), ...freeGamesAwardPaths(model)];
+}

@@ -3,7 +3,8 @@ import {IconAlertTriangle} from "@tabler/icons-react";
 import {describeSimulationDiagnostics, describeSimulationPrecision} from "../../../../../src/reporting/describeSimulationDiagnostics";
 import type {SingleSimulationReportView} from "../../domain/interpret/Simulation";
 import {formatConfidenceInterval} from "../../domain/interpret/formatConfidenceInterval";
-import {describeStudioSimulationRecommendation, formatRoundsEstimate, roundsForRtpHalfWidth} from "../../domain/simulationRecommendations";
+import {describeStudioSimulationRecommendation, formatRoundsEstimate, requestedPlaysForRtpHalfWidth, roundsForRtpHalfWidth} from "../../domain/simulationRecommendations";
+import {MAX_STUDIO_SIMULATION_ROUNDS} from "../../domain/simulationRounds";
 import {AdvancedDisclosure} from "./AdvancedDisclosure";
 
 // Both result views read the same persisted assessment. Keep warnings and the
@@ -11,14 +12,38 @@ import {AdvancedDisclosure} from "./AdvancedDisclosure";
 export function SimulationAssessment({view, compact = false}: {view: SingleSimulationReportView; compact?: boolean}) {
     const limitations = view.diagnostics?.coverageLimitations ?? [];
     const rtpInterval = view.rtpConfidenceInterval95;
-    const roughEstimate = rtpInterval !== undefined && rtpInterval.high - rtpInterval.low > 0.02;
-    const onePointRounds = rtpInterval === undefined ? undefined : roundsForRtpHalfWidth(view.rounds, rtpInterval, 0.01);
+    // A target-precision run uses one worker in Studio, so the persisted tolerance is the combined
+    // sample's target. Older/CLI multi-worker reports keep a per-worker tolerance; fall back to the
+    // generic ±1 pp advice for those instead of mislabeling their target.
+    const requestedHalfWidth = view.workers === 1 ? view.convergence?.rtpTolerance : undefined;
+    const requestedTargetPp = requestedHalfWidth === undefined ? undefined : requestedHalfWidth * 100;
+    const observedHalfWidth = rtpInterval === undefined ? undefined : (rtpInterval.high - rtpInterval.low) / 2;
+    const roughEstimate = observedHalfWidth !== undefined &&
+        (requestedHalfWidth === undefined ? observedHalfWidth > 0.01 : observedHalfWidth > requestedHalfWidth);
+    const targetHalfWidth = requestedHalfWidth ?? 0.01;
+    const targetRounds = rtpInterval === undefined ? undefined : roundsForRtpHalfWidth(view.rounds, rtpInterval, targetHalfWidth);
     const halfPointRounds = rtpInterval === undefined ? undefined : roundsForRtpHalfWidth(view.rounds, rtpInterval, 0.005);
+    const acceptedPlays = view.sampling?.acceptedSubrounds ?? view.rounds;
+    const targetPlays = rtpInterval === undefined ? undefined : requestedPlaysForRtpHalfWidth(view.rounds, acceptedPlays, rtpInterval, targetHalfWidth);
+    const halfPointPlays = rtpInterval === undefined ? undefined : requestedPlaysForRtpHalfWidth(view.rounds, acceptedPlays, rtpInterval, 0.005);
+    const expandedByFeatures = view.sampling !== undefined && acceptedPlays !== view.rounds;
+    const playsPerPaidRound = view.rounds > 0 ? acceptedPlays / view.rounds : undefined;
+    const studioLimit = MAX_STUDIO_SIMULATION_ROUNDS.toLocaleString("en-US");
+    const exceedsStudioLimit = requestedHalfWidth === undefined
+        ? (targetPlays !== undefined && targetPlays > MAX_STUDIO_SIMULATION_ROUNDS) ||
+            (halfPointPlays !== undefined && halfPointPlays > MAX_STUDIO_SIMULATION_ROUNDS)
+        : targetPlays !== undefined && targetPlays > MAX_STUDIO_SIMULATION_ROUNDS;
+    const sampleSummary = expandedByFeatures
+        ? `${view.rounds.toLocaleString("en-US")} paid rounds completed from ${acceptedPlays.toLocaleString("en-US")} spins (paid + free)`
+        : `${view.rounds.toLocaleString("en-US")} paid rounds completed`;
     return (
         <div className="studio-simulation-assessment">
             <section aria-label="Precision and convergence" className="studio-simulation-precision">
                 <Text component="h3" size="sm" fw={600}>Precision and convergence</Text>
-                <Text size="sm">{view.rounds.toLocaleString("en-US")} rounds used · {view.diagnostics ? describeSimulationPrecision(view.diagnostics.precision).replace("no precision target requested", "no precision target set") : "precision unavailable (older report)"}</Text>
+                <Text size="sm">
+                    {sampleSummary} · {view.diagnostics ? describeSimulationPrecision(view.diagnostics.precision) : "precision unavailable (older report)"}
+                    {view.diagnostics?.precision === "notRequested" ? " — Studio stops at the spin budget and reports the interval actually achieved." : ""}
+                </Text>
                 <Table withRowBorders={false} aria-label="Confidence intervals" className="studio-simulation-intervals">
                     <Table.Tbody>
                         <Table.Tr>
@@ -31,19 +56,39 @@ export function SimulationAssessment({view, compact = false}: {view: SingleSimul
                         </Table.Tr>}
                     </Table.Tbody>
                 </Table>
-                <Text size="xs" c="dimmed">95% intervals use a normal approximation: 1.96 × standard deviation ÷ √rounds.</Text>
+                <Text size="xs" c="dimmed">95% intervals use a normal approximation: 1.96 × standard deviation ÷ √completed paid rounds.</Text>
                 <Text size="sm" c="dimmed">Empirical estimates · exact RTP and unseen-event coverage are not established.</Text>
                 {roughEstimate && (
                     <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title="Rough RTP estimate" mt="sm">
                         <Text size="sm">
-                            This interval is wider than ±1 percentage point. Run more rounds, or generate an exact outcome library, before treating this RTP
-                            as final.
+                            {requestedTargetPp === undefined
+                                ? "This interval is wider than ±1 percentage point."
+                                : `This interval is wider than the requested ±${requestedTargetPp.toFixed(2)} pp.`}{" "}
+                            Use exact math for RTP when the design can be enumerated completely, or run more spins before
+                            treating this sample as final.
                         </Text>
-                        {onePointRounds !== undefined && (
-                            <Text size="sm" mt={4}>
-                                At the observed spread, about {formatRoundsEstimate(onePointRounds)} rounds are needed for a ±1 pp interval
-                                {halfPointRounds === undefined ? "" : `; about ${formatRoundsEstimate(halfPointRounds)} for ±0.5 pp`}.
-                            </Text>
+                        {targetRounds !== undefined && (
+                            <>
+                                <Text size="sm" mt={4}>
+                                    At the observed spread, about {formatRoundsEstimate(targetRounds)} paid rounds are needed for a{" "}
+                                    {requestedTargetPp === undefined ? "±1 pp" : `requested ±${requestedTargetPp.toFixed(2)} pp`} interval
+                                    {!expandedByFeatures || targetPlays === undefined ? "" : ` (about ${formatRoundsEstimate(targetPlays)} spins)`}
+                                    {requestedTargetPp !== undefined || halfPointRounds === undefined ? "" : `; about ${formatRoundsEstimate(halfPointRounds)} paid rounds for ±0.5 pp`}
+                                    {requestedTargetPp !== undefined || !expandedByFeatures || halfPointPlays === undefined ? "" : ` (about ${formatRoundsEstimate(halfPointPlays)} spins)`}.
+                                </Text>
+                                {expandedByFeatures && playsPerPaidRound !== undefined && playsPerPaidRound !== 1 && (
+                                    <Text size="xs" c="dimmed" mt={4}>
+                                        This game expands one paid round into about {formatRoundsEstimate(playsPerPaidRound)} spins (paid + free)
+                                        when free games are included. The spin budget counts paid and free spins; the interval counts completed paid rounds.
+                                    </Text>
+                                )}
+                                {exceedsStudioLimit && (
+                                    <Text size="xs" c="dimmed" mt={4}>
+                                        Studio runs at most {studioLimit} spins per simulation. For a tighter interval, use exact math for RTP
+                                        or run the larger simulation from the CLI.
+                                    </Text>
+                                )}
+                            </>
                         )}
                     </Alert>
                 )}

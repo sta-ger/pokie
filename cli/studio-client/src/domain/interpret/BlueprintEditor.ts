@@ -150,7 +150,7 @@ export type BlueprintSaveView =
     | {status: "idle"}
     | {status: "loading"}
     | {status: "error"; message: string}
-    | {status: "failed"; message: string}
+    | {status: "failed"; message: string; existingProjectPath?: string}
     | {
           status: "conflict";
           path: string;
@@ -192,5 +192,11 @@ export function describeSaveManagedResult(result: StudioBlueprintSaveManagedView
     if (result.status === "ok") {
         return {status: "ok", path: result.path};
     }
-    return {status: "failed", message: result.error};
+    return {
+        status: "failed",
+        message: result.error,
+        ...(result.status === "unavailable" && result.existingProjectPath !== undefined
+            ? {existingProjectPath: result.existingProjectPath}
+            : {}),
+    };
 }

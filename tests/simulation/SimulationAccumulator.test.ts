@@ -319,7 +319,7 @@ it("rejects unbounded imported histogram dimensions without changing the source"
     accumulator.addRound(1, 0);
     const snapshot = accumulator.toSnapshot();
     snapshot.payoutHistogram["custom-round-1"] = 1;
-    expect(() => SimulationAccumulator.fromSnapshot(snapshot)).toThrow(/fixed buckets/);
+    expect(() => SimulationAccumulator.fromSnapshot(snapshot)).toThrow(/fixed payout buckets/);
     expect(Object.keys(accumulator.toSnapshot().payoutHistogram)).toEqual(["0"]);
 });
 

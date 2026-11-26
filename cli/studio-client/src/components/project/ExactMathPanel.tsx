@@ -1,15 +1,27 @@
-import {Alert, Button, Group, SimpleGrid, Stack, Table, Text, Title} from "@mantine/core";
+import {Alert, Anchor, Badge, Button, Group, Paper, SimpleGrid, Stack, Table, Text, Title} from "@mantine/core";
 import {useEffect, useRef, useState} from "react";
 import {formatAnalysisNumber} from "../../../../../src/internal/formatAnalysisNumber";
+import type {AdvancedModelValidationReport} from "../../../../../src/validation/AdvancedModelValidation.js";
+import {orderContributionEntries} from "../../domain/contributionTableOrder";
+import {describeFeatureEventLabel} from "../../domain/featureEventLabels";
+import {formatOneIn} from "../../domain/formatOneIn";
+import {describeRtpSanityWarning} from "../../../../../src/reporting/describeRtpSanityWarning";
 import {
     cancelOutcomeLibraryGeneration,
+    estimateOutcomeLibraryGeneration,
     getExactMath,
     getOutcomeLibraryGenerationJob,
     OutcomeLibraryGenerationStartError,
     startOutcomeLibraryGeneration,
 } from "../../api/apiClient";
-import type {StudioExactMathContributionTable, StudioExactMathEventTable, StudioExactMathView, StudioOutcomeLibraryGenerateJobView} from "../../api/types";
+import type {
+    StudioExactMathContributionTable,
+    StudioExactMathEventTable,
+    StudioExactMathView,
+    StudioOutcomeLibraryGenerateJobView,
+} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
+import type {ProjectMathStatus} from "../../domain/validationScope";
 import {errorMessage} from "../../domain/errorMessage";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {EmptyState} from "../common/EmptyState";
@@ -21,12 +33,12 @@ import {PageSection} from "../common/PageSection";
 const STAGE_LABELS: Record<string, string> = {
     generation: "Enumerating combinations",
     finalization: "Preparing outcomes",
-    writing: "Writing the library",
+    writing: "Writing the outcome table",
     analyzing: "Analyzing outcomes",
     "building-index": "Indexing outcomes",
     serialization: "Serializing outcomes",
-    validation: "Validating the library",
-    publication: "Publishing the library",
+    validation: "Validating the outcome table",
+    publication: "Publishing the outcome table",
 };
 
 function formatElapsed(ms: number | undefined): string {
@@ -38,14 +50,32 @@ function formatElapsed(ms: number | undefined): string {
 }
 
 function isTerminal(job: StudioOutcomeLibraryGenerateJobView): boolean {
-    return job.status === "completed" || job.status === "failed" || job.status === "cancelled" || job.status === "recovery-required";
+    return (
+        job.status === "completed" ||
+        job.status === "failed" ||
+        job.status === "cancelled" ||
+        job.status === "recovery-required"
+    );
+}
+
+function hasFreeGamesTerminationWarning(report: AdvancedModelValidationReport | undefined): boolean {
+    return (
+        report?.checks.some((check) => check.id === "termination.free-games" && check.status === "violation") ?? false
+    );
 }
 
 function jobError(job: StudioOutcomeLibraryGenerateJobView): string {
     const result = job.result;
-    if (result !== undefined && "error" in result && typeof result.error === "string") return result.error;
-    if (result !== undefined && "errors" in result && Array.isArray(result.errors)) return result.errors.map((issue) => issue.message).join("; ");
-    return `Exact-math generation ended with status "${job.status}".`;
+    let message = `Exact-math generation ended with status "${job.status}".`;
+    if (result !== undefined && "error" in result && typeof result.error === "string") {
+        message = result.error;
+    } else if (result !== undefined && "errors" in result && Array.isArray(result.errors)) {
+        message = result.errors.map((issue) => issue.message).join("; ");
+    }
+    if ((/Unsupported shared WASM math model|cannot be lowered to the compact exact-math model/i).test(message)) {
+        return "Exact math is unavailable for this design. It uses a feature the compact exact model does not support (for example generated reel strips or stacks), or its outcome space is too large. Use Simulation, or generate a sampled outcome table in Build/Export.";
+    }
+    return message;
 }
 
 /**
@@ -53,7 +83,27 @@ function jobError(job: StudioOutcomeLibraryGenerateJobView): string {
  * one-click generation when none exists. It never treats a sampled Simulation report as exact, and a
  * stale library is reported as stale rather than silently shown as current.
  */
-export function ExactMathPanel({projectRoot, sourceRevision, refreshKey}: {projectRoot: string; sourceRevision?: string; refreshKey?: number}) {
+export function ExactMathPanel({
+    projectRoot,
+    sourceRevision,
+    refreshKey,
+    featureCheck,
+    autoCompute,
+    onGenerated,
+    onStatusChange,
+    onOpenPlay,
+}: {
+    projectRoot: string;
+    sourceRevision?: string;
+    refreshKey?: number;
+    featureCheck?: AdvancedModelValidationReport;
+    autoCompute?: boolean;
+    onGenerated?: () => void;
+    /** Lets Overview's structure/math badges say "exact", "stale" or "not checked" truthfully. */
+    onStatusChange?: (status: ProjectMathStatus) => void;
+    /** The compact key-numbers card's single primary action; omitted for read-only surfaces. */
+    onOpenPlay?: () => void;
+}) {
     const fetchImpl = useStudioApi();
     const [view, setView] = useState<StudioExactMathView | undefined>(undefined);
     const [loading, setLoading] = useState(true);
@@ -63,6 +113,7 @@ export function ExactMathPanel({projectRoot, sourceRevision, refreshKey}: {proje
     const [notice, setNotice] = useState<string>();
     const loadGeneration = useRef(0);
     const pollGeneration = useRef(0);
+    const autoComputeStarted = useRef(false);
 
     const load = (): void => {
         const generation = ++loadGeneration.current;
@@ -121,8 +172,15 @@ export function ExactMathPanel({projectRoot, sourceRevision, refreshKey}: {proje
             if (!isTerminal(next)) continue;
             setStarting(false);
             if (next.status === "completed") {
-                setNotice("Exact Outcome Library generated. The figures below are exact for this saved design.");
+                setNotice(
+                    "Exact outcome table generated. This is the complete paid-spin outcome table for this saved design.",
+                );
+                // The generation job is complete, but the exact-math view still holds the pre-generation
+                // "missing" snapshot until its own read settles. Clear that snapshot first so the card
+                // never shows "generated" and "no table exists" at the same time.
+                setView(undefined);
                 load();
+                onGenerated?.();
             } else if (next.status === "cancelled") {
                 setNotice("Exact-math generation was cancelled. The previous result, if any, is unchanged.");
             } else {
@@ -136,23 +194,58 @@ export function ExactMathPanel({projectRoot, sourceRevision, refreshKey}: {proje
         setStarting(true);
         setError(undefined);
         setNotice(undefined);
-        startOutcomeLibraryGeneration(fetchImpl, {generation: "exact"})
-            .then((started) => {
-                setJob(started);
-                poll(started.id).catch((failure: unknown) => {
+        // Ask the cheap preflight first. It tells us whether this design can fit an exact enumeration and
+        // whether the compact exact model supports it at all, so a doomed large/stacks job is never queued.
+        estimateOutcomeLibraryGeneration(fetchImpl, {generation: "exact"})
+            .then(async (estimate) => {
+                if (estimate.status !== "ok") {
                     setStarting(false);
-                    setError(errorMessage(failure));
+                    setError(estimate.error);
+                    return;
+                }
+                if (estimate.requiresBounded) {
+                    setStarting(false);
+                    const formatSpace = (value: number | string): string =>
+                        typeof value === "number" ? value.toLocaleString("en-US") : value;
+                    setError(
+                        `This design has ${formatSpace(
+                            estimate.totalOutcomeSpaceSize,
+                        )} possible reel-stop combinations, above the exact limit of ${formatSpace(
+                            estimate.maxOutcomeSpaceSize,
+                        )}. Use Simulation, or generate a sampled outcome table in Build/Export.`,
+                    );
+                    return;
+                }
+                const started = await startOutcomeLibraryGeneration(fetchImpl, {
+                    generation: "exact",
+                    preflightToken: estimate.preflightToken,
                 });
+                setJob(started);
+                await poll(started.id);
             })
             .catch((failure: unknown) => {
                 setStarting(false);
-                if (failure instanceof OutcomeLibraryGenerationStartError && failure.outcomeStatus === "requires-bounded") {
-                    setError("This game's outcome space is too large for one-click exact enumeration. Use Build/Export → Outcome libraries to generate a sampled library, or raise the exact cap explicitly.");
+                if (
+                    failure instanceof OutcomeLibraryGenerationStartError &&
+                    failure.outcomeStatus === "requires-bounded"
+                ) {
+                    setError(
+                        "This game's outcome space is too large for one-click exact enumeration. Use Build/Export → Outcome tables to generate a sampled outcome table, or raise the exact cap explicitly.",
+                    );
                 } else {
                     setError(errorMessage(failure));
                 }
             });
     };
+
+    useEffect(() => {
+        if (!autoCompute || autoComputeStarted.current || view?.status !== "missing") return;
+        autoComputeStarted.current = true;
+        start();
+        // start is intentionally not a dependency: it is recreated each render, while the one-shot
+        // guard above is what keeps a missing table from starting a generation loop.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoCompute, view?.status]);
 
     const cancel = (): void => {
         if (job === undefined) return;
@@ -162,22 +255,56 @@ export function ExactMathPanel({projectRoot, sourceRevision, refreshKey}: {proje
     };
 
     const active = job !== undefined && !isTerminal(job) && job.status !== "recovery-required";
+
+    useEffect(() => {
+        const status: ProjectMathStatus = starting || active
+            ? "loading"
+            : view?.status ?? (error === undefined ? "loading" : "error");
+        onStatusChange?.(status);
+    }, [active, error, onStatusChange, starting, view?.status]);
+
     const progress = job?.progress;
     const durable = job?.durableProgress;
     const elapsedMs = job?.durationMs ?? (job?.startedAt === undefined ? undefined : Date.now() - job.startedAt);
     const processedRaw = progress === undefined ? undefined : Number(progress.processedRawIndex);
     const totalRaw = progress === undefined ? undefined : Number(progress.progressTotal);
-    const durableCurrent = durable === undefined || durable.current === "indeterminate" ? undefined : Number(durable.current);
+    const durableCurrent =
+        durable === undefined || durable.current === "indeterminate" ? undefined : Number(durable.current);
     const durableTotal = durable === undefined || durable.total === "indeterminate" ? undefined : Number(durable.total);
     const measuredCurrent = durableCurrent ?? processedRaw;
     const measuredTotal = durableTotal ?? totalRaw;
-    const estimate = active && measuredCurrent !== undefined && measuredTotal !== undefined && elapsedMs !== undefined && measuredCurrent > 0 && measuredTotal > measuredCurrent
+    // The first records are written while the writer is still warming up; a linear ETA from that
+    // instant can claim minutes for a job that finishes in seconds. Wait for a real rate and a
+    // meaningful share of the work, then call the result "rough" rather than presenting it as a promise.
+    const canEstimateEta =
+        active &&
+        measuredCurrent !== undefined &&
+        measuredTotal !== undefined &&
+        elapsedMs !== undefined &&
+        measuredCurrent > 0 &&
+        measuredTotal > measuredCurrent &&
+        elapsedMs >= 8000 &&
+        measuredCurrent >= Math.min(500, measuredTotal * 0.02);
+    const estimate = canEstimateEta
         ? formatElapsed((elapsedMs / measuredCurrent) * (measuredTotal - measuredCurrent))
         : undefined;
+    let etaLabel: string | undefined;
+    if (
+        active &&
+        measuredCurrent !== undefined &&
+        measuredTotal !== undefined &&
+        measuredCurrent > 0 &&
+        measuredTotal > measuredCurrent
+    ) {
+        etaLabel = estimate === undefined ? "estimating…" : `rough ETA ~${estimate}`;
+    }
     const stageLabel = durable?.stage ?? STAGE_LABELS[job?.lifecycleStage ?? ""] ?? job?.lifecycleStage ?? "Working";
-    const progressLabel = measuredCurrent === undefined || measuredTotal === undefined
-        ? undefined
-        : `${measuredCurrent.toLocaleString("en-US")} / ${measuredTotal.toLocaleString("en-US")} ${durable?.unit ?? "combinations"}`;
+    const progressLabel =
+        measuredCurrent === undefined || measuredTotal === undefined
+            ? undefined
+            : `${measuredCurrent.toLocaleString("en-US")} / ${measuredTotal.toLocaleString("en-US")} ${
+                durable?.unit ?? "combinations"
+            }`;
 
     let body: React.ReactNode;
     if (loading && view === undefined) {
@@ -185,81 +312,429 @@ export function ExactMathPanel({projectRoot, sourceRevision, refreshKey}: {proje
     } else if (view?.status === "ok") {
         const analysis = view.analysis;
         const contribution = view.contributions;
+        const freeGamesTotal = view.freeGamesRtp?.status === "available" ? view.freeGamesRtp : undefined;
+        const wholeRoundMaxUpperBound =
+            freeGamesTotal !== undefined &&
+            freeGamesTotal.maxFreeGames !== undefined &&
+            Number.isFinite(analysis.maxWin)
+                ? (analysis.maxWin * (1 + freeGamesTotal.maxFreeGames)) / view.stake
+                : undefined;
+        let wholeRoundMaxLabel: string | undefined;
+        let wholeRoundMaxValue: string | undefined;
+        if (freeGamesTotal !== undefined) {
+            wholeRoundMaxLabel =
+                freeGamesTotal.maxFreeGames === undefined
+                    ? "Max whole-round win (no cap)"
+                    : "Max whole-round win (upper bound, capped)";
+            if (freeGamesTotal.maxFreeGames === undefined) wholeRoundMaxValue = "Unbounded";
+            else if (wholeRoundMaxUpperBound === undefined) wholeRoundMaxValue = "Unavailable";
+            else wholeRoundMaxValue = `${formatAnalysisNumber(wholeRoundMaxUpperBound, 4)}× bet`;
+        }
+        let featureScopeWarning: string | undefined;
+        let featureScopeTitle = "Paid-spin exact math";
+        let featureScopeColor: "yellow" | "blue" = "yellow";
+        if (freeGamesTotal !== undefined) {
+            featureScopeTitle =
+                freeGamesTotal.maxFreeGames === undefined
+                    ? "Free-games RTP included"
+                    : "Free-games RTP included (capped)";
+            featureScopeColor = "blue";
+            featureScopeWarning = `Total RTP includes additive free-game retriggers${
+                freeGamesTotal.maxFreeGames === undefined
+                    ? ""
+                    : ` capped at ${freeGamesTotal.maxFreeGames} free games per feature`
+            }: ${(freeGamesTotal.baseRtp * 100).toFixed(4)}% paid-spin + ${(freeGamesTotal.featureRtp * 100).toFixed(
+                4,
+            )}% free games = ${(freeGamesTotal.totalRtp * 100).toFixed(
+                4,
+            )}%. The model assumes free spins use the same reels, paytable and bet, and each trigger awards the recorded count.`;
+        } else if (view.featurePayoutsIncluded === false) {
+            const unbounded = view.freeGamesRtp?.status === "infinite";
+            const reason =
+                view.freeGamesRtp?.status === "infinite" || view.freeGamesRtp?.status === "unsupported"
+                    ? ` ${view.freeGamesRtp.reason}`
+                    : "";
+            if (unbounded) {
+                featureScopeTitle = "Unbounded total RTP";
+                featureScopeWarning = `This exact RTP covers paid entry spins only.${reason} Simulation cannot produce a finite long-run RTP for this model; reduce the free-games award or scatter frequency before testing.`;
+            } else {
+                featureScopeWarning = `This exact RTP covers paid entry spins only. The outcome table records feature triggers, but feature payouts that settle later — for example free-game wins — are not included.${reason} Use Simulation for total RTP.`;
+            }
+        } else if (view.featurePayoutsIncluded === undefined) {
+            featureScopeWarning =
+                "This exact outcome table is too large to inspect feature triggers here. The figures cover paid entry spins; if the design has free games or other features, their later payouts are not included.";
+        }
+        const rtpWarning = describeRtpSanityWarning(freeGamesTotal?.totalRtp ?? analysis.rtp);
+        let paidSpinLabel = "Exact RTP";
+        if (freeGamesTotal !== undefined) paidSpinLabel = "Paid-spin RTP";
+        else if (view.featurePayoutsIncluded === false) paidSpinLabel = "Exact RTP (paid spins)";
+        const hitFrequencyLabel = freeGamesTotal !== undefined ? "Hit frequency (paid spins)" : "Hit frequency";
+        const volatilityLabel =
+            freeGamesTotal !== undefined
+                ? "Volatility (σ, × bet, paid spins)"
+                : "Volatility (σ, × bet)";
+        const maxWinLabel = freeGamesTotal !== undefined ? "Max win (× bet, paid spins)" : "Max win (× bet)";
+        const hasFreeGamesCaveat =
+            freeGamesTotal !== undefined &&
+            freeGamesTotal.maxFreeGames === undefined &&
+            hasFreeGamesTerminationWarning(featureCheck);
         body = (
             <Stack gap="sm">
-                <Text size="sm" c="dimmed">
-                    Exact, not sampled: all {view.outcomeCount.toLocaleString("en-US")} weighted outcomes of mode &quot;{view.modeName}&quot; were enumerated. The library is a fixed snapshot of this saved design.
-                </Text>
-                <SimpleGrid cols={{base: 2, md: 5}} spacing="sm">
-                    <Metric label="Exact RTP" value={`${formatAnalysisNumber(analysis.rtp * 100, 4)}%`} />
-                    <Metric label="Hit frequency" value={`${formatAnalysisNumber(analysis.hitFrequency * 100, 4)}%`} />
-                    <Metric label="Volatility (σ, bet units)" value={formatAnalysisNumber(analysis.standardDeviation, 4)} />
-                    <Metric label="Max win (× bet)" value={formatAnalysisNumber(analysis.maxWin / view.stake, 4)} />
-                    <Metric label="Outcomes" value={view.outcomeCount.toLocaleString("en-US")} />
-                </SimpleGrid>
-                <Text size="xs" c="dimmed">
-                    Volatility is the standard deviation of payout per round, in bet units. Max win is the largest
-                    single-round payout, also in bet units; it can exceed the largest paytable entry when several
-                    lines win in the same round.
-                </Text>
-                <Text size="xs" c="dimmed">
-                    Library {view.libraryId} · generated {view.generatedAt}{view.strategy === undefined ? "" : ` · ${view.strategy}`}
-                </Text>
-                <ExactPayoutDistribution buckets={analysis.payoutDistribution} />
-                {view.events.entries.length > 0 && (
-                    <AdvancedDisclosure label="win event probabilities">
-                        <Text size="sm" c="dimmed" mb="xs">
-                            Exact chance that a random round contains at least one of these wins. A round can contain several events, so the rows overlap and their probabilities do not sum to 1.
-                        </Text>
-                        <EventTable table={view.events} />
-                        {view.events.truncated && <Text size="xs" c="dimmed" mt="xs">Showing the most likely events. The library itself remains complete.</Text>}
+                <KeyNumbersCard
+                    totalRtp={freeGamesTotal?.totalRtp}
+                    paidRtp={analysis.rtp}
+                    freeRtp={freeGamesTotal?.featureRtp}
+                    hitFrequency={analysis.hitFrequency}
+                    volatility={analysis.standardDeviation}
+                    maxWin={analysis.maxWin / view.stake}
+                    volatilityLabel={volatilityLabel}
+                    maxWinLabel={maxWinLabel}
+                    outcomes={view.outcomeCount}
+                    uncapped={hasFreeGamesCaveat}
+                    onOpenPlay={onOpenPlay}
+                />
+                {rtpWarning !== undefined && (
+                    <Alert color="red" variant="light" title="RTP looks unusual">
+                        <Text size="md">{rtpWarning}</Text>
+                    </Alert>
+                )}
+                {(hasFreeGamesCaveat || featureScopeWarning !== undefined) && (
+                    <AdvancedDisclosure label="free-games and RTP caveats">
+                        {hasFreeGamesCaveat && (
+                            <Alert color="yellow" variant="light" title="Free games have no hard cap">
+                                <Text size="md">
+                                    In plain terms: the average RTP is exact, but one round can run indefinitely. A
+                                    retrigger factor below 1 keeps the average finite and means a round ends with
+                                    probability 1, but it does not put a hard limit on one round. Treat this as an
+                                    expected-value result.
+                                </Text>
+                                <Anchor
+                                    href={`#/project/${encodeURIComponent(projectRoot)}/gameModel`}
+                                    size="sm"
+                                    mt={6}
+                                    display="block"
+                                >
+                                    Review free-games mechanics
+                                </Anchor>
+                            </Alert>
+                        )}
+                        {featureScopeWarning !== undefined && (
+                            <Alert color={featureScopeColor} variant="light" title={featureScopeTitle}>
+                                <Text size="md">{featureScopeWarning}</Text>
+                                {view.freeGamesRtp?.status !== "infinite" && (
+                                    <Anchor
+                                        href={`#/project/${encodeURIComponent(projectRoot)}/simulation`}
+                                        size="sm"
+                                        mt={6}
+                                        display="block"
+                                    >
+                                        Open Simulation to compare total RTP
+                                    </Anchor>
+                                )}
+                            </Alert>
+                        )}
                     </AdvancedDisclosure>
                 )}
-                {view.events.entries.length === 0 && view.eventNote !== undefined && <Text size="xs" c="dimmed">{view.eventNote}</Text>}
-                {(contribution.line.entries.length > 0 || contribution.symbol.entries.length > 0) && (
-                    <AdvancedDisclosure label="line and symbol contributions">
+                <AdvancedDisclosure label="all exact math figures">
+                    <SimpleGrid cols={{base: 2, md: freeGamesTotal === undefined ? 5 : 4}} spacing="sm">
+                        {freeGamesTotal !== undefined && (
+                            <Metric
+                                primary
+                                label="Total RTP (paid + free games)"
+                                value={`${formatAnalysisNumber(freeGamesTotal.totalRtp * 100, 4)}%`}
+                            />
+                        )}
+                        <Metric
+                            primary={freeGamesTotal === undefined}
+                            label={paidSpinLabel}
+                            value={`${formatAnalysisNumber(analysis.rtp * 100, 4)}%`}
+                        />
+                        {freeGamesTotal !== undefined && (
+                            <Metric
+                                label="Free-games RTP"
+                                value={`${formatAnalysisNumber(freeGamesTotal.featureRtp * 100, 4)}%`}
+                            />
+                        )}
+                        <Metric
+                            label={hitFrequencyLabel}
+                            value={`${formatAnalysisNumber(analysis.hitFrequency * 100, 4)}%`}
+                        />
+                        <Metric label={volatilityLabel} value={formatAnalysisNumber(analysis.standardDeviation, 4)} />
+                        <Metric label={maxWinLabel} value={formatAnalysisNumber(analysis.maxWin / view.stake, 4)} />
+                        {wholeRoundMaxLabel !== undefined && wholeRoundMaxValue !== undefined && (
+                            <Metric label={wholeRoundMaxLabel} value={wholeRoundMaxValue} />
+                        )}
+                        <Metric
+                            label={freeGamesTotal !== undefined ? "Outcomes (paid spins)" : "Outcomes"}
+                            value={view.outcomeCount.toLocaleString("en-US")}
+                        />
+                    </SimpleGrid>
+                    <Text size="xs" c="dimmed" mt="sm">
+                        Exact enumeration of {view.outcomeCount.toLocaleString("en-US")} paid-spin outcomes for bet mode
+                        &quot;{view.modeName}&quot;; not a sample. This table is a fixed snapshot of this saved design.
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                        Outcome table {view.libraryId} · generated {view.generatedAt}
+                        {view.strategy === undefined ? "" : ` · ${view.strategy}`}
+                    </Text>
+                </AdvancedDisclosure>
+                <AdvancedDisclosure label="how to read these figures">
+                    <Text size="sm" c="dimmed">
+                        Volatility and max win here are paid-spin figures. Volatility is the standard deviation of
+                        payout per round, in bet units. Max win is the largest single-round paid-spin payout, also in
+                        bet units; it can exceed the largest paytable entry when several lines win in the same round.
+                        Simulation reports whole paid rounds; when the design has free games or other features, its
+                        volatility and largest observed win include them and can be larger. Studio reports the standard
+                        deviation instead of a low/medium/high class because there is no single industry threshold for
+                        those labels. With a free-games cap, the whole-round maximum shown here is an upper bound:
+                        the paid-spin maximum plus the cap in free spins, each at the paid-spin maximum. Without a cap,
+                        retriggers can chain indefinitely, so the theoretical whole-round maximum is unbounded even
+                        when expected RTP is finite. Simulation&apos;s largest observed win is a sample, not a
+                        theoretical maximum.
+                    </Text>
+                </AdvancedDisclosure>
+                <ExactPayoutDistribution
+                    buckets={analysis.payoutDistribution}
+                    label={freeGamesTotal !== undefined ? "paid-spin payout distribution" : "payout distribution"}
+                />
+                {view.events.entries.length > 0 && (
+                    <AdvancedDisclosure
+                        label={
+                            freeGamesTotal !== undefined
+                                ? "paid-spin win event probabilities"
+                                : "win event probabilities"
+                        }
+                    >
                         <Text size="sm" c="dimmed" mb="xs">
-                            Exact weighted contribution to RTP, using the same per-unit-stake scale as the RTP above. A round can contain several winning lines or symbols, so these rows overlap and must not be added together as an RTP decomposition.
+                            Exact chance that a random round contains at least one of these wins. A round can contain
+                            several events, so the probabilities overlap and do not sum to 100%. The RTP contribution
+                            column still adds up to the exact RTP above.
+                        </Text>
+                        <EventTable table={view.events} />
+                        {view.events.truncated && (
+                            <Text size="xs" c="dimmed" mt="xs">
+                                Showing the most likely events. The outcome table itself remains complete.
+                            </Text>
+                        )}
+                    </AdvancedDisclosure>
+                )}
+                {view.events.entries.length === 0 && view.eventNote !== undefined && (
+                    <Text size="xs" c="dimmed">
+                        {view.eventNote}
+                    </Text>
+                )}
+                {(contribution.line.entries.length > 0 || contribution.symbol.entries.length > 0) && (
+                    <AdvancedDisclosure
+                        label={
+                            freeGamesTotal !== undefined
+                                ? "paid-spin line and symbol contributions"
+                                : "line and symbol contributions"
+                        }
+                    >
+                        <Text size="sm" c="dimmed" mb="xs">
+                            Exact weighted contribution to RTP, using the same per-unit-stake scale as the RTP above.
+                            The line table covers line wins; the symbol table covers every win once. The two tables
+                            overlap, so do not add one to the other — that would count line wins twice. The symbol
+                            table&apos;s RTP column adds up to exact RTP; the line table does too when every win is a
+                            line win. A truncated table omits only its smallest rows. Rows are sorted by RTP
+                            contribution, highest first; ties are ordered by their label.
                         </Text>
                         {contribution.line.entries.length > 0 && (
                             <>
-                                <Text fw={600} size="sm" mt="xs">Line contributions</Text>
+                                <Text fw={600} size="sm" mt="xs">
+                                    Line contributions
+                                </Text>
                                 <ContributionTable entries={contribution.line.entries} />
                             </>
                         )}
                         {contribution.symbol.entries.length > 0 && (
                             <>
-                                <Text fw={600} size="sm" mt="xs">Symbol contributions</Text>
+                                <Text fw={600} size="sm" mt="xs">
+                                    Symbol contributions
+                                </Text>
                                 <ContributionTable entries={contribution.symbol.entries} />
                             </>
                         )}
-                        {view.contributionNote !== undefined && <Text size="xs" c="dimmed" mt="xs">{view.contributionNote}</Text>}
+                        {view.contributionNote !== undefined && (
+                            <Text size="xs" c="dimmed" mt="xs">
+                                {view.contributionNote}
+                            </Text>
+                        )}
                     </AdvancedDisclosure>
                 )}
-                {view.contributionNote !== undefined && (contribution.line.entries.length === 0 && contribution.symbol.entries.length === 0) && (
-                    <Text size="xs" c="dimmed">{view.contributionNote}</Text>
+                {view.contributionNote !== undefined &&
+                    contribution.line.entries.length === 0 &&
+                    contribution.symbol.entries.length === 0 && (
+                    <Text size="xs" c="dimmed">
+                        {view.contributionNote}
+                    </Text>
+                )}
+                {view.featureEvents !== undefined && view.featureEvents.length > 0 && (
+                    <AdvancedDisclosure
+                        label={
+                            freeGamesTotal !== undefined
+                                ? "feature triggers and free-games RTP derivation"
+                                : "feature triggers (payouts not included)"
+                        }
+                    >
+                        <Text size="sm" c="dimmed" mb="xs">
+                            {freeGamesTotal !== undefined
+                                ? "These triggers feed the derived total RTP above; the outcome table itself keeps paid-spin records."
+                                : "These are the feature events recorded by the paid-spin outcome table. Their later feature outcomes are not part of the exact figures above."}
+                        </Text>
+                        {view.freeGamesRtp?.status === "available" && (
+                            <Stack gap={4} mb="sm">
+                                <Text fw={600} size="sm">
+                                    Free-games RTP derivation
+                                    {view.freeGamesRtp.maxFreeGames === undefined ? "" : " (capped)"}
+                                </Text>
+                                <Text size="xs" c="dimmed">
+                                    Free-games RTP = trigger probability × expected free spins × paid-spin RTP. Free
+                                    spins use the same reels, paytable and bet; retriggers are additive.
+                                </Text>
+                                <Table withRowBorders={false} aria-label="Free-games RTP derivation">
+                                    <Table.Tbody>
+                                        <Table.Tr>
+                                            <Table.Th>Trigger probability (per paid spin)</Table.Th>
+                                            <Table.Td>
+                                                {formatAnalysisNumber(view.freeGamesRtp.triggerProbability * 100, 4)}%
+                                            </Table.Td>
+                                        </Table.Tr>
+                                        <Table.Tr>
+                                            <Table.Th>Average award per trigger</Table.Th>
+                                            <Table.Td>
+                                                {formatAnalysisNumber(view.freeGamesRtp.expectedAward, 4)} free games
+                                            </Table.Td>
+                                        </Table.Tr>
+                                        {view.freeGamesRtp.maxFreeGames !== undefined && (
+                                            <Table.Tr>
+                                                <Table.Th>Cap per feature (initial award + retriggers)</Table.Th>
+                                                <Table.Td>{view.freeGamesRtp.maxFreeGames} free games</Table.Td>
+                                            </Table.Tr>
+                                        )}
+                                        <Table.Tr>
+                                            <Table.Th>Retrigger factor (per free spin)</Table.Th>
+                                            <Table.Td>
+                                                {formatAnalysisNumber(
+                                                    view.freeGamesRtp.triggerProbability *
+                                                        view.freeGamesRtp.expectedAward,
+                                                    4,
+                                                )}
+                                            </Table.Td>
+                                        </Table.Tr>
+                                        <Table.Tr>
+                                            <Table.Th>Expected free spins per trigger (incl. retriggers)</Table.Th>
+                                            <Table.Td>
+                                                {formatAnalysisNumber(view.freeGamesRtp.expectedFreeSpins, 4)}
+                                            </Table.Td>
+                                        </Table.Tr>
+                                        <Table.Tr>
+                                            <Table.Th>Paid-spin RTP</Table.Th>
+                                            <Table.Td>
+                                                {formatAnalysisNumber(view.freeGamesRtp.baseRtp * 100, 4)}%
+                                            </Table.Td>
+                                        </Table.Tr>
+                                        <Table.Tr>
+                                            <Table.Th>Free-games RTP</Table.Th>
+                                            <Table.Td>
+                                                {formatAnalysisNumber(view.freeGamesRtp.featureRtp * 100, 4)}%
+                                            </Table.Td>
+                                        </Table.Tr>
+                                        <Table.Tr>
+                                            <Table.Th>Total RTP</Table.Th>
+                                            <Table.Td>
+                                                {formatAnalysisNumber(view.freeGamesRtp.totalRtp * 100, 4)}%
+                                            </Table.Td>
+                                        </Table.Tr>
+                                    </Table.Tbody>
+                                </Table>
+                                <Text size="xs" c="dimmed">
+                                    Retrigger factor = trigger probability × average award. It is the expected number of
+                                    retrigger awards per free spin; without a cap, the geometric series includes every
+                                    later retrigger.
+                                </Text>
+                                {view.freeGamesRtp.maxFreeGames !== undefined && (
+                                    <Text size="xs" c="dimmed">
+                                        The cap counts the trigger award and every retrigger. It keeps every feature
+                                        finite even when the retrigger factor is 1 or higher.
+                                    </Text>
+                                )}
+                            </Stack>
+                        )}
+                        {view.freeGamesRtp?.status === "infinite" && (
+                            <Alert color="yellow" variant="light" title="Unbounded free-games RTP" mb="sm">
+                                <Text size="sm">{view.freeGamesRtp.reason}</Text>
+                            </Alert>
+                        )}
+                        {view.freeGamesRtp?.status === "unsupported" && (
+                            <Text size="xs" c="dimmed" mb="sm">
+                                Free-games RTP derivation unavailable: {view.freeGamesRtp.reason}
+                            </Text>
+                        )}
+                        <Table withRowBorders={false}>
+                            <Table.Thead>
+                                <Table.Tr>
+                                    <Table.Th>Feature event</Table.Th>
+                                    <Table.Th>Paid spins triggering it</Table.Th>
+                                    <Table.Th>Outcomes</Table.Th>
+                                </Table.Tr>
+                            </Table.Thead>
+                            <Table.Tbody>
+                                {view.featureEvents.map((event) => (
+                                    <Table.Tr key={event.key}>
+                                        <Table.Td>{describeFeatureEventLabel(event.key)}</Table.Td>
+                                        <Table.Td>{formatAnalysisNumber(event.weightedFrequency * 100, 4)}%</Table.Td>
+                                        <Table.Td>{event.outcomeCount.toLocaleString("en-US")}</Table.Td>
+                                    </Table.Tr>
+                                ))}
+                            </Table.Tbody>
+                        </Table>
+                    </AdvancedDisclosure>
                 )}
                 <Group>
                     <Button variant="default" size="xs" onClick={start} loading={starting || active}>
-                        Recompute exact math
+                        Recompute exact outcome table
                     </Button>
                 </Group>
             </Stack>
+        );
+    } else if (active && (view?.status === "missing" || view?.status === "stale")) {
+        // The progress alert above already explains the running generation. Showing the missing/stale
+        // empty state here at the same time reads as a contradiction ("no table exists" under a
+        // progress bar that says it is being written).
+        body = (
+            <Text size="sm" c="dimmed">
+                {view?.status === "stale"
+                    ? "The previous outcome table is not used while its replacement is being written."
+                    : "The first exact outcome table for this saved design is being generated."}
+            </Text>
         );
     } else if (view?.status === "missing" || view?.status === "stale") {
         const stale = view.status === "stale";
         body = (
             <Stack gap="sm">
                 <EmptyState message={view.message} />
-                {stale && <Text size="sm" c="dimmed">Generating again replaces the stale library with one computed from the current saved design.</Text>}
+                {stale && (
+                    <Text size="sm" c="dimmed">
+                        Generating again replaces the stale outcome table with one computed from the current saved
+                        design.
+                    </Text>
+                )}
                 <Group>
                     <Button onClick={start} loading={starting || active}>
-                        {stale ? "Recompute exact math" : "Compute exact math"}
+                        {stale ? "Recompute exact outcome table" : "Compute exact outcome table"}
                     </Button>
                 </Group>
                 <Text size="xs" c="dimmed">
-                    This writes an exact Outcome Library into the project&apos;s <code>outcomelibrary</code> folder. It can take a while for a large game; progress is shown below.
+                    This writes the exact outcome table into the project&apos;s <code>outcomelibrary</code> folder. It
+                    can take a while for a large game; progress is shown below.
                 </Text>
+                <AdvancedDisclosure label="technical file name">
+                    <Text size="xs" c="dimmed">
+                        The project folder and API call this an Outcome Library; the UI calls it an outcome table. It is
+                        an outcome table, not a code library.
+                    </Text>
+                </AdvancedDisclosure>
             </Stack>
         );
     } else if (view?.status === "error") {
@@ -267,8 +742,12 @@ export function ExactMathPanel({projectRoot, sourceRevision, refreshKey}: {proje
             <Stack gap="sm">
                 <ErrorState message={view.message} />
                 <Group>
-                    <Button variant="default" size="xs" onClick={load} loading={loading}>Retry exact-math read</Button>
-                    <Button variant="default" size="xs" onClick={start} loading={starting || active}>Compute exact math</Button>
+                    <Button variant="default" size="xs" onClick={load} loading={loading}>
+                        Retry exact-math read
+                    </Button>
+                    <Button variant="default" size="xs" onClick={start} loading={starting || active}>
+                        Compute exact outcome table
+                    </Button>
                 </Group>
             </Stack>
         );
@@ -279,21 +758,28 @@ export function ExactMathPanel({projectRoot, sourceRevision, refreshKey}: {proje
     return (
         <PageSection legend="Exact math">
             <Title order={4}>Exact math for this saved design</Title>
-            <Text size="sm" c="dimmed" mb="sm">
-                Exact RTP and payout probabilities need one complete enumeration of the game design. Simulation is still an estimate; this card never presents a sampled report as exact.
-            </Text>
             {error !== undefined && <ErrorState message={error} />}
-            {notice !== undefined && <Alert color="green" mb="sm">{notice}</Alert>}
+            {notice !== undefined && (
+                <Alert color="green" mb="sm">
+                    {notice}
+                </Alert>
+            )}
             {active && (
                 <Alert color="blue" mb="sm" title="Generating exact outcomes">
                     <Text size="sm">
                         {stageLabel} · {formatElapsed(elapsedMs)} elapsed
                         {progressLabel === undefined ? "" : ` · ${progressLabel}`}
-                        {estimate === undefined ? "" : ` · ETA ~${estimate}`}
+                        {etaLabel === undefined ? "" : ` · ${etaLabel}`}
                     </Text>
                     <Group mt="xs">
-                        {!job.cancellationRequested && <Button color="red" variant="light" size="xs" onClick={cancel}>Cancel</Button>}
-                        {job.cancellationRequested && <Text size="sm">Cancellation requested; waiting for safe cleanup.</Text>}
+                        {!job.cancellationRequested && (
+                            <Button color="red" variant="light" size="xs" onClick={cancel}>
+                                Cancel
+                            </Button>
+                        )}
+                        {job.cancellationRequested && (
+                            <Text size="sm">Cancellation requested; waiting for safe cleanup.</Text>
+                        )}
                     </Group>
                 </Alert>
             )}
@@ -302,11 +788,117 @@ export function ExactMathPanel({projectRoot, sourceRevision, refreshKey}: {proje
     );
 }
 
-function Metric({label, value}: {label: string; value: string}) {
+function KeyStat({label, value, title}: {label: string; value: string; title?: string}) {
     return (
-        <div>
-            <Text size="xs" c="dimmed">{label}</Text>
-            <Text fw={600}>{value}</Text>
+        <div title={title}>
+            <Text size="sm" c="dimmed">
+                {label}
+            </Text>
+            <Text size="md" fw={700}>
+                {value}
+            </Text>
+        </div>
+    );
+}
+
+function KeyNumbersCard({
+    totalRtp,
+    paidRtp,
+    freeRtp,
+    hitFrequency,
+    volatility,
+    maxWin,
+    volatilityLabel,
+    maxWinLabel,
+    outcomes,
+    uncapped,
+    onOpenPlay,
+}: {
+    totalRtp?: number;
+    paidRtp: number;
+    freeRtp?: number;
+    hitFrequency: number;
+    volatility: number;
+    maxWin: number;
+    volatilityLabel: string;
+    maxWinLabel: string;
+    outcomes: number;
+    uncapped: boolean;
+    onOpenPlay?: () => void;
+}) {
+    const headline = totalRtp ?? paidRtp;
+    return (
+        <Paper withBorder p="md" radius="md" className="studio-key-numbers" data-pokie-producer-summary="true">
+            <Group justify="space-between" align="flex-start" wrap="wrap" gap="md">
+                <div>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                        At a glance
+                    </Text>
+                    <Group align="baseline" gap="xs" mt={2} wrap="wrap">
+                        <Text fw={700} fz={36} lh={1.05}>
+                            {formatAnalysisNumber(headline * 100, 4)}%
+                        </Text>
+                        <Text size="sm" c="dimmed">
+                            {totalRtp === undefined ? "Exact RTP" : "Total RTP (paid + free games)"}
+                        </Text>
+                    </Group>
+                    {freeRtp !== undefined && (
+                        <Text size="sm" c="dimmed" mt={2}>
+                            Paid-spin RTP {formatAnalysisNumber(paidRtp * 100, 4)}% · Free-games RTP{" "}
+                            {formatAnalysisNumber(freeRtp * 100, 4)}%
+                        </Text>
+                    )}
+                    <Group gap="lg" mt="sm" wrap="wrap">
+                        <KeyStat
+                            label={freeRtp === undefined ? "Hit frequency" : "Hit frequency (paid spins)"}
+                            value={`${formatAnalysisNumber(hitFrequency * 100, 4)}%`}
+                        />
+                        <KeyStat
+                            label={volatilityLabel}
+                            value={formatAnalysisNumber(volatility, 4)}
+                            title="Standard deviation of payout per paid round, in bet units."
+                        />
+                        <KeyStat
+                            label={maxWinLabel}
+                            value={formatAnalysisNumber(maxWin, 4)}
+                            title="Largest paid-spin payout in bet units. Feature wins that settle later are not included here."
+                        />
+                    </Group>
+                    <Group gap="xs" mt="sm">
+                        <Badge color="gray" variant="light" tt="none">
+                            Exact · {outcomes.toLocaleString("en-US")} outcomes
+                        </Badge>
+                        {uncapped && (
+                            <Badge
+                                color="yellow"
+                                variant="light"
+                                tt="none"
+                                title="The average RTP is finite, but one round can run indefinitely. See free-games and RTP caveats below."
+                            >
+                                Uncapped free games
+                            </Badge>
+                        )}
+                    </Group>
+                </div>
+                {onOpenPlay !== undefined && (
+                    <Button size="md" onClick={onOpenPlay}>
+                        Open Play
+                    </Button>
+                )}
+            </Group>
+        </Paper>
+    );
+}
+
+function Metric({label, value, primary = false}: {label: string; value: string; primary?: boolean}) {
+    return (
+        <div data-pokie-primary-metric={primary || undefined}>
+            <Text size="xs" c="dimmed">
+                {label}
+            </Text>
+            <Text fw={primary ? 700 : 600} size={primary ? "xl" : undefined} className={primary ? "studio-primary-metric" : undefined}>
+                {value}
+            </Text>
         </div>
     );
 }
@@ -328,7 +920,7 @@ function EventTable({table}: {table: StudioExactMathEventTable}) {
                     <Table.Tr key={entry.key}>
                         <Table.Td>{entry.label}</Table.Td>
                         <Table.Td>{formatAnalysisNumber(entry.probability * 100, 4)}%</Table.Td>
-                        <Table.Td>{entry.probability > 0 ? formatAnalysisNumber(1 / entry.probability, 2) : "—"}</Table.Td>
+                        <Table.Td>{formatOneIn(entry.probability)}</Table.Td>
                         <Table.Td>{formatAnalysisNumber(entry.rtpContribution * 100, 4)}%</Table.Td>
                         <Table.Td>{entry.outcomeCount.toLocaleString("en-US")}</Table.Td>
                     </Table.Tr>
@@ -339,6 +931,9 @@ function EventTable({table}: {table: StudioExactMathEventTable}) {
 }
 
 function ContributionTable({entries}: {entries: StudioExactMathContributionTable["entries"]}) {
+    // The server's contribution table is complete but tie order is an implementation detail. Sorting
+    // here makes the math-review order explicit and repeatable: contribution first, label second.
+    const sortedEntries = orderContributionEntries(entries);
     return (
         <Table withRowBorders={false} aria-label="Exact line and symbol contributions">
             <Table.Thead>
@@ -350,7 +945,7 @@ function ContributionTable({entries}: {entries: StudioExactMathContributionTable
                 </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-                {entries.map((entry) => (
+                {sortedEntries.map((entry) => (
                     <Table.Tr key={entry.key}>
                         <Table.Td>{entry.label}</Table.Td>
                         <Table.Td>{formatAnalysisNumber(entry.rtpContribution * 100, 4)}%</Table.Td>

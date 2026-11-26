@@ -46,7 +46,7 @@ export function BuildPreviewDisplay({view}: {view: BuildPreviewView}) {
                     </Text>
                     <Text size="sm">Symbols: {view.symbolsCount}</Text>
                     <Text size="sm" style={{overflowWrap: "anywhere"}}>
-                        Blueprint hash: {view.blueprintHash}
+                        Game design hash: {view.blueprintHash}
                     </Text>
                     <Text size="sm" style={{overflowWrap: "anywhere"}}>
                         Destination: {view.projectRoot}

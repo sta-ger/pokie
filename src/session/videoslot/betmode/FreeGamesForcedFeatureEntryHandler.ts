@@ -1,4 +1,4 @@
-import {resolveFreeGamesEntry} from "../FreeGamesRoundHandler.js";
+import {capFreeGamesGrant, resolveFreeGamesEntry} from "../FreeGamesRoundHandler.js";
 import type {FreeGamesStateDetermining} from "../../FreeGamesStateDetermining.js";
 import type {FreeGamesStateSetting} from "../../FreeGamesStateSetting.js";
 import type {ForcedFeatureEntryHandling} from "./ForcedFeatureEntryHandling.js";
@@ -45,7 +45,10 @@ implements ForcedFeatureEntryHandling<T> {
         }
         // A completed bank has already been released. Start a fresh purchase before
         // extending the grant, while retaining additive grants during an active feature.
-        const next = resolveFreeGamesEntry(session.getFreeGamesNum(), session.getFreeGamesSum(), 0, this.freeGamesToGrant);
+        const startingSum = session.getFreeGamesNum() === session.getFreeGamesSum() ? 0 : session.getFreeGamesSum();
+        const grant = capFreeGamesGrant(session.getMaxFreeGames?.(), startingSum, this.freeGamesToGrant);
+        if (grant <= 0) return;
+        const next = resolveFreeGamesEntry(session.getFreeGamesNum(), session.getFreeGamesSum(), 0, grant);
         if (session.getFreeGamesNum() === session.getFreeGamesSum()) {
             session.setFreeGamesBank(next.bank);
             session.setFreeGamesNum(next.num);

@@ -107,39 +107,66 @@ function deriveManagedBlueprintName(blueprint: unknown): string {
 // A brand-new guided session's first Save must never silently clobber a *different*, already-existing
 // managed Blueprint Project that just happens to share its info.id -- two "New Design Game" sessions
 // started from the same starter preset (or a hand-typed id collision) are exactly the case this guards.
-// Rather than asking the user to pick a different id (breaking saveManaged()'s whole "never has to ask"
-// contract), this deterministically walks "<name>", "<name>-2", "<name>-3", ... and takes the first
-// candidate whose managed blueprint.json doesn't exist yet -- the same numeric-suffix convention a
-// filesystem's own "Copy" / "Save As" dialog already uses, so a user who does notice the name (in the
-// Projects tab, or a later Save As) recognizes it immediately as "the same idea, a different slot".
-// Deliberately keyed off the target *file's* existence, not the directory's: a directory that already
-// exists but has no blueprint.json yet (created for some other reason) is not a collision.
-const MAX_MANAGED_DESTINATION_ATTEMPTS = 1000;
-
+// A numeric suffix would make the collision invisible in exports and audit evidence (two projects with
+// the same Game id and different math), so this deliberately refuses the save and asks the author to
+// choose a different Game id instead. Deliberately keyed off the target *file's* existence, not the
+// directory's: a directory that already exists but has no blueprint.json yet (created for some other
+// reason) is not a collision.
 type ManagedDestination =
     | {readonly status: "valid"; readonly directory: string; readonly targetPath: string; readonly name: string}
-    | {readonly status: "invalid-name" | "unavailable"; readonly message: string};
+    | {
+          readonly status: "invalid-name" | "unavailable";
+          readonly message: string;
+          /** Set only for a Game-id collision whose Blueprint Studio can actually open. */
+          readonly existingProjectPath?: string;
+      };
 
-function resolveAvailableManagedDestination(pathResolver: PokiePathResolver, baseName: string): ManagedDestination {
-    for (let attempt = 1; attempt <= MAX_MANAGED_DESTINATION_ATTEMPTS; attempt++) {
-        const candidateName = attempt === 1 ? baseName : `${baseName}-${attempt}`;
-        const resolved = pathResolver.resolveIndependentProjectDirectory(candidateName);
-        if (resolved.status === "invalid-name") {
-            return {status: "invalid-name", message: resolved.message};
-        }
-        if (resolved.status !== "valid") {
-            return {status: "unavailable", message: resolved.message};
-        }
-
-        const targetPath = path.join(resolved.directory, "blueprint.json");
-        if (!fs.existsSync(targetPath)) {
-            return {status: "valid", directory: resolved.directory, targetPath, name: candidateName};
-        }
+// A Game-id collision is only useful if "Open existing project" can actually open the file. Older
+// Studio versions wrote a different Blueprint shape under the same managed path; offering the open
+// action for one of those led to a raw `ENOTDIR`/`package.json` failure instead of a recoverable
+// choice. Validate the existing source before advertising the action, and keep the collision message
+// honest when the old file is unusable.
+function existingManagedBlueprintIsOpenable(
+    targetPath: string,
+    loadBlueprint: (filePath: string) => unknown,
+    blueprintValidator: GameBlueprintValidating,
+): boolean {
+    try {
+        const issues = blueprintValidator.validate(loadBlueprint(targetPath));
+        return !issues.some((issue) => issue.severity === "error");
+    } catch {
+        return false;
     }
-    return {
-        status: "unavailable",
-        message: `No free managed project name for "${baseName}" after ${MAX_MANAGED_DESTINATION_ATTEMPTS} attempts. Choose a different Game id.`,
-    };
+}
+
+function resolveAvailableManagedDestination(
+    pathResolver: PokiePathResolver,
+    baseName: string,
+    loadBlueprint: (filePath: string) => unknown,
+    blueprintValidator: GameBlueprintValidating,
+): ManagedDestination {
+    const resolved = pathResolver.resolveIndependentProjectDirectory(baseName);
+    if (resolved.status === "invalid-name") {
+        return {status: "invalid-name", message: resolved.message};
+    }
+    if (resolved.status !== "valid") {
+        return {status: "unavailable", message: resolved.message};
+    }
+
+    const targetPath = path.join(resolved.directory, "blueprint.json");
+    if (fs.existsSync(targetPath)) {
+        const openable = existingManagedBlueprintIsOpenable(targetPath, loadBlueprint, blueprintValidator);
+        return {
+            status: "unavailable",
+            message: openable
+                ? `A POKIE project with Game id "${baseName}" already exists at "${targetPath}". Choose a different Game id, or open the existing project instead.`
+                : `A game design with Game id "${baseName}" already exists at "${targetPath}", but it cannot be opened as a current POKIE project. Choose a different Game id, or move or repair the old file if you still need it.`,
+            // The Project-open API resolves this authored source file itself. A bare project
+            // directory is not a runtime package and would be rejected looking for package.json.
+            ...(openable ? {existingProjectPath: targetPath} : {}),
+        };
+    }
+    return {status: "valid", directory: resolved.directory, targetPath, name: baseName};
 }
 
 // A Blueprint is the source of truth for a managed Blueprint Project.  Do not leave a partly-written
@@ -464,9 +491,9 @@ export class StudioBlueprintService {
     // own info.id when it's a non-empty string, falling back to "blueprint" otherwise -- never
     // caller-supplied, since the whole point is the editor never has to ask. Never overwrites an existing
     // managed blueprint.json it did not itself just create in this call -- see
-    // resolveAvailableManagedDestination's own doc comment for why this walks to the next "-2", "-3", ...
-    // candidate instead, deterministically, rather than reporting save() above's 409/"conflict" (which
-    // would force the guided flow to ask the user something it promises never to ask). The caller
+    // resolveAvailableManagedDestination's own doc comment for why a Game id collision is reported back
+    // with an actionable "choose a different Game id" message instead of creating a suffixed duplicate.
+    // The caller
     // (StudioServer's own route handler) is expected to register the returned path in StudioProjectRegistry
     // on "ok" -- this method only ever writes the file, the same "one concern per service" split
     // StudioBlueprintService.build()/homeService.rememberRecentProject() already follow. Only ever called
@@ -505,12 +532,12 @@ export class StudioBlueprintService {
     /** @internal Split out so ordinary editor saves keep their synchronous contract. */
     public saveManagedDraft(blueprint: unknown): StudioBlueprintSaveManagedView {
         const baseName = deriveManagedBlueprintName(blueprint);
-        const destination = resolveAvailableManagedDestination(this.pathResolver, baseName);
+        const destination = resolveAvailableManagedDestination(this.pathResolver, baseName, this.loadBlueprint, this.blueprintValidator);
         if (destination.status === "invalid-name") {
             return {status: "invalid-name", error: destination.message};
         }
         if (destination.status !== "valid") {
-            return {status: "unavailable", error: destination.message};
+            return {status: "unavailable", error: destination.message, existingProjectPath: destination.existingProjectPath};
         }
 
         const directoryCreated = !fs.existsSync(destination.directory);
@@ -546,9 +573,9 @@ export class StudioBlueprintService {
             return {status: "error", error: "The PAR import preparation is unavailable or the workbook changed. Import the workbook again before saving."};
         }
         const baseName = deriveManagedBlueprintName(blueprint);
-        const destination = resolveAvailableManagedDestination(this.pathResolver, baseName);
+        const destination = resolveAvailableManagedDestination(this.pathResolver, baseName, this.loadBlueprint, this.blueprintValidator);
         if (destination.status === "invalid-name") return {status: "invalid-name", error: destination.message};
-        if (destination.status !== "valid") return {status: "unavailable", error: destination.message};
+        if (destination.status !== "valid") return {status: "unavailable", error: destination.message, existingProjectPath: destination.existingProjectPath};
 
         const directoryCreated = !fs.existsSync(destination.directory);
         const artworkPaths: string[] = [];
@@ -986,6 +1013,8 @@ export class StudioBlueprintService {
             totalWeight: result.totalWeight,
             stake: result.stake,
             analysis: result.analysis,
+            featureBreakdown: result.featureBreakdown,
+            freeGamesRtp: result.freeGamesRtp,
             generatedAt: result.generatedAt,
             maxOutcomes: DEFAULT_BLUEPRINT_MATH_OUTCOME_CAP,
             ...(result.note === undefined ? {} : {note: result.note}),

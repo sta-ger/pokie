@@ -73,6 +73,60 @@ body,
     padding-block: var(--mantine-spacing-xs);
 }
 
+/* Long explanations should stay readable instead of stretching across a 76rem
+   column. Tables, grids and inline controls keep their own full width. */
+.studio-page .mantine-Alert-message,
+.studio-page .studio-section > .mantine-Text-root {
+    max-width: 88ch;
+}
+
+.docs-page {
+    padding-block: var(--mantine-spacing-md);
+}
+
+.docs-content {
+    max-width: 85ch;
+}
+
+.docs-content h1,
+.docs-content h2,
+.docs-content h3 {
+    margin-top: 1.4em;
+    margin-bottom: 0.45em;
+}
+
+.docs-content p,
+.docs-content li {
+    line-height: 1.6;
+}
+
+.docs-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-block: var(--mantine-spacing-md);
+}
+
+.docs-content th,
+.docs-content td {
+    border-bottom: 1px solid light-dark(#d5d6cf, var(--mantine-color-dark-4));
+    padding: 6px 8px;
+    text-align: left;
+    vertical-align: top;
+}
+
+.docs-content pre {
+    overflow-x: auto;
+    padding: var(--mantine-spacing-sm);
+    background: light-dark(#ece9df, var(--mantine-color-dark-7));
+    border-radius: var(--mantine-radius-sm);
+}
+
+.docs-content code {
+    background: light-dark(#ece9df, var(--mantine-color-dark-7));
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+
 .studio-section {
     padding: var(--mantine-spacing-md);
     background: light-dark(var(--mantine-color-white), var(--mantine-color-dark-7));
@@ -706,3 +760,40 @@ body,
 .studio-payline-sketch { width: 7rem; height: 3rem; color: light-dark(#8b3214, #e69b78); fill: currentColor; }
 .studio-payline-edit > summary { cursor: pointer; font-weight: 600; font-size: var(--mantine-font-size-sm); padding-block: .4rem; }
 .studio-payline-edit[open] > summary { margin-bottom: .4rem; }
+
+/* The guided editor's primary save action must stay reachable while the author scrolls the long
+   starter form. It sits directly under the app masthead and never hides the design title at the top
+   of the page. */
+.studio-create-action-bar {
+    position: sticky;
+    top: calc(60px + var(--mantine-spacing-xs));
+    z-index: 5;
+    margin-bottom: var(--mantine-spacing-md);
+    padding: var(--mantine-spacing-sm);
+    background: light-dark(#fffdf6, var(--mantine-color-dark-7));
+    border: 1px solid light-dark(#d5d6cf, var(--mantine-color-dark-4));
+    border-radius: var(--mantine-radius-md);
+    box-shadow: 0 4px 14px light-dark(#172d3b12, #00000030);
+}
+
+.studio-create-action-bar .mantine-Group-root {
+    margin-bottom: 0;
+}
+
+@media (max-width: 36em) {
+    .studio-create-action-bar {
+        top: calc(60px + var(--mantine-spacing-xs));
+    }
+}
+
+/* Exact math's headline RTP is the first number a math author looks for. Keep it tabular and
+   visually heavier than the supporting hit-frequency/volatility metrics around it. */
+.studio-primary-metric {
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Overview's compact key-numbers panel: the headline RTP is the first thing a producer reads. */
+.studio-key-numbers {
+    font-variant-numeric: tabular-nums;
+}

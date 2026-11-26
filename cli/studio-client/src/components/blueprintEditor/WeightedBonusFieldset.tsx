@@ -62,14 +62,18 @@ export function WeightedBonusFieldset({
     const outcome = (index: number, patch: Record<string, unknown>): void =>
         set({...table, outcomes: table.outcomes.map((o, i) => (i === index ? {...o, ...patch} : o))});
     return (
-        <PageSection legend="Weighted bonus outcomes">
+        <PageSection legend="Bonus outcomes (weighted)">
+            <Text size="sm" c="dimmed">
+                When the trigger occurs, one outcome is drawn in proportion to its weight. An outcome can pay
+                immediately and start a bonus of a set length.
+            </Text>
             {raw === undefined ? (
                 <Button onClick={() => set(defaults)}>Add weighted bonus</Button>
             ) : (
                 <Stack>
                     {!validShape ? (
                         <Text>
-                            Correct mechanics.weightedBonus in JSON and Apply JSON. The current draft is retained.
+                            Correct mechanics.weightedBonus in JSON and Apply JSON. The current draft is kept.
                         </Text>
                     ) : (
                         <>

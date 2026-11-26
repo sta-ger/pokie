@@ -23,6 +23,29 @@ export type SimulationReportReproducibility = {
     pokieVersion?: string;
 };
 
+export type SimulationReportExactReference = {
+    /** Exact library mode this reference came from (normally "base"). */
+    modeName: string;
+    /** Exact RTP for the stated scope: paid-spin only, or paid + additive free games when freeGamesRtp is present. */
+    rtp: number;
+    /** Exact paid-spin RTP before any additive free-game contribution. */
+    paidSpinRtp: number;
+    /** Exact paid-spin hit frequency. */
+    hitFrequency: number;
+    /** Number of enumerated paid-spin outcomes in the library. */
+    outcomes: number;
+    /**
+     * true: the library contains no feature events, so `rtp` is a complete paid-spin total.
+     * false: feature triggers exist but later feature payouts are not included in the library.
+     * undefined: the library was too large to inspect; treat the scope as paid-spin only.
+     */
+    featurePayoutsIncluded?: boolean;
+    /** Exact total RTP derived from additive free-game triggers, when available. */
+    freeGamesRtp?: {baseRtp: number; featureRtp: number; totalRtp: number};
+    libraryHash?: string;
+    generatedAt?: string;
+};
+
 export type SimulationReport = {
     /** Version of the canonical report contract; absent only on legacy files. */
     schemaVersion?: 1;
@@ -41,6 +64,7 @@ export type SimulationReport = {
     totalWin: number;
     rtp: number;
     hitFrequency: number;
+    /** Largest single-round payout observed in this sample, in bet units; not the theoretical game maximum. */
     maxWin: number;
     durationMs: number;
     spinsPerSecond: number;
@@ -95,4 +119,10 @@ export type SimulationReport = {
     // used the plain fixed-round path, same as betMode/targetRtp being absent for a run that never
     // locked a bet mode.
     convergence?: SimulationConvergenceOutcome;
+    /**
+     * Optional Studio-attached exact reference for the current saved design. Present only when the
+     * exact library is compatible with the report's own source revision. The report itself remains an
+     * empirical sample; this block is a comparison aid, never a replacement for the sample metrics.
+     */
+    exactReference?: SimulationReportExactReference;
 };

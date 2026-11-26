@@ -2,10 +2,25 @@
 
 # Simulation
 
+## Plays, paid rounds and samples
+
+> Studio's main UI says **spins (paid + free)**. Persisted report/API field names still use **plays** and `acceptedSubrounds`; they mean the same accepted paid-or-free spins.
+
+A **play** is one paid spin or one free-game spin. A **completed paid round** is one paid entry spin plus
+all feature spins it triggers; it is the sample unit for RTP, hit frequency, volatility, payout
+histograms and confidence intervals. The simulation budget (Studio's **Plays**) counts every play, so a
+game with free games can complete fewer paid rounds than the play budget. Reports show both numbers.
+The historical CLI option is still named `--rounds`; it budgets that same play count, not necessarily the
+number of completed paid rounds. The saved report JSON keeps the historical field names
+`requestedRounds` and `rounds` for requested and accepted **plays**; completed paid rounds are
+`diagnostics.samples` (and `logicalRounds`). Studio labels the same values as **Requested plays** and
+**Completed paid rounds**. A simulation report's **largest observed win** is the maximum seen in that
+sample, not the theoretical game maximum; exact math reports the theoretical paid-spin maximum.
+
 Opt-in `SimulationObservationRequest` counters record bounded named event presence and arbitrary
 half-open payout/actual-paid-stake buckets. Aggregate, chunked and worker paths retain the same request
 and accepted-sample counts through snapshots/merging; missing or different coverage is rejected.
-These are selected subround samples, not a claim of full feature-round coverage. Existing currency
+These are selected accepted-spin samples, not a claim of full feature-round coverage. Existing currency
 histograms and default simulation behavior are unchanged. The [optimization workflow](optimization.md)
 uses supported population connectors, a separately seeded fixed held-out assessment and bounded joint
 confidence intervals. Simulation precision convergence is not optimization target attainment; neither a
@@ -13,7 +28,7 @@ short zero-variance sample nor an empirical maximum supplies a mathematical supp
 
 [Feature analytics](#feature-analytics-aggregates) record entries, retriggers,
 completions, duration/bonus-win distributions, component hits, weighted selections and payout attribution
-for supported authored mechanics. Reports label actual paid/logical/subround populations and denominators;
+for supported authored mechanics. Reports label actual paid, logical and accepted-spin populations and denominators;
 overlapping status summaries are separate from the additive base/feature/jackpot/unavailable monetary
 partition. Feature WASM supplies status/component evidence; ordinary amount-only WASM,
 flattened outcome events and custom sessions cannot establish missing status attribution. Missing
@@ -400,6 +415,11 @@ result.convergence; // echoes the options + checksPerformed/consecutiveStableChe
 so no simulation math is duplicated for this feature. It's stateful only in a "how many consecutive checks passed"
 counter, reset to zero by any check that doesn't satisfy `minRounds`/`rtpTolerance` — this is what makes the stop
 require *sustained* convergence rather than a single lucky/noisy interval.
+
+**Studio**: the Simulation tab exposes this as an optional **Target precision (± pp)**. `Plays` remains the
+maximum budget; a converging run stops earlier. Studio runs a target-precision simulation with **one worker**, so
+the checked interval is the combined sample shown in the review rather than one worker's `1/N` share. Fixed-budget
+runs keep the normal parallel-worker default.
 
 **Workers > 1**: convergence is evaluated **independently per worker**, against that worker's own share of the
 rounds — there is no live coordination of one global running RTP across worker threads. This is a deliberate

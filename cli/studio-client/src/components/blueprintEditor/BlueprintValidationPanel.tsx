@@ -4,17 +4,17 @@ import type {BlueprintValidationView} from "../../domain/interpret/BlueprintEdit
 import {describePathActionError} from "../../domain/pathActionError";
 import {ErrorState} from "../common/ErrorState";
 import {IssueList} from "../common/IssueList";
+import {CollapsiblePageSection} from "../common/CollapsiblePageSection";
 import {LoadingState} from "../common/LoadingState";
-import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 
 function statusText(view: BlueprintValidationView): string | undefined {
-    if (view.status === "inconclusive") return "Inconclusive — structural validation did not complete. Review the analysis limits and retry.";
+    if (view.status === "inconclusive") return "Inconclusive — the design check did not complete. Review the analysis limits and retry.";
     if (view.status === "invalid") {
-        return `Invalid — ${view.errors.length} error(s).`;
+        return `Structure invalid — ${view.errors.length} error(s).`;
     }
     if (view.status === "ok") {
-        return view.warnings.length === 0 ? "Valid — no issues found." : `Valid, with warnings — ${view.warnings.length} warning(s).`;
+        return view.warnings.length === 0 ? "Structure valid — no format issues." : `Structure valid, with warnings — ${view.warnings.length} warning(s).`;
     }
     return undefined;
 }
@@ -30,8 +30,16 @@ export function BlueprintValidationPanel({
     automatic?: boolean;
     onCancel?: () => void;
 }) {
+    const hasWarnings = view.status === "ok" || view.status === "invalid" || view.status === "inconclusive"
+        ? view.warnings.length > 0
+        : false;
     return (
-        <PageSection legend="Validation">
+        <CollapsiblePageSection
+            key={view.status === "ok" && !hasWarnings ? "collapsed" : "expanded"}
+            legend="Validation"
+            summary={statusText(view) ?? (view.status === "loading" ? "Checking design…" : "Not checked yet.")}
+            defaultOpened={view.status !== "ok" || hasWarnings}
+        >
             {automatic ? (
                 <Text c="dimmed" size="sm" mb="sm">
                     Checked automatically when the game model changes.
@@ -54,13 +62,12 @@ export function BlueprintValidationPanel({
                 </Text>
             )}
             {view.status === "error" && <ErrorState message={describePathActionError("This validation request", view.message)} />}
-            {statusText(view) && <Text mb="sm">{statusText(view)}</Text>}
-            {(view.status === "ok" || view.status === "invalid" || view.status === "inconclusive") && <Text size="sm" c="dimmed">Structural validation. The optional feature and accounting check is reported separately below.</Text>}
+            {(view.status === "ok" || view.status === "invalid" || view.status === "inconclusive") && <Text size="sm" c="dimmed">Design check. The optional feature check is reported separately below.</Text>}
             {(view.status === "invalid" || view.status === "inconclusive") && <IssueList title="Errors" issues={view.errors ?? []} />}
             {(view.status === "ok" || view.status === "invalid" || view.status === "inconclusive") && <>
                 <IssueList title="Warnings" issues={view.warnings} />
                 <AdvancedValidationPanel report={view.advanced} />
             </>}
-        </PageSection>
+        </CollapsiblePageSection>
     );
 }

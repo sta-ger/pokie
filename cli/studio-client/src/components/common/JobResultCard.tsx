@@ -1,5 +1,6 @@
 import {Alert, Anchor, Button, Group, Stack, Text} from "@mantine/core";
 import type {StudioJobView} from "../../api/types.js";
+import {describeJobDiagnostic, describeJobOperation, describeJobRecoveryReason} from "../../domain/jobLabels";
 
 function recoveryActionLabel(action: NonNullable<StudioJobView["recovery"]>["action"]): string {
     if (action === "new-session") return "Start new session";
@@ -52,10 +53,11 @@ function terminalPresentation(status: Exclude<StudioJobView["status"], "queued" 
     return {color: "red", label: "Failed", fallback: "This operation failed before it could complete."};
 }
 
-export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, onRevealOutput, onInspectOutput, outputActionsUnavailableReason, actionsDisabledReason}: {
+export function JobResultCard({job, onRecover, onRecoveryAction, onDismiss, onOpenOutput, onRevealOutput, onInspectOutput, outputActionsUnavailableReason, actionsDisabledReason}: {
     job: StudioJobView;
     onRecover?: (id: string) => void;
     onRecoveryAction?: (job: StudioJobView) => void;
+    onDismiss?: (id: string) => void;
     onOpenOutput?: (path: string) => void;
     onRevealOutput?: (path: string) => void;
     onInspectOutput?: (path: string) => void;
@@ -66,7 +68,10 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
 }) {
     if (job.status === "queued" || job.status === "running" || job.status === "cancelling") return null;
     const presentation = terminalPresentation(job.status);
-    const title = `${job.operation} · ${presentation.label}`;
+    const title = `${describeJobOperation(job.operation)} · ${presentation.label}`;
+    const rawDetail = job.result?.summary ?? job.error ?? job.recovery?.reason ?? presentation.fallback;
+    const humanDetail = describeJobDiagnostic(rawDetail);
+    const recoveryReason = job.recovery === undefined ? undefined : describeJobRecoveryReason(job.recovery.reason);
     const outcomeResult = outcomeLibraryResult(job);
     const mode = outcomeResult?.mode as RecordValue | undefined;
     const generator = outcomeResult?.generator as RecordValue | undefined;
@@ -98,10 +103,16 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
             data-pokie-lifecycle-terminal={job.status}
         >
             <Stack gap={4}>
-                <Text size="sm" data-job-detail>{job.result?.summary ?? job.error ?? job.recovery?.reason ?? presentation.fallback}</Text>
+                <Text size="sm" data-job-detail>{humanDetail}</Text>
+                {humanDetail !== rawDetail && (
+                    <details>
+                        <summary><Text component="span" size="xs" c="dimmed">Technical detail</Text></summary>
+                        <Text size="xs" c="dimmed" className="studio-technical-text" data-job-technical-detail>{rawDetail}</Text>
+                    </details>
+                )}
                 {job.result?.warnings?.map((warning) => <Text size="xs" c="orange" key={warning}>{warning}</Text>)}
                 {outcomeResult !== undefined && (
-                    <Stack gap={2} aria-label="Published Outcome Library result">
+                    <Stack gap={2} aria-label="Published outcome table result">
                         {outcomeCount !== undefined && <Text size="xs">Published outcomes: {outcomeCount}</Text>}
                         <Text size="xs">Final size: {byteSize === undefined ? "unknown" : `${Number(byteSize).toLocaleString()} bytes`}</Text>
                     </Stack>
@@ -127,7 +138,7 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
                         </Group>
                     );
                 })}
-                {job.recovery !== undefined && <Text size="xs" data-job-detail>Next: {job.recovery.action} — {job.recovery.reason}</Text>}
+                {job.recovery !== undefined && <Text size="xs" data-job-detail>Next: {recoveryActionLabel(job.recovery.action)} — {recoveryReason}</Text>}
                 {actionsDisabledReason !== undefined && <Text size="xs" data-job-detail>{actionsDisabledReason}</Text>}
                 {job.recovery !== undefined && (
                     <Group gap="xs" wrap="wrap">
@@ -137,6 +148,20 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
                             <Button size="xs" variant="light" disabled={actionsDisabledReason !== undefined} onClick={() => onRecoveryAction(job)}>
                                 {recoveryActionLabel(job.recovery.action)}
                             </Button>}
+                    </Group>
+                )}
+                {onDismiss !== undefined && (
+                    <Group gap="xs" wrap="wrap">
+                        <Button
+                            size="xs"
+                            variant="subtle"
+                            color="gray"
+                            disabled={actionsDisabledReason !== undefined}
+                            title="Remove this finished job from Studio history. Files and build outputs are not deleted."
+                            onClick={() => onDismiss(job.id)}
+                        >
+                            Dismiss
+                        </Button>
                     </Group>
                 )}
                 <details className="studio-job-receipt" key={job.id}>

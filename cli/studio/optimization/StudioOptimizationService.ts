@@ -13,6 +13,7 @@ import {
 } from "../../../src/optimization/validateOptimizationRequest.js";
 import {digest, projectRevision} from "../../../src/optimization/internal/optimizationData.js";
 import {applyAuthoredFiles} from "../../../src/optimization/internal/applyAuthoredFiles.js";
+import {writeOptimizationBackup, type OptimizationBackup} from "../../../src/optimization/internal/optimizationBackup.js";
 import {ProjectTargetResolver} from "../../../src/project/ProjectTargetResolver.js";
 import {randomUUID} from "crypto";
 import fs from "fs";
@@ -212,6 +213,7 @@ export class StudioOptimizationService {
                 this.mutations.add(submitted.jobId);
                 try {
                     let refresh: Promise<void> | undefined;
+                    let backup: OptimizationBackup | undefined;
                     const onAuthoredCommit = (): void => {
                         // Start invalidation in the commit's call stack, before any old preparation
                         // can resume. A later lifecycle cancellation cannot undo a completed commit.
@@ -223,7 +225,14 @@ export class StudioOptimizationService {
                         refresh?.catch(() => undefined);
                     };
                     const applied = action === "apply"
-                        ? await this.optimizer.applyWithUndo(retained.candidate, request, {isCurrent: context.isCurrent, signal, onAuthoredCommit})
+                        ? await this.optimizer.applyWithUndo(retained.candidate, request, {
+                            isCurrent: context.isCurrent,
+                            signal,
+                            onAuthoredCommit,
+                            onBeforeApply: (files) => {
+                                backup = writeOptimizationBackup(context.projectRoot, submitted.jobId as string, files);
+                            },
+                        })
                         : undefined;
                     const outputPath = applied?.outputPath
                         ?? await this.optimizer.publish(retained.candidate, request, submitted.destination as string, {isCurrent: context.isCurrent, signal});
@@ -234,15 +243,27 @@ export class StudioOptimizationService {
                         this.refreshFailure = new Error(`Committed optimization runtime cleanup failed: ${String(error)}`);
                         warning = `Source was applied and its preview consumed, but runtime refresh failed. Reopen the Project before playing: ${String(error)}`;
                     }
+                    // The source revision after the write is what lets the client distinguish "this
+                    // result is the current applied state" from "the design changed again later". The
+                    // optimizer's own pre-apply revision always differs immediately after Apply, so
+                    // preserving only that revision would force us to suppress staleness forever.
+                    let appliedSourceRevision: string | undefined;
                     if (action === "apply") {
                         try {
-                            this.jobs.recordOptimizationApply(context.projectId, submitted.jobId, outputPath);
+                            appliedSourceRevision = projectRevision({type: retained.candidate.type, rootPath: retained.candidate.sourcePath});
+                        } catch (error) {
+                            warning = [warning, `Source was applied, but its post-apply revision could not be recorded: ${String(error)}`].filter(Boolean).join(" ");
+                        }
+                    }
+                    if (action === "apply") {
+                        try {
+                            this.jobs.recordOptimizationApply(context.projectId, submitted.jobId, outputPath, appliedSourceRevision);
                         } catch (error) {
                             warning = [warning, `Source was applied, but its durable apply marker could not be saved. The old preview is consumed; inspect the source before retrying: ${String(error)}`].filter(Boolean).join(" ");
                         }
                     }
                     const undoId = action === "apply" ? this.rememberUndo(context.projectRoot, submitted.jobId, applied?.undoFiles) : undefined;
-                    return {status: 200, body: {outputPath, ...(undoId === undefined ? {} : {undoId}), ...(warning ? {warning} : {})}};
+                    return {status: 200, body: {outputPath, ...(undoId === undefined ? {} : {undoId}), ...(appliedSourceRevision === undefined ? {} : {appliedSourceRevision}), ...(backup === undefined ? {} : {backup: {filename: backup.filename, path: backup.path, content: backup.content, sha256: backup.sha256}}), ...(warning ? {warning} : {})}};
                 } finally {
                     this.mutations.delete(submitted.jobId);
                 }

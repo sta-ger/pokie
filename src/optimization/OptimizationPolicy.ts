@@ -130,6 +130,11 @@ export type OptimizationOptions = {
     onProgress?: (evidence: OptimizationEvidence) => void;
     /** Synchronous notification after authored commit and receipt consumption, before yielding. */
     onAuthoredCommit?: () => void;
+    /**
+     * Called after validation and before the authored files are mutated. A rejection aborts Apply with
+     * the source unchanged, which lets Studio write a portable pre-apply backup before any risk.
+     */
+    onBeforeApply?: (files: readonly {file: string; before: Buffer; after: Buffer}[]) => void | Promise<void>;
 };
 
 export type OptimizationSamplingPolicy = {

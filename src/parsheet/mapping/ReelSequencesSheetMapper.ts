@@ -63,7 +63,7 @@ export class ReelSequencesSheetMapper implements ReelSequencesSheetMapping {
             const reel = numericCell(cell("Reel")),
                 variant = numericCell(cell("Variant")),
                 position = numericCell(cell("Position"));
-            if (!Number.isSafeInteger(reel) || reel < 1 || reel > reels) return error(number, "Reel", "Expected a one-based reel index within Manifest.Reels.");
+            if (!Number.isSafeInteger(reel) || reel < 1 || reel > reels) return error(number, "Reel", "Expected a one-based reel index within the Info sheet's Reels value.");
             if (!Number.isSafeInteger(variant) || variant < 1 || variant > rows.length) return error(number, "Variant", "Expected a contiguous one-based variant index.");
             if (!Number.isSafeInteger(position) || position < 1 || position > rows.length) return error(number, "Position", "Expected a contiguous one-based symbol position.");
             if (cell("Context") !== PAR_SEQUENCE_CONTEXT || cell("Sampling") !== PAR_SEQUENCE_SAMPLING) error(

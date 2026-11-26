@@ -46,7 +46,8 @@ import {
     type DeclaredPackageTuningContract,
 } from "../DeclaredTuningContract.js";
 import type {MathTarget, OptimizationPolicy, OptimizationScalar, OptimizationWorkProgress} from "../OptimizationPolicy.js";
-import {copyPackage, digest, inventory, jsonHash, paytablePaths, readJson, writeJson} from "./optimizationData.js";
+import {copyPackage, digest, inventory, jsonHash, paytablePaths, readJson, tunablePaths, writeJson} from "./optimizationData.js";
+import {computeFreeGamesExactRtp} from "../../weightedoutcome/computeFreeGamesExactRtp.js";
 
 type NativeOutcome = {
     weight: OptimizationScalar;
@@ -92,11 +93,17 @@ function assertBlueprint(model: unknown): asserts model is GameBlueprint {
 function assertFiniteBlueprint(blueprint: GameBlueprint, policy: OptimizationPolicy): void {
     assertBlueprint(blueprint);
     if (!blueprint.reelStrips && !blueprint.reelSequences) throw new OptimizationUnsupportedError(
-        "This workflow requires authored literal reels or whole-sequence variants.",
+        "This workflow requires authored literal reels or whole-sequence variants. Generated per-reel strips (and their stacks) are not tunable here — author literal reels in Game Model → Reels, or use Simulation to explore the draft.",
     );
     const mechanics = Object.entries(blueprint.mechanics ?? {}).filter(([, value]) => value !== undefined);
-    if (mechanics.some(([key]) => key !== "freeGames") || (mechanics.length && policy.scope !== "paid-entry")) throw new OptimizationUnsupportedError(
-        "Exact tuning supports simple finite spins, or free-game entry spins with paid-entry scope only. Full feature-round optimization is unavailable.",
+    if (mechanics.some(([key]) => key !== "freeGames")) throw new OptimizationUnsupportedError(
+        "Exact tuning supports simple finite spins, or the authored additive free-games mechanic. Other feature mechanics can be explored with Simulation.",
+    );
+    if (mechanics.length && !["paid-entry", "logical-round"].includes(policy.scope)) throw new OptimizationUnsupportedError(
+        "Authored free-games tuning supports paid-entry or logical-round scope.",
+    );
+    if (mechanics.length && policy.strategy === "seeded-search-v1") throw new OptimizationUnsupportedError(
+        "Sampled search is unavailable for authored free games. Use exact search, which enumerates the paid-entry population and derives the additive free-games RTP.",
     );
     if (policy.mode !== "base" || blueprint.betModes?.length) throw new OptimizationUnsupportedError("This finite authored workflow supports the base mode only.");
     if (policy.scope === "native-outcomes") throw new OptimizationUnsupportedError("Authored models require paid-entry or logical-round scope.");
@@ -139,15 +146,27 @@ function selectLibraryMetrics(
     outcomes: WeightedOutcomeInput[],
     id: string,
     targets: MathTarget[],
-    _policy: OptimizationPolicy,
+    policy: OptimizationPolicy,
+    maxFreeGames?: number,
 ): number[] {
     const library = buildWeightedOutcomeLibrary({libraryId: id, outcomes});
     const analysis = new WeightedOutcomeLibraryAnalyzer().analyze(library);
     const events = computeWeightedOutcomeLibraryFeatureBreakdown(library);
+    const featureTypes = new Set(library.outcomes.flatMap((outcome) => (outcome.record.featureEvents ?? []).map((event) => event.type)));
+    const logicalRound = policy.scope === "logical-round" && featureTypes.size > 0;
+    const freeGames = logicalRound ? computeFreeGamesExactRtp(library, analysis.rtp, maxFreeGames) : undefined;
+    if (logicalRound) {
+        if (freeGames?.status === "infinite") throw new OptimizationUnsupportedError(`Exact total RTP is unbounded: ${freeGames.reason}`);
+        if (freeGames?.status === "unsupported") throw new OptimizationUnsupportedError(`Exact total RTP is unavailable: ${freeGames.reason}`);
+        if (freeGames?.status !== "available") throw new OptimizationUnsupportedError("Exact total RTP is unavailable for this feature population.");
+    }
     return targets.map((target) => {
+        if (logicalRound && target.metric !== "rtp") throw new OptimizationUnsupportedError(
+            "Exact whole-round search supports RTP only. Use paid-entry scope for other exact metrics, or use Simulation for whole-round estimates.",
+        );
         switch (target.metric) {
             case "rtp":
-                return analysis.rtp;
+                return logicalRound && freeGames?.status === "available" ? freeGames.totalRtp : analysis.rtp;
             case "volatility":
                 return target.unit === "variance" ? analysis.variance : analysis.standardDeviation;
             case "hitFrequency":
@@ -202,7 +221,7 @@ async function measureGame(
         });
         if (result.diagnostics.strategy !== "exact") throw new OptimizationUnsupportedError("Sampled analysis cannot prove an exact target.");
         onProgress?.({stage: "Generating outcomes", current: String(result.library.outcomes.length), total: String(result.library.outcomes.length), unit: "outcomes"});
-        return selectLibraryMetrics([...result.library.outcomes], "optimization", targets, policy);
+        return selectLibraryMetrics([...result.library.outcomes], "optimization", targets, policy, blueprint.mechanics?.freeGames?.maxFreeGames);
     } finally {
         if (game.release) await releaseOwnedRuntime(() => game.release!());
     }
@@ -450,9 +469,10 @@ export async function acquireOptimizationAdapter(
     assertFiniteBlueprint(blueprint, policy);
     if (policy.strategy === "seeded-search-v1" && blueprint.winModel && blueprint.winModel.type !== "lines") throw new OptimizationUnsupportedError("Sampled authored tuning currently supports line payouts only; exact support is unchanged.");
     if (policy.strategy === "seeded-search-v1" && project.type === "tsPackage" && Object.keys(blueprint.mechanics ?? {}).length) throw new OptimizationUnsupportedError("Sampled declared packages currently require simple complete rounds; authored Blueprint/PAR paid-entry features and native event populations are supported separately.");
-    const writable = contract?.paths ?? wasmContract?.paths ?? paytablePaths(blueprint);
-    if (writable.some((field) => !paytablePaths(blueprint).includes(field))) throw new OptimizationUnsupportedError("Tuning contract grants an unsupported writable field.");
-    if (policy.tunables.some((field) => field.values.some((value) => typeof value !== "number"))) throw new OptimizationUnsupportedError("Paytable values must be numbers.");
+    const allowedPaths = project.type === "blueprint" ? tunablePaths(blueprint) : paytablePaths(blueprint);
+    const writable = contract?.paths ?? wasmContract?.paths ?? allowedPaths;
+    if (writable.some((field) => !allowedPaths.includes(field))) throw new OptimizationUnsupportedError("Tuning contract grants an unsupported writable field.");
+    if (policy.tunables.some((field) => field.values.some((value) => typeof value !== "number"))) throw new OptimizationUnsupportedError("Tunable values must be numbers.");
     return {
         model: blueprint,
         writable,

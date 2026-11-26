@@ -33,7 +33,7 @@ export function stableSlotMathJson(value: unknown): string {
 /** Limits apply before allocating dense payout, result or scratch memory. */
 export function assertSharedSlotMathModel(value: unknown): asserts value is SharedSlotMathModel {
     const fail = (): never => {
-        throw new Error("Unsupported shared WASM math model. Limits: 64 reels, 64 rows, 1024 cells, 128 unique symbols, 1024 paylines, 65536 stops per reel, 262144 total stops and 8 MiB memory. Next: reduce the model or build a TypeScript package.");
+        throw new Error("This design cannot be lowered to the compact exact-math model. It may use an unsupported feature (for example generated reel stacks); the limits are 64 reels, 64 rows, 1024 cells, 128 unique symbols, 1024 paylines, 65536 stops per reel, 262144 total stops and 8 MiB memory. Next: use Simulation, or build a TypeScript package.");
     };
     if (!value || typeof value !== "object") fail();
     const model = value as SharedSlotMathModel;

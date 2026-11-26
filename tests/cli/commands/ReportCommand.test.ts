@@ -337,6 +337,50 @@ describe("ReportCommand", () => {
         logSpy.mockRestore();
     });
 
+    it("puts the human summary first and keeps technical diagnostics in an appendix", async () => {
+        const analyticsReport = {
+            ...report,
+            diagnostics: {sampleUnit: "accepted-subround" as const, samples: 9800, achievedRtpHalfWidth: 0.01, precision: "notRequested" as const, coverageLimitations: []},
+            analytics: featureAnalyticsReport("populated").analytics,
+        };
+        const command = new ReportCommand(createStubReadFile({"sim.json": JSON.stringify(analyticsReport)}));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["sim.json"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed.indexOf("## What this means")).toBeGreaterThan(-1);
+        expect(printed.indexOf("## What this means")).toBeLessThan(printed.indexOf("## Technical appendix"));
+        expect(printed.indexOf("## Payout distribution")).toBeLessThan(printed.indexOf("## Technical appendix"));
+        expect(printed).toContain("## What to check next");
+        expect(printed).toContain("### Feature analytics");
+        expect(printed).toContain("accepted spins");
+        expect(printed).toContain("combined 95% interval half-width");
+        expect(printed).not.toMatch(/subround/i);
+
+        logSpy.mockRestore();
+    });
+
+    it("renders the human summary before the technical appendix in HTML", async () => {
+        const analyticsReport = {
+            ...report,
+            diagnostics: {sampleUnit: "accepted-subround" as const, samples: 9800, achievedRtpHalfWidth: 0.01, precision: "notRequested" as const, coverageLimitations: []},
+            analytics: featureAnalyticsReport("populated").analytics,
+        };
+        const command = new ReportCommand(createStubReadFile({"sim.json": JSON.stringify(analyticsReport)}));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["sim.json", "--format", "html"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed.indexOf("<h2>What this means</h2>")).toBeLessThan(printed.indexOf("<h2>Technical appendix</h2>"));
+        expect(printed).toContain("<h3>Feature analytics</h3>");
+        expect(printed).toContain("accepted spins");
+        expect(printed).not.toMatch(/subround/i);
+
+        logSpy.mockRestore();
+    });
+
     it("does not write a file when --out is not given", async () => {
         const writeFile = jest.fn();
         const command = new ReportCommand(createStubReadFile({"sim.json": JSON.stringify(report)}), writeFile);
@@ -803,7 +847,7 @@ describe("ReportCommand (SimulationReportSet -- pokie sim --mode all output)", (
         expect(printed).toContain("## Mode: ante");
         expect(printed).toContain("## Mode: buy-10");
         // Each mode's own section is the demoted single-report render() output.
-        expect(printed).toContain("### Reproducibility");
+        expect(printed).toContain("#### Reproducibility");
 
         logSpy.mockRestore();
     });
@@ -892,7 +936,7 @@ describe("ReportCommand (integration, real pokie sim output)", () => {
         const markdown = fs.readFileSync(markdownOut, "utf-8");
         const html = fs.readFileSync(htmlOut, "utf-8");
         expect(markdown).toContain("# Simulation Report: Playable Game");
-        expect(markdown).toContain("**Actual rounds**: 100");
+        expect(markdown).toContain("**Completed paid rounds**: 100");
         expect(html).toContain("<h1>Simulation Report: Playable Game</h1>");
         expect(html).toContain("<td>100</td>");
     }, PACKAGE_EXTRACTION_TEST_TIMEOUT);

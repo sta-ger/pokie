@@ -1,0 +1,112 @@
+{
+    "schemaVersion": 1,
+    "generatedBy": "pokie outcomelibrary build",
+    "pokieVersion": "2.0.0",
+    "generatedAt": "2026-11-23T12:41:33.818Z",
+    "game": {
+        "id": "free-games-scope",
+        "name": "Free Games Scope",
+        "version": "0.1.0",
+        "description": "E2E fixture: paid-spin exact math must not be presented as total RTP when free games are present."
+    },
+    "configHash": "sha256:977b153ed632c462a6fca02e7af042cd540826a64c6aeddd354768452af5b765",
+    "recordPokieVersion": "2.0.0",
+    "modes": [
+        {
+            "modeName": "base",
+            "betMode": "base",
+            "stake": 1,
+            "libraryId": "free-games-scope",
+            "libraryHash": "sha256:21a87946f65316ac391feb3e194368e566ecd3983b47ad31eff350719deb1583",
+            "outcomeCount": 16807,
+            "totalWeight": 16807,
+            "analysis": {
+                "totalWeight": 16807,
+                "rtp": 0.5647646813827405,
+                "hitFrequency": 0.11953352769679304,
+                "zeroWinFrequency": 0.880466472303207,
+                "variance": 5.872270699371095,
+                "standardDeviation": 2.4232768515733185,
+                "maxWin": 38,
+                "maxWinProbability": 0.000059499018266198606,
+                "payoutDistribution": [
+                    {
+                        "payoutMultiplier": 0,
+                        "probability": 0.8804664723030312
+                    },
+                    {
+                        "payoutMultiplier": 1,
+                        "probability": 0.04789670970428989
+                    },
+                    {
+                        "payoutMultiplier": 2,
+                        "probability": 0.010947819360980547
+                    },
+                    {
+                        "payoutMultiplier": 4,
+                        "probability": 0.012494793835901711
+                    },
+                    {
+                        "payoutMultiplier": 5,
+                        "probability": 0.0020824656393169517
+                    },
+                    {
+                        "payoutMultiplier": 6,
+                        "probability": 0.020943654429701915
+                    },
+                    {
+                        "payoutMultiplier": 8,
+                        "probability": 0.01427976438388767
+                    },
+                    {
+                        "payoutMultiplier": 10,
+                        "probability": 0.0004164931278633903
+                    },
+                    {
+                        "payoutMultiplier": 12,
+                        "probability": 0.004283929315166301
+                    },
+                    {
+                        "payoutMultiplier": 14,
+                        "probability": 0.00011899803653239721
+                    },
+                    {
+                        "payoutMultiplier": 16,
+                        "probability": 0.0035699410959719176
+                    },
+                    {
+                        "payoutMultiplier": 32,
+                        "probability": 0.0024394597489141435
+                    },
+                    {
+                        "payoutMultiplier": 38,
+                        "probability": 0.000059499018266198606
+                    }
+                ]
+            },
+            "indexFile": "index_base.json",
+            "outcomesFile": "outcomes_base.jsonl",
+            "generator": {
+                "algorithm": "pokie-exact-reel-enumeration-v1",
+                "strategy": "exact",
+                "totalOutcomeSpaceSize": 16807,
+                "sampledRawCount": 16807,
+                "maxExactOutcomeSpaceSize": 20000000,
+                "pokieVersion": "2.0.0",
+                "game": {
+                    "id": "free-games-scope",
+                    "name": "Free Games Scope",
+                    "version": "0.1.0",
+                    "description": "E2E fixture: paid-spin exact math must not be presented as total RTP when free games are present."
+                },
+                "configHash": "sha256:977b153ed632c462a6fca02e7af042cd540826a64c6aeddd354768452af5b765",
+                "generatedAt": "2026-11-23T12:41:33.763Z"
+            }
+        }
+    ],
+    "files": [
+        "index_base.json",
+        "outcomes_base.jsonl",
+        "index.json"
+    ]
+}

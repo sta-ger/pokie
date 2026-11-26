@@ -1,16 +1,17 @@
 import {resolveSessionPayout} from "../runtime/internal/resolveSessionPayout.js";
 import {POKIE_VERSION} from "../PokieVersion.js";
-import {validateRepositoryCommand} from "../runtime/RepositoryCommand.js";
+import {validateRepositoryCommand, type RepositoryCommand} from "../runtime/RepositoryCommand.js";
 import crypto from "crypto";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import {deepFreeze} from "../internal/deepFreeze.js";
 import {resolveGameSessionIdentity} from "../runtime/GameSessionIdentity.js";
 import {SessionRuntime} from "../runtime/SessionRuntime.js";
+import {validateLogicalRound, type LogicalRound} from "../runtime/LogicalRound.js";
 import {validateSessionCommand, type SessionCommand} from "../runtime/SessionCommand.js";
-import {validateLogicalRound} from "../runtime/LogicalRound.js";
 import {validateExecutableState} from "../runtime/validateExecutableState.js";
 import {isSessionStateRestorable, resolveSessionStateSchema, sessionStateSchemasMatch} from "../session/SessionStateRestoring.js";
 import {restoreFeatureState} from "../server/session/restoreFeatureState.js";
+import {decorateSettledLogicalRound} from "../runtime/internal/decorateSettledLogicalRound.js";
 import {buildRoundRecordFromSession} from "../roundrecord/buildRoundRecordFromSession.js";
 import {buildLogicalRoundRecord} from "../roundrecord/buildLogicalRoundRecord.js";
 import {PokieJsonRoundRecordProjector} from "../roundrecord/PokieJsonRoundRecordProjector.js";
@@ -55,7 +56,7 @@ export function auditBoundaryFromState(state: PokieSessionState, credits = state
     if (credits === undefined || state.featureState === undefined) throw new AuditReplayError("audit-codec-unsupported", "state", "Complete executable state and credits are required.");
     return dto({state: toCanonicalJson(state.featureState), bet: state.bet, credits, ...(state.logicalRound ? {logicalRound: state.logicalRound} : {})});
 }
-export function captureAuditBoundary(session: GameSessionHandling): AuditBoundary {
+export function captureAuditBoundary(session: GameSessionHandling, logicalRound?: LogicalRound): AuditBoundary {
     if (!isSessionStateRestorable(session)) throw new AuditReplayError("audit-codec-unsupported", "state", "Session must implement complete capture, restore and validation.");
     let state: unknown;
     try {
@@ -65,9 +66,9 @@ export function captureAuditBoundary(session: GameSessionHandling): AuditBoundar
     } catch (error) {
         throw new AuditReplayError("audit-state", "state", error instanceof Error ? error.message : String(error));
     }
-    return dto({state, bet: session.getBet(), credits: session.getCreditsAmount(), logicalRound: new SessionRuntime(session).getLogicalRound()});
+    return dto({state, bet: session.getBet(), credits: session.getCreditsAmount(), logicalRound: logicalRound ?? new SessionRuntime(session).getLogicalRound()});
 }
-export function captureAuditDelivery(game: PokieGame, session: GameSessionHandling, command: SessionCommand, before: AuditBoundary, result: Played, disposition: AuditDisposition, execution: AuditDelivery["execution"] = "command"): AuditDelivery {
+export function captureAuditDelivery(game: PokieGame, session: GameSessionHandling, command: SessionCommand, before: AuditBoundary, result: Played, disposition: AuditDisposition, execution: AuditDelivery["execution"] = "command", afterLogicalRound?: LogicalRound): AuditDelivery {
     const slot = session as Partial<VideoSlotSessionHandling>;
     let artifact: AuditDelivery["artifact"];
     if (!result.deliveryOnly && typeof slot.getWinEvaluationResult === "function" && typeof slot.getSymbolsCombination === "function") {
@@ -75,7 +76,7 @@ export function captureAuditDelivery(game: PokieGame, session: GameSessionHandli
             stake: result.stake, betMode: result.mode, origin: {game: game.getInfo(), pokieVersion: POKIE_VERSION, ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})}});
         artifact = new PokieJsonRoundRecordProjector().project(result.logicalRound ? buildLogicalRoundRecord(result.logicalRound, built) : built);
     }
-    return dto({execution, command, before, after: captureAuditBoundary(session), result, ...(artifact ? {artifact} : {}), disposition});
+    return dto({execution, command, before, after: captureAuditBoundary(session, afterLogicalRound ?? result.logicalRound), result, ...(artifact ? {artifact} : {}), disposition});
 }
 function rngProfile(schema: AuditRoundRecording["stateSchema"]): AuditRoundRecording["rngProfile"] {
     let leaf = schema;
@@ -84,7 +85,7 @@ function rngProfile(schema: AuditRoundRecording["stateSchema"]): AuditRoundRecor
     if (leaf.kind === "base") return "none";
     return "custom-codec-v1";
 }
-export function buildAuditRoundRecording(game: PokieGame, context: PokieGameContext | undefined, deliveries: readonly AuditDelivery[], captureUnavailable?: AuditRoundRecording["captureUnavailable"]): AuditRoundRecording {
+export function buildAuditRoundRecording(game: PokieGame, context: PokieGameContext | undefined, deliveries: readonly AuditDelivery[], captureUnavailable?: AuditRoundRecording["captureUnavailable"], options?: {validate?: boolean}): AuditRoundRecording {
     const identity = resolveGameSessionIdentity(game);
     if (!identity.modelHash || !game.getSessionStateSchema || !game.getSessionCommandCapabilities) throw new AuditReplayError("audit-codec-unsupported", "identity", "Exact audit requires selected model hash, authoritative codec and command capabilities.");
     const stateSchema = game.getSessionStateSchema();
@@ -92,7 +93,10 @@ export function buildAuditRoundRecording(game: PokieGame, context: PokieGameCont
         game: game.getInfo(), stateSchema, rngProfile: rngProfile(stateSchema),
         ...(context ? {context} : {}), deliveries, ...(captureUnavailable ? {captureUnavailable} : {})});
     const recording = {...body, hash: computeAuditRoundHash(body)};
-    validateAuditRoundRecording(recording, game);
+    // A caller that just appended a delivery captured from live, validated state can skip re-validating
+    // the entire growing recording. Long feature rounds otherwise re-check every prior boundary on every
+    // accepted subround, which is quadratic and can block the event loop for minutes.
+    if (options?.validate !== false) validateAuditRoundRecording(recording, game);
     return deepFreeze(recording);
 }
 
@@ -239,7 +243,17 @@ export class AuditRoundReplay implements AuditRoundReplaying {
                 let result: SessionCommandResult;
                 if (delivery.execution === "accepted-boundary") {
                     const prepared = runtime.prepare(delivery.command, delivery.before.credits);
-                    result = prepared.status === "ready" ? prepared.execute() : {status: "blocked", reason: prepared.reason};
+                    // A recorded composite delivery may be one bounded batch (pending result) or the
+                    // whole paid round (completed result). Reproduce exactly the boundary that was
+                    // recorded; only a completed composite should run to its logical end here.
+                    const completedComposite = delivery.command.delivery === "composite" && delivery.result.logicalRound?.status === "completed";
+                    if (prepared.status !== "ready") result = {status: "blocked", reason: prepared.reason};
+                    else if (completedComposite) {
+                        result = runtime.executePreparedCommand(delivery.command, prepared);
+                        if (result.status === "played" && result.logicalRound !== undefined) {
+                            result = {...result, logicalRound: decorateSettledLogicalRound(result.logicalRound, delivery.command as RepositoryCommand, delivery.before.logicalRound?.cursor ?? 0)};
+                        }
+                    } else result = prepared.execute();
                 } else result = runtime.execute(delivery.command, signal);
                 if (result.status !== "played") throw new AuditReplayError("audit-execution-mismatch", `deliveries[${index}].command`, result.reason);
                 if (delivery.disposition.walletPayout !== undefined) {

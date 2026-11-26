@@ -113,7 +113,7 @@ export class MechanicsSheetMapper implements MechanicsSheetMapping {
     }
 
     public toRows(freeGames: GameBlueprintFreeGames | undefined, mechanics?: GameBlueprintMechanics): SheetGrid {
-        if (mechanics && (mechanics.weightedBonus || mechanics.cascade || mechanics.respins || mechanics.collection || mechanics.modifiers || mechanics.holdAndWin || mechanics.jackpot || mechanics.freeGames?.retriggerPolicy)) return [
+        if (mechanics && (mechanics.weightedBonus || mechanics.cascade || mechanics.respins || mechanics.collection || mechanics.modifiers || mechanics.holdAndWin || mechanics.jackpot || mechanics.freeGames?.retriggerPolicy || mechanics.freeGames?.maxFreeGames !== undefined)) return [
             ["Mechanic", "Configuration JSON"],
             ...Object.entries(mechanics).filter(([, value]) => value !== undefined).map(([name, value]) => [name, JSON.stringify(value)]),
         ];

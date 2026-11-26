@@ -56,6 +56,13 @@ const removedStudioLabels = [
     "PAR evidence eligibility is verified from explicit import facts and Meta/hash provenance.",
     "RNG host binding",
     "Snapshot captured for this round",
+    "Full artifact",
+    "previous artifacts stay unchanged",
+    "Retained list position",
+    "The retained evidence is below.",
+    "Your draft is retained.",
+    "The current draft is retained.",
+    "retained project",
 ];
 
 // Exact CLI output fragments that used to expose internal build vocabulary. The CLI tests assert the
@@ -120,6 +127,26 @@ describe("user-facing terminology", () => {
         }
     });
 
+    it("does not tell authors to use Simulation for a total RTP that Overview can derive exactly", () => {
+        const text = read("cli/studio-client/src/components/project/ExportDeployTab.tsx");
+        expect(text).not.toContain("use Simulation for total RTP");
+        expect(text).toContain("Overview derives exact total RTP");
+    });
+
+    it("keeps the optimization policy error human and its raw path in technical details", () => {
+        const text = read("cli/studio-client/src/components/project/OptimizationPanel.tsx");
+        expect(text).not.toContain("Policy JSON is invalid");
+        expect(text).toContain("Optimization settings need attention");
+        expect(text).toContain("Restore default settings");
+    });
+
+    it("calls the Play delivery control a round playback choice, not a display setting", () => {
+        const text = read("cli/studio-client/src/components/project/PlayTab.tsx");
+        expect(text).not.toContain('label="Round display"');
+        expect(text).toContain('label="Round playback"');
+        expect(text).toContain("Whole round in one click");
+    });
+
     it.each([
         "cli/studio-client/src/components/project/ExportDeployTab.tsx",
         "cli/studio-client/src/components/project/CertificationTab.tsx",
@@ -129,6 +156,7 @@ describe("user-facing terminology", () => {
         "cli/studio-client/src/components/common/AdvancedValidationPanel.tsx",
         "cli/studio-client/src/components/project/OptimizationPanel.tsx",
         "cli/studio-client/src/components/blueprintEditor/ParSheetImportExportPanel.tsx",
+        "cli/studio-client/src/components/blueprintEditor/BlueprintBuildPanel.tsx",
         "cli/studio-client/src/components/blueprintEditor/ReelStripsEditor.tsx",
         "cli/studio-client/src/components/blueprintEditor/ReelStripGenerationEditor.tsx",
         "cli/studio-client/src/components/project/ReplayTab.tsx",

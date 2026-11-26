@@ -1,4 +1,4 @@
-export {pointerParts, at, put, checkPolicyPaths, constraintsHold, assertOnlyTuned, paytablePaths} from "./optimizationModel.js";
+export {pointerParts, at, put, checkPolicyPaths, constraintsHold, assertOnlyTuned, freeGamesAwardPaths, paytablePaths, tunablePaths} from "./optimizationModel.js";
 import {resolvePokieGameDependencyRoots} from "../../gamepackage/resolvePokieGameEntryModule.js";
 import crypto from "crypto";
 import {stableSlotMathJson} from "../../wasm/math/SharedSlotMath.js";

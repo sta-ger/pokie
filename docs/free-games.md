@@ -155,3 +155,37 @@ settlement awards. Both delivery policies preserve this timing, including
 fractional entry stakes and zero continuation stake.
 
 Authored free games explicitly support additive retriggers (`retriggerPolicy: "additive"`; omission preserves this default), including one-scatter triggers and zero grants. Hold&Win instead resets its configured respin count on a new lock and decrements on misses, completing immediately on a full board or at exhaustion. Bet-multiple values use the triggering denomination across later bet changes and restart. Free games and Hold&Win are rejected together because they compete for progression/banking. See [authored mechanics](game-packages.md#authored-holdwin-jackpot-and-bet-modes) for configuration and composition.
+
+## Exact free-games RTP
+
+For the authored additive free-games shape, Studio derives an exact total RTP from the paid-spin
+library's own trigger probability and award distribution plus the geometric retrigger series. The
+paid-spin library still contains only paid-spin records; the total is a derived expectation, shown
+separately from the paid-spin RTP. The derivation assumes free spins use the same reels, paytable
+and bet as the triggering paid spin. If the trigger distribution makes the retrigger product ≥ 1,
+the total is unbounded and Studio reports that instead of a finite number. Other mechanics remain
+paid-spin scoped; use Simulation for their total.
+
+Authored free games are additive and uncapped by default. When the retrigger product stays below 1,
+expected free games and total RTP are finite, and a round ends with probability 1. That is not the
+same as an all-path bound: the project's feature check still warns when it cannot prove every
+possible round ends within a declared limit.
+
+Set `mechanics.freeGames.maxFreeGames` (a positive integer, at most 1,000) to cap the total free
+games in one feature — the trigger award plus every retrigger. The cap makes feature termination
+provable even when the retrigger factor is 1 or higher. Exact total RTP under a cap is derived from
+the same paid-spin trigger distribution using a finite-state calculation, not the unbounded
+geometric series. Leave the field absent for the legacy uncapped behavior.
+
+## Studio's guided scatter + free-games setup
+
+Studio's **Set up scatter + free games** step can lengthen only the selected literal reels to ten stops.
+Repeating a reel strip preserves its symbol proportions, so the base-game symbol mix is not silently
+changed, while the scatter becomes less frequent. With three selected starter reels the exact preview
+stays at 10 × 10 × 10 × 5 × 5 = 25,000 reel-stop combinations, which is the preview cap.
+
+The setup also shows the trigger probability, retrigger factor and exact total RTP before writing the
+draft. It warns when the trigger frequency is still higher than a production-like value, and it can
+write an optional `maxFreeGames` cap in the same step. If a design needs a rarer scatter than the demo
+reels can express, import a PAR sheet or author longer reel strips instead of treating the demo as a
+balanced game.

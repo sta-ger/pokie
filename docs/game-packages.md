@@ -360,7 +360,7 @@ and grants are preserved, never padded into equivalent-looking defaults.
 
 ## Authored Hold&Win, jackpot and bet modes
 
-Blueprint `mechanics` accepts `freeGames`, `holdAndWin`, `jackpot`, `modifiers`, `cascade`, `respins` and `collection`. The feature-chain interfaces and their composition restrictions are documented in [feature chains with limits](feature-chains.md). Unknown fields and unsupported policies fail validation, including direct generator/render calls. Free games use `retriggerPolicy: "additive"` (also the legacy omitted default). Award counts start at one and awards may be zero. Hold&Win requires the explicit `reset-on-new-lock` policy:
+Blueprint `mechanics` accepts `freeGames`, `holdAndWin`, `jackpot`, `modifiers`, `cascade`, `respins` and `collection`. The feature-chain interfaces and their composition restrictions are documented in [feature chains with limits](feature-chains.md). Unknown fields and unsupported policies fail validation, including direct generator/render calls. Free games use `retriggerPolicy: "additive"` (also the legacy omitted default). Award counts start at one and awards may be zero. An optional `maxFreeGames` (1–1,000) caps the total free games in one feature, including the trigger award and retriggers. Hold&Win requires the explicit `reset-on-new-lock` policy:
 
 ```json
 {

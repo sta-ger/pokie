@@ -1078,14 +1078,14 @@ A `.par.xlsx` workbook has up to ten sheets:
 
 | Sheet | Columns | Required | Maps to |
 |---|---|---|---|
-| `Manifest` | `Key`, `Value` (rows: `Id`, `Name`, `Version`, `Description`, `Author`, `Reels`, `Rows`) | yes | `info`, `reels`, `rows` |
+| `Info` | `Key`, `Value` (rows: `Id`, `Name`, `Version`, `Description`, `Author`, `Reels`, `Rows`) | yes | `info`, `reels`, `rows` |
 | `Symbols` | `Symbol`, `Wild`, `Scatter` — one row per symbol, in reel order | yes | `symbols`, `wilds`, `scatters` |
 | `Paytable` | `Symbol`, `Matches`, `Multiplier` — one row per payout tier | yes | `paytable` |
 | `ReelStrips` | `Reel 1`..`Reel N` (exact names — see below) — one row per strip position; a shorter (ragged) reel just leaves trailing blank cells | no | `reelStrips` (literal only) |
 | `Paylines` | `Line` (a 1-based label, not read back), `Reel 1`..`Reel N` (row index per reel) | no | `paylines` |
 | `AvailableBets` | `Bet` — one row per value | no | `availableBets` |
 | `WinModel` | `Key`, `Value` (rows: `Type` — one of `lines`/`ways`/`clusters`; `Minimum Cluster Size`, only for `clusters`) | no | `winModel` |
-| `Mechanics` | `Scatter Symbol`, `Matches`, `Free Games` — one row per award tier (a single free-games award has exactly one scatter symbol, repeated on every row) | no | `mechanics.freeGames` |
+| `Mechanics` | `Scatter Symbol`, `Matches`, `Free Games` — one row per award tier (a single free-games award has exactly one scatter symbol, repeated on every row). A capped free-games mechanic is written as `Mechanic`/`Configuration JSON` rows so its `maxFreeGames` survives round-trip. | no | `mechanics.freeGames` |
 | `BetModes` | `Id`, `Label`, `Cost Multiplier`, `Target RTP`, `Runtime Type`, `Is Default`, `Forced Free Games` — one row per selectable bet mode | no | `betModes` |
 | `Meta` | `Key`, `Value` (rows: `Schema Version`, `Pokie Version`, `Exported At`, `Source`, `Blueprint Hash`) | no | nothing — provenance only, see below |
 
@@ -1167,7 +1167,7 @@ shape as [`pokie build`'s validation](#validation)):
  `parsheet-paytable-missing-symbol`);
 - two rows that collide once turned into a single `GameBlueprint` field, e.g. the same `(Symbol, Matches)` pair
  twice in `Paytable` (`parsheet-paytable-duplicate-entry`, warning — the last one wins) or the same key twice in
- `Manifest`/`Meta` (`parsheet-manifest-duplicate-key`, warning);
+ `Info`/`Meta` (`parsheet-manifest-duplicate-key`, warning; legacy `Manifest` is still accepted);
 - a gap in `ReelStrips` — a blank cell followed by a non-blank one further down the same column
  (`parsheet-reelstrips-gap`) — as opposed to a shorter (ragged) reel's trailing blank cells, which are fine;
 - on export, a generated reel that cannot satisfy its own constraints
@@ -1795,7 +1795,7 @@ pokie sim./sample-slot --rounds 1000000 --seed demo --workers 4 --out report.jso
 
 Options:
 
-- `--rounds <number>` — how many rounds to play (default `1000`, `SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS`).
+- `--rounds <number>` — how many plays to simulate (paid spins plus free-game spins; default `1000`, `SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS`). The flag keeps its historical name; reports also show completed paid rounds.
 - `--seed <string>` — forwarded as `context.seed` to `game.createSession(context)`. **Best-effort, not guaranteed**:
  POKIE has no built-in way to seed an arbitrary loaded game — it's up to the game package's own `createSession`
  to read `context.seed` and thread it into a `SeededRandomNumberGenerator`. A game that ignores `context` will
@@ -3309,10 +3309,10 @@ A browser tab opens automatically (same best-effort `open`/`start`/`xdg-open` me
 same `--no-open` escape hatch) showing the opened package's Project Dashboard. Home is task-oriented, with exactly
 2 tabs — **Design Game** (`/home/design`, the default) and **Projects** (`/home/projects`).
 Home offers one editable design path, including loading an existing Blueprint. Package scaffolding with
-`pokie init` remains a CLI developer workflow. Save/Create game opens the design’s workspace; its
+`pokie init` remains a CLI developer workflow. Saving a game design opens its workspace; its
 **Build/Export** section owns package builds and PAR exports.
 
-- **Design Game** is the guided happy path: start with a recommended starter, a blank design, a generated idea,
+- **Design Game** is the guided happy path: start with a recommended starter, a blank design, a generated structural template,
  or an existing Blueprint file. Configure and save the draft, then build from its workspace —
  editing the exact same DTO [`pokie build <project> --target tsPackage`](#pokie-build-project) accepts (no
  separate Studio-only blueprint schema).
@@ -3324,12 +3324,15 @@ Home offers one editable design path, including loading an existing Blueprint. P
  rather than clearing the editor; any top-level field the Form doesn't know about survives every round trip
  unchanged. Studio automatically validates the current revision with the same `GameBlueprintValidator`
  used everywhere else, without touching disk.
- **Calculate exact math** in the **Math preview** section runs one complete enumeration of the current draft and
- reports exact RTP, hit frequency, volatility, max win, and outcome count without saving a project; a draft above
- the 25,000-combination preview cap gets an actionable explanation instead of a sampled number. The saved project's
- Overview **Exact math** card also exposes event-level probabilities (for example `A × 5` or a scatter count), not
- only the total-payout distribution. Load/Save-by-path, the raw JSON view, and PAR import are tucked behind **Show advanced options (file
- and JSON tools)**. PAR Apply updates the draft; it does not publish an output. **Create game** validates
+ **Calculate exact math** in the **Draft exact math preview** section runs one complete enumeration of the current
+ draft and reports exact RTP, hit frequency, volatility, max win, and outcome count without saving a project; a
+ draft above the 25,000-combination preview cap gets an actionable explanation instead of a sampled number. Save
+ keeps that preview visible for the saved design, but it is still a preview. The saved project's Overview
+ **Exact math** card, generated with **Compute exact outcome table**, writes the stored table and also exposes
+ event-level probabilities (for example `A × 5` or a scatter count), not only the total-payout distribution. Exact math enumerates paid entry spins: a free-game trigger is recorded, but
+ the later free-game wins are outside that paid-spin RTP, and the card labels that scope and points to Simulation
+ for total RTP. Load/Save-by-path, the raw JSON view, and PAR import are tucked behind **Show advanced options (file
+ and JSON tools)**. PAR Apply updates the draft; it does not publish an output. **Create game design** validates
  the current revision, saves the design and opens its workspace. Build packages and export PAR workbooks
  from that workspace’s **Build/Export**, which previews the actual destination and refuses occupied outputs.
  Saving alone does not imply runtime preparation, project validation, or an build succeeded. A **Reel Strip Modeler** mode
@@ -3401,7 +3404,7 @@ alongside the rest of the project's state, with no wizard-like next-step recomme
  (errors, warnings, suggestions), refreshed
  automatically and re-runnable on demand. An **Inspect** quick action re-runs the inspection (handy after
  rebuilding without restarting Studio).
-- **Game Model** is a read-only, resolved-project-type-aware view of the game (info, reels/rows,
+- **Game design** is a read-only, resolved-project-type-aware view of the game (info, reels/rows,
  symbols, paylines, paytable, reel strips/symbol weights, available bets) via `GET /api/project/gameModel` — for
  a project with an editable source blueprint, each section also offers **Edit** straight from this view (scoped
  to one section at a time), reusing the exact same Blueprint Editor components Design Game's guided flow uses.
@@ -3440,10 +3443,10 @@ The Dashboard itself has four states, all handled explicitly by the frontend:
 
 The **Simulation** tab runs a [`pokie sim`](#pokie-sim-packageroot)-equivalent simulation against the active
 project and shows a human-readable report — without ever shelling out to `pokie sim` or reimplementing its logic.
-A form asks for **rounds** (required, a positive integer), a **seed** (prefilled with a fresh Studio seed on
+A form asks for **plays** (required, a positive integer; one paid spin or one free-game spin; the report also shows completed paid rounds), a **seed** (prefilled with a fresh Studio seed on
 each new configure session; leave it empty only for a deliberately unseeded, non-reproducible run), and **workers**
 (a positive integer, default `1`), same as `pokie sim --rounds/--seed/--workers`; running it shows
-**queued** → **running** (with a live rounds-completed/total progress line — aggregated across every worker
+**queued** → **running** (with a live plays-completed/total progress line — aggregated across every worker
 when `workers > 1` — and elapsed duration) → **completed**/**failed**/**cancelled**. A **Cancel** button is
 available while queued/running (asking for confirmation before it actually cancels — see below for what
 cancelling actually stops when `workers > 1`), and once the job reaches a terminal state, a **Run again with
@@ -3480,7 +3483,7 @@ the current Studio process, not just right after it finishes. Each row shows the
 requested vs. actual rounds, seed, RTP, hit frequency, max win, started/completed time, duration, whether the
 report has warnings, and its status; clicking one opens the full report below the list. The Simulation tab's own
 "View in Reports" button jumps straight to that same detail view for the simulation that just ran, and the detail
-view's own "Back to Simulation parameters" button returns to the Simulation tab with **rounds**/**seed** pre-filled
+view's own "Back to Simulation parameters" button returns to the Simulation tab with **plays**/**seed** pre-filled
 from that report, ready to re-run. **Refresh** re-fetches the list without a full page reload — handy after
 starting another simulation from a different tab.
 
@@ -3892,7 +3895,7 @@ runtime instead, while roundrecord/source workflows use the resolver and `BuildO
 to their project types. [POKIE Studio](#pokie) already
 covers most of these workflows with a real GUI, not just the CLI: designing/building a game (Home's Design Game
 tab, including PAR Sheet import and reel strip generation), and, once a project is open, inspection/
-validation (Overview), the Game Model view, Play, Simulation, Replay, Build/Export (outcome library generation,
+validation (Overview), the Game design view, Play, Simulation, Replay, Build/Export (outcome library generation,
 local build outputs, and remote deployment via the External connector SDK), Certification pack, and Fairness all have a working Studio surface. `pokie serve`/`pokie dev`/`pokie client` have no Studio GUI
 counterpart — Studio's own Play tab drives a real session entirely in-process instead; use the CLI directly to
 stand up an HTTP server.
@@ -4184,7 +4187,7 @@ conditional connectors, author opt-in, confidence results, apply rollback and re
 
 PAR preserves represented weighted sequence identities/order/context, launch mechanics,
 retrigger and bet-mode interfaces, explicit zero/omitted payouts (including empty symbol
-maps), fractional bets and the resolved Game Model. Empty optional arrays/strings
+maps), fractional bets and the resolved Game design. Empty optional arrays/strings
 canonicalize to absence. Geometry and nonrepresentable package policies fail before
 publication. Generated/default/shared-weight reel sources become literal snapshots;
 formula cached values, ignored cells/sheets and inferred defaults remain disclosed

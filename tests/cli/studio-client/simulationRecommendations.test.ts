@@ -1,4 +1,4 @@
-import {describeStudioSimulationRecommendation, formatRoundsEstimate, roundsForRtpHalfWidth} from "../../../cli/studio-client/src/domain/simulationRecommendations.js";
+import {describeStudioSimulationRecommendation, formatRoundsEstimate, paidRoundsForRtpHalfWidthFromSigma, requestedPlaysForRtpHalfWidth, roundsForRtpHalfWidth} from "../../../cli/studio-client/src/domain/simulationRecommendations.js";
 
 describe("describeStudioSimulationRecommendation", () => {
     it("maps terminal seed advice to the Studio control", () => {
@@ -8,7 +8,7 @@ describe("describeStudioSimulationRecommendation", () => {
 
     it("maps round-count and comparison/export advice without leaving CLI flags", () => {
         expect(describeStudioSimulationRecommendation("Increase --rounds (e.g. 10000+) for more stable RTP/hit-frequency estimates."))
-            .toBe("Increase Rounds (e.g. 10000+) for more stable RTP/hit-frequency estimates.");
+            .toBe("Increase Plays (e.g. 10000+) for more stable RTP/hit-frequency estimates.");
         expect(describeStudioSimulationRecommendation('Use "pokie diff" to compare this report against a previous run after changing the game\'s math.'))
             .toMatch(/Compare with another run/);
         expect(describeStudioSimulationRecommendation("Save this report as JSON via --out to keep a record you can diff or replay against later."))
@@ -37,9 +37,30 @@ describe("roundsForRtpHalfWidth", () => {
         expect(roundsForRtpHalfWidth(10_000, {low: 0.99, high: 1.0}, 0.01)).toBe(10_000);
     });
 
+    it("translates required paid rounds into the play budget when free games expand each paid round", () => {
+        expect(requestedPlaysForRtpHalfWidth(10_000, 14_500, {low: 0.9169, high: 1.0275}, 0.01)).toBe(443_425);
+        expect(requestedPlaysForRtpHalfWidth(10_000, 10_000, {low: 0.9169, high: 1.0275}, 0.01)).toBe(305_810);
+        expect(requestedPlaysForRtpHalfWidth(10_000, 0, {low: 0.9169, high: 1.0275}, 0.01)).toBeUndefined();
+    });
+
     it("returns no estimate for an invalid interval or target", () => {
         expect(roundsForRtpHalfWidth(0, {low: 0.9, high: 1.1}, 0.01)).toBeUndefined();
         expect(roundsForRtpHalfWidth(100, {low: 1.1, high: 0.9}, 0.01)).toBeUndefined();
         expect(roundsForRtpHalfWidth(100, {low: 0.9, high: 1.1}, 0)).toBeUndefined();
+    });
+});
+
+describe("paidRoundsForRtpHalfWidthFromSigma", () => {
+    it("estimates a pre-run budget from exact-math volatility", () => {
+        const rounds = paidRoundsForRtpHalfWidthFromSigma(2.8149, 0.01);
+        expect(rounds).toBeGreaterThan(300_000);
+        expect(rounds).toBeLessThan(310_000);
+        expect(paidRoundsForRtpHalfWidthFromSigma(2.8149, 0.005)).toBeGreaterThan(1_200_000);
+    });
+
+    it("returns no estimate for invalid inputs", () => {
+        expect(paidRoundsForRtpHalfWidthFromSigma(0, 0.01)).toBeUndefined();
+        expect(paidRoundsForRtpHalfWidthFromSigma(2.8, 0)).toBeUndefined();
+        expect(paidRoundsForRtpHalfWidthFromSigma(Number.NaN, 0.01)).toBeUndefined();
     });
 });

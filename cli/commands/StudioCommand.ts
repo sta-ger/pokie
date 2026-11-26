@@ -130,6 +130,7 @@ export class StudioCommand implements CliCommandHandling {
         const address = await server.start();
 
         console.log(`POKIE Studio listening on http://${address.host}:${address.port}`);
+        console.log("Keep this terminal window open while you use Studio. Closing it stops the local server.");
 
         if (!options.noOpen) {
             this.openBrowserImpl(`http://${address.host}:${address.port}`);

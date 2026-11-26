@@ -51,8 +51,11 @@ import {
     STUDIO_OPERATION,
     toCanonicalJson,
     VALIDATE_OPERATION,
+    isSimulationReportSet,
+    type SimulationReportExactReference,
 } from "@fromstan/pokie";
 import {deriveDeterministicSeed} from "../../src/pregenerated/internal/deriveDeterministicSeed.js";
+import {projectRevision} from "../../src/optimization/internal/optimizationData.js";
 import crypto from "crypto";
 import fs from "fs";
 import http, {IncomingMessage, ServerResponse} from "http";
@@ -188,7 +191,11 @@ import type {StudioToolHandling} from "./StudioToolHandling.js";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 3200;
-const MAX_JSON_BODY_BYTES = 1_048_576;
+// A complete free-games round's audit descriptor includes every command, delivery, state boundary and
+// projected round record. A 10-spin feature can legitimately exceed 1 MiB before inspection; 1 MiB made
+// the Replay "Open completed round" action fail with HTTP 413. Studio is local-only and already accepts
+// large outcome bundles, so keep a bounded but realistic ceiling for round-record inspection.
+const MAX_JSON_BODY_BYTES = 16 * 1_048_576;
 const REMOTE_NO_ORIGIN_SAFE_POST_PATHS = new Set([
     // These host-action routes already return "unavailable" before doing anything for a remote
     // peer.  Keeping that deliberate response is more useful than collapsing it into a generic
@@ -234,6 +241,7 @@ const CONTENT_TYPES: Record<string, string> = {
     ".md": "text/plain; charset=utf-8",
     ".ts": "text/plain; charset=utf-8",
     ".txt": "text/plain; charset=utf-8",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 };
 
 // The first minimal stage of POKIE Studio (see docs/cli.md): serves the studio-client app shell
@@ -274,7 +282,7 @@ export class StudioServer implements StudioServerHandling {
     // spawned.
     private readonly openFolder: (folderPath: string) => void;
     private readonly blueprintService: StudioBlueprintService;
-    // A Create game retry must be idempotent. The browser may lose a response after the local server
+    // A Create game design retry must be idempotent. The browser may lose a response after the local server
     // has already persisted and registered the project; retaining the completed response by its client
     // operation ID lets the retry continue to Workspace without creating a second managed project.
     private readonly managedSaveOperations = new Map<string, ManagedSaveOperation>();
@@ -523,6 +531,7 @@ export class StudioServer implements StudioServerHandling {
                 // Also deliberately not awaited, same reasoning as the dashboard load above -- see
                 // migrateRecentProjectsToRegistry's own doc comment.
                 this.migrateRecentProjectsToRegistry();
+                this.pruneStaleProjectRegistry();
                 resolve({host: this.host, port: address.port});
             });
         });
@@ -828,7 +837,7 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, {jobs: jobs.map((job) => this.jobAvailabilityView(job))});
     }
 
-    private handleHomeCommonJob(method: string, res: ServerResponse, id: string, action: "cancel" | "recover" | undefined, sourcePath: string | null): void {
+    private handleHomeCommonJob(method: string, res: ServerResponse, id: string, action: "cancel" | "recover" | "dismiss" | undefined, sourcePath: string | null): void {
         const job = sourcePath === null || sourcePath.trim() === ""
             ? this.jobService.list().find((candidate) => candidate.id === id && this.isHomeScopedJob(candidate))
             : (() => {
@@ -845,6 +854,14 @@ export class StudioServer implements StudioServerHandling {
         }
         if (action === "cancel" && method === "POST") {
             this.sendJson(res, 202, this.jobService.cancel(job.projectId, id));
+            return;
+        }
+        if (action === "dismiss" && method === "POST") {
+            if (!this.jobService.dismiss(job.projectId, id)) {
+                this.sendJson(res, 409, {error: "Only a finished job can be dismissed from Studio history. Cancel active work first."});
+                return;
+            }
+            this.sendJson(res, 200, {dismissed: true, id});
             return;
         }
         this.sendJson(res, 409, {status: "recovery-required", job, error: job.recovery?.reason ?? "This Home operation must be started again from its original action."});
@@ -986,6 +1003,15 @@ export class StudioServer implements StudioServerHandling {
     // doc comment for why this matters and why it's safe to run on every startup. Fire-and-forget for
     // the same reason startProjectDashboardLoad above is: the HTTP server must be reachable immediately,
     // not block startup on this best-effort bookkeeping.
+    // The persistent registry is also self-cleaning: temporary/cache paths are dropped immediately,
+    // and other missing rows expire after the documented 90-day relocation window. Fire-and-forget for
+    // the same reason as the recent-project migration above -- startup must not wait on bookkeeping.
+    private pruneStaleProjectRegistry(): void {
+        this.projectRegistrationService.pruneStaleMissing().catch(() => {
+            // Best-effort only -- a cleanup failure must never crash Studio's own startup.
+        });
+    }
+
     private migrateRecentProjectsToRegistry(): void {
         this.homeService
             .handRecentProjectsTo((recentProjects) => this.projectRegistrationService.migrateRecentProjects(recentProjects))
@@ -1058,6 +1084,10 @@ export class StudioServer implements StudioServerHandling {
         }
 
         if (method === "GET" && url.pathname === "/api/home/projects/registry") {
+            // Self-clean on every Projects view, not only at startup. The retention policy keeps a
+            // recently missing external project available for Relocate; only temporary/test paths and
+            // expired managed/external rows are removed here.
+            await this.projectRegistrationService.pruneStaleMissing().catch(() => undefined);
             this.sendJson(res, 200, await this.projectRegistrationService.list());
             return;
         }
@@ -1066,9 +1096,9 @@ export class StudioServer implements StudioServerHandling {
             this.handleHomeListJobs(res, url.searchParams.get("sourcePath"));
             return;
         }
-        const homeJobRoute = (/^\/api\/home\/jobs\/([A-Za-z0-9_-]+)(?:\/(cancel|recover))?$/).exec(url.pathname);
+        const homeJobRoute = (/^\/api\/home\/jobs\/([A-Za-z0-9_-]+)(?:\/(cancel|recover|dismiss))?$/).exec(url.pathname);
         if (homeJobRoute !== null) {
-            this.handleHomeCommonJob(method, res, homeJobRoute[1], homeJobRoute[2] as "cancel" | "recover" | undefined, url.searchParams.get("sourcePath"));
+            this.handleHomeCommonJob(method, res, homeJobRoute[1], homeJobRoute[2] as "cancel" | "recover" | "dismiss" | undefined, url.searchParams.get("sourcePath"));
             return;
         }
 
@@ -1084,6 +1114,11 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "POST" && url.pathname === "/api/home/projects/registry/remove") {
             await this.handleHomeProjectRegistryRemove(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/home/projects/registry/remove-missing") {
+            await this.handleHomeProjectRegistryRemoveMissing(res);
             return;
         }
 
@@ -1353,7 +1388,7 @@ export class StudioServer implements StudioServerHandling {
         const reportRoute = this.matchReportRoute(url.pathname);
         if (reportRoute !== undefined && method === "GET") {
             if (reportRoute.download) {
-                this.handleDownloadReport(res, reportRoute.id, url);
+                await this.handleDownloadReport(res, reportRoute.id, url);
             } else {
                 this.handleGetReport(res, reportRoute.id);
             }
@@ -1777,6 +1812,11 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, {status: "ok"});
     }
 
+    private async handleHomeProjectRegistryRemoveMissing(res: ServerResponse): Promise<void> {
+        const removed = await this.projectRegistrationService.removeMissing();
+        this.sendJson(res, 200, {status: "ok", removed});
+    }
+
     private async handleHomeProjectRegistryRelocate(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const body = await this.readJsonBody(req);
         let validated;
@@ -1837,7 +1877,7 @@ export class StudioServer implements StudioServerHandling {
                         if (validated.confirmActiveJobs) await this.cancelActiveJobsForOldProject(job.id);
                         // Preserve the established Home executor argument/DTO contract;
                         // `sourcePath` above is only the durable canonical job identity.
-                        progress({stage: "Materializing runtime", unit: "opening stages", current: 1, total: 3, message: "Loading the project and materializing any required runtime."});
+                        progress({stage: "Preparing game workspace", unit: "opening stages", current: 1, total: 3, message: "Loading the project and preparing the runnable game."});
                         const dashboard = await this.homeService.openProject(validated.projectRoot, {
                             signal: preparation.controller.signal,
                             isCurrent: () => this.isCurrentRuntimePreparation(preparation!),
@@ -2156,7 +2196,7 @@ export class StudioServer implements StudioServerHandling {
         const existing = this.managedSaveOperations.get(validated.operationId);
         if (existing !== undefined) {
             if (existing.requestFingerprint !== requestFingerprint) {
-                return Promise.resolve({statusCode: 409, body: {status: "error", error: "This Create game operation ID belongs to a different game design. Try Create game again."}});
+                return Promise.resolve({statusCode: 409, body: {status: "error", error: "This Create game operation ID belongs to a different game design. Try Create game design again."}});
             }
             return existing.completion;
         }
@@ -2764,7 +2804,19 @@ export class StudioServer implements StudioServerHandling {
                 seed,
                 unresolvedWasmReason,
             );
-            if (!res.destroyed && this.currentContext === context) this.sendJson(res, 200, projection);
+            // The optimizer's retained verdict is compared against this same authored-source identity.
+            // Without it, a page reload forgets the in-memory "saved since" signal and an old verdict can
+            // look current. Inventory failure stays "unknown", never a fabricated revision.
+            let sourceRevision: string | undefined;
+            if (resolved !== undefined) {
+                try {
+                    sourceRevision = projectRevision({type: resolved.type, rootPath: resolved.rootPath});
+                } catch {
+                    sourceRevision = undefined;
+                }
+            }
+            const view = sourceRevision === undefined ? projection : {...projection, sourceRevision};
+            if (!res.destroyed && this.currentContext === context) this.sendJson(res, 200, view);
         });
     }
 
@@ -3764,6 +3816,14 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return Promise.resolve();
         }
+        if (action === "download") {
+            if (method !== "GET") {
+                this.sendJson(res, 405, {error: "Method not allowed."});
+                return Promise.resolve();
+            }
+            this.handleArtifactBuildDownload(res, id);
+            return Promise.resolve();
+        }
         if ((action !== undefined && method !== "POST") || (action === undefined && method !== "GET")) {
             this.sendJson(res, 405, {error: "Method not allowed."});
             return Promise.resolve();
@@ -3778,6 +3838,32 @@ export class StudioServer implements StudioServerHandling {
         }
         this.sendJson(res, 200, job);
         return Promise.resolve();
+    }
+
+    private handleArtifactBuildDownload(res: ServerResponse, id: string): void {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        const result = this.artifactBuildService.getDownloadForProject(this.currentContext.projectRoot, id);
+        if (result.status === "not-found") {
+            this.sendJson(res, 404, {error: `Unknown build job "${id}".`});
+            return;
+        }
+        if (result.status === "not-ready") {
+            this.sendJson(res, 409, {error: `Build job "${id}" has no completed single-file output to download.`});
+            return;
+        }
+        if (!fs.existsSync(result.path) || !fs.statSync(result.path).isFile()) {
+            this.sendJson(res, 409, {error: `The build output "${result.path}" is no longer available.`});
+            return;
+        }
+        const filename = path.basename(result.filename).replace(/[^a-zA-Z0-9_.-]/g, "_");
+        res.writeHead(200, {
+            "Content-Type": CONTENT_TYPES[path.extname(result.path)] ?? "application/octet-stream",
+            "Content-Disposition": `attachment; filename="${filename}"`,
+        });
+        res.end(fs.readFileSync(result.path));
     }
 
     private async handleStartSimulation(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -3865,7 +3951,7 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, detail);
     }
 
-    private handleDownloadReport(res: ServerResponse, id: string, url: URL): void {
+    private async handleDownloadReport(res: ServerResponse, id: string, url: URL): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
             return;
@@ -3885,7 +3971,34 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const download = buildSimulationReportDownload(result.report, id, format);
+        // A download is a math-review artifact, not only a raw job record. Attach the exact reference
+        // when — and only when — the report's own source revision still matches the current saved design
+        // and the exact library is compatible. A stale or missing library is simply omitted; the sample
+        // report must never gain a misleading "exact" comparison.
+        let exactReference: SimulationReportExactReference | undefined;
+        if (!isSimulationReportSet(result.report) && this.simulationService.isSourceCurrent(this.currentContext.projectRoot, result.sourceRevision)) {
+            try {
+                const exact = await this.exactMathService.get(this.currentContext.projectRoot);
+                if (exact.status === "ok" && (result.report.betMode === undefined || result.report.betMode === exact.modeName)) {
+                    const freeGames = exact.freeGamesRtp?.status === "available" ? exact.freeGamesRtp : undefined;
+                    exactReference = {
+                        modeName: exact.modeName,
+                        rtp: freeGames?.totalRtp ?? exact.analysis.rtp,
+                        paidSpinRtp: exact.analysis.rtp,
+                        hitFrequency: exact.analysis.hitFrequency,
+                        outcomes: exact.outcomeCount,
+                        ...(exact.featurePayoutsIncluded === undefined ? {} : {featurePayoutsIncluded: exact.featurePayoutsIncluded}),
+                        ...(freeGames === undefined ? {} : {freeGamesRtp: {baseRtp: freeGames.baseRtp, featureRtp: freeGames.featureRtp, totalRtp: freeGames.totalRtp}}),
+                        libraryHash: exact.libraryHash,
+                        generatedAt: exact.generatedAt,
+                    };
+                }
+            } catch {
+                exactReference = undefined;
+            }
+        }
+
+        const download = buildSimulationReportDownload(result.report, id, format, exactReference);
         res.writeHead(200, {
             "Content-Type": download.contentType,
             "Content-Disposition": `attachment; filename="${download.filename}"`,

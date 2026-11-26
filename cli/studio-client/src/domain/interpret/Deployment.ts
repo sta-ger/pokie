@@ -69,8 +69,8 @@ export function hasTargetDescriptorChanged(previous: StudioDeploymentTargetSumma
 export const MULTI_MODE_CAPABILITY_ID = "multiMode";
 
 const KNOWN_CAPABILITY_DESCRIPTIONS: Record<string, string> = {
-    "roundRecord.featureEvents": "Rounds with feature events (e.g. free spins, bonus triggers)",
-    "roundRecord.debugMetadata": "Rounds carrying debug metadata",
+    "roundRecord.featureEvents": "Paid rounds with feature events (e.g. free spins, bonus triggers)",
+    "roundRecord.debugMetadata": "Paid rounds carrying debug metadata",
     [MULTI_MODE_CAPABILITY_ID]: "More than one bet mode in a single deployment",
 };
 
@@ -85,7 +85,7 @@ export function describeTargetCapability(capabilityId: string): string {
 export function describeTargetRequirements(requirements: StudioDeploymentTargetSummary["requirements"]): string[] {
     const lines: string[] = [];
     if (requirements.minPokieVersion) {
-        lines.push(`Every deployed mode's outcome library must have been built with pokie v${requirements.minPokieVersion} or newer.`);
+        lines.push(`Every deployed mode's outcome table must have been built with pokie v${requirements.minPokieVersion} or newer.`);
     }
     if (requirements.symbolAlphabet === "numeric") {
         lines.push("Every symbol must be a numeric id -- string symbols are rejected.");
@@ -94,7 +94,7 @@ export function describeTargetRequirements(requirements: StudioDeploymentTargetS
         lines.push("Every mode in one deployment must come from the same game build (id, version, config).");
     }
     if (lines.length === 0) {
-        lines.push("No special requirements -- accepts any compatible outcome library.");
+        lines.push("No special requirements -- accepts any compatible outcome table.");
     }
     return lines;
 }
@@ -284,13 +284,13 @@ export function computeDeploymentConfigureBlockers(rows: readonly StudioDeployme
         if (status === "unselected") {
             blockers.push(`${modeLabel}: pick a bet mode.`);
         } else if (status === "missing") {
-            blockers.push(`${modeLabel}: choose, generate, or pick a compatible outcome library from the hub.`);
+            blockers.push(`${modeLabel}: choose, generate, or pick a compatible outcome table from the hub.`);
         } else if (status === "wrongBuild") {
             blockers.push(`${modeLabel}: the selected library is from a different or older build -- regenerate it or pick another.`);
         } else if (status === "duplicate") {
             blockers.push(`${modeLabel}: this mode is already used by another row -- remove one.`);
         } else if (status === "invalid") {
-            blockers.push(`${modeLabel}: the selected library couldn't be read as a valid outcome library.`);
+            blockers.push(`${modeLabel}: the selected table couldn't be read as a valid outcome table.`);
         }
     });
     return blockers;
@@ -315,7 +315,7 @@ export function computeDeploymentConfigureBlockers(rows: readonly StudioDeployme
 // never claims a mutation that didn't happen.
 export function describeDeploymentPreflightArtifactNote(target: StudioDeploymentTargetSummary): string {
     const inputAdapterOutput =
-        `Input: this mode's own outcome library, read only -- never modified by this pipeline, and neither is the ` +
+        `Input: this mode's own outcome table, read only -- never modified by this pipeline, and neither is the ` +
         `project's own built package/blueprint it was checked against.\n\n` +
         `Adapter: "${target.id}"'s own generator transforms that library into the artifacts listed below (output).`;
 

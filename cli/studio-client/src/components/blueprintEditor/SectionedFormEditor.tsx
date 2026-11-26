@@ -23,8 +23,9 @@ import {PaylinesEditor} from "./PaylinesEditor";
 import {PaytableEditor} from "./PaytableEditor";
 import {ReelGenerationModeSelector} from "./ReelGenerationModeSelector";
 import {SymbolsTable} from "./SymbolsTable";
+import {isLineWinModel, WinModelFieldset} from "./WinModelFieldset";
 
-// The guided Design Game editor's field groups, reorganized into 6 named sections instead of one
+// The guided Design Game editor's field groups, reorganized into 7 named sections instead of one
 // long flat scroll -- same field components as the raw/non-guided editor (SymbolsTable, BetsList, etc.),
 // just regrouped and each now showing its own filtered slice of the *same* validateBlueprint result
 // (see BlueprintSections.ts's own doc comment on why this is a display categorization, not a new
@@ -74,6 +75,7 @@ export function SectionedFormEditor({
     const reelsTabRef = useRef<HTMLButtonElement>(null);
     const paytableTabRef = useRef<HTMLButtonElement>(null);
     const betsTabRef = useRef<HTMLButtonElement>(null);
+    const mechanicsTabRef = useRef<HTMLButtonElement>(null);
     const tabRefs = useMemo<Record<BlueprintSectionId, typeof basicsTabRef>>(() => ({
         basics: basicsTabRef,
         layout: layoutTabRef,
@@ -81,6 +83,7 @@ export function SectionedFormEditor({
         reels: reelsTabRef,
         paytable: paytableTabRef,
         bets: betsTabRef,
+        mechanics: mechanicsTabRef,
     }), []);
 
     // Fires exactly once per *new* invalid result (keyed on validationView's own identity -- a fresh
@@ -157,7 +160,8 @@ export function SectionedFormEditor({
                             mutate={mutate}
                             issues={[...classifiedErrors.bySection.layout, ...classifiedWarnings.bySection.layout]}
                         />
-                        <PaylinesEditor blueprint={blueprint} mutate={mutate} />
+                        <WinModelFieldset blueprint={blueprint} mutate={mutate} />
+                        {isLineWinModel(blueprint) && <PaylinesEditor blueprint={blueprint} mutate={mutate} />}
                     </>}
                 </Tabs.Panel>
 
@@ -191,7 +195,19 @@ export function SectionedFormEditor({
                         <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.bets)} />
                         <BetsList blueprint={blueprint} mutate={mutate} />
                         <BetModesEditor blueprint={blueprint} mutate={mutate} />
-                        <FreeGamesFieldset blueprint={blueprint} mutate={mutate} issues={errors.filter(issue => issue.code.startsWith("blueprint-mechanics-"))} />
+                    </>}
+                </Tabs.Panel>
+
+                <Tabs.Panel value="mechanics">
+                    {visitedSections.has("mechanics") && <>
+                        <IssueList title="Errors" issues={crossFieldOnly(classifiedErrors.bySection.mechanics)} />
+                        <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.mechanics)} />
+                        <FreeGamesFieldset
+                            blueprint={blueprint}
+                            mutate={mutate}
+                            issues={errors.filter(issue => issue.code.startsWith("blueprint-mechanics-"))}
+                            onRequestSymbols={() => activateSection("symbols")}
+                        />
                         <ExistingMechanicsFieldset blueprint={blueprint} mutate={mutate} />
                     </>}
                 </Tabs.Panel>

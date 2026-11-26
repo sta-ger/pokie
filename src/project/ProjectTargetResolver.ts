@@ -110,7 +110,7 @@ export class ProjectTargetResolver implements ProjectResolving {
                         {
                             targetType: "parWorkbook",
                             stage: "PAR workbook recognition",
-                            recovery: "Restore a readable PAR workbook with the required Manifest, Symbols, and Paytable sheets, then retry.",
+                            recovery: "Restore a readable PAR workbook with the required Info (or legacy Manifest), Symbols, and Paytable sheets, then retry.",
                         },
                     );
                 }

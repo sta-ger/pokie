@@ -1,12 +1,14 @@
-import {Anchor, Badge, Button, Checkbox, Group, Select, Table, Text, TextInput, Tooltip} from "@mantine/core";
+import {Alert, Anchor, Badge, Button, Checkbox, Group, Select, Table, Text, TextInput, Tooltip} from "@mantine/core";
 import {useCallback, useEffect, useRef, useState, type ReactNode} from "react";
 import {useNavigate} from "react-router-dom";
 import {
     listProjectRegistry,
     previewProjectImport,
     ProjectOpenError,
+    ProjectOpenInProgressError,
     registerProjectImport,
     relocateProjectRegistryEntry,
+    removeMissingProjectRegistryEntries,
     removeProjectRegistryEntry,
     type FetchLike,
 } from "../../api/apiClient";
@@ -129,10 +131,15 @@ export function ProjectsPanel({
     const [relocationError, setRelocationError] = useState<string | undefined>(undefined);
     const [search, setSearch] = useState("");
     const [typeFilter, setTypeFilter] = useState<ProjectTypeFilter>("all");
-    const [statusFilter, setStatusFilter] = useState<ProjectStatusFilter>("all");
+    // Available projects are the useful default. A machine that has accumulated missing registry
+    // entries (old temp projects, moved folders) should not turn the first Projects visit into a
+    // 15,000-row graveyard; those rows are still reachable through the Availability filter and a
+    // dedicated "Review missing" notice below.
+    const [statusFilter, setStatusFilter] = useState<ProjectStatusFilter>("ok");
     const [page, setPage] = useState(1);
     const [selectedMissingLocations, setSelectedMissingLocations] = useState<ReadonlySet<string>>(new Set());
     const [removingMissing, setRemovingMissing] = useState(false);
+    const [removingAllMissing, setRemovingAllMissing] = useState(false);
     const [missingRemovalError, setMissingRemovalError] = useState<string | undefined>(undefined);
     const detectGuard = useDoubleSubmitGuard();
     const registerGuard = useDoubleSubmitGuard();
@@ -212,7 +219,9 @@ export function ProjectsPanel({
             .catch((error: unknown) =>
                 setListView((previous) => {
                     const openError = {
-                        message: describeWasmProjectPathError(subject, errorMessage(error)),
+                        message: error instanceof ProjectOpenInProgressError
+                            ? `This project is already opening (job ${error.jobId}). Wait for that opening to finish, then choose Open again; the active job remains visible on Home.`
+                            : describeWasmProjectPathError(subject, errorMessage(error)),
                         detail: error instanceof ProjectOpenError ? error.detail : undefined,
                     };
                     return previous.status === "loaded" ? {...previous, openError} : {status: "error", ...openError};
@@ -269,6 +278,34 @@ export function ProjectsPanel({
                         }
                     })
                     .finally(() => setRemovingMissing(false));
+            },
+        );
+    };
+
+    const handleRemoveAllMissing = (): void => {
+        const missingLocations = missingEntries.map((entry) => entry.location);
+        if (missingLocations.length === 0 || removingMissing || removingAllMissing) {
+            return;
+        }
+        confirm(
+            `Remove all ${missingLocations.length} missing project${missingLocations.length === 1 ? "" : "s"} from Projects? This only forgets them here -- nothing on disk is deleted.`,
+            () => {
+                setRemovingAllMissing(true);
+                setMissingRemovalError(undefined);
+                removeMissingProjectRegistryEntries(fetchImpl)
+                    .then(() => {
+                        const removedLocations = new Set(missingLocations);
+                        setListView((previous) => {
+                            if (previous.status !== "loaded") {
+                                return previous;
+                            }
+                            const entries = previous.entries.filter((entry) => !removedLocations.has(entry.location));
+                            return entries.length === 0 ? {status: "empty"} : {...previous, entries};
+                        });
+                        setSelectedMissingLocations((previous) => new Set([...previous].filter((location) => !removedLocations.has(location))));
+                    })
+                    .catch((error: unknown) => setMissingRemovalError(describeProjectActionError("Removing missing projects", errorMessage(error))))
+                    .finally(() => setRemovingAllMissing(false));
             },
         );
     };
@@ -500,27 +537,57 @@ export function ProjectsPanel({
                                 value={statusFilter}
                                 onChange={(value) => setFilters(search, typeFilter, (value ?? "all") as ProjectStatusFilter)}
                             />
-                            {(search.length > 0 || typeFilter !== "all" || statusFilter !== "all") && (
-                                <Button variant="default" onClick={() => setFilters("", "all", "all")}>Clear filters</Button>
+                            {(search.length > 0 || typeFilter !== "all" || statusFilter !== "ok") && (
+                                <Button variant="default" onClick={() => setFilters("", "all", "ok")}>Clear filters</Button>
                             )}
                         </QuickActions>
-                        {missingEntries.length > 0 && (
+                        {missingEntries.length > 0 && (statusFilter === "missing" || statusFilter === "all") && (
                             <QuickActions>
                                 <Button
                                     color="red"
                                     variant="light"
-                                    disabled={selectedMissingLocations.size === 0}
+                                    disabled={selectedMissingLocations.size === 0 || removingAllMissing}
                                     loading={removingMissing}
                                     onClick={handleBulkRemoveMissing}
                                 >
                                     Remove selected missing ({selectedMissingLocations.size})
                                 </Button>
-                                <Text size="sm" c="dimmed">Remove stale project entries in one step; project files stay untouched.</Text>
+                                <Button
+                                    color="red"
+                                    variant="filled"
+                                    disabled={removingMissing}
+                                    loading={removingAllMissing}
+                                    onClick={handleRemoveAllMissing}
+                                >
+                                    Remove all missing ({missingEntries.length})
+                                </Button>
+                                <Text size="sm" c="dimmed">
+                                    Select individual rows, or remove every missing entry in one action. Project files stay
+                                    untouched.
+                                </Text>
                             </QuickActions>
+                        )}
+                        {missingEntries.length > 0 && statusFilter === "ok" && (
+                            <Alert color="yellow" variant="light" title="Some earlier entries are missing" mb="sm">
+                                <Text size="sm">
+                                    Some earlier entries point to files that are no longer on disk and are hidden from
+                                    the available list. Temporary/test entries are removed immediately; managed projects
+                                    missing for more than 30 days and external projects missing for more than 90 days
+                                    are cleaned up automatically. Review the rest if you moved a project.
+                                </Text>
+                                <Button
+                                    variant="default"
+                                    size="xs"
+                                    mt="xs"
+                                    onClick={() => setFilters("", "all", "missing")}
+                                >
+                                    Review missing ({missingEntries.length.toLocaleString()})
+                                </Button>
+                            </Alert>
                         )}
                         {missingRemovalError && <ErrorState message={missingRemovalError} />}
                         {filteredEntries.length === 0 ? (
-                            <EmptyState message="No projects match these filters." />
+                            <EmptyState message={statusFilter === "ok" && missingEntries.length > 0 ? "No available projects. Review the missing entries above, or start a game." : "No projects match these filters."} />
                         ) : (
                             <Table.ScrollContainer className="project-registry-scroll" minWidth={0}>
                                 <Table className="project-registry" style={{tableLayout: "fixed", width: "100%"}}>

@@ -190,7 +190,7 @@ export const PAR_WORKBOOK_EXCHANGE_CAPABILITY: StudioProjectCapability = "parWor
 export const PROJECT_TYPE_LABEL: Record<Exclude<StudioProjectType, "wasm">, string> = {
     blueprint: "Game design",
     tsPackage: "Playable game",
-    outcomeLibrary: "Game data library",
+    outcomeLibrary: "Outcome table",
     stakeAdapter: "Game export",
     parWorkbook: "PAR spreadsheet",
 };

@@ -43,7 +43,7 @@ export function BlueprintLoadSaveControls({
             <PathInput
                 label="Load from path"
                 kind="file"
-                browseTitle="Browse for a blueprint JSON file"
+                browseTitle="Browse for a game design JSON file"
                 browseId="blueprint-load-path"
                 fileFilters={[{name: "JSON files", extensions: ["json"]}]}
                 value={loadPath}
@@ -57,7 +57,7 @@ export function BlueprintLoadSaveControls({
                 label="Save to path"
                 kind="file"
                 pathPurpose="destination"
-                browseTitle="Browse for a blueprint JSON file"
+                browseTitle="Browse for a game design JSON file"
                 browseId="blueprint-save-path"
                 fileFilters={[{name: "JSON files", extensions: ["json"]}]}
                 filePickerMode="save"
@@ -69,7 +69,7 @@ export function BlueprintLoadSaveControls({
                 Save
             </Button>
             <Text size="xs" c="dimmed" style={{flexBasis: "100%"}}>
-                These are file tools for a Blueprint JSON copy. Create game stores the managed project under your POKIE Projects folder.
+                These are file tools for a game design JSON copy. Create game design stores the managed project under your POKIE Projects folder.
             </Text>
         </QuickActions>
     );
@@ -84,13 +84,13 @@ export function BlueprintLoadSaveControls({
             {advancedOptionsOpened === undefined ? loadSaveFields : <Collapse expanded={advancedOptionsOpened}>{loadSaveFields}</Collapse>}
 
             {(loadView.status === "error" || loadView.status === "load-error") && (
-                <ErrorState message={describePathActionError("The blueprint file", loadView.message)} />
+                <ErrorState message={describePathActionError("The game design file", loadView.message)} />
             )}
 
             {saveView.status === "conflict" &&
                 (saveView.reason === "stale" ? (
                     <RecoveryNotice
-                        title="Blueprint changed while you were editing"
+                        title="Game design changed while you were editing"
                         message={saveView.message}
                         actionLabel="Reload"
                         onAction={() => onReloadConflict(saveView.path)}
@@ -129,7 +129,7 @@ export function BlueprintLoadSaveControls({
                 </div>
             )}
             {(saveView.status === "error" || saveView.status === "failed") && (
-                <ErrorState message={describePathActionError("The blueprint file", saveView.message)} />
+                <ErrorState message={describePathActionError("The game design file", saveView.message)} />
             )}
             {saveView.status === "ok" && <SuccessResult message={`Saved to "${saveView.path}".`} />}
         </div>

@@ -1,5 +1,6 @@
 import {AdvancedValidationPanel} from "../common/AdvancedValidationPanel";
 import {Button, Table, Text} from "@mantine/core";
+import {useState} from "react";
 import type {StudioProjectOrigin} from "../../api/types";
 import {
     BLUEPRINT_BUILD_CAPABILITY,
@@ -9,13 +10,15 @@ import {
     type ProjectValidationView,
 } from "../../domain/interpret/ProjectDashboard";
 import {describeProjectActionError} from "../../domain/projectActionError";
+import {CollapsiblePageSection} from "../common/CollapsiblePageSection";
+import {ProjectValidationScopeBadges} from "../common/ValidationScopeBadges";
 import {ErrorState} from "../common/ErrorState";
 import {IssueList} from "../common/IssueList";
 import {LoadingState} from "../common/LoadingState";
 import {NextStepCallout} from "../common/NextStepCallout";
-import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 import {ExactMathPanel} from "./ExactMathPanel";
+import {hasFeatureTerminationWarning, type ProjectMathStatus} from "../../domain/validationScope";
 
 function describeAddedToStudio(origin: StudioProjectOrigin | undefined): string {
     if (origin === "managed") {
@@ -29,13 +32,21 @@ function describeAddedToStudio(origin: StudioProjectOrigin | undefined): string 
 // via `onRevalidate`), so a visitor sees the project's current health without an extra click. Mirrors
 // the removed ValidationTab's own rendering, minus its own standalone "Run Validate" entry point (this
 // one lives inline, next to everything else Overview already reports).
+function describeValidationSummary(view: ProjectValidationView, mathStatus: ProjectMathStatus): string {
+    if (view.status === "idle" || view.status === "loading") return "Checking project…";
+    if (view.status === "error") return "Validation could not be completed.";
+    if (view.summary.advanced?.structuralValid === null) return "The design check is inconclusive. Review the analysis limits and retry.";
+    if (view.summary.hasIssues) return `${view.summary.valid ? "Structure valid, with warnings" : "Structure invalid"} — ${view.summary.errors.length} error(s), ${view.summary.warnings.length} warning(s).`;
+    if (view.status === "success" && hasFeatureTerminationWarning(view.summary.advanced)) return "Structure valid — math warning: uncapped free games.";
+    if (mathStatus === "ok") return "Structure valid — exact outcome table available; certification is still separate.";
+    if (mathStatus === "stale") return "Structure valid — exact outcome table is stale.";
+    if (mathStatus === "error") return "Structure valid — exact outcome table unavailable.";
+    if (mathStatus === "loading") return "Structure valid — reading exact outcome table…";
+    return "Structure valid — no exact outcome table yet.";
+}
+
 function ValidationDiagnostics({view, onRevalidate}: {view: ProjectValidationView; onRevalidate: () => void}) {
     const terminal = view.status === "success" ? "completed" : view.status;
-    let summaryText = "Valid — no issues found.";
-    if (view.status === "success") {
-        if (view.summary.advanced?.structuralValid === null) summaryText = "Structural validation is inconclusive. Review the analysis limits and retry.";
-        else if (view.summary.hasIssues) summaryText = `${view.summary.valid ? "Valid, with warnings" : "Invalid"} — ${view.summary.errors.length} error(s), ${view.summary.warnings.length} warning(s).`;
-    }
     return (
         <div
             role="status"
@@ -49,9 +60,6 @@ function ValidationDiagnostics({view, onRevalidate}: {view: ProjectValidationVie
             {view.status === "error" && <ErrorState message={describeProjectActionError("This validation check", view.message)} />}
             {view.status === "success" && (
                 <div>
-                    <Text mb="sm">
-                        {summaryText}
-                    </Text>
                     <IssueList title="Errors" issues={view.summary.errors} />
                     <IssueList title="Warnings" issues={view.summary.warnings} />
                     <IssueList title="Integrity information" issues={view.summary.information} />
@@ -88,6 +96,8 @@ export function OverviewTab({
     onOpenPlay,
     sourceRevision,
     exactMathRefreshKey,
+    autoComputeExactMath,
+    onExactMathGenerated,
 }: {
     header: Extract<ProjectHeaderView, {status: "loaded"}>;
     validation: ProjectValidationView;
@@ -97,16 +107,25 @@ export function OverviewTab({
     sourceRevision?: string;
     /** Monotonic local token for saves that cannot report a new source revision. */
     exactMathRefreshKey?: number;
+    /** Continue a draft exact-math preview by computing the saved project's own table on first load. */
+    autoComputeExactMath?: boolean;
+    /** Called after exact-math generation completes, so sibling panels can refresh their RTP hint. */
+    onExactMathGenerated?: () => void;
 }) {
     const editable = header.capabilities.includes(BLUEPRINT_BUILD_CAPABILITY);
     const playable = editable || header.capabilities.includes(RUNTIME_EXECUTE_CAPABILITY);
+    const [exactMathStatus, setExactMathStatus] = useState<ProjectMathStatus>(header.type === "wasm" ? "missing" : "loading");
 
     return (
         <div>
-            {playable && (
+            {/* The math result is the reason a math author opens a project. Put the exact card first so
+                a 1366x768 laptop shows RTP/hit frequency/volatility before project metadata, rather
+                than after the Play onboarding callout. */}
+            {header.type !== "wasm" && <ExactMathPanel projectRoot={header.projectRoot} sourceRevision={sourceRevision} refreshKey={exactMathRefreshKey} featureCheck={validation.status === "success" ? validation.summary.advanced : undefined} autoCompute={autoComputeExactMath} onGenerated={onExactMathGenerated} onStatusChange={setExactMathStatus} onOpenPlay={playable ? onOpenPlay : undefined} />}
+            {playable && header.type === "wasm" && (
                 <NextStepCallout
                     title="Start by playing a round"
-                    description={`Open Play to spin a real round. ${editable ? "Use Game Model to edit the saved layout, symbols, reels, paytable, and bets." : "Game Model is read-only for this package; open the original Blueprint to change its design and build a new package."} Use Exact math for a complete enumeration, or Simulation for a sampled estimate. Replay inspects a selected round; Build/Export creates shareable outputs.`}
+                    description={`Spin a real round. ${editable ? "Edit the saved layout, symbols, reels, paytable and bets in Game design." : "Game design is read-only for this package; open the original game design to change it."} Exact math enumerates; Simulation samples.`}
                     actionLabel="Open Play"
                     onAction={onOpenPlay}
                 />
@@ -140,12 +159,18 @@ export function OverviewTab({
                 </Table.Tbody>
             </Table>
 
-            <PageSection legend="Validation">
-                <Text size="sm" c="dimmed" mb="sm">Structural validation checks the project format. It does not establish mathematical balance or certification.</Text>
+            <div style={{marginBottom: "var(--mantine-spacing-sm)"}}>
+                <ProjectValidationScopeBadges view={validation} mathStatus={exactMathStatus} />
+            </div>
+            <CollapsiblePageSection
+                key={validation.status === "success" && !validation.summary.hasIssues && !(validation.status === "success" && hasFeatureTerminationWarning(validation.summary.advanced)) ? "collapsed" : "expanded"}
+                legend="Validation"
+                summary={describeValidationSummary(validation, exactMathStatus)}
+                defaultOpened={validation.status !== "success" || (validation.status === "success" && (validation.summary.hasIssues || hasFeatureTerminationWarning(validation.summary.advanced)))}
+            >
+                <Text size="md" c="dimmed" mb="sm">The structural check covers the project format. It does not establish mathematical balance or certification. Math is checked separately through exact math and simulation.</Text>
                 <ValidationDiagnostics view={validation} onRevalidate={onRevalidate} />
-            </PageSection>
-
-            {header.type !== "wasm" && <ExactMathPanel projectRoot={header.projectRoot} sourceRevision={sourceRevision} refreshKey={exactMathRefreshKey} />}
+            </CollapsiblePageSection>
         </div>
     );
 }

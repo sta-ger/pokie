@@ -7,9 +7,17 @@ import type {SymbolsCombinationsGenerating} from "../../../session/videoslot/com
 // PokieGame.createExactEnumerationSession still runs its own real play()/win-calculation path (the "same
 // calculation path" guarantee generateExactWeightedOutcomeLibrary depends on) for a specific, forced outcome.
 export class ForcedSymbolsCombinationsGenerator<T extends string | number | symbol = string> implements SymbolsCombinationsGenerating<T> {
-    private readonly combination: SymbolsCombinationDescribing<T>;
+    private combination: SymbolsCombinationDescribing<T>;
 
     constructor(grid: T[][]) {
+        this.combination = new SymbolsCombination<T>().fromMatrix(grid);
+    }
+
+    /**
+     * Reuse one exact-enumeration session for a featureless paid-spin design. Deliberately not used
+     * for games with mechanics: a free spin/cascade changes the session state between outcomes.
+     */
+    public setGrid(grid: T[][]): void {
         this.combination = new SymbolsCombination<T>().fromMatrix(grid);
     }
 

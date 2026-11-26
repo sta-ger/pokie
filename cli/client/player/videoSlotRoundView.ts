@@ -32,7 +32,9 @@ export type VideoSlotRoundResponse = {
 // `reelsSymbols` grid. Every other field below is optional -- a game with no wins this round, no free
 // games feature, or no paytable/lines data at all is still a valid video-slot response, just one whose
 // derive* functions below return empty results for that part of the view.
-export function isVideoSlotRoundResponse(response: Record<string, unknown>): response is VideoSlotRoundResponse & {reelsSymbols: string[][]} {
+export function isVideoSlotRoundResponse(
+    response: Record<string, unknown>,
+): response is VideoSlotRoundResponse & {reelsSymbols: string[][]} {
     return Array.isArray(response.reelsSymbols) && response.reelsSymbols.every((reel) => Array.isArray(reel));
 }
 
@@ -64,7 +66,7 @@ export type WinHighlight = {
 };
 
 const HIGHLIGHT_PERSISTENT_COLOR: Record<string, string> = {
-    line: "#DDFFDD",
+    line: "#B7F0B7",
     scatter: "#ffda00",
     cluster: "#4dc9ff",
     value: "#ffb84d",
@@ -115,9 +117,10 @@ export function canonicalWinKind(kind: WinHighlightKind): WinHighlightKind {
 // Keeping their standard labels here prevents the Studio RoundRecord adapter
 // and the VideoSlot wire adapter from independently choosing visible semantics.
 // Unknown game-defined types intentionally retain the generic representation.
-// Blueprint/payline ids are 0-based, while the editor and player both present lines as "Line 1".
-// Numeric ids are translated for display; arbitrary game-defined ids are left untouched.
-function displayLineId(id: string): string {
+// Blueprint/payline ids and row indexes are 0-based internally, while the editor and player both
+// present lines as "Line 1" and rows from 1. Numeric ids are translated for display; arbitrary
+// game-defined ids are left untouched.
+export function displayLineId(id: string): string {
     const numeric = Number(id);
     return Number.isSafeInteger(numeric) && numeric >= 0 ? String(numeric + 1) : id;
 }
@@ -130,8 +133,13 @@ export function canonicalWinLabel(
     positions: readonly (readonly number[])[],
 ): string {
     switch (canonicalWinKind(kind)) {
-        case "line":
-            return `Line: ${displayLineId(id)}, win: ${winAmount}`;
+        case "line": {
+            const symbol =
+                symbolId === null || symbolId === ""
+                    ? ""
+                    : ` · ${symbolId}${positions.length > 0 ? ` ×${positions.length}` : ""}`;
+            return `Line: ${displayLineId(id)}${symbol}, win: ${winAmount}`;
+        }
         case "scatter":
             return `Scatter: ${symbolId}, win: ${winAmount}`;
         case "cluster":
@@ -157,10 +165,7 @@ function asPositions(value: unknown): number[][] {
     return Array.isArray(value) ? (value as number[][]) : [];
 }
 
-function derivePositionalHighlights(
-    kind: string,
-    record: unknown,
-): WinHighlight[] {
+function derivePositionalHighlights(kind: string, record: unknown): WinHighlight[] {
     return Object.entries(asRecord(record)).map(([id, raw]) => {
         const win = asRecord(raw);
         const winAmount = typeof win.winAmount === "number" ? win.winAmount : 0;
@@ -188,9 +193,17 @@ export function deriveWinHighlights(response: VideoSlotRoundResponse): WinHighli
         return {
             id: `line:${id}`,
             kind: "line",
-            label: canonicalWinLabel("line", id, typeof win.symbolId === "string" || typeof win.symbolId === "number" ? win.symbolId : id, winAmount, symbolsPositions.map((reelIndex) => [reelIndex, definition[reelIndex] ?? 0])),
+            label: canonicalWinLabel(
+                "line",
+                id,
+                typeof win.symbolId === "string" || typeof win.symbolId === "number" ? win.symbolId : id,
+                winAmount,
+                symbolsPositions.map((reelIndex) => [reelIndex, definition[reelIndex] ?? 0]),
+            ),
             winAmount,
-            positions: Array.isArray(win.visiblePositions) ? asPositions(win.visiblePositions) : symbolsPositions.map((reelIndex) => [reelIndex, definition[reelIndex] ?? 0]),
+            positions: Array.isArray(win.visiblePositions)
+                ? asPositions(win.visiblePositions)
+                : symbolsPositions.map((reelIndex) => [reelIndex, definition[reelIndex] ?? 0]),
             paylinePositions: definition.map((row, reelIndex) => [reelIndex, row]),
         };
     });
@@ -246,7 +259,10 @@ function resolveRoundRecordLineDefinition(win: GenericRoundRecordWin, reelCount:
 // inspection all render through it) calls to resolve a step's own highlighted/payline positions, before
 // mounting renderPlayer.ts's own DOM functions directly against the result -- see CanonicalPlayerView's
 // own doc comment.
-export function deriveWinHighlightsFromRoundRecordWins(wins: readonly GenericRoundRecordWin[], reelCount: number): WinHighlight[] {
+export function deriveWinHighlightsFromRoundRecordWins(
+    wins: readonly GenericRoundRecordWin[],
+    reelCount: number,
+): WinHighlight[] {
     return wins.map((win) => {
         const definition = resolveRoundRecordLineDefinition(win, reelCount);
         const kind = canonicalWinKind(win.type);
@@ -270,13 +286,16 @@ export type FeatureCounter = {label: string; value: number | string};
 export function deriveFeatureCounters(response: VideoSlotRoundResponse): FeatureCounter[] {
     const counters: FeatureCounter[] = [];
     if (typeof response.freeGamesNum === "number") {
-        counters.push({label: "FG num", value: response.freeGamesNum});
+        counters.push({label: "Free games played", value: response.freeGamesNum});
     }
     if (typeof response.freeGamesSum === "number") {
-        counters.push({label: "FG sum", value: response.freeGamesSum});
+        counters.push({label: "Free games awarded", value: response.freeGamesSum});
+    }
+    if (typeof response.freeGamesNum === "number" && typeof response.freeGamesSum === "number") {
+        counters.push({label: "Free games remaining", value: Math.max(0, response.freeGamesSum - response.freeGamesNum)});
     }
     if (typeof response.freeGamesBank === "number") {
-        counters.push({label: "FG bank", value: response.freeGamesBank});
+        counters.push({label: "Free-game win bank", value: response.freeGamesBank});
     }
     if (typeof response.chargedBetModeId === "string") counters.push({label: "Charged mode", value: response.chargedBetModeId});
     const bounded = asRecord(response.featureChains);
@@ -284,9 +303,16 @@ export function deriveFeatureCounters(response: VideoSlotRoundResponse): Feature
         selection = asRecord(bonus.selection);
     for (const key of ["tableId", "outcomeId", "context"]) if (typeof selection[key] === "string") counters.push({label: `Bonus ${key}`, value: selection[key] as string});
     for (const key of ["payout", "remaining", "executed"]) if (typeof bonus[key] === "number") counters.push({label: `Bonus ${key}`, value: bonus[key] as number});
-    for (const [feature, fields] of [["collection", ["value", "cap", "threshold", "contribution", "triggered", "reset", "payout"]], ["respins", ["remaining", "executed", "granted", "limit"]], ["cascade", ["winningCascades", "evaluatedSteps"]]] as const) {
+    for (const [feature, fields] of [
+        ["collection", ["value", "cap", "threshold", "contribution", "triggered", "reset", "payout"]],
+        ["respins", ["remaining", "executed", "granted", "limit"]],
+        ["cascade", ["winningCascades", "evaluatedSteps"]],
+    ] as const) {
         const data = asRecord(bounded[feature]);
-        for (const field of fields) if (typeof data[field] === "number" || typeof data[field] === "string" || typeof data[field] === "boolean") counters.push({label: `${feature} ${field}`, value: typeof data[field] === "boolean" ? String(data[field]) : data[field] as number | string});
+        for (const field of fields) if (typeof data[field] === "number" || typeof data[field] === "string" || typeof data[field] === "boolean") counters.push({
+            label: `${feature} ${field}`,
+            value: typeof data[field] === "boolean" ? String(data[field]) : (data[field] as number | string),
+        });
     }
     const hold = asRecord(response.holdAndWin);
     if (Array.isArray(hold.locks)) counters.push({label: "Locked symbols", value: hold.locks.length});
@@ -306,6 +332,19 @@ export type PaytableView = {
     multipliers: number[];
     rows: {symbolId: string; amounts: (number | undefined)[]}[];
 };
+
+/**
+ * A paytable column is a match count, not a multiplier and not odds. The old "3×" header and
+ * "3:1" legend read as multiplication or "three to one" to anyone outside math authoring; both
+ * spell the same fact in the direction a slot producer reads it: 3 symbols pay ×1.
+ */
+export function formatPaytableMatchCount(matchCount: number): string {
+    return `${matchCount} ${matchCount === 1 ? "symbol" : "symbols"}`;
+}
+
+export function formatPaytablePays(matchCount: number, amount: number): string {
+    return `${formatPaytableMatchCount(matchCount)} → ×${amount}`;
+}
 
 // `paytable` is bet-keyed (`Record<betAmount, Record<symbolId, Record<multiplier, amount>>>`) --
 // this reads the first available bet's table, the same entry pokie-examples' own ui.ts built its
@@ -328,7 +367,9 @@ export function derivePaytableView(paytable: unknown): PaytableView | undefined 
         const record = asRecord(pays);
         return {
             symbolId,
-            amounts: multipliers.map((multiplier) => (typeof record[multiplier] === "number" ? (record[multiplier] as number) : undefined)),
+            amounts: multipliers.map((multiplier) =>
+                typeof record[multiplier] === "number" ? (record[multiplier] as number) : undefined,
+            ),
         };
     });
 
@@ -364,7 +405,9 @@ export function deriveBetModeId(betModeId: unknown): string | undefined {
 }
 
 /** Artifact observations use the same counters as live responses, including replay without a session. */
-export function deriveFeatureCountersFromEvents(events: readonly {type: string; data?: Record<string, unknown>}[]): FeatureCounter[] {
+export function deriveFeatureCountersFromEvents(
+    events: readonly {type: string; data?: Record<string, unknown>}[],
+): FeatureCounter[] {
     const response: VideoSlotRoundResponse = {};
     for (const event of events) {
         if (event.type === "holdAndWin" || event.type === "jackpot" || event.type === "featureChains") response[event.type] = event.data;

@@ -29,13 +29,11 @@ function joinDisplayPath(resolvedPath: string, name: string): string {
 // The Browse action's *fallback* picker -- shown only once PathInput has already determined a native OS
 // dialog isn't available (see StudioNativePickerService/checkNativePickerAvailability). Lists a
 // directory's immediate children (server-side, via GET /api/home/fs/browse) so a user can still navigate
-// the machine Studio's server is running on from the browser instead of typing an absolute path by hand.
-// Always titled "Server filesystem browser" -- a caller-supplied `title` becomes a secondary line, never
-// the modal's own heading -- so this can never be mistaken for a picker of *this browser's* device, which
-// is exactly the confusion that matters most when Studio's server is a different, remote machine (see
-// StudioServer's own "single-user-local-tool" doc comment: that's the uncommon case, not the assumed
-// one). Cancel always closes without calling onSelect -- the caller's field is only ever touched by an
-// explicit "Select this folder"/file click.
+// the files where Studio is running instead of typing an absolute path by hand. Titled "Studio file
+// browser" -- a caller-supplied `title` becomes a secondary line -- so a local Studio reads as a normal
+// file picker, while a remote Studio still states exactly whose files are shown. Cancel always closes
+// without calling onSelect -- the caller's field is only ever touched by an explicit "Select this
+// folder"/file click.
 export function PathBrowseModal({opened, onClose, onSelect, kind, initialPath, title}: PathBrowseModalProps) {
     const fetchImpl = useStudioApi();
     const [browsePath, setBrowsePath] = useState<string | undefined>(undefined);
@@ -86,9 +84,9 @@ export function PathBrowseModal({opened, onClose, onSelect, kind, initialPath, t
             onClose={onClose}
             title={
                 <>
-                    <span style={{fontWeight: 500}}>Server filesystem browser</span>
+                    <span style={{fontWeight: 500}}>Studio file browser</span>
                     <span style={{display: "block", color: "var(--mantine-color-dimmed)", fontSize: "var(--mantine-font-size-xs)"}}>
-                        {title} — showing files on the machine running Studio&apos;s server, not this browser&apos;s device.
+                        {title} — files where POKIE Studio is running. If Studio is on this computer, this is your local filesystem.
                     </span>
                 </>
             }

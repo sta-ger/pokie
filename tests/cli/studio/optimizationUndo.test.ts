@@ -77,7 +77,10 @@ describe("StudioOptimizationService undo", () => {
         const applied = await service.handle("POST", "apply", {expectedProjectRoot: source, jobId, request}, context);
         expect(applied.status).toBe(200);
         const undoId = (applied.body as {undoId?: string}).undoId;
+        const appliedSourceRevision = (applied.body as {appliedSourceRevision?: string}).appliedSourceRevision;
         expect(undoId).toBeDefined();
+        expect(appliedSourceRevision).toBeDefined();
+        expect((jobs.get(source, jobId)?.result?.provenance?.authoredApply as {sourceRevision?: string} | undefined)?.sourceRevision).toBe(appliedSourceRevision);
         expect(fs.readFileSync(source)).toEqual(after);
         expect(commits).toBe(1);
 

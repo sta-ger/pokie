@@ -12,6 +12,13 @@ type WorkerThreadsModule = {
     Worker: new (filename: URL, options: {workerData: SimulationWorkerRequest}) => Worker;
 };
 
+// Releasing a worker-owned game runtime can take longer than the simulation itself under CPU
+// contention (several workers, an open Studio exact-math job, a cold filesystem). Five seconds made a
+// completed simulation fail with "runtime release acknowledgement absent" even though the worker was
+// still cleanly releasing its snapshot. Keep the fail-closed check, but give the acknowledgement a
+// realistic bound instead of turning normal scheduler latency into a false failure.
+const WORKER_DRAIN_TIMEOUT_MS = 30_000;
+
 // Keep the Node-only worker_threads dependency out of browser bundles. The public package root also
 // exports client-facing code, so a literal dynamic import would still let a browser bundler discover
 // and externalize this Node builtin before a simulation ever asks to use worker threads.
@@ -89,7 +96,7 @@ export class SimulationWorkerCoordinator {
                         confirmed = await Promise.race([
                             Promise.all(drainage).then(values => values.every(Boolean)),
                             new Promise<boolean>(resolve => {
-                                timer = setTimeout(() => resolve(false), 5000);
+                                timer = setTimeout(() => resolve(false), WORKER_DRAIN_TIMEOUT_MS);
                             }),
                         ]);
                     } finally {
@@ -126,24 +133,39 @@ export class SimulationWorkerCoordinator {
                 } catch (error) {
                     phaseError = error;
                 }
+                let cleanupError: unknown;
                 try {
                     await terminateAll();
                 } catch (error) {
-                    rejectWithPrefix(error);
-                    return;
+                    cleanupError = error;
                 } finally {
                     for (const worker of workers) worker.removeAllListeners();
                 }
+                // A cleanup failure must never hide the actual worker/protocol failure that triggered
+                // cleanup. Keep the primary error (with its observed prefix), and append the cleanup
+                // detail so a failed run is diagnosable instead of only saying "acknowledgement absent".
+                const withCleanupDetail = (primary: unknown): unknown => {
+                    if (cleanupError === undefined) return primary;
+                    const primaryMessage = primary instanceof Error ? primary.message : String(primary);
+                    const cleanupMessage = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+                    const combined = new Error(`${primaryMessage} Cleanup also failed: ${cleanupMessage}`);
+                    if (primary instanceof Error && primary.stack !== undefined) combined.stack = primary.stack;
+                    return combined;
+                };
                 if (drainageCleanupError !== undefined) {
-                    rejectWithPrefix(drainageCleanupError);
+                    rejectWithPrefix(withCleanupDetail(drainageCleanupError));
                     return;
                 }
                 if (drainageError !== undefined) {
-                    rejectWithPrefix(drainageError);
+                    rejectWithPrefix(withCleanupDetail(drainageError));
                     return;
                 }
                 if (phaseError !== undefined) {
-                    rejectWithPrefix(phaseError);
+                    rejectWithPrefix(withCleanupDetail(phaseError));
+                    return;
+                }
+                if (cleanupError !== undefined) {
+                    rejectWithPrefix(cleanupError);
                     return;
                 }
                 try {

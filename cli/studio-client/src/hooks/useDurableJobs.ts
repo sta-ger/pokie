@@ -167,6 +167,18 @@ export function useDurableJobs(port: DurableJobsObserving, scope: string | undef
 
     const cancel = useCallback((id: string) => control(id, "cancel"), [control]);
     const recover = useCallback((id: string) => control(id, "recover"), [control]);
+    // A server-confirmed history removal is the one update that must not be merged back by a polling
+    // list response. Invalidate any in-flight detail for these ids and drop them from local state.
+    const forget = useCallback((ids: string[]) => {
+        if (ids.length === 0) return;
+        const removed = new Set(ids);
+        for (const id of ids) {
+            revisions.current.set(id, (revisions.current.get(id) ?? 0) + 1);
+            pending.current.delete(id);
+        }
+        setJobs(previous => previous.filter(job => !removed.has(job.id)));
+        setPendingIds([...pending.current]);
+    }, []);
     // Hide the previous scope during the render preceding effect cleanup too:
     // a consumer's restoration effect must never attach the old project's id.
     const visibleJobs = discovery.scope === scope ? jobs : [];
@@ -176,5 +188,5 @@ export function useDurableJobs(port: DurableJobsObserving, scope: string | undef
         else if (discovery.status === "complete") discoveryStatus = visibleJobs.length === 0 ? "empty" : "retained";
         else discoveryStatus = discovery.status;
     }
-    return {jobs: visibleJobs, discoveryStatus, refresh, cancel, recover, connectionError, actionError, pendingIds};
+    return {jobs: visibleJobs, discoveryStatus, refresh, cancel, recover, forget, connectionError, actionError, pendingIds};
 }

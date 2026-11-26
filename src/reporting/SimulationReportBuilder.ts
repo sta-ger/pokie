@@ -95,7 +95,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         const limitations = ["Empirical estimates only: unseen rare outcomes and normal-approximation error remain possible; precision does not prove configured target RTP."];
         if (!statistics.analytics) limitations.push("Feature analytics unavailable (legacy or missing observations).");
         else {
-            if (!statistics.analytics.envelope.lifecycle) limitations.push("Feature lifecycle attribution unsupported: custom names, categories and flattened events do not prove entry, retrigger, duration or completion.");
+            if (!statistics.analytics.envelope.lifecycle) limitations.push("Feature status attribution unsupported: custom names, categories and flattened events do not prove entry, retrigger, duration or completion.");
             if (!statistics.analytics.envelope.components) limitations.push("Component attribution unsupported; unassignable win remains in the unavailable monetary partition.");
             for (const name of statistics.analytics.envelope.supportedFeatures) if (!statistics.analytics.features[name].entries) limitations.push(`${name}: supported but no entries observed; feature precision unavailable.`);
         }
@@ -173,7 +173,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
 
         if (core.rounds < SimulationReportBuilder.LOW_ROUNDS_WARNING_THRESHOLD) {
             warnings.push(
-                `Usable samples (${core.rounds}) is low — RTP/hit-frequency estimates may be noisy regardless of requested budget (${core.requestedRounds}).`,
+                `Completed paid rounds (${core.rounds}) is low — RTP/hit-frequency estimates may be noisy regardless of the requested play budget (${core.requestedRounds}).`,
             );
         }
 
@@ -182,7 +182,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         }
 
         if (core.maxWin === 0) {
-            warnings.push("Max win is 0 — no round produced a payout.");
+            warnings.push("Largest observed win is 0 — no round produced a payout.");
         }
 
         if (core.totalBet === 0) {
@@ -194,8 +194,8 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         // an older report that predates this field) is actually worth flagging here.
         if ((acceptedSubrounds ?? core.rounds) < core.requestedRounds && core.stopReason !== "converged") {
             warnings.push(
-                acceptedSubrounds !== undefined ? `Accepted subrounds (${acceptedSubrounds}) is less than requested subrounds (${core.requestedRounds}).` :
-                    `Actual rounds (${core.rounds}) is less than requested rounds (${core.requestedRounds}) — ` +
+                acceptedSubrounds !== undefined ? `Accepted plays (${acceptedSubrounds}) is less than requested plays (${core.requestedRounds}).` :
+                    `Completed paid rounds (${core.rounds}) is less than requested plays (${core.requestedRounds}) — ` +
                     "the game stopped early (canPlayNextGame() returning false).",
             );
         }

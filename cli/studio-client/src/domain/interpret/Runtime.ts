@@ -53,6 +53,21 @@ export function describeRuntimeScreen(screen: unknown[][] | undefined): string[]
     return screen ? screen.map((row) => row.map(formatScreenCell)) : undefined;
 }
 
+/**
+ * The screen a restored session can show before its first spin. `screen` is the canonical public round
+ * field, but some serializers expose only the initial `reelsSymbols` payload until a spin settles. Prefer
+ * the canonical field and fall back to a structurally valid `reelsSymbols` grid; never invent a screen.
+ */
+export function describeRuntimeSessionScreen(session: StudioRuntimeSessionView): string[][] | undefined {
+    const canonical = describeRuntimeScreen(session.screen);
+    if (canonical !== undefined) return canonical;
+    const reelsSymbols = session.reelsSymbols;
+    if (!Array.isArray(reelsSymbols) || !reelsSymbols.every((reel) => Array.isArray(reel))) {
+        return undefined;
+    }
+    return describeRuntimeScreen(reelsSymbols as unknown[][]);
+}
+
 function formatScreenCell(cell: unknown): string {
     if (typeof cell === "string") {
         return cell;

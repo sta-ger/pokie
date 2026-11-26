@@ -27,14 +27,14 @@ type GameModelState = {status: "loading"} | {status: "error"; failure: GameModel
 
 function describeGameModelLoadFailure(detail: string): GameModelFailure {
     return {
-        message: "We couldn't load this game's model. Refresh to try again. If it continues, reopen the game.",
+        message: "We couldn't load this game design. Refresh to try again. If it continues, reopen the game.",
         detail,
     };
 }
 
 function describeGameModelEditLoadFailure(detail: string): GameModelFailure {
     return {
-        message: "We couldn't load this game's saved design for editing. Try editing again. If it continues, reopen the game.",
+        message: "We couldn't load this game design for editing. Try editing again. If it continues, reopen the game.",
         detail,
     };
 }
@@ -119,6 +119,37 @@ export function GameModelTab({
     // server projection.
     const refreshRequestIdRef = useRef(0);
     const refreshControllerRef = useRef<AbortController | undefined>(undefined);
+    // The view-mode exact-math panel needs the raw saved design, not the editable draft, which starts
+    // empty until an Edit click loads it. Keep a separate, read-only copy so "Calculate exact math"
+    // never sends a placeholder draft to the server.
+    const [previewBlueprint, setPreviewBlueprint] = useState<unknown>();
+    const [previewBlueprintError, setPreviewBlueprintError] = useState<string>();
+    const previewBlueprintRequestId = useRef(0);
+
+    const loadPreviewBlueprint = useCallback(() => {
+        if (!editable || projectRoot === undefined) {
+            setPreviewBlueprint(undefined);
+            setPreviewBlueprintError(undefined);
+            return;
+        }
+        const requestId = ++previewBlueprintRequestId.current;
+        loadBlueprint(fetchImpl, projectRoot)
+            .then((result) => {
+                if (requestId !== previewBlueprintRequestId.current) return;
+                if (result.status === "ok") {
+                    setPreviewBlueprint(result.blueprint);
+                    setPreviewBlueprintError(undefined);
+                } else {
+                    setPreviewBlueprint(undefined);
+                    setPreviewBlueprintError(describePathActionError("This game's saved design", result.error));
+                }
+            })
+            .catch((error: unknown) => {
+                if (requestId !== previewBlueprintRequestId.current) return;
+                setPreviewBlueprint(undefined);
+                setPreviewBlueprintError(describeGameModelEditLoadFailure(errorMessage(error)).message);
+            });
+    }, [editable, fetchImpl, projectRoot]);
 
     const refresh = useCallback(() => {
         const requestId = ++refreshRequestIdRef.current;
@@ -146,6 +177,16 @@ export function GameModelTab({
         refresh();
         return () => refreshControllerRef.current?.abort();
     }, [refresh]);
+
+    // Re-read the saved design whenever the projection first becomes available or its source revision
+    // changes (for example after a save or an explicit Refresh). The preview loader has its own request
+    // generation so an older read can never replace a newer saved design.
+    const projectionSourceRevision = state.status === "loaded" ? state.projection.sourceRevision : undefined;
+    useEffect(() => {
+        if (state.status === "loaded") {
+            loadPreviewBlueprint();
+        }
+    }, [state.status, projectionSourceRevision, loadPreviewBlueprint]);
 
     // Advance the inspection seed instead of drawing one from Math.random(): the next sample is
     // different but its visible seed remains reproducible whenever the same seed is requested again.
@@ -310,6 +351,8 @@ export function GameModelTab({
                 setValidationView({status: "idle"});
                 sourceHash.current = result.blueprintHash;
                 setSequenceDraftDirty(false);
+                setPreviewBlueprint(result.blueprint);
+                setPreviewBlueprintError(undefined);
                 editor.loadFrom(result.blueprint);
                 setEditState({status: "editing", section, baselineRevision: revisionBeforeLoad + 1});
             })
@@ -348,6 +391,8 @@ export function GameModelTab({
                 setValidationView({status: "idle"});
                 sourceHash.current = result.blueprintHash;
                 setSequenceDraftDirty(false);
+                setPreviewBlueprint(result.blueprint);
+                setPreviewBlueprintError(undefined);
                 editor.loadFrom(result.blueprint);
                 editor.mutate((blueprint) => {
                     setReelGenerationMode(blueprint, "reelStripGeneration");
@@ -422,6 +467,8 @@ export function GameModelTab({
                         return;
                     }
                     sourceHash.current = saveResult.blueprintHash;
+                    setPreviewBlueprint(blueprintToSave);
+                    setPreviewBlueprintError(undefined);
                     const savedCurrentDraft = editor.getCurrentState().revision === snapshot.revision && !sequenceDirtyRef.current;
                     if (savedCurrentDraft) clearPersistedProjectBlueprintDraft(projectRoot);
                     setRetainedDraft(undefined);
@@ -448,7 +495,10 @@ export function GameModelTab({
                 onRestore={handleRestoreDraft}
                 onDiscard={handleDiscardDraft}
             />
-            <MathDefinitionDiffPreview sourcePath={projectRoot} projectRoot={projectRoot} draft={editState.status === "editing" ? editor.state.blueprint : undefined} revision={editor.state.revision} />
+            <details>
+                <summary>Compare mathematical definitions</summary>
+                <MathDefinitionDiffPreview sourcePath={projectRoot} projectRoot={projectRoot} draft={editState.status === "editing" ? editor.state.blueprint : undefined} revision={editor.state.revision} />
+            </details>
             {editError && <ErrorState message={editError.message} detail={editError.detail} />}
             {validationView.status === "error" && <ErrorState message={describePathActionError("This game model save", validationView.message)} />}
             {/* Save validates the whole source. Retain a complete summary even when an issue
@@ -460,6 +510,14 @@ export function GameModelTab({
             {state.status === "loaded" && (
                 <GameModelSections
                     projection={state.projection}
+                    previewBlueprint={previewBlueprint}
+                    previewDisabledReason={
+                        previewBlueprintError ??
+                        (previewBlueprint === undefined
+                            ? "Loading the saved design before exact math can run. This panel will unlock automatically."
+                            : undefined)
+                    }
+                    onPreviewRetry={previewBlueprintError ? loadPreviewBlueprint : undefined}
                     edit={
                         editable
                             ? {

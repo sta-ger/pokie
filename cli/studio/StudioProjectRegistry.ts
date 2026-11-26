@@ -20,4 +20,9 @@ export interface StudioProjectRegistry {
     replace(entry: StudioProjectRegistryEntry, replacedLocations: readonly string[], options?: {readonly isCurrent?: () => boolean}): Promise<boolean>;
 
     remove(location: string): Promise<void>;
+
+    // Removes many locations in one registry mutation. The Projects panel uses this for its
+    // explicit "remove all missing" cleanup; a file-backed registry writes the file once instead
+    // of once per stale entry, which matters when a long-lived test machine has thousands of them.
+    removeMany(locations: readonly string[]): Promise<void>;
 }

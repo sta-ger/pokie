@@ -23,7 +23,7 @@ export type OptimizationMetricOption = {
 export const OPTIMIZATION_METRICS: readonly OptimizationMetricOption[] = [
     {metric: "rtp", unit: "ratio", label: "RTP", scale: 100, valueSuffix: "%", toleranceSuffix: "pp", defaultValue: 95, defaultTolerance: 0.5, step: 0.01},
     {metric: "hitFrequency", unit: "ratio", label: "Hit frequency", scale: 100, valueSuffix: "%", toleranceSuffix: "pp", defaultValue: 25, defaultTolerance: 1, step: 0.01},
-    {metric: "volatility", unit: "standardDeviation", label: "Volatility (std. deviation)", scale: 1, valueSuffix: "", toleranceSuffix: "", defaultValue: 3, defaultTolerance: 0.1, step: 0.01},
+    {metric: "volatility", unit: "standardDeviation", label: "Volatility (std. deviation, bet units)", scale: 1, valueSuffix: "", toleranceSuffix: "", defaultValue: 3, defaultTolerance: 0.1, step: 0.01},
     {metric: "maxWin", unit: "betMultiple", label: "Max win (× bet)", scale: 1, valueSuffix: "× bet", toleranceSuffix: "× bet", defaultValue: 100, defaultTolerance: 5, step: 0.1},
 ];
 
@@ -105,6 +105,73 @@ export function parsePaytablePath(path: string): {symbolId: string; matchCount: 
     return {symbolId: unescapePointerToken(parts[2]), matchCount};
 }
 
+export function freeGamesAwardPath(count: number | string): string {
+    return `/mechanics/freeGames/awardsByCount/${escapePointerToken(String(count))}`;
+}
+
+export function parseFreeGamesAwardPath(path: string): string | undefined {
+    const parts = path.split("/");
+    if (parts.length !== 5 || parts[0] !== "" || parts[1] !== "mechanics" || parts[2] !== "freeGames" || parts[3] !== "awardsByCount") return undefined;
+    return unescapePointerToken(parts[4]);
+}
+
+export function freeGamesAwards(model: GameModelProjection | undefined): {count: string; current: number}[] {
+    if (model?.mechanics.status !== "available") return [];
+    const awards = model.mechanics.data.freeGames?.awardsByCount;
+    if (awards === undefined) return [];
+    return Object.entries(awards)
+        .map(([count, current]) => ({count, current}))
+        .sort((left, right) => Number(left.count) - Number(right.count) || left.count.localeCompare(right.count));
+}
+
+export function hasFreeGames(model: GameModelProjection | undefined): boolean {
+    return freeGamesAwards(model).length > 0;
+}
+
+/** Every numeric authored field the compact Studio form can offer without a JSON pointer. */
+export function optimizationTunablePaths(model: GameModelProjection | undefined): string[] {
+    return [
+        ...paytableRows(model).map(paytablePath),
+        ...freeGamesAwards(model).map((award) => freeGamesAwardPath(award.count)),
+    ];
+}
+
+export function tunableCurrentValue(path: string, model: GameModelProjection | undefined): number | undefined {
+    const freeGamesCount = parseFreeGamesAwardPath(path);
+    if (freeGamesCount !== undefined) {
+        return freeGamesAwards(model).find((award) => award.count === freeGamesCount)?.current;
+    }
+    return paytableRowForPath(model, path)?.payout;
+}
+
+export function optimizationScopeLabel(scope: OptimizationPolicy["scope"]): string {
+    if (scope === "logical-round") return "Whole paid round (incl. free games)";
+    if (scope === "native-outcomes") return "Native outcomes";
+    return "Paid spin";
+}
+
+/**
+ * A design with free games has two legitimate RTP readings. A request that still targets paid-entry
+ * RTP after a feature was added is valid, but it is almost never the number a producer means by
+ * "the game's RTP" -- recommend the whole-round scope instead of silently keeping the stale choice.
+ */
+export function recommendsWholeRoundScope(
+    scope: OptimizationPolicy["scope"],
+    freeGamesConfigured: boolean,
+): boolean {
+    return freeGamesConfigured && scope === "paid-entry";
+}
+
+export function optimizationTargetLabel(target: OptimizationTarget, scope: OptimizationPolicy["scope"]): string {
+    const option = findOptimizationMetric(target);
+    if (target.metric === "rtp") {
+        if (scope === "logical-round") return "Total RTP (paid + free games)";
+        if (scope === "native-outcomes") return "RTP (native outcomes)";
+        return "Paid-spin RTP";
+    }
+    return option?.label ?? target.metric;
+}
+
 export function paytableRows(model: GameModelProjection | undefined): GameModelPaytableRow[] {
     return model?.paytable.status === "available" ? model.paytable.data : [];
 }
@@ -117,7 +184,9 @@ export function paytableRowForPath(model: GameModelProjection | undefined, path:
 
 export function describeTunablePath(path: string): string {
     const parsed = parsePaytablePath(path);
-    if (parsed !== undefined) return `${parsed.symbolId} × ${parsed.matchCount} payout`;
+    if (parsed !== undefined) return `${parsed.symbolId}, ${parsed.matchCount} symbols payout`;
+    const freeGamesCount = parseFreeGamesAwardPath(path);
+    if (freeGamesCount !== undefined) return `${freeGamesCount} scatters → free games`;
     return path;
 }
 
@@ -132,7 +201,7 @@ export function suggestedPaytableValues(current?: number): number[] {
 }
 
 export function suggestedTunableValues(path: string, model: GameModelProjection | undefined): number[] {
-    return suggestedPaytableValues(paytableRowForPath(model, path)?.payout);
+    return suggestedPaytableValues(tunableCurrentValue(path, model));
 }
 
 export function formatTunableValues(values: readonly (number | string)[]): string {
@@ -182,7 +251,9 @@ export function buildDefaultOptimizationRequest(model?: GameModelProjection): St
             maxOutcomes: 100_000,
             mode: defaultMode(model),
             stake: 1,
-            scope: "paid-entry",
+            // Free games make paid-spin and whole-round RTP different numbers. Default to the number
+            // a player experiences; the compact form still exposes the paid-spin scope explicitly.
+            scope: hasFreeGames(model) ? "logical-round" : "paid-entry",
             tunables: [{path, values}],
             locks: [],
         },

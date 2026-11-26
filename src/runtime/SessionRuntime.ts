@@ -121,20 +121,22 @@ export class SessionRuntime implements SessionRuntimeHandling {
         const session = this.session;
         const prepared = this.prepare(command, session.getCreditsAmount());
         if (prepared.status === "blocked") return {status: "blocked", reason: prepared.reason};
-        const result = prepared.execute();
-        // Preserve the accepted prefix even if a later composite successor fails.
-        if (key) {
-            const ledger = deliveries.get(session) ?? new Map();
-            if (this.latestOnly) ledger.clear();
-            ledger.set(key, this.saveDelivery(command, result));
-            deliveries.set(session, ledger);
-        }
-        this.onAccepted?.(command, cloneSessionData(result));
-        if (command.delivery === "composite") return this.completeComposite(command, result, key!, signal);
-        if (key) {
-            const ledger = deliveries.get(this.session) ?? new Map();
-            ledger.set(key, this.saveDelivery(command, result));
-            deliveries.set(this.session, ledger);
+        return this.acceptResult(command, prepared.execute(), key, signal);
+    }
+
+    /**
+     * Execute one command that was already prepared by a settlement boundary, then retain its accepted
+     * delivery and (for a composite request) finish the logical round in this same execution. The
+     * settlement boundary must not re-dispatch every subround: doing so rebuilds and re-validates the
+     * growing audit once per free spin, which turns a long feature into minutes of blocked I/O.
+     */
+    public executePreparedCommand(command: SessionCommand, prepared: Extract<PreparedSessionCommand, {status: "ready"}>): SessionCommandResult {
+        const result = this.acceptResult(command, prepared.execute(), this.deliveryKey(command), undefined);
+        // A one-shot composite is settled once, at this boundary. Its final subround is typically a
+        // zero-stake free game, so exposing that step's stake/payout would understate the paid round
+        // and make the audit's wallet reconciliation disagree with the settled balance.
+        if (result.status === "played" && result.logicalRound?.status === "completed" && command.continuation === undefined) {
+            return {...result, stake: result.logicalRound.totalStake, win: result.logicalRound.totalWin, payout: result.logicalRound.totalPayout};
         }
         return result;
     }
@@ -268,6 +270,23 @@ export class SessionRuntime implements SessionRuntimeHandling {
             return {status: "blocked", reason: error instanceof Error ? error.message : String(error), restored: true};
         }
     }
+    private deliveryKey(command: SessionCommand): string | undefined {
+        if (command.continuation) return `${command.continuation.roundId}:${command.continuation.cursor}`;
+        return command.roundId ? `${command.roundId}:entry` : undefined;
+    }
+
+    private acceptResult(command: SessionCommand, result: Extract<SessionCommandResult, {status: "played"}>, key: string | undefined, signal: AbortSignal | undefined): SessionCommandResult {
+        if (key) {
+            const ledger = deliveries.get(this.session) ?? new Map();
+            if (this.latestOnly) ledger.clear();
+            ledger.set(key, this.saveDelivery(command, result));
+            deliveries.set(this.session, ledger);
+        }
+        this.onAccepted?.(command, cloneSessionData(result));
+        if (command.delivery === "composite" && key) return this.completeComposite(command, result, key, signal);
+        return result;
+    }
+
     private completeComposite(command: SessionCommand, prefix: Played, key: string, signal?: AbortSignal): SessionCommandResult {
         let result = prefix;
         const ledger = deliveries.get(this.session)!;

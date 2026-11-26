@@ -1,4 +1,4 @@
-import {resolveFreeGamesEntry, resolveFreeGamesRound} from "../../session/videoslot/FreeGamesRoundHandler.js";
+import {capFreeGamesGrant, resolveFreeGamesEntry, resolveFreeGamesRound} from "../../session/videoslot/FreeGamesRoundHandler.js";
 import type {FreeGamesStateDetermining} from "../../session/FreeGamesStateDetermining.js";
 import {resolveHoldAndWinProgression} from "../../session/videoslot/holdandwin/HoldAndWinRoundHandler.js";
 import {SymbolSetHoldAndWinCollector} from "../../session/videoslot/holdandwin/SymbolSetHoldAndWinCollector.js";
@@ -73,7 +73,8 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
     const current = observeVideoSlotFeatures(session);
     const free = mechanics?.freeGames;
     const evaluated = blueprint.screenGeometry ? new ScreenProjection(blueprint.screenGeometry).project(finalScreen, "evaluated") : finalScreen;
-    const grant = free ? free.awardsByCount[SymbolsCombinationsAnalyzer.getScatterSymbolsPositions(evaluated, free.scatterSymbol).length] ?? 0 : 0;
+    const rawGrant = free ? free.awardsByCount[SymbolsCombinationsAnalyzer.getScatterSymbolsPositions(evaluated, free.scatterSymbol).length] ?? 0 : 0;
+    const grant = capFreeGamesGrant(free?.maxFreeGames, before?.freeSum ?? 0, rawGrant);
     // Components are checked against the domain calculator below. Sum the bankable
     // components directly: subtracting a large outer jackpot can erase a small win.
     const bankableWin = artifacts.flatMap(step => step.wins).filter(component => component.type !== "jackpot").reduce((sum, component) => sum + component.winAmount, 0);
@@ -254,12 +255,18 @@ function validateNativeFeatureTransition(session: VideoSlotSessionHandling, blue
         const modeId = observeVideoSlotFeatures(session).chargedBetModeId;
         const mode = blueprint.betModes?.find(mode => mode.id === modeId);
         const purchasedGrant = mode?.runtimeType === "buyFeature" ? mode.forcedFreeGames ?? 0 : 0;
-        const forcedGrant = stake > 0 ? purchasedGrant : 0;
+        const maxFreeGames = mechanics.freeGames.maxFreeGames;
+        const startingSum = before.freeNum === before.freeSum ? 0 : before.freeSum;
+        const forcedGrant = stake > 0 ? capFreeGamesGrant(maxFreeGames, startingSum, purchasedGrant) : 0;
         // Prior counters must be reachable even when both sides of their transition
         // are edited. Each executed free spin can grant at most the authored maximum;
         // natural entry has one additional paid opportunity to acquire its grant.
         const maximumGrant = Math.max(0, ...Object.values(mechanics.freeGames.awardsByCount));
-        if (before.free && (before.freeSum < purchasedGrant || before.freeSum > purchasedGrant + maximumGrant * (before.freeNum + (purchasedGrant > 0 ? 0 : 1)))) throw new Error("Free-games prior counters contradict reachable authored grants.");
+        const purchasedReach = capFreeGamesGrant(maxFreeGames, 0, purchasedGrant);
+        const upperReach = Math.min(maxFreeGames ?? Number.POSITIVE_INFINITY,
+            purchasedReach + maximumGrant * (before.freeNum + (purchasedGrant > 0 ? 0 : 1)));
+        if (maxFreeGames !== undefined && before.freeSum > maxFreeGames) throw new Error("Free-games prior counters exceed the authored cap.");
+        if (before.free && (before.freeSum < purchasedReach || before.freeSum > upperReach)) throw new Error("Free-games prior counters contradict reachable authored grants.");
         const entry = resolveFreeGamesEntry(before.freeNum, before.freeSum, priorBank, forcedGrant);
         const jackpot = observeVideoSlotFeatures(session).jackpot?.award?.amount ?? 0;
         const next = resolveFreeGamesRound(entry.num, entry.sum, entry.bank, bankableWin, grant);

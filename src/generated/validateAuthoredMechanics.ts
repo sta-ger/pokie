@@ -1,3 +1,4 @@
+import {MAX_FREE_GAMES_CAP} from "./GameBlueprint.js";
 import {validateWeightedBonus} from "../session/videoslot/authored/WeightedBonus.js";
 import {validateScreenModifiers} from "../session/videoslot/modifiers/validateScreenModifiers.js";
 import type {ScreenGeometry} from "../session/videoslot/coordinates/ScreenGeometry.js";
@@ -69,8 +70,9 @@ export function validateAuthoredMechanics(input: object): ValidationIssue[] {
         if (mechanics.holdAndWin !== undefined) error("mechanics.modifiers", "cannot combine with HoldAndWin, which owns retained cells and suppresses the base payout.");
     }
     if (mechanics.freeGames !== undefined) {
-        const free = object(mechanics.freeGames, "mechanics.freeGames", ["scatterSymbol", "awardsByCount", "retriggerPolicy"]);
+        const free = object(mechanics.freeGames, "mechanics.freeGames", ["scatterSymbol", "awardsByCount", "retriggerPolicy", "maxFreeGames"]);
         if (free?.retriggerPolicy !== undefined && free.retriggerPolicy !== "additive") error("mechanics.freeGames.retriggerPolicy", "only additive retriggers are supported.");
+        if (free?.maxFreeGames !== undefined && (!positive(free.maxFreeGames) || free.maxFreeGames > MAX_FREE_GAMES_CAP)) error("mechanics.freeGames.maxFreeGames", `must be a positive integer no greater than ${MAX_FREE_GAMES_CAP}.`);
     }
     if (mechanics.holdAndWin !== undefined) {
         const path = "mechanics.holdAndWin";

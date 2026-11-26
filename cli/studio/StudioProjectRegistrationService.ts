@@ -1,5 +1,6 @@
 import {describeUnavailableWasmComponent, ProjectTargetResolver, WASM_CANONICAL_ARTIFACT_CAPABILITY, type PokieProject, type ProjectResolving, type ProjectType, wasmProductContractView} from "@fromstan/pokie";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import {PokiePathResolver} from "../paths/PokiePathResolver.js";
 import {FileStudioProjectRegistry} from "./FileStudioProjectRegistry.js";
@@ -17,6 +18,33 @@ import {StudioProjectOpeningCancelledError} from "./StudioProjectOpeningCancelle
 // createDefaultStudioProjectRegistrationService below and any caller that needs to point at the exact
 // same production location, so the two can never silently drift apart.
 export const PROJECT_REGISTRY_FILE_NAME = "projects.json";
+
+// Missing projects are kept long enough for a user to relocate an external drive or a moved folder,
+// but they must not accumulate forever. Temporary/cache/test paths can never be durable and are
+// removed immediately. Studio-managed projects are our own files under "POKIE Projects", so a
+// shorter 30-day window is enough to notice a deletion; an external project gets 90 days because it
+// may simply live on a drive that is not mounted right now.
+export const MANAGED_MISSING_PROJECT_RETENTION_DAYS = 30;
+export const MISSING_PROJECT_RETENTION_DAYS = 90;
+const MANAGED_MISSING_PROJECT_RETENTION_MS = MANAGED_MISSING_PROJECT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+const MISSING_PROJECT_RETENTION_MS = MISSING_PROJECT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+function isEphemeralProjectLocation(location: string): boolean {
+    const resolved = path.resolve(location);
+    const temporaryRoot = path.resolve(os.tmpdir());
+    if (resolved === temporaryRoot || resolved.startsWith(`${temporaryRoot}${path.sep}`)) return true;
+    if (path.sep === "/" && (resolved === "/dev/shm" || resolved.startsWith("/dev/shm/"))) return true;
+    const normalized = resolved.split(path.sep).join("/");
+    return normalized.includes("/node_modules/.cache/")
+        || normalized.includes("/.pokie-e2e-home/")
+        || normalized.includes("/.pokie-runtime-cache/")
+        || normalized.includes("/.pokie-review-")
+        || normalized.includes("/.pokie-optimization/")
+        || normalized.includes("/.pokie-par-import-")
+        || normalized.includes("/agents/worktrees/")
+        || normalized.includes("/agents/runtime/")
+        || normalized.includes("/tests/cli/fixtures/");
+}
 
 // The registry backend a real Studio runtime (StudioServer) composes StudioProjectRegistrationService
 // with: a FileStudioProjectRegistry rooted at the platform app-data directory when one can be resolved,
@@ -174,6 +202,41 @@ export class StudioProjectRegistrationService {
         const canonicalLocation = await this.canonicalize(location);
         const entries = await this.entriesAt(canonicalLocation);
         await Promise.all(entries.map((entry) => this.registry.remove(entry.location)));
+    }
+
+    // Explicit cleanup for the Projects panel's "remove all missing" action. Missing rows are shown
+    // so a user can relocate them, but a long-lived machine can accumulate thousands of stale test
+    // paths; this removes every missing row in one registry write while leaving all files on disk
+    // untouched. Returns the number of entries removed so the UI can report the result accurately.
+    public async removeMissing(): Promise<number> {
+        const entries = await this.list();
+        const missingLocations = entries.filter((entry) => entry.status === "missing").map((entry) => entry.location);
+        if (missingLocations.length > 0) {
+            await this.registry.removeMany(missingLocations);
+        }
+        return missingLocations.length;
+    }
+
+    /**
+     * Startup self-cleaning policy for the persistent registry. It never deletes a project that still
+     * exists, and it does not silently discard a recently missing external project: temporary/cache
+     * paths are removed immediately because they cannot be relocated, while other missing entries keep
+     * a 90-day grace period for the explicit Relocate action. Best-effort by design -- callers use it
+     * on startup and must not block the HTTP server on a registry write.
+     */
+    public async pruneStaleMissing(now = Date.now()): Promise<number> {
+        const entries = await this.registry.list();
+        const staleLocations = entries.filter((entry) => {
+            if (this.pathExists(entry.location)) return false;
+            if (isEphemeralProjectLocation(entry.location)) return true;
+            const openedAt = Date.parse(entry.lastOpenedAt);
+            const retention = entry.origin === "managed" ? MANAGED_MISSING_PROJECT_RETENTION_MS : MISSING_PROJECT_RETENTION_MS;
+            return Number.isFinite(openedAt) && now - openedAt >= retention;
+        }).map((entry) => entry.location);
+        if (staleLocations.length > 0) {
+            await this.registry.removeMany(staleLocations);
+        }
+        return staleLocations.length;
     }
 
     // Replaces a missing registry location with a recognized Project at its new location.  Nothing is

@@ -266,7 +266,8 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
         };
         let nonterminating = false,
             failed = false,
-            unsupported = false;
+            unsupported = false,
+            freeGamesCapProved = false;
         const wiring = resolveBetModeCodegenWiring(model);
         const modes = wiring ? model.betModes! : [undefined];
         const collectionValues = new Set<number>([0]);
@@ -321,7 +322,19 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
                 }
             }
             if (wiring?.buyFeatureModes.length) targets.set("mechanics.freeGames", true);
-            if (repeating) {
+            if (free?.maxFreeGames !== undefined && Number.isSafeInteger(free.maxFreeGames) && free.maxFreeGames >= 1 && !freeGamesCapProved) {
+                freeGamesCapProved = true;
+                await this.add(report, budget, {
+                    id: "termination.free-games",
+                    path: "mechanics.freeGames.maxFreeGames",
+                    status: "pass",
+                    severity: "info",
+                    message: `Free games are capped at ${free.maxFreeGames} total games per feature; the trigger award and every retrigger share that cap, so a feature cannot exceed it.`,
+                    assumptions: report.assumptions,
+                    evidence: {cap: free.maxFreeGames},
+                });
+            }
+            if (repeating && free?.maxFreeGames === undefined) {
                 budget.take("states");
                 budget.take("transitions", 2);
                 // Invoke the actual handler twice to retain a before/after accounting witness.

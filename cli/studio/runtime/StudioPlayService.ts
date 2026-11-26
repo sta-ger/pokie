@@ -304,6 +304,9 @@ export class StudioPlayService {
             true,
             "full",
             this.pokieVersion,
+            // Studio Play is an ephemeral, single-session preview: settle a composite paid round once
+            // instead of forcing one wallet/audit dispatch per free spin.
+            true,
         );
 
         const context: PokieGameContext | undefined = seed === undefined ? undefined : {seed};

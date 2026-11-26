@@ -1,4 +1,5 @@
 import {useCallback, useLayoutEffect, useRef, type ComponentProps} from "react";
+import {describeJobOperation} from "../../domain/jobLabels";
 import {JobProgressCard} from "./JobProgressCard";
 import {JobResultCard} from "./JobResultCard";
 
@@ -61,7 +62,7 @@ export function JobCard(props: ComponentProps<typeof JobResultCard> & {
         keepFocusedControlVisible();
     });
     return (
-        <div ref={ref} className="studio-job-region" tabIndex={-1} role="region" aria-label={`${props.job.operation} job ${props.job.id}`}
+        <div ref={ref} className="studio-job-region" tabIndex={-1} role="region" aria-label={`${describeJobOperation(props.job.operation)} job ${props.job.id}`}
             style={{scrollMarginTop: "calc(var(--app-shell-header-offset, 0px) + 8px)", scrollMarginBottom: 8, scrollMarginInline: 8}}
             onFocusCapture={(event) => {
                 focusedControl.current = event.target;

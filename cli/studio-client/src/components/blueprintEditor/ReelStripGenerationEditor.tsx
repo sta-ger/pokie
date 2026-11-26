@@ -76,7 +76,7 @@ function validateDraftEntry(entry: Record<string, unknown>, symbols: string[]): 
     const knownSymbols = new Set(symbols);
     if (entry.type !== "generated") {
         const strip = asStringList(entry.strip);
-        if (strip.length === 0) issues.push({field: "strip", message: "Add at least one symbol to this literal reel."});
+        if (strip.length === 0) issues.push({field: "strip", message: "Add at least one symbol to this manual reel."});
         strip.forEach((symbol, index) => {
             if (symbols.length > 0 && !knownSymbols.has(symbol)) issues.push({field: `strip.${index}`, message: `"${symbol}" is not a known symbol.`});
         });

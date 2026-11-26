@@ -2,7 +2,7 @@ import {WASM_EXECUTION_BOUNDARY} from "../../../../../src/wasm/PokieWasmRuntimeA
 import {Alert, Anchor, Button, Stack, Table, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
 import {useCallback, useEffect, useLayoutEffect, useRef, useState} from "react";
-import {useLocation, useNavigate, useParams} from "react-router-dom";
+import {Link, useLocation, useNavigate, useParams} from "react-router-dom";
 import {
     buildReportDownloadUrl,
     closeProject,
@@ -41,6 +41,7 @@ import {resolveReplayArtifact, describeReplayComparison, describeReplayList, des
 import {describeReportsList, type ReportListView} from "../../domain/interpret/Reports";
 import {describeRecentSpinsList, type RecentSpinsListView} from "../../domain/interpret/Runtime";
 import {describeSimulationReport, isSimulationActive} from "../../domain/interpret/Simulation";
+import {isProjectTab, legacyProjectRouteMigration, migrationSearch, type ProjectTab} from "../../domain/projectRouteMigration";
 import {describeReplayActionError} from "../../domain/replayActionError";
 import {getSimulationRoundsError} from "../../domain/simulationRounds";
 import {useConfirm} from "../../hooks/useConfirm";
@@ -70,16 +71,6 @@ import {PlayTab} from "./PlayTab";
 import {ProvablyFairTab} from "./ProvablyFairTab";
 import {ReplayTab, type ExpectedReplayState} from "./ReplayTab";
 import {SimulationTab, type ReportDetailState} from "./SimulationTab";
-
-export type ProjectTab =
-    | "overview"
-    | "gameModel"
-    | "play"
-    | "simulation"
-    | "replay"
-    | "exportDeploy"
-    | "certification"
-    | "provablyFair";
 
 // The game-facing workflows (Play, Simulation, Replay and Build/Export) need
 // the loaded project to actually be runnable in-process. A "tsPackage" project carries
@@ -173,7 +164,7 @@ type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
 // second, capability-gated tab of its own.
 const ALL_PROJECT_TABS: ProjectTabDescriptor[] = [
     {value: "overview", label: "Overview", auditControlId: "project-tab:overview"},
-    {value: "gameModel", label: "Game Model", auditControlId: "project-tab:gameModel"},
+    {value: "gameModel", label: "Game design", auditControlId: "project-tab:gameModel"},
     {value: "play", label: "Play", auditControlId: "project-tab:play", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
     {value: "simulation", label: "Simulation", auditControlId: "project-tab:simulation", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
     {value: "replay", label: "Replay", auditControlId: "project-tab:replay", requiredCapabilities: OUTCOME_SOURCE_REPLAY_CAPABLE_CAPABILITIES},
@@ -181,51 +172,6 @@ const ALL_PROJECT_TABS: ProjectTabDescriptor[] = [
     {value: "certification", label: "Certification", auditControlId: "project-tab:certification", requiredCapabilities: CERTIFICATION_CAPABLE_CAPABILITIES},
     {value: "provablyFair", label: "Provably Fair", auditControlId: "project-tab:provablyFair", requiredCapabilities: PROVABLY_FAIR_CAPABLE_CAPABILITIES},
 ];
-
-function isProjectTab(value: string | undefined): value is ProjectTab {
-    return ALL_PROJECT_TABS.some((tab) => tab.value === value);
-}
-
-// Retired routes are not kept as a second set of workflow components. They do remain intelligible
-// bookmarks: each one points at the single retained owner and names the migration rather than silently
-// changing a user's task context. A plain unknown tab also reaches Overview with an explicit unavailable
-// explanation: a removed/renamed bookmark must not look as though Studio silently accepted its task.
-type LegacyProjectRouteMigration = {destination: ProjectTab; message: string};
-
-function legacyProjectRouteMigration(tab: string | undefined): LegacyProjectRouteMigration | undefined {
-    // A retained route is already its own canonical destination. Keeping this guard here (rather
-    // than at every caller) also prevents LegacyProjectDashboardRoute from adding `?migrated=` to
-    // ordinary legacy links such as /project/overview while it upgrades them to scoped URLs.
-    if (isProjectTab(tab)) {
-        return undefined;
-    }
-    switch (tab) {
-        case "deployment":
-            return {destination: "exportDeploy", message: "Deployment has moved into Build/Export. Choose Remote delivery there to preview or publish to a configured target."};
-        case "stakeEngineExport":
-            return {destination: "exportDeploy", message: "Stake Engine Export has moved into Build/Export. Choose the Stake Engine export target there."};
-        case "outcomeLibraries":
-            return {
-                destination: "overview",
-                message:
-                    "Outcome Libraries is no longer available in Studio. Its retired select-existing, inspect, and compare workflow has no Build/Export equivalent; use Overview to inspect the opened outcome source, or use the CLI outcome-source commands for comparison.",
-            };
-        case "validate":
-        case "validation":
-            return {destination: "overview", message: "Validate is now part of Overview diagnostics. Revalidate there after changing the project."};
-        default:
-            return tab === undefined
-                ? undefined
-                : {
-                    destination: "overview",
-                    message: "The requested Studio section is no longer available. Overview is open so you can choose a supported workflow for this project.",
-                };
-    }
-}
-
-function migrationSearch(tab: string | undefined): string {
-    return legacyProjectRouteMigration(tab) === undefined ? "" : `?migrated=${encodeURIComponent(tab ?? "")}`;
-}
 
 // A project-opening error can happen before this route has safely established which project is
 // active. Returning to the project list must therefore only navigate: unlike Close project, it must
@@ -424,6 +370,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const activeTab: ProjectTab = isProjectTab(tab) ? tab : (requestedMigration?.destination ?? "overview");
     const migratedFrom = new URLSearchParams(location.search).get("migrated");
     const migration = legacyProjectRouteMigration(migratedFrom ?? undefined);
+    const autoComputeExactMath = (location.state as {exactMathAfterOpen?: boolean} | null)?.exactMathAfterOpen === true;
     const navigationRequestIdRef = useRef(0);
     const [navigationLifecycle, setNavigationLifecycle] = useState<{tab: ProjectTab; status: "loading" | "rendered" | "error"; message?: string; retryTab?: ProjectTab}>({tab: activeTab, status: "rendered"});
     // This generation is deliberately shared by a completed durable operation
@@ -584,7 +531,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         const open = () => openAndNavigate(sourcePath);
         const guardedOpen = projectActionGuardRef.current;
         (guardedOpen === undefined ? open() : guardedOpen(open)).catch((error: unknown) => {
-            setJobProjectOpeningError(`Couldn't reopen the retained project "${sourcePath}". ${errorMessage(error)} Retry if the source is available, or use Projects to Relocate it to its current location or add the game again.`);
+            setJobProjectOpeningError(`Couldn't reopen the saved project "${sourcePath}". ${errorMessage(error)} Retry if the source is available, or use Projects to Relocate it to its current location or add the game again.`);
         });
     }, [openAndNavigate]);
     const handleJobRecoveryAction = useCallback((job: StudioJobView): void => {
@@ -705,7 +652,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const restorableSimulation = commonJobs.jobs.find((job) => job.operation === "simulation");
     let simulationRestorationMessage: string | undefined;
     if (simulation.restoringJobId !== undefined || (simulation.canRestore && restorableSimulation !== undefined)) {
-        simulationRestorationMessage = "Reattaching to retained simulation; waiting for its details…";
+        simulationRestorationMessage = "Reattaching to the saved simulation; waiting for its details…";
     } else if (simulation.canRestore && commonJobs.discoveryStatus === "pending") {
         simulationRestorationMessage = "Checking for saved simulations…";
     } else if (simulation.canRestore && commonJobs.discoveryStatus === "failed") {
@@ -981,7 +928,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             const requestId = ++expectedReplayRequestIdRef.current;
             const subject = source === "paste" ? "The pasted record" : "The recorded round";
             const identityLabel = {
-                paste: "pasted replay artifact",
+                paste: "pasted round record",
                 recovery: "recorded replay round",
                 "session-spin": "recorded play round",
             }[source];
@@ -1013,7 +960,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     setExpectedReplay({
                         status: "loaded",
                         round: response.round,
-                        seed: response.seed,
+                        seed: response.seed ?? undefined,
                         modeName: response.modeName,
                         outcomeSource: response.outcomeSource,
                         recording: response.recording,
@@ -1024,7 +971,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         stateAfter: parsedDescriptor?.stateAfter,
                         identity: {
                             label: `${identityLabel}${parsedDescriptor?.sessionId ? `, session ${parsedDescriptor.sessionId}` : ""}, round ${response.round}`,
-                            seed: response.seed,
+                            seed: response.seed ?? undefined,
                             timestamp: parsedDescriptor?.timestamp,
                         },
                     });
@@ -1171,6 +1118,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // math card to re-read immediately, instead of leaving an old compatible-looking RTP on screen
     // until the page is reloaded.
     const [exactMathRefreshKey, setExactMathRefreshKey] = useState(0);
+    // A completed exact-math generation should refresh the optimizer's RTP hint without resetting
+    // the optimizer's own reviewed result or in-progress request.
+    const [exactMathHintKey, setExactMathHintKey] = useState(0);
 
     // Both in-place authoring surfaces change the source used by simulation and optimization.
     // Retire pending reads as well as the visible report, while leaving owned
@@ -1329,7 +1279,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         }
         const reasons = [
             hasActiveOperation ? `active Studio operations (${activeOperationNames.join(", ") || "loading"})` : undefined,
-            gameModelDirty ? "unsaved Game Model changes" : undefined,
+            gameModelDirty ? "unsaved game-design changes" : undefined,
         ].filter((reason): reason is string => reason !== undefined);
         confirm(`This project has ${reasons.join(" and ")}. Close the project anyway?`, closeProjectAndReturnToProjects);
     };
@@ -1406,7 +1356,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     if (navigationLifecycle.tab === activeTab && navigationLifecycle.status === "error") {
         navigationMessage = "Project navigation needs a retry";
     } else if (navigationStatus === "rendered") {
-        navigationMessage = `${activeTabLabel} ready`;
+        navigationMessage = activeTab === "simulation" ? "Simulation workspace" : `${activeTabLabel} ready`;
     }
 
     if (activeTab === "simulation" && simulationRestorationMessage !== undefined) {
@@ -1449,7 +1399,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                 {header.status === "loaded" && (
                     <Text size="sm" c="dimmed">
                         {header.id} · v{header.version} ·{" "}
-                        <Anchor href="https://github.com/sta-ger/pokie/tree/develop/docs/glossary.md" target="_blank" rel="noreferrer">
+                        <Anchor component={Link} to="/docs/glossary">
                             Glossary
                         </Anchor>
                     </Text>
@@ -1495,7 +1445,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     tabIndex={-1}
                     style={{marginTop: "1rem"}}
                 >
-                    {migration !== undefined && migration.destination === activeTab && (
+                    {migration?.message !== undefined && migration.destination === activeTab && (
                         <Alert color="blue" variant="light" mb="sm">
                             {migration.message}
                         </Alert>
@@ -1532,7 +1482,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         <>
                             {activeTab === "overview" && header.status === "loaded" && (
                                 <>
-                                    <OverviewTab header={header} validation={validation} onRevalidate={runValidate} onOpenPlay={() => setActiveTab("play")} sourceRevision={optimizerSourceChange?.projectRoot === header.projectRoot ? optimizerSourceChange.sourceRevision : undefined} exactMathRefreshKey={exactMathRefreshKey} />
+                                    <OverviewTab header={header} validation={validation} onRevalidate={runValidate} onOpenPlay={() => setActiveTab("play")} sourceRevision={optimizerSourceChange?.projectRoot === header.projectRoot ? optimizerSourceChange.sourceRevision : undefined} exactMathRefreshKey={exactMathRefreshKey} autoComputeExactMath={autoComputeExactMath} onExactMathGenerated={() => setExactMathHintKey(value => value + 1)} />
                                     {header.type === "wasm" && (
                                         <WasmManifestInspection
                                             projectRoot={header.projectRoot}
@@ -1552,7 +1502,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     ? <WasmManifestInspection projectRoot={header.projectRoot} summary={header.wasmPresentation.inspectionSummary} />
                                     : <Text>This {describeProjectType(header.type).toLowerCase()} can be republished from Build/Export.</Text>
                             )}
-                            {activeTab === "overview" && (header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact") && <OptimizationPanel key={header.projectRoot} projectRoot={header.projectRoot} jobs={commonJobs} recoveryJob={recoveryJob?.operation === "optimization" ? recoveryJob : undefined} sourceChange={optimizerSourceChange?.projectRoot === header.projectRoot ? optimizerSourceChange : undefined} refreshKey={exactMathRefreshKey} onStarted={(sourceRevision) => {
+                            {activeTab === "overview" && (header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact") && <OptimizationPanel key={header.projectRoot} projectRoot={header.projectRoot} jobs={commonJobs} recoveryJob={recoveryJob?.operation === "optimization" ? recoveryJob : undefined} sourceChange={optimizerSourceChange?.projectRoot === header.projectRoot ? optimizerSourceChange : undefined} refreshKey={exactMathRefreshKey} exactMathRefreshKey={exactMathHintKey} onStarted={(sourceRevision) => {
                                 // Retry owns only the pending form handoff. Once the server
                                 // accepts its replacement, remounts must follow current work.
                                 setRecoveryJob(job => job?.operation === "optimization" ? undefined : job);
@@ -1706,10 +1656,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     {/* Polling job details belong after the active workflow so
                         progress, throughput and retained terminals cannot move
                         its controls while a user presses them. */}
-                    <JobObservationNotice discoveryStatus={commonJobs.discoveryStatus} connectionError={commonJobs.connectionError} actionError={commonJobs.actionError ?? (activeTab !== "simulation" && simulation.error !== undefined ? `Simulation control failed. Try again or reattach to retained work. ${simulation.error}` : undefined)} onReattach={commonJobs.refresh} />
+                    <JobObservationNotice discoveryStatus={commonJobs.discoveryStatus} connectionError={commonJobs.connectionError} actionError={commonJobs.actionError ?? (activeTab !== "simulation" && simulation.error !== undefined ? `Simulation control failed. Try again or reattach to saved work. ${simulation.error}` : undefined)} onReattach={commonJobs.refresh} />
                     {visibleCommonJobs.length > 0 && (
                         <Stack gap="xs" mb="md" aria-labelledby="studio-operations-heading">
-                            <Title id="studio-operations-heading" order={3}>Studio operations</Title>
+                            <Title id="studio-operations-heading" order={3}>Project work</Title>
                             <Text size="sm" c="dimmed">Current and saved work stays available here while you continue through this project.</Text>
                             {attentionCommonJobs.map(renderCommonJob)}
                             {finishedCommonJobs.length > 0 && (

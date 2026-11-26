@@ -221,7 +221,11 @@ implement this: the returned session must be the same concrete `VideoSlotSession
 builds, just constructed with the caller-supplied `combinationsGenerator` swapped in for the game's own
 randomness-backed one — the DI extension point `VideoSlotSession`'s own constructor already exposes. A paid spin that triggers
 free games remains exactly enumerable: its record carries the real `freeGamesTriggered` event from that entry
-spin. A game with no finite paid-spin enumeration (cascades, hold-and-win, a resizable grid,...) simply has no
+spin. The free-game wins themselves are later rounds and are **not** records in that paid-spin library. For the
+authored additive free-games shape, Studio derives exact total RTP from the paid-spin trigger probability and
+award distribution plus the geometric retrigger series; the result is shown separately from the paid-spin RTP.
+Other feature payouts that settle in later rounds remain outside the paid-spin library and use Simulation. A
+game with no finite paid-spin enumeration (cascades, hold-and-win, a resizable grid,...) simply has no
 exact strategy: generation fails closed with a
 `WeightedOutcomeLibraryGenerationError` (`weighted-outcome-library-generation-unsupported`) rather than guessing
 at one.

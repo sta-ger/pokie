@@ -326,16 +326,16 @@ export function validateFeatureAnalytics(s: FeatureAnalyticsSnapshot): void {
     for (const c of Object.values(s.components)) if (!count(c.occurrences) || !count(c.samples) || c.samples > s.subrounds || c.samples > c.occurrences || !finite(c.amount)) throw new Error("Invalid analytics component aggregate.");
     checkDimensions(s);
 }
-export function mergeFeatureAnalytics(a: FeatureAnalyticsSnapshot | undefined, b: FeatureAnalyticsSnapshot | undefined): FeatureAnalyticsSnapshot | undefined {
-    if (!b) {
-        if (a) validateFeatureAnalytics(a);
-        return a && clone(a);
-    }
-    validateFeatureAnalytics(b);
-    if (!a) return clone(b);
-    validateFeatureAnalytics(a);
+function assertCompatibleAnalyticsEnvelope(a: FeatureAnalyticsSnapshot, b: FeatureAnalyticsSnapshot): void {
     if ((Object.keys(a.envelope) as Array<keyof AnalyticsEnvelope>).some((key) => JSON.stringify(a.envelope[key]) !== JSON.stringify(b.envelope[key]))) throw new Error("Incompatible analytics model/schema/metric policy provenance; missing identity cannot match known identity.");
-    const s = clone(a);
+}
+
+// Mutates an already-validated target snapshot.  Kept separate from mergeFeatureAnalytics so the
+// accumulator's per-round hot path can add one small observation without cloning or re-validating the
+// entire running snapshot every round (that made a 100k simulation effectively quadratic in the
+// number of distinct win components).  Callers must validate the target at snapshot/report
+// boundaries, which SimulationAccumulator.toSnapshot()/getStatistics() do.
+function mergeFeatureAnalyticsState(s: FeatureAnalyticsSnapshot, b: FeatureAnalyticsSnapshot): void {
     for (const field of [
         "subrounds",
         "paidEntries",
@@ -393,9 +393,32 @@ export function mergeFeatureAnalytics(a: FeatureAnalyticsSnapshot | undefined, b
         }
         Reflect.defineProperty(s.sources, key, {value: target, enumerable: true, configurable: true, writable: true});
     }
+}
+
+export function mergeFeatureAnalytics(a: FeatureAnalyticsSnapshot | undefined, b: FeatureAnalyticsSnapshot | undefined): FeatureAnalyticsSnapshot | undefined {
+    if (!b) {
+        if (a) validateFeatureAnalytics(a);
+        return a && clone(a);
+    }
+    validateFeatureAnalytics(b);
+    if (!a) return clone(b);
+    validateFeatureAnalytics(a);
+    assertCompatibleAnalyticsEnvelope(a, b);
+    const s = clone(a);
+    mergeFeatureAnalyticsState(s, b);
     validateFeatureAnalytics(s);
     return s;
 }
+
+// The per-round accumulator path: `target` must already satisfy validateFeatureAnalytics().  `b` is
+// validated because it came from a fresh observation.  The full target is validated again whenever it
+// is snapshotted or turned into statistics, so a malformed merge cannot silently reach a report.
+export function mergeFeatureAnalyticsInPlace(target: FeatureAnalyticsSnapshot, b: FeatureAnalyticsSnapshot): void {
+    validateFeatureAnalytics(b);
+    assertCompatibleAnalyticsEnvelope(target, b);
+    mergeFeatureAnalyticsState(target, b);
+}
+
 export function observeFeatureAnalytics(stake: number, win: number, observation?: FeatureAnalyticsObservation): FeatureAnalyticsSnapshot {
     if (![stake, win].every(finite)) throw new Error("Analytics requires finite non-negative stake/win.");
     if (

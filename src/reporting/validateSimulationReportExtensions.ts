@@ -127,6 +127,18 @@ export function validateSimulationReportExtensions(value: Record<string, unknown
         halfWidth(c.achievedRtpHalfWidth, path("convergence.achievedRtpHalfWidth"));
     }
     if (value.modifiers !== undefined) counts(requireObject(value.modifiers, path("modifiers")), ["steps", "ruleApplications", "stickySteps", "multipliedComponents"], path("modifiers"));
+    if (value.exactReference !== undefined) {
+        const exact = requireObject(value.exactReference, path("exactReference"));
+        check(exact.modeName, v => typeof v === "string" && v.length > 0, path("exactReference.modeName"));
+        for (const field of ["rtp", "paidSpinRtp", "hitFrequency"]) check(exact[field], finite, path(`exactReference.${field}`));
+        check(exact.outcomes, count, path("exactReference.outcomes"));
+        if (exact.featurePayoutsIncluded !== undefined) check(exact.featurePayoutsIncluded, v => typeof v === "boolean", path("exactReference.featurePayoutsIncluded"));
+        if (exact.freeGamesRtp !== undefined) {
+            const freeGames = requireObject(exact.freeGamesRtp, path("exactReference.freeGamesRtp"));
+            for (const field of ["baseRtp", "featureRtp", "totalRtp"]) check(freeGames[field], finite, path(`exactReference.freeGamesRtp.${field}`));
+        }
+        for (const field of ["libraryHash", "generatedAt"]) if (exact[field] !== undefined) check(exact[field], v => typeof v === "string", path(`exactReference.${field}`));
+    }
     if (value.weightedBonus !== undefined) selections(value.weightedBonus, path("weightedBonus"), false);
     if (value.reelSequences !== undefined) {
         if (!Array.isArray(value.reelSequences)) fail(path("reelSequences"));

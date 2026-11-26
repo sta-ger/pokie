@@ -52,7 +52,10 @@ function validateRetainedResult(value: unknown, game: PokieGame, sessionId: stri
     if (value.deliveryOnly === true) {
         if (!command || !validateSavedStageDelivery(previous, state, command)) return corrupt("Invalid retained saved-stage delivery.");
     } else if (state.logicalRound) {
-        const original = state.logicalRound.subrounds[state.logicalRound.cursor - 1].command as RepositoryCommand;
+        // A completed one-shot composite is stored under its entry request, while its last retained
+        // subround is the zero-stake continuation. Bind that request to the retained entry, not to the
+        // final presentation step; a stepwise request still binds to the step it actually accepted.
+        const original = (command?.delivery === "composite" ? state.logicalRound.entry : state.logicalRound.subrounds[state.logicalRound.cursor - 1].command) as RepositoryCommand;
         if (original.requestId !== requestId || (command && commandEnvelope(command) !== commandEnvelope(original))) return corrupt("Retained logical result differs from its accepted command.");
     }
     return undefined;

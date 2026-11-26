@@ -285,6 +285,8 @@ export type GameModelLimits = {minBet?: number; maxBet?: number};
 
 export type GameModelProjection = {
     packageExtraction?: PackageBlueprintExtractionResult;
+    /** Authored-source identity; absent when the project cannot be inventoried. */
+    sourceRevision?: string;
     basics: GameModelSection<GameModelBasics>;
     layout: GameModelSection<GameModelLayout>;
     symbols: GameModelSection<GameModelSymbol[]>;
@@ -376,7 +378,7 @@ export type StudioFsBrowseView =
 
 // GET /api/home/fs/native-browse/availability's own DTO — see
 // cli/studio/home/StudioNativePickerService.ts's own doc comment. PathInput only ever shows
-// PathBrowseModal's "Server filesystem browser" when this comes back "unavailable" (or a pick request
+// PathBrowseModal's "Studio file browser" when this comes back "unavailable" (or a pick request
 // itself later reports "unavailable"/"error").
 export type StudioNativePickerAvailabilityView = {status: "available"} | {status: "unavailable"; reason: string};
 
@@ -590,7 +592,7 @@ export type StudioBlueprintSaveManagedView =
           registeredProject?: StudioProjectRegistryView;
       }
     | {status: "invalid-name"; error: string}
-    | {status: "unavailable"; error: string}
+    | {status: "unavailable"; error: string; existingProjectPath?: string}
     | {status: "error"; error: string};
 
 // A selected PNG is staged by Studio until the Blueprint is saved. The Blueprint itself receives only
@@ -995,7 +997,7 @@ export type StudioReplayListEntry = {
     status: StudioReplayStatus;
     game?: {id: string; name: string; version: string};
     round: number;
-    seed?: string;
+    seed?: string | null;
     completedRounds: number;
     totalBet?: number;
     totalWin?: number;
@@ -1003,7 +1005,7 @@ export type StudioReplayListEntry = {
     completedAt?: string;
     durationMs: number;
     error?: string;
-    modeName?: string;
+    modeName?: string | null;
     // A settled Overview draw is recorded, rather than a fresh reproduction.
     source?: "outcome-source-sample";
     // Selection provenance only; the full artifact remains on the detail/download endpoint.
@@ -1651,6 +1653,12 @@ export type StudioExactMathEventTable = {
     truncated: boolean;
 };
 
+export type StudioExactMathFeatureEvent = {
+    key: string;
+    weightedFrequency: number;
+    outcomeCount: number;
+};
+
 // Mirrors cli/studio/exact/StudioExactMathView.ts. The analysis is the same exact
 // WeightedOutcomeLibraryAnalysis embedded in an Outcome Library's own mode index.
 export type StudioExactMathView =
@@ -1668,6 +1676,10 @@ export type StudioExactMathView =
           analysis: import("../../../../src/weightedoutcome/WeightedOutcomeLibraryAnalysis.js").WeightedOutcomeLibraryAnalysis;
           contributions: {line: StudioExactMathContributionTable; symbol: StudioExactMathContributionTable};
           events: StudioExactMathEventTable;
+          featureEvents?: StudioExactMathFeatureEvent[];
+          featurePayoutsIncluded?: boolean;
+          freeGamesRtp?: import("../../../../src/weightedoutcome/computeFreeGamesExactRtp.js").FreeGamesExactRtp;
+          featureNote?: string;
           contributionNote?: string;
           eventNote?: string;
       }
@@ -1684,6 +1696,8 @@ export type StudioBlueprintMathPreviewView =
           totalWeight: number;
           stake: number;
           analysis: import("../../../../src/weightedoutcome/WeightedOutcomeLibraryAnalysis.js").WeightedOutcomeLibraryAnalysis;
+          featureBreakdown: import("../../../../src/weightedoutcome/WeightedOutcomeLibraryFeatureBreakdown.js").WeightedOutcomeLibraryFeatureBreakdown;
+          freeGamesRtp: import("../../../../src/weightedoutcome/computeFreeGamesExactRtp.js").FreeGamesExactRtp;
           generatedAt: string;
           maxOutcomes: number;
           note?: string;

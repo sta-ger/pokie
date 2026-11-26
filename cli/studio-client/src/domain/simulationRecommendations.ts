@@ -19,8 +19,32 @@ export function roundsForRtpHalfWidth(
     return Math.ceil(rounds * (observedHalfWidth / targetHalfWidth) ** 2);
 }
 
+// Planning estimate from a *known* per-round standard deviation (the exact-math analysis) rather than
+// from an observed report. Uses the same normal approximation as the report's own 95% interval, so the
+// number is an order-of-magnitude budget, not a promise; feature variance can require more.
+export function paidRoundsForRtpHalfWidthFromSigma(sigma: number, targetHalfWidth: number): number | undefined {
+    if (!Number.isFinite(sigma) || sigma <= 0) return undefined;
+    if (!Number.isFinite(targetHalfWidth) || targetHalfWidth <= 0) return undefined;
+    return Math.ceil((1.96 * sigma / targetHalfWidth) ** 2);
+}
+
+// A paid round can expand into several plays when free spins are involved. The confidence interval is
+// computed over completed paid rounds, while the simulation budget is expressed in plays, so a
+// planning hint must translate one into the other or it understates the required request.
+export function requestedPlaysForRtpHalfWidth(
+    paidRounds: number,
+    acceptedPlays: number,
+    interval: {low: number; high: number},
+    targetHalfWidth: number,
+): number | undefined {
+    if (!Number.isFinite(acceptedPlays) || acceptedPlays <= 0) return undefined;
+    const requiredPaidRounds = roundsForRtpHalfWidth(paidRounds, interval, targetHalfWidth);
+    if (requiredPaidRounds === undefined) return undefined;
+    return Math.ceil((requiredPaidRounds * acceptedPlays) / paidRounds);
+}
+
 // The estimate is a planning aid, not a promise: keep three significant digits rather than echoing
-// a floating-point floor as if the exact required round count were known.
+// a floating-point floor as if the exact required count were known.
 export function formatRoundsEstimate(rounds: number): string {
     return rounds.toLocaleString("en-US", {maximumSignificantDigits: 3});
 }
@@ -30,7 +54,7 @@ export function describeStudioSimulationRecommendation(recommendation: string): 
         return "Set a seed under Advanced details before running to make this simulation reproducible.";
     }
     if (recommendation.startsWith("Increase --rounds")) {
-        return recommendation.replace("Increase --rounds", "Increase Rounds");
+        return recommendation.replace("Increase --rounds", "Increase Plays");
     }
     if (recommendation.startsWith('Use "pokie diff"')) {
         return "Use Compare with another run to compare this report against another saved run after changing the game's math.";

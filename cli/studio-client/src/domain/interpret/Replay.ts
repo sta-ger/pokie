@@ -15,6 +15,13 @@ import type {
 // consume these instead of branching on the raw job/list shapes themselves, and (being pure) these are
 // unit-testable without a real DOM/jsdom.
 
+// Session records deliberately carry `seed: null` when Play was started without an explicit seed.
+// Normalize every seed/mode read through this guard instead of calling `.trim()` on a nullable DTO
+// field: a missing seed is an expected state, not a crash in the inspect/replay path.
+function hasText(value: string | null | undefined): value is string {
+    return typeof value === "string" && value.trim().length > 0;
+}
+
 export type ReplayProgressView = {
     /** Undefined only during the local queued state before Studio receives a durable job id. */
     jobId?: string;
@@ -214,6 +221,9 @@ export type ReplayComparisonView = {
     // "mismatch": at least one available dimension didn't match.
     status: "match" | "mismatch" | "partial" | "unavailable";
     unavailableReason?: string;
+    /** True when the shared audit verifier confirmed the complete operation; a partial status then only
+     * means an optional side snapshot (public session state, RNG trace) was unavailable to compare. */
+    auditVerified?: boolean;
     dimensions: ReplayComparisonDimensions;
     // The recorded/reference side (a stored replay job or a pasted/selected artifact) and the recreated
     // side (the fresh forward replay just run against it) — always populated, even when `status` is
@@ -230,7 +240,7 @@ export type ReplayComparisonView = {
 export type ComparableReplayResult = {
     recording?: ReplayDescriptor;
     outcomeSource?: OutcomeSourceReplayDescriptorView;
-    seed?: string;
+    seed?: string | null;
     round?: number;
     modeName?: string;
     artifact?: RoundRecord & {readonly hash?: string};
@@ -279,7 +289,7 @@ function describeComparisonSide(role: "recorded" | "recreated", side: Comparable
 
     let completeness: string;
     if (side.artifactWarnings && side.artifactWarnings.length > 0) {
-        completeness = `Incomplete -- artifact is malformed: ${side.artifactWarnings.join(" ")}`;
+        completeness = `Incomplete -- round record is malformed: ${side.artifactWarnings.join(" ")}`;
     } else if (side.artifact === undefined) {
         completeness = "Minimal -- no round record recorded for this side.";
     } else if (side.outcomeSource !== undefined) {
@@ -320,11 +330,26 @@ export function describeReplayComparison(expected: ComparableReplayResult, repro
         const verified = reproduced.recording?.auditStatus === "verified" && reproduced.recording.audit?.hash === expected.recording.audit.hash;
         const complete = reproduced.recording?.auditCompletion === "completed";
         const reason = verified && !complete ? `Verified executable prefix; operation remains ${reproduced.recording?.auditCompletion}.` : "Shared audit verifier has not verified this recording.";
-        return {status: verified && complete ? "match" : "unavailable", ...(verified && complete ? {} : {unavailableReason: reason}),
-            dimensions: verified ? {screen: {status: "match"}, wins: {status: "match"}, totalPayout: {status: "match"}, steps: {status: "match"}, featureEvents: {status: "match"}, state: {status: "match"}, rngReelStops: {status: "match"}} : unavailableDimensions(reason), recorded, recreated};
+        if (!verified || !complete) {
+            return {status: "unavailable", unavailableReason: reason,
+                dimensions: unavailableDimensions(reason), recorded, recreated};
+        }
+        // The audit verifier establishes the recorded operation, but it does not by itself capture the
+        // public before/after session snapshots. If either side lacks them, the comparison is incomplete
+        // rather than a blanket "Match" -- the same honesty the completeness row already shows.
+        const state = compareStatePair(expected.stateBefore, expected.stateAfter, reproduced.stateBefore, reproduced.stateAfter);
+        const dimensions: ReplayComparisonDimensions = {
+            screen: {status: "match"}, wins: {status: "match"}, totalPayout: {status: "match"},
+            steps: {status: "match"}, featureEvents: {status: "match"}, state,
+            rngReelStops: {status: "match"},
+        };
+        let status: ReplayComparisonView["status"] = "match";
+        if (state.status === "mismatch") status = "mismatch";
+        else if (state.status === "unavailable") status = "partial";
+        return {status, dimensions, recorded, recreated, auditVerified: true};
     }
     if (expected.artifactWarnings && expected.artifactWarnings.length > 0) {
-        const unavailableReason = `Replay succeeded, but the expected artifact is malformed, so deterministic comparison is unavailable: ${expected.artifactWarnings.join(" ")}`;
+        const unavailableReason = `Replay succeeded, but the expected round record is malformed, so deterministic comparison is unavailable: ${expected.artifactWarnings.join(" ")}`;
         return {status: "unavailable", unavailableReason, dimensions: unavailableDimensions(unavailableReason), recorded, recreated};
     }
     if (!isDebugObject(expected.artifact) || !isDebugObject(reproduced.artifact)) {
@@ -346,7 +371,7 @@ export function describeReplayComparison(expected: ComparableReplayResult, repro
             a === b ? undefined : `Total payout differs (expected ${a}, got ${b}).`,
         ),
         steps: compareDimension(expectedArtifact.steps, reproducedArtifact.steps, Array.isArray, (a, b) =>
-            deepEqualJson(a, b) ? undefined : "Round steps differ.",
+            deepEqualJson(a, b) ? undefined : "Round screens differ.",
         ),
         featureEvents: compareDimension(expectedArtifact.featureEvents ?? [], reproducedArtifact.featureEvents ?? [], Array.isArray, (a, b) =>
             deepEqualJson(a, b) ? undefined : "Feature events differ.",
@@ -578,7 +603,7 @@ export function describeReplayReproducibility(
             ? {status: "blocked", reason: "Selected package differs from recorded audit identity.", remediation: "Open the compatible original package."}
             : {status: "ready"};
     }
-    if (expected.seed === undefined || expected.seed.trim().length === 0) {
+    if (!hasText(expected.seed)) {
         return {
             status: "blocked",
             reason:
@@ -591,7 +616,7 @@ export function describeReplayReproducibility(
     if (expected.outcomeSource !== undefined) {
         const issue = describeLibraryRecordIssue(expected);
         if (issue) {
-            return {status: "blocked", reason: issue, remediation: "Load the original download or Recent replay with complete library provenance."};
+            return {status: "blocked", reason: issue, remediation: "Load the original download or Recent replay with complete library origin."};
         }
         const game = expected.outcomeSource.game!;
         if (currentGame && (game.id !== currentGame.id || game.version !== currentGame.version)) {
@@ -624,7 +649,7 @@ export function describeReplayReproducibility(
             return {
                 status: "blocked",
                 reason:
-                    'This round\'s round record has no recorded session state ("stateBefore"/"stateAfter" immediately around the round), so a fresh reproduction\'s own state transition can\'t be verified against it — likely an incomplete or hand-trimmed record.',
+                    'This round\'s round record has no recorded session state ("stateBefore"/"stateAfter" immediately around the round), so a fresh reproduction\'s own session state can\'t be verified against it — likely an incomplete or hand-trimmed record.',
                 remediation:
                     'Add "stateBefore" and "stateAfter" fields (captured alongside the original round) to the pasted round-record JSON before reproducing, or use it for inspection only (skip Reproduce and go straight to Inspect).',
             };
@@ -712,10 +737,10 @@ export function describeReplayEntryLabel(entry: StudioReplayListEntry): string {
         parts.push(`Library ${entry.outcomeSource.libraryId} (${entry.outcomeSource.libraryHash})`);
         parts.push(`Outcome ${entry.outcomeSource.outcomeId}`);
     } else if (entry.source === "outcome-source-sample") {
-        parts.push("Outcome Library");
+        parts.push("Outcome table");
     }
-    if (entry.seed !== undefined && entry.seed.trim().length > 0) parts.push(`Seed ${entry.seed}`);
-    if (entry.modeName !== undefined && entry.modeName.trim().length > 0) parts.push(`Mode ${entry.modeName}`);
+    if (hasText(entry.seed)) parts.push(`Seed ${entry.seed}`);
+    if (hasText(entry.modeName)) parts.push(`Mode ${entry.modeName}`);
     parts.push(entry.startedAt, `Record ${entry.id}`);
     return parts.join(" · ");
 }
@@ -728,23 +753,23 @@ export function describeReplayEntryLabel(entry: StudioReplayListEntry): string {
 // this is deliberately only the one check the list itself can answer -- the full gate still applies
 // once a record is actually loaded (see the "artifact" source's own reproducibility check).
 export function isReplayListEntryReproducible(entry: StudioReplayListEntry): boolean {
-    return entry.seed !== undefined && entry.seed.trim().length > 0;
+    return hasText(entry.seed);
 }
 
 // Requirement (Replay capabilities/degraded mode): every loaded replay, regardless of source, is judged
-// against the same four questions -- can it be inspected, reproduced, compared against a known-good
-// result, and exported -- each with its own honest availability and reason, rather than one page
-// silently omitting an action another page would offer for the same kind of round. "bestEffort" sits
-// between "available" and "unavailable": the capability is offered, but its result is explicitly not
-// verifiable (currently only ever Reproducible, when an artifact is missing its RNG/reel-stop trace —
-// see describeReplayReproducibility's own "bestEffort" status).
-export type ReplayCapabilityStatus = "available" | "bestEffort" | "unavailable";
+// against the same questions -- can it be inspected, can its captured audit be replayed, can a fresh
+// seed replay reproduce it, can it be compared against a known-good result, and can it be exported -- each
+// with its own honest availability and reason. Audit replay and seed replay are deliberately separate:
+// a recorded audit can be replayed exactly without a seed, while a seeded forward replay is a different
+// guarantee and may be unavailable when the original seed was never recorded.
+export type ReplayCapabilityStatus = "available" | "bestEffort" | "unavailable" | "mismatch";
 
 export type ReplayCapability = {status: ReplayCapabilityStatus; reason: string};
 
 export type ReplayCapabilitiesView = {
     inspectable: ReplayCapability;
-    reproducible: ReplayCapability;
+    auditReplay: ReplayCapability;
+    seedReplay: ReplayCapability;
     comparable: ReplayCapability;
     exportable: ReplayCapability;
 };
@@ -759,16 +784,18 @@ export function describeReplayCapabilities(input: {
     // Only ever meaningful for "artifact" -- the other three sources have no prior-recorded-artifact
     // gate to check (see describeReplayReproducibility's own doc comment).
     reproducibility?: ReplayReproducibilityGate;
-    // A recorded audit replays its exact captured commands; it does not need a seed, so its "ready"
-    // explanation must not claim a seeded forward replay.
+    // A recorded audit replays its exact captured commands; it does not need a seed.
     auditRecording?: boolean;
+    // The seed carried by the loaded record, if any. Used only to describe seed replay honestly.
+    seed?: string | null;
     hasComparisonTarget: boolean;
     comparison?: ReplayComparisonView;
     canExport: boolean;
 }): ReplayCapabilitiesView {
     return {
         inspectable: describeInspectableCapability(input.hasResult),
-        reproducible: describeReproducibleCapability(input.source, input.reproducibility, input.auditRecording),
+        auditReplay: describeAuditReplayCapability(input.source, input.auditRecording),
+        seedReplay: describeSeedReplayCapability(input.source, input.seed, input.reproducibility),
         comparable: describeComparableCapability(input.source, input.hasComparisonTarget, input.comparison),
         exportable: describeExportableCapability(input.canExport),
     };
@@ -780,29 +807,44 @@ function describeInspectableCapability(hasResult: boolean): ReplayCapability {
         : {status: "unavailable", reason: "Nothing loaded yet -- reproduce this round first to inspect its result."};
 }
 
-function describeReproducibleCapability(
+function describeAuditReplayCapability(
     source: "seedRound" | "artifact" | "spin" | "simulation",
-    reproducibility: ReplayReproducibilityGate | undefined,
     auditRecording?: boolean,
 ): ReplayCapability {
     if (source === "spin") {
-        return {status: "unavailable", reason: "This is a live spin's actual recorded result -- there's nothing to reproduce it against."};
+        return auditRecording
+            ? {status: "available", reason: "Load the recorded audit round for replay."}
+            : {status: "unavailable", reason: "No audit recording was captured for this spin."};
+    }
+    if (source !== "artifact") {
+        return {status: "unavailable", reason: "This is a fresh forward replay; it has no captured audit commands."};
+    }
+    return auditRecording
+        ? {status: "available", reason: "Replays the recorded audit commands exactly; no seed is needed."}
+        : {status: "unavailable", reason: "No captured audit commands on this record; use seed replay instead."};
+}
+
+function describeSeedReplayCapability(
+    source: "seedRound" | "artifact" | "spin" | "simulation",
+    seed: string | null | undefined,
+    reproducibility: ReplayReproducibilityGate | undefined,
+): ReplayCapability {
+    if (source === "spin") {
+        return {status: "unavailable", reason: "A live spin is inspected as recorded; the Play tab starts a new session for the next spin."};
     }
     if (source !== "artifact") {
         return {status: "available", reason: "Ready -- plays a fresh session forward from round 1 using the configured seed."};
     }
-    if (reproducibility === undefined || reproducibility.status === "ready") {
-        return {
-            status: "available",
-            reason: auditRecording
-                ? "Ready -- replays the recorded audit commands exactly; no seed is needed."
-                : "Ready -- plays a fresh session forward from round 1 using the recorded seed.",
-        };
+    if (reproducibility !== undefined && reproducibility.status === "blocked") {
+        return {status: "unavailable", reason: reproducibility.reason};
     }
-    if (reproducibility.status === "bestEffort") {
+    if (!hasText(seed)) {
+        return {status: "unavailable", reason: "No seed was recorded for this round; only the audit replay is available."};
+    }
+    if (reproducibility?.status === "bestEffort") {
         return {status: "bestEffort", reason: reproducibility.reason};
     }
-    return {status: "unavailable", reason: reproducibility.reason};
+    return {status: "available", reason: "Ready -- plays a fresh session forward from round 1 using the recorded seed."};
 }
 
 function describeComparableCapability(
@@ -823,12 +865,14 @@ function describeComparableCapability(
         return {status: "unavailable", reason: comparison.unavailableReason ?? "Verification unavailable."};
     }
     if (comparison.status === "partial") {
-        return {status: "bestEffort", reason: "Partially verified -- at least one dimension was unavailable to compare."};
+        return {status: "bestEffort", reason: comparison.auditVerified === true
+            ? "Audit verified -- the complete operation reproduced; only an optional side snapshot could not be compared."
+            : "Partially verified -- at least one dimension was unavailable to compare."};
     }
-    return {
-        status: "available",
-        reason: comparison.status === "match" ? "Verified -- matches the recorded result." : "Verified -- differs from the recorded result.",
-    };
+    if (comparison.status === "mismatch") {
+        return {status: "mismatch", reason: "Compared -- differs from the recorded result."};
+    }
+    return {status: "available", reason: "Verified -- matches the recorded result."};
 }
 
 function describeExportableCapability(canExport: boolean): ReplayCapability {
@@ -838,7 +882,7 @@ function describeExportableCapability(canExport: boolean): ReplayCapability {
 }
 
 // The Loaded replay card's own view model: every source (Recreate from seed / Replay Artifact / Session
-// Spin / Recent Simulation) renders the exact same six-field summary plus the four capabilities above,
+// Spin / Recent Simulation) renders the exact same six-field summary plus the capabilities above,
 // rather than each inventing its own ad hoc subset -- what differs between sources is only how each
 // field is derived, which is what the source-specific `describeLoaded*` functions below compute.
 export type LoadedReplayCardView = {
@@ -886,7 +930,7 @@ export function describeLoadedReplay(input: LoadedReplayInput): LoadedReplayCard
 function describeLoadedSpin(spin: StudioRuntimeSessionView, canExport: boolean): LoadedReplayCardView {
     const identityParts = [`session ${spin.sessionId}`];
     if (spin.studioRound !== undefined) {
-        identityParts.push(`round ${spin.studioRound}`);
+        identityParts.push(`spin ${spin.studioRound}`);
     }
     if (spin.studioRequestId) {
         identityParts.push(`request ${spin.studioRequestId}`);
@@ -896,10 +940,10 @@ function describeLoadedSpin(spin: StudioRuntimeSessionView, canExport: boolean):
     }
     const hasDebugBundle = spin.debug?.debugData !== undefined || spin.debug?.stateBefore !== undefined || spin.debug?.stateAfter !== undefined;
     let completeness: string;
-    if (spin.debug?.recording?.audit) completeness = "Full audit export -- executable inputs, commands, round records and results are saved separately from this visible display.";
+    if (spin.debug?.recording?.audit) completeness = "Full audit capture -- the original operation, its inputs, round record and result are retained separately from this display.";
     else if (spin.debug?.auditUnavailableReason) completeness = `Audit unavailable -- ${spin.debug.auditUnavailableReason}`;
     else if (spin.debug?.artifact !== undefined) {
-        completeness = "Full -- a complete round record (screen, wins, steps, debug) plus state was captured for this spin.";
+        completeness = "Full -- a complete round record (screens, wins, features, debug) plus state was captured for this spin.";
     } else if (spin.debug?.artifactUnavailableReason !== undefined) {
         completeness = `Partial -- debug data was captured, but no round record could be built for this game: ${spin.debug.artifactUnavailableReason}`;
     } else if (hasDebugBundle) {
@@ -909,6 +953,17 @@ function describeLoadedSpin(spin: StudioRuntimeSessionView, canExport: boolean):
     } else {
         completeness = "Minimal -- no screen or debug data was captured for this spin.";
     }
+    const capabilities = describeReplayCapabilities({
+        source: "spin",
+        hasResult: true,
+        auditRecording: spin.debug?.recording?.audit !== undefined,
+        seed: spin.studioSeed !== undefined ? String(spin.studioSeed) : undefined,
+        hasComparisonTarget: false,
+        canExport,
+    });
+    if (spin.debug?.auditUnavailableReason !== undefined) {
+        capabilities.auditReplay = {status: "unavailable", reason: spin.debug.auditUnavailableReason};
+    }
     return {
         source: `Recorded -- ${describeStudioRoundSourceForCard(spin.studioSource, spin.studioOperation)}`,
         identities: identityParts.join(", "),
@@ -916,9 +971,7 @@ function describeLoadedSpin(spin: StudioRuntimeSessionView, canExport: boolean):
         versionHash: `${spin.game.id} v${spin.game.version}`,
         timestamp: spin.studioRecordedAt ? new Date(spin.studioRecordedAt).toLocaleString() : "(unknown)",
         completeness,
-        capabilities: {...describeReplayCapabilities({source: "spin", hasResult: true, hasComparisonTarget: false, canExport}),
-            ...(spin.debug?.recording?.audit ? {reproducible: {status: "available" as const, reason: "Load the recorded audit round for replay."}} : {}),
-            ...(spin.debug?.auditUnavailableReason ? {reproducible: {status: "unavailable" as const, reason: spin.debug.auditUnavailableReason}} : {})},
+        capabilities,
     };
 }
 
@@ -963,11 +1016,11 @@ export function describeStudioRoundSource(source: StudioRuntimeSessionView["stud
         case "live":
             return "Live spin";
         case "pre-generated":
-            return "Pre-generated outcome library";
+            return "Pre-generated outcome table";
         case "play":
             return "Play tab";
         case "play-outcome-source":
-            return "Play tab -- outcome library draw";
+            return "Play tab -- outcome table draw";
         case "outcome-source-sample":
             return "Outcome Source Analysis sample";
         case "simulation-sample":
@@ -1050,6 +1103,7 @@ function describeLoadedArtifact(
             hasResult: true,
             reproducibility,
             auditRecording: expected.recording?.audit !== undefined,
+            seed: expected.seed,
             hasComparisonTarget: expected.artifact !== undefined,
             comparison,
             canExport,
@@ -1077,9 +1131,9 @@ function describeLoadedFreshReplay(
     if (!result) {
         completeness = "Not yet run -- reproduce this round to generate a result.";
     } else if (result.artifact) {
-        completeness = "Full -- round record captured (screen, wins, steps, debug).";
+        completeness = "Full -- round record captured (screens, wins, features, debug).";
     } else {
-        completeness = "Partial -- round-level result only, no per-step round record for this game.";
+        completeness = "Partial -- round-level result only, no per-screen round record for this game.";
     }
     return {
         source: source === "seedRound" ? "Recreated -- recreate from seed" : "Recreated -- recent simulation",
@@ -1088,6 +1142,12 @@ function describeLoadedFreshReplay(
         versionHash: versionHashParts.length > 0 ? versionHashParts.join(", ") : "(unknown)",
         timestamp: result ? new Date(result.timestamp).toLocaleString() : "(not yet reproduced)",
         completeness,
-        capabilities: describeReplayCapabilities({source, hasResult: result !== undefined, hasComparisonTarget: false, canExport}),
+        capabilities: describeReplayCapabilities({
+            source,
+            hasResult: result !== undefined,
+            seed: result ? result.seed ?? undefined : target.seed,
+            hasComparisonTarget: false,
+            canExport,
+        }),
     };
 }

@@ -2,14 +2,16 @@ import {Alert, Anchor, Button, Collapse, Group, List, NumberInput, Progress, Sel
 import {useForm} from "@mantine/form";
 import {useDisclosure} from "@mantine/hooks";
 import {useEffect, useLayoutEffect, useRef, useState} from "react";
-import {getExactMath} from "../../api/apiClient";
-import type {StudioExactMathView, StudioSimulationReportListEntry} from "../../api/types";
+import {getExactMath, getGameModel} from "../../api/apiClient";
+import type {GameModelProjection, StudioExactMathView, StudioSimulationReportListEntry} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
-import {describeDesignCompatibility, describeReportListEntry, shortSourceRevision, type ReportListView} from "../../domain/interpret/Reports";
+import {describeDesignCompatibility, describeReportListEntry, describeRunDesignState, shortSourceRevision, type ReportListView} from "../../domain/interpret/Reports";
 import {formatConfidenceInterval} from "../../domain/interpret/formatConfidenceInterval";
-import type {SimulationProgressView, SimulationReportView} from "../../domain/interpret/Simulation";
+import {simulationScopeSuffix, type SimulationProgressView, type SimulationReportView, type SingleSimulationReportView} from "../../domain/interpret/Simulation";
 import {describeProjectActionError} from "../../domain/projectActionError";
 import {getSimulationRoundsError, MAX_STUDIO_SIMULATION_ROUNDS} from "../../domain/simulationRounds";
+import {buildSimulationConvergence, getSimulationPrecisionError} from "../../domain/simulationConvergence";
+import {formatRoundsEstimate, paidRoundsForRtpHalfWidthFromSigma} from "../../domain/simulationRecommendations";
 import {generateSimulationSeed} from "../../domain/simulationSeed";
 import {useConfirm} from "../../hooks/useConfirm";
 import type {SimulationTerminalReceipt} from "../../hooks/useSimulationPoll";
@@ -30,14 +32,20 @@ export type ReportDetailState =
     | {status: "error"; message: string}
     | {status: "loaded"; report: SimulationReportView; sourceRevision?: string};
 
-// Matches SimulationReportBuilder.LOW_ROUNDS_WARNING_THRESHOLD (src/reporting/SimulationReportBuilder.ts)
-// so the out-of-the-box default never itself trips the "requested rounds is low" warning/recommendation.
-const DEFAULT_ROUNDS = 10000;
+// A first look, not a precision run: 100,000 spins is large enough to avoid the low-rounds warning
+// and to give a useful RTP interval on the starter, while Target precision remains the explicit
+// path to a ±1 pp (or tighter) answer. SimulationReportBuilder.LOW_ROUNDS_WARNING_THRESHOLD is 10,000.
+const DEFAULT_ROUNDS = 100000;
 const RECENT_RUNS_PAGE_SIZE = 50;
 
 function defaultWorkers(): number {
     const cores = typeof navigator === "undefined" ? 2 : navigator.hardwareConcurrency;
     return Number.isFinite(cores) ? Math.max(1, Math.min(4, Math.floor(cores) - 1 || 1)) : 1;
+}
+
+function precisionInputNumber(value: number | string): number | undefined {
+    if (typeof value === "number") return value;
+    return value === "" ? undefined : Number(value);
 }
 
 type FormValues = {rounds: number; seed: string; workers: number; modeName: string};
@@ -56,14 +64,15 @@ function SimulationComparisonSummary({current, comparison}: {current: Simulation
     if ("modes" in current || "modes" in comparison) {
         return <Text size="sm" c="dimmed">Mode-set reports are compared per mode below.</Text>;
     }
+    const scopeSuffix = simulationScopeSuffix(current) || simulationScopeSuffix(comparison);
     const rows = [
-        {label: "RTP", current: current.rtp * 100, comparison: comparison.rtp * 100, digits: 2, suffix: "%", unit: "pp", deltaDigits: 2},
-        {label: "Hit frequency", current: current.hitFrequency * 100, comparison: comparison.hitFrequency * 100, digits: 2, suffix: "%", unit: "pp", deltaDigits: 2},
+        {label: `RTP${scopeSuffix}`, current: current.rtp * 100, comparison: comparison.rtp * 100, digits: 2, suffix: "%", unit: "pp", deltaDigits: 2},
+        {label: `Hit frequency${scopeSuffix}`, current: current.hitFrequency * 100, comparison: comparison.hitFrequency * 100, digits: 2, suffix: "%", unit: "pp", deltaDigits: 2},
         ...(current.volatility === undefined || comparison.volatility === undefined ? [] : [
-            {label: "Volatility (std. deviation)", current: current.volatility, comparison: comparison.volatility, digits: 2, suffix: "", unit: "", deltaDigits: 2},
+            {label: `Volatility (std. deviation, bet units)${scopeSuffix}`, current: current.volatility, comparison: comparison.volatility, digits: 2, suffix: "", unit: "", deltaDigits: 2},
         ]),
-        {label: "Max win (× bet)", current: current.maxWin, comparison: comparison.maxWin, digits: 2, suffix: "×", unit: "×", deltaDigits: 2},
-        {label: "Rounds", current: current.rounds, comparison: comparison.rounds, digits: 0, suffix: "", unit: " rounds", deltaDigits: 0},
+        {label: `Largest observed win (× bet)${scopeSuffix}`, current: current.maxWin, comparison: comparison.maxWin, digits: 2, suffix: "×", unit: "×", deltaDigits: 2},
+        {label: "Paid rounds", current: current.rounds, comparison: comparison.rounds, digits: 0, suffix: "", unit: " paid rounds", deltaDigits: 0},
     ];
     return (
         <Table withRowBorders={false} mt="sm" aria-label="Simulation comparison metrics">
@@ -86,6 +95,240 @@ function SimulationComparisonSummary({current, comparison}: {current: Simulation
                 ))}
             </Table.Tbody>
         </Table>
+    );
+}
+
+type ExactReferenceView = {
+    report: SingleSimulationReportView;
+    analysis: Extract<StudioExactMathView, {status: "ok"}>["analysis"];
+    featurePayoutsIncluded?: boolean;
+    freeGamesRtp?: {totalRtp: number; baseRtp: number; featureRtp: number};
+    baseComponent?: {rtp: number; hitFrequency: number};
+    featureContribution?: number;
+    deltaPp: number;
+    interval?: {low: number; high: number};
+    intervalContainsExact?: boolean;
+    outcomes: number;
+};
+
+// The exact library is a paid-spin enumeration. A free-game trigger is recorded there, but the later
+// free-game wins are not; comparing that number with the sample's *total* RTP would wrongly accuse the
+// sample of being off by hundreds of percentage points. Keep the comparison honest by using the
+// sample's base-game partition when one exists, and never call a paid-spin number total RTP.
+function ExactReferencePanel({reference}: {reference: ExactReferenceView}) {
+    if (reference.freeGamesRtp !== undefined) {
+        const total = reference.freeGamesRtp;
+        const deltaPp = (reference.report.rtp - total.totalRtp) * 100;
+        const intervalContainsExact = reference.interval === undefined
+            ? undefined
+            : reference.interval.low <= total.totalRtp && total.totalRtp <= reference.interval.high;
+        return (
+            <Alert color={intervalContainsExact === false ? "yellow" : "blue"} title="Exact math reference (paid + free games)" mt="sm" role="status">
+                <Text size="sm">
+                    Exact total RTP: <strong>{(total.totalRtp * 100).toFixed(4)}%</strong> ={" "}
+                    {(total.baseRtp * 100).toFixed(4)}% paid-spin + {(total.featureRtp * 100).toFixed(4)}% free games, from{" "}
+                    {reference.outcomes.toLocaleString("en-US")} enumerated paid-spin outcomes. This{" "}
+                    {reference.report.rounds.toLocaleString("en-US")} paid-round sample differs by{" "}
+                    <strong>{signed(deltaPp, 2, " pp")}</strong> total RTP.
+                </Text>
+                <Text size="sm" mt={4}>
+                    {reference.baseComponent === undefined
+                        ? `Paid-spin exact hit frequency is ${(reference.analysis.hitFrequency * 100).toFixed(4)}%; the sample's hit frequency ${(reference.report.hitFrequency * 100).toFixed(2)}% is whole-game, so the two are not a like-for-like comparison.`
+                        : `Base-game hit frequency: exact paid-spin ${(reference.analysis.hitFrequency * 100).toFixed(4)}% vs sample base-game ${(reference.baseComponent.hitFrequency * 100).toFixed(2)}% (Δ ${signed((reference.baseComponent.hitFrequency - reference.analysis.hitFrequency) * 100, 2, " pp")}). The sample's total hit frequency ${(reference.report.hitFrequency * 100).toFixed(2)}% is whole-game and not directly comparable.`}
+                </Text>
+                <Text size="sm" mt={4}>
+                    {reference.interval === undefined
+                        ? "This report has no RTP confidence interval to compare with the exact total."
+                        : `The sample's 95% RTP interval is ${formatConfidenceInterval(reference.interval)}; it ${intervalContainsExact ? "contains" : "does not contain"} the exact total RTP.`}
+                </Text>
+                <Text size="xs" c="dimmed" mt={4}>
+                    Free-games total uses the exact paid-spin trigger distribution plus additive retriggers. Simulation remains an estimate; use the full report for sampling caveats.
+                </Text>
+                <Text size="xs" c="dimmed" mt={4}>
+                    Exact volatility is paid-spin only ({reference.analysis.standardDeviation.toFixed(4)}). The sample&apos;s volatility and largest observed win are whole paid rounds, including free games, so they can be larger.
+                </Text>
+            </Alert>
+        );
+    }
+    if (reference.featurePayoutsIncluded === false) {
+        return (
+            <Alert color="yellow" title="Paid-spin exact reference" mt="sm" role="status">
+                <Text size="sm">
+                    Exact for paid entry spins: RTP <strong>{(reference.analysis.rtp * 100).toFixed(4)}%</strong>,
+                    hit frequency <strong>{(reference.analysis.hitFrequency * 100).toFixed(4)}%</strong> from{" "}
+                    {reference.outcomes.toLocaleString("en-US")} enumerated outcomes.
+                </Text>
+                {reference.baseComponent !== undefined ? (
+                    <Text size="sm" mt={4}>
+                        This sample&apos;s base-game partition is RTP{" "}
+                        <strong>{(reference.baseComponent.rtp * 100).toFixed(4)}%</strong>{" "}
+                        (Δ <strong>{signed((reference.baseComponent.rtp - reference.analysis.rtp) * 100, 2, " pp")}</strong>).
+                        The total sample RTP is <strong>{(reference.report.rtp * 100).toFixed(2)}%</strong>
+                        {reference.featureContribution === undefined
+                            ? ""
+                            : `, including ${(reference.featureContribution * 100).toFixed(2)} pp from feature games`}.
+                        {" "}Base-game hit frequency: sample <strong>{(reference.baseComponent.hitFrequency * 100).toFixed(2)}%</strong> vs
+                        exact paid-spin <strong>{(reference.analysis.hitFrequency * 100).toFixed(4)}%</strong>.
+                    </Text>
+                ) : (
+                    <Text size="sm" mt={4}>
+                        This sample&apos;s total RTP includes feature games; this report has no base-game partition for a like-for-like comparison.
+                    </Text>
+                )}
+                <Text size="xs" c="dimmed" mt={4}>
+                    Exact math does not include feature payouts, so it is a paid-spin reference, not a total-RTP reference.
+                    Use Simulation for total RTP.
+                </Text>
+            </Alert>
+        );
+    }
+    if (reference.featurePayoutsIncluded === undefined) {
+        return (
+            <Alert color="yellow" title="Exact scope not inspected" mt="sm" role="status">
+                <Text size="sm">
+                    Exact for paid entry spins: RTP <strong>{(reference.analysis.rtp * 100).toFixed(4)}%</strong>,
+                    hit frequency <strong>{(reference.analysis.hitFrequency * 100).toFixed(4)}%</strong> from{" "}
+                    {reference.outcomes.toLocaleString("en-US")} enumerated outcomes. This library is too large
+                    to inspect feature triggers here; if the design has feature payouts, exact math covers paid spins only.
+                </Text>
+            </Alert>
+        );
+    }
+    return (
+        <Alert
+            color={reference.intervalContainsExact === false ? "yellow" : "blue"}
+            title="Exact math reference"
+            mt="sm"
+            role="status"
+        >
+            <Text size="sm">
+                Exact for this saved design: RTP <strong>{(reference.analysis.rtp * 100).toFixed(4)}%</strong>,
+                hit frequency <strong>{(reference.analysis.hitFrequency * 100).toFixed(4)}%</strong> from{" "}
+                {reference.outcomes.toLocaleString("en-US")} enumerated outcomes. This{" "}
+                {reference.report.rounds.toLocaleString("en-US")} paid-round sample differs by{" "}
+                <strong>{signed(reference.deltaPp, 2, " pp")}</strong> RTP and{" "}
+                <strong>{signed((reference.report.hitFrequency - reference.analysis.hitFrequency) * 100, 2, " pp")}</strong> hit frequency.
+            </Text>
+            <Text size="sm" mt={4}>
+                {reference.interval === undefined
+                    ? "This report has no RTP confidence interval to compare with the exact value."
+                    : `The sample's 95% RTP interval is ${formatConfidenceInterval(reference.interval)}; it ${reference.intervalContainsExact ? "contains" : "does not contain"} the exact RTP.`}
+            </Text>
+            <Text size="xs" c="dimmed" mt={4}>
+                Exact math is the reference; simulation is an estimate. Use the full report for sampling caveats.
+            </Text>
+        </Alert>
+    );
+}
+
+function GenericFeatureBudgetHint() {
+    return (
+        <Alert color="yellow" variant="light" title="Feature-games simulation budget" mt="sm">
+            <Text size="sm">
+                This game has feature payouts that settle after the paid spin. Exact math covers paid spins only, so the
+                100,000-spin default is a first look, not a precision total-RTP run. Increase the spin budget and use the report&apos;s
+                interval and exact reference.
+            </Text>
+        </Alert>
+    );
+}
+
+function FeatureSimulationBudgetHint({view, hasAuthoredFeatures}: {view?: Extract<StudioExactMathView, {status: "ok"}>; hasAuthoredFeatures: boolean}) {
+    if (view === undefined) return hasAuthoredFeatures ? <GenericFeatureBudgetHint /> : null;
+    const freeGames = view.freeGamesRtp?.status === "available" ? view.freeGamesRtp : undefined;
+    if (freeGames !== undefined) {
+        const playsPerPaidRound = 1 + freeGames.triggerProbability * freeGames.expectedFreeSpins;
+        const sigma = view.analysis.standardDeviation;
+        const paidRounds = Number.isFinite(sigma) && sigma > 0 ? Math.ceil((1.96 * sigma / 0.01) ** 2) : undefined;
+        const plays = paidRounds === undefined ? undefined : Math.ceil(paidRounds * playsPerPaidRound);
+        return (
+            <Alert color="blue" variant="light" title="Feature-games simulation budget" mt="sm">
+                <Text size="sm">
+                    This game expands one paid round into about <strong>{playsPerPaidRound.toFixed(2)}</strong> spins (paid + free) when
+                    free games are included. The spin budget counts paid and free spins, while the RTP interval counts completed
+                    paid rounds.
+                </Text>
+                {paidRounds !== undefined && plays !== undefined && (
+                    <Text size="sm" mt={4}>
+                        At the exact paid-spin volatility, a ±1 percentage-point interval needs at least about{" "}
+                        <strong>{formatRoundsEstimate(paidRounds)}</strong> paid rounds (~
+                        <strong>{formatRoundsEstimate(plays)}</strong> spins). Feature variance can make the real requirement larger.
+                    </Text>
+                )}
+                <Text size="xs" c="dimmed" mt={4}>
+                    Exact math on Overview is the exact reference; increase the spin budget for a tighter sampled total. The report
+                    will show the actual 95% interval.
+                </Text>
+            </Alert>
+        );
+    }
+    if (view.featurePayoutsIncluded === false || hasAuthoredFeatures) {
+        return <GenericFeatureBudgetHint />;
+    }
+    return null;
+}
+
+function PrecisionBudgetHint({
+    view,
+    targetPpHalfWidth,
+    rounds,
+    onUseBudget,
+}: {
+    view?: Extract<StudioExactMathView, {status: "ok"}>;
+    targetPpHalfWidth: number;
+    rounds: number;
+    onUseBudget: (plays: number) => void;
+}) {
+    const paidRounds = view === undefined
+        ? undefined
+        : paidRoundsForRtpHalfWidthFromSigma(view.analysis.standardDeviation, targetPpHalfWidth / 100);
+    const freeGames = view?.freeGamesRtp?.status === "available" ? view.freeGamesRtp : undefined;
+    const playsPerPaidRound = freeGames === undefined ? 1 : 1 + freeGames.triggerProbability * freeGames.expectedFreeSpins;
+    const requestedPlays = paidRounds === undefined ? undefined : Math.ceil(paidRounds * playsPerPaidRound);
+    const recommendedPlays = requestedPlays === undefined ? undefined : Math.min(MAX_STUDIO_SIMULATION_ROUNDS, requestedPlays);
+    const belowBudget = recommendedPlays !== undefined && rounds < recommendedPlays;
+    const exceedsStudioLimit = requestedPlays !== undefined && requestedPlays > MAX_STUDIO_SIMULATION_ROUNDS;
+    return (
+        <Alert color="blue" variant="light" title="Target precision budget" mt="sm">
+            <Text size="sm">
+                The run stops after three consecutive checks at or below <strong>±{targetPpHalfWidth} pp</strong>,
+                or when it reaches the spin budget.
+            </Text>
+            {paidRounds === undefined || recommendedPlays === undefined ? (
+                <Text size="sm" mt={4}>
+                    Exact math is unavailable, so Studio cannot estimate the required budget before the run. The
+                    completed report will show the interval actually achieved.
+                </Text>
+            ) : (
+                <Text size="sm" mt={4}>
+                    At the exact paid-spin volatility, this needs about{" "}
+                    <strong>{formatRoundsEstimate(paidRounds)}</strong> paid rounds
+                    {freeGames === undefined ? "" : ` (~${formatRoundsEstimate(recommendedPlays)} spins after free-game expansion)`}.
+                    Feature variance can make the real requirement larger.
+                </Text>
+            )}
+            {belowBudget && (
+                <Text size="sm" c="orange" mt={4}>
+                    The current spin budget ({rounds.toLocaleString("en-US")}) is below that estimate, so the run may
+                    finish at the budget without reaching the target.
+                </Text>
+            )}
+            {exceedsStudioLimit && (
+                <Text size="xs" c="orange" mt={4}>
+                    The estimate is above Studio&apos;s {MAX_STUDIO_SIMULATION_ROUNDS.toLocaleString("en-US")}-play ceiling;
+                    the target may not be reachable in one Studio run.
+                </Text>
+            )}
+            {recommendedPlays !== undefined && (
+                <Button variant="default" size="xs" mt="sm" onClick={() => onUseBudget(recommendedPlays)}>
+                    Use about {formatRoundsEstimate(recommendedPlays)} spins
+                </Button>
+            )}
+            <Text size="xs" c="dimmed" mt={4}>
+                Target-precision runs use one worker so the checked 95% interval is the combined sample shown in the
+                review, not one worker&apos;s share.
+            </Text>
+        </Alert>
     );
 }
 
@@ -159,6 +402,12 @@ export function SimulationTab({
 }) {
     const confirm = useConfirm();
     const [capturedConvergence, setCapturedConvergence] = useState<StudioSimulationReportListEntry["convergence"]>();
+    // Optional user-facing precision target. It is deliberately separate from the captured recovery
+    // policy: retrying an old run preserves its exact adaptive settings, while entering a new target
+    // creates a fresh policy and makes the play budget a ceiling.
+    const [targetPrecisionPp, setTargetPrecisionPp] = useState<number | string>("");
+    const targetPrecisionNumber = precisionInputNumber(targetPrecisionPp);
+    const precisionError = getSimulationPrecisionError(targetPrecisionPp) ?? undefined;
     // A fresh tab starts with a real seed instead of an empty field: the ordinary default run is
     // then reproducible, and the seed is visible without opening the advanced section.
     const [initialSeed] = useState(() => generateSimulationSeed());
@@ -190,6 +439,19 @@ export function SimulationTab({
             });
         return () => controller.abort();
     }, [fetchImpl]);
+    const [gameModel, setGameModel] = useState<GameModelProjection>();
+    useEffect(() => {
+        const controller = new AbortController();
+        getGameModel(fetchImpl, undefined, controller.signal)
+            .then((model) => {
+                if (!controller.signal.aborted) setGameModel(model);
+            })
+            .catch(() => {
+                if (!controller.signal.aborted) setGameModel(undefined);
+            });
+        return () => controller.abort();
+    }, [fetchImpl]);
+    const hasAuthoredFeatures = gameModel?.mechanics.status === "available" && Object.keys(gameModel.mechanics.data).length > 0;
 
     // Defaults the picker to the first real mode the moment the list becomes available -- SimulationTab
     // can mount before the project header's own outcome-source report necessarily has (see PlayTab's own
@@ -238,6 +500,7 @@ export function SimulationTab({
             modeName: modeName ?? "",
         });
         setCapturedConvergence(recoveryRequest.convergence as StudioSimulationReportListEntry["convergence"]);
+        setTargetPrecisionPp("");
         formRef.current.validateField("rounds");
         // A retained-job action can arrive while this tab is still on Review.
         // Reconstructing hidden fields leaves that visible Retry without an
@@ -315,17 +578,18 @@ export function SimulationTab({
     const reviewReachable = reviewedDetail.status !== "empty" || isTerminal;
     const exportReachable = downloadUrls !== undefined;
     const latestTimedRun = recentRuns.status === "loaded"
-        ? recentRuns.entries.find((entry) => entry.durationMs > 0 && (entry.actualRounds ?? entry.requestedRounds) > 0)
+        ? recentRuns.entries.find((entry) => entry.durationMs > 0 && (entry.sampling?.acceptedSubrounds ?? entry.actualRounds ?? entry.requestedRounds) > 0)
         : undefined;
+    const latestTimedRunPlays = latestTimedRun === undefined ? undefined : latestTimedRun.sampling?.acceptedSubrounds ?? latestTimedRun.actualRounds ?? latestTimedRun.requestedRounds;
     const currentRounds = form.getValues().rounds;
-    const estimatedCurrentRunMs = latestTimedRun !== undefined && Number.isFinite(currentRounds) && currentRounds > 0
-        ? (latestTimedRun.durationMs / (latestTimedRun.actualRounds ?? latestTimedRun.requestedRounds)) * currentRounds
+    const estimatedCurrentRunMs = latestTimedRun !== undefined && latestTimedRunPlays !== undefined && Number.isFinite(currentRounds) && currentRounds > 0
+        ? (latestTimedRun.durationMs / latestTimedRunPlays) * currentRounds
         : undefined;
     const estimatedCurrentRun = estimatedCurrentRunMs === undefined ? undefined : formatElapsedMs(estimatedCurrentRunMs);
     const longEstimatedRun = estimatedCurrentRunMs !== undefined && estimatedCurrentRunMs > 30 * 60 * 1000;
     const lastRunHint = latestTimedRun === undefined
         ? ""
-        : ` Last local run: ${(latestTimedRun.actualRounds ?? latestTimedRun.requestedRounds).toLocaleString("en-US")} rounds in ${formatElapsedMs(latestTimedRun.durationMs)} (${Math.round((latestTimedRun.actualRounds ?? latestTimedRun.requestedRounds) / (latestTimedRun.durationMs / 1000)).toLocaleString("en-US")} rounds/s).${estimatedCurrentRun === undefined ? "" : ` At that rate, ${currentRounds.toLocaleString("en-US")} rounds ≈ ${estimatedCurrentRun}.`}`;
+        : ` Last local run: ${latestTimedRunPlays?.toLocaleString("en-US") ?? "?"} spins in ${formatElapsedMs(latestTimedRun.durationMs)} (${Math.round((latestTimedRunPlays ?? 0) / (latestTimedRun.durationMs / 1000)).toLocaleString("en-US")} spins/s).${estimatedCurrentRun === undefined ? "" : ` At that rate, ${currentRounds.toLocaleString("en-US")} spins ≈ ${estimatedCurrentRun}.`}`;
     // A report can never be meaningfully compared against itself (requirement 7).
     const comparableEntries = recentRuns.status === "loaded" ? recentRuns.entries.filter((entry) => entry.id !== currentReportId) : [];
 
@@ -338,9 +602,18 @@ export function SimulationTab({
         const report = reviewedDetail.report;
         const analysis = exactMathView.analysis;
         const interval = report.rtpConfidenceInterval95;
+        const freeGamesRtp = exactMathView.freeGamesRtp?.status === "available" ? exactMathView.freeGamesRtp : undefined;
+        const baseComponent = report.breakdown?.find((component) => component.category === "base");
+        const featureContribution = report.breakdown === undefined
+            ? undefined
+            : report.breakdown.filter((component) => component.category !== "base").reduce((sum, component) => sum + component.contribution, 0);
         return {
             report,
             analysis,
+            featurePayoutsIncluded: exactMathView.featurePayoutsIncluded,
+            freeGamesRtp,
+            baseComponent,
+            featureContribution,
             deltaPp: (report.rtp - analysis.rtp) * 100,
             interval,
             intervalContainsExact: interval === undefined ? undefined : interval.low <= analysis.rtp && analysis.rtp <= interval.high,
@@ -372,6 +645,8 @@ export function SimulationTab({
                 workers: report.workers,
                 modeName: report.betMode ?? "",
             });
+            setCapturedConvergence(report.convergence);
+            setTargetPrecisionPp("");
             formRef.current.validateField("rounds");
         }
         setActiveStep(0);
@@ -399,7 +674,7 @@ export function SimulationTab({
                     id="simulation-configure"
                     data-pokie-lifecycle-step="simulation-configure"
                     label="Configure"
-                    description="Set rounds"
+                    description="Set spins"
                     aria-current={activeStep === 0 ? "step" : undefined}
                 />
                 <Stepper.Step
@@ -428,7 +703,15 @@ export function SimulationTab({
                 <form
                     data-pokie-lifecycle-form="simulation"
                     onSubmit={form.onSubmit((values) => {
-                        if (restorationMessage === undefined) onRun(values.rounds, values.seed.trim() || undefined, values.workers, values.modeName || undefined, capturedConvergence);
+                        if (restorationMessage !== undefined || precisionError !== undefined) return;
+                        const convergence = targetPrecisionNumber === undefined
+                            ? capturedConvergence
+                            : buildSimulationConvergence(values.rounds, targetPrecisionNumber);
+                        // The engine evaluates adaptive checks independently per worker. A target-precision
+                        // run uses one worker so the checked interval is the combined sample the reviewer
+                        // sees, not one worker's 1/N share.
+                        const workers = targetPrecisionNumber !== undefined ? 1 : values.workers;
+                        onRun(values.rounds, values.seed.trim() || undefined, workers, values.modeName || undefined, convergence);
                     })}
                 >
                     {recoveryRequest !== undefined && (
@@ -437,16 +720,23 @@ export function SimulationTab({
                         </Text>
                     )}
                     <Text size="sm" c="dimmed" mb="sm">
-                        Simulation plays many rounds of this game to estimate RTP, win frequency, and the largest win.
+                        Simulation plays many spins of this game to estimate RTP, hit frequency, and the largest win. Free spins count toward the spin budget.
                         When it finishes, review the summary here or export the full report.
                     </Text>
                     <Text size="xs" c="dimmed" mb="sm">
                         If this design is small enough to enumerate completely, use Exact math on Overview instead: it is exact and avoids sampling noise.
+                        Large budgets (hundreds of thousands of spins or more) can take minutes; the progress bar shows the real elapsed time.
+                        The first run after a design change may take a few extra seconds while Studio prepares the runnable game; later runs reuse it.
+                    </Text>
+                    <Text size="xs" c="dimmed" mb="sm">
+                        The spin budget is the maximum. Leave Target precision empty for a fixed run, or set it to stop
+                        early once the 95% RTP interval is at or below that half-width for three consecutive checks.
+                        The review reports the interval actually achieved.
                     </Text>
                     <QuickActions>
                         <NumberInput
-                            label="Rounds"
-                            description={`1–${MAX_STUDIO_SIMULATION_ROUNDS.toLocaleString("en-US")} rounds per simulation. Whole numbers only.${lastRunHint}`}
+                            label="Spins (paid + free)"
+                            description={`Total spins per simulation, including free spins. A paid round is one paid spin plus its free spins; the report shows completed paid rounds separately. Range 1–${MAX_STUDIO_SIMULATION_ROUNDS.toLocaleString("en-US")}. Whole numbers only.${lastRunHint}`}
                             min={1}
                             max={MAX_STUDIO_SIMULATION_ROUNDS}
                             clampBehavior="none"
@@ -480,10 +770,38 @@ export function SimulationTab({
                             rightSectionWidth={78}
                             style={{flex: "1 1 300px", minWidth: 260}}
                         />
-                        <Button id="simulation-run" type="submit" data-pokie-lifecycle="operation" data-pokie-transaction-state="editable-submission" data-pokie-lifecycle-operation="simulation" loading={progress?.status === "queued"} disabled={restorationMessage !== undefined || active || !form.isValid()}>
+                        <Button id="simulation-run" type="submit" data-pokie-lifecycle="operation" data-pokie-transaction-state="editable-submission" data-pokie-lifecycle-operation="simulation" loading={progress?.status === "queued"} disabled={restorationMessage !== undefined || precisionError !== undefined || active || !form.isValid()}>
                             Run Simulation
                         </Button>
                     </QuickActions>
+                    <NumberInput
+                        label="Target precision (± pp, optional)"
+                        description="Stop when the 95% RTP interval half-width is at or below this value for three consecutive checks. The spin budget remains the maximum."
+                        placeholder="e.g. 1"
+                        min={0.01}
+                        max={20}
+                        step={0.1}
+                        decimalScale={2}
+                        allowDecimal
+                        value={targetPrecisionPp}
+                        onChange={(value) => {
+                            setTargetPrecisionPp(value);
+                            if (value !== "" && value !== undefined) setCapturedConvergence(undefined);
+                        }}
+                        error={precisionError}
+                        data-pokie-lifecycle-field="simulation-precision"
+                        style={{maxWidth: 320, marginTop: 12}}
+                    />
+                    {targetPrecisionNumber !== undefined && precisionError === undefined ? (
+                        <PrecisionBudgetHint
+                            view={exactMathView?.status === "ok" ? exactMathView : undefined}
+                            targetPpHalfWidth={targetPrecisionNumber}
+                            rounds={currentRounds}
+                            onUseBudget={(plays) => form.setFieldValue("rounds", Math.min(MAX_STUDIO_SIMULATION_ROUNDS, plays))}
+                        />
+                    ) : (
+                        <FeatureSimulationBudgetHint view={exactMathView?.status === "ok" ? exactMathView : undefined} hasAuthoredFeatures={hasAuthoredFeatures} />
+                    )}
                     {longEstimatedRun && (
                         <Text size="xs" c="orange" mb="sm">
                             This run is estimated at about {estimatedCurrentRun}. It can be cancelled while it runs; Studio keeps the progress and terminal state.
@@ -492,8 +810,8 @@ export function SimulationTab({
                     {modeDiscoveryError && <ErrorState message={`Cannot discover bet modes: ${modeDiscoveryError}`} />}
                     {availableModes !== undefined && availableModes.length > 0 && (
                         <Select
-                            label={packageModes ? "Bet mode" : "Outcome library mode"}
-                            description={packageModes ? "Select a mode for every available entry, or run each mode independently." : "Which real mode of this outcome library this run samples."}
+                            label={packageModes ? "Bet mode" : "Outcome table mode"}
+                            description={packageModes ? "Select a mode for every available entry, or run each mode independently." : "Which real mode of this outcome table this run samples."}
                             data={packageModes ? [...availableModes.map(value => ({value, label: value})), {value: "all", label: "All modes"}] : availableModes}
                             allowDeselect={false}
                             mb="sm"
@@ -502,10 +820,21 @@ export function SimulationTab({
                             key={form.key("modeName")}
                         />
                     )}
-                    {capturedConvergence && <Text size="sm">Captured adaptive stopping: minimum {capturedConvergence?.minRounds} usable samples per worker; tolerance {capturedConvergence?.rtpTolerance} RTP units; check every {capturedConvergence?.checkIntervalRounds} accepted plays; stable checks {capturedConvergence?.stableChecks ?? 3}. These settings will be saved for retry. <Button variant="subtle" size="xs" onClick={() => setCapturedConvergence(undefined)}>Use fixed limit</Button></Text>}
+                    {capturedConvergence && targetPrecisionNumber === undefined && <Text size="sm">Captured adaptive stopping: minimum {capturedConvergence?.minRounds} paid rounds before each check; tolerance {capturedConvergence === undefined ? "" : (capturedConvergence.rtpTolerance * 100).toFixed(2)} pp; check every {capturedConvergence?.checkIntervalRounds} spins; stable checks {capturedConvergence?.stableChecks ?? 3}. These settings will be saved for retry. <Button variant="subtle" size="xs" onClick={() => setCapturedConvergence(undefined)}>Use fixed limit</Button></Text>}
                     <AdvancedDisclosure detail="workers">
                         <QuickActions>
-                            <NumberInput label="Workers" description="Defaults to up to 4, based on this browser's CPU count." min={1} step={1} required {...form.getInputProps("workers")} key={form.key("workers")} />
+                            <NumberInput
+                                label="Parallel workers"
+                                description={targetPrecisionNumber === undefined
+                                    ? "Defaults to up to 4, based on this browser's CPU count. A multi-worker run is reproducible as a whole for the same seed and worker count; use one worker to replay an individual round."
+                                    : "Target-precision runs use one worker so the checked interval is the combined sample. Remove the target to use parallel workers."}
+                                disabled={targetPrecisionNumber !== undefined}
+                                min={1}
+                                step={1}
+                                required
+                                {...form.getInputProps("workers")}
+                                key={form.key("workers")}
+                            />
                         </QuickActions>
                     </AdvancedDisclosure>
                 </form>
@@ -553,35 +882,11 @@ export function SimulationTab({
                     {outcome !== undefined && (
                         <div>
                             {(outcome.kind !== "completed" || (!fullReportOpened && !comparisonVisible)) && <SimulationSummaryCard outcome={outcome} />}
-                            {outcome.kind === "completed" && exactReference !== undefined && (
-                                <Alert
-                                    color={exactReference.intervalContainsExact === false ? "yellow" : "blue"}
-                                    title="Exact math reference"
-                                    mt="sm"
-                                    role="status"
-                                >
-                                    <Text size="sm">
-                                        Exact for this saved design: RTP <strong>{(exactReference.analysis.rtp * 100).toFixed(4)}%</strong>,
-                                        hit frequency <strong>{(exactReference.analysis.hitFrequency * 100).toFixed(4)}%</strong> from{" "}
-                                        {exactReference.outcomes.toLocaleString("en-US")} enumerated outcomes. This{" "}
-                                        {exactReference.report.rounds.toLocaleString("en-US")}-round sample differs by{" "}
-                                        <strong>{signed(exactReference.deltaPp, 2, " pp")}</strong> RTP and{" "}
-                                        <strong>{signed((exactReference.report.hitFrequency - exactReference.analysis.hitFrequency) * 100, 2, " pp")}</strong> hit frequency.
-                                    </Text>
-                                    <Text size="sm" mt={4}>
-                                        {exactReference.interval === undefined
-                                            ? "This report has no RTP confidence interval to compare with the exact value."
-                                            : `The sample's 95% RTP interval is ${formatConfidenceInterval(exactReference.interval)}; it ${exactReference.intervalContainsExact ? "contains" : "does not contain"} the exact RTP.`}
-                                    </Text>
-                                    <Text size="xs" c="dimmed" mt={4}>
-                                        Exact math is the reference; simulation is an estimate. Use the full report for sampling caveats.
-                                    </Text>
-                                </Alert>
-                            )}
+                            {outcome.kind === "completed" && exactReference !== undefined && <ExactReferencePanel reference={exactReference} />}
                             {outcome.kind === "completed" && !historicalResult && (exactMathView?.status === "missing" || exactMathView?.status === "stale") && (
                                 <Text size="xs" c="dimmed" mt="sm">
                                     {exactMathView.status === "stale" ? "The exact library is stale for this saved design." : "No exact library exists for this saved design yet."}{" "}
-                                    Compute exact math on Overview to compare it with this sample.
+                                    Compute exact outcome table on Overview to compare it with this sample.
                                 </Text>
                             )}
                             <QuickActions>
@@ -638,7 +943,7 @@ export function SimulationTab({
 
                             {compareOpened && outcome.kind === "completed" && (
                                 <PageSection legend="Compare with another run">
-                                    <Text size="sm" c="dimmed">Comparison reports retain the design used for each original run. A design revision identifies the saved authored source, not merely the game id/version.</Text>
+                                    <Text size="sm" c="dimmed">Comparison reports retain the design used for each original run. A design version identifies the saved authored source, not merely the game id/version.</Text>
                                     {comparableEntries.length === 0 && <EmptyState message="No other completed runs yet to compare against." />}
                                     {comparableEntries.length > 0 && (
                                         <List listStyleType="none" spacing={4} mb="sm">
@@ -758,7 +1063,7 @@ export function SimulationTab({
                 >
                     <Text role="status" aria-live="polite" tabIndex={-1} size="sm" mb={4}>
                         {receiptOperation === "simulation-retry" ? "Simulation retry" : "Simulation"} {cancellationPending ? "cancelling" : resultStatus}
-                        {progress !== undefined && <> — {progress.roundsCompleted}/{progress.rounds} rounds — elapsed {formatElapsedMs(progress.durationMs)}</>}
+                        {progress !== undefined && <> — {progress.roundsCompleted.toLocaleString("en-US")}/{progress.rounds.toLocaleString("en-US")} spins — elapsed {formatElapsedMs(progress.durationMs)}</>}
                         {terminalReceipt?.recoveredAfterRestart === true && <> — the prior executor is unavailable after restart; submit the captured settings to run a replacement simulation.</>}
                     </Text>
                     {resultStatus === "completed" && (!historicalResult || reviewedDetail.status === "loaded") && (
@@ -812,9 +1117,9 @@ export function SimulationTab({
                                     <List.Item key={entry.id}>
                                         <Group gap="xs" wrap="wrap" align="baseline">
                                             <Text size="sm" style={{overflowWrap: "anywhere"}}>
-                                                {entry.game.id} v{entry.game.version} — {entry.modeName ? `mode ${entry.modeName}, ` : ""}{entry.actualRounds ?? "per-mode"}/{entry.requestedRounds} rounds, RTP{" "}
-                                                {entry.rtp === undefined ? "per-mode" : `${(entry.rtp * 100).toFixed(2)}%`}, seed {entry.seed ?? "none"}, {new Date(entry.startedAt).toLocaleString()}
-                                                {shortSourceRevision(entry.sourceRevision) === undefined ? "" : `, design ${shortSourceRevision(entry.sourceRevision)}`}
+                                                {entry.game.id} v{entry.game.version} — {entry.modeName ? `mode ${entry.modeName}, ` : ""}{entry.actualRounds ?? "per-mode"} paid rounds / {entry.requestedRounds} spins, RTP{" "}
+                                                {entry.rtp === undefined ? "per-mode" : `${(entry.rtp * 100).toFixed(2)}%`}, seed {entry.seed ?? "none"}, {new Date(entry.startedAt).toLocaleString()},{" "}
+                                                {describeRunDesignState(entry.sourceRevision, gameModel?.sourceRevision)}
                                                 {entry.hasWarnings ? " (has warnings)" : ""}
                                             </Text>
                                             <Button

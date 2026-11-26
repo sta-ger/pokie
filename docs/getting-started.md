@@ -19,10 +19,16 @@ cannot type-check an ESM dependency from a CommonJS file.
 
 ## Design and test in Studio
 
-Run `npx --package @fromstan/pokie pokie` to open Home. Choose a starter, change its design, then **Create game** to save it and open
-its workspace. **Overview** checks the design and shows **Exact math** when a compatible Outcome Library exists; if none
-exists yet, **Compute exact math** generates one and then shows exact RTP, the complete payout distribution, and line/symbol
-contributions. **Play** runs real local rounds. **Simulation** estimates RTP, and **Build/Export** writes a game package or
+Run `npx --package @fromstan/pokie pokie` to open Home. Choose a starter, change its design, then **Create game design** to save it and open
+its workspace. The Layout section chooses **lines**, **ways** or **clusters**. The Ways and Clusters
+starter variants are structural demos: they keep the line paytable until you retune it, so check exact
+RTP before treating one as balanced. **Mechanics** holds free games,
+weighted bonuses, cascades, respins, collection, wild modifiers, Hold & Win and jackpots. **Overview** checks the design and shows **Exact math** when a compatible Outcome Library exists; if none
+exists yet, **Compute exact outcome table** generates one and then shows exact RTP, the complete payout distribution, and line/symbol
+contributions. **Math preview** in Game design is a draft/read-only preview only; it does not write the project's stored
+outcome table. After saving, the preview stays visible for the saved design, and **Compute exact outcome table** on
+Overview writes the table that other Studio views treat as exact. **Play** runs real local rounds. **Simulation** estimates RTP; its optional **Target precision** keeps
+**Plays** as a ceiling and stops once the 95% RTP interval is tight enough. **Build/Export** writes a game package or
 another output. Saving a design, preparing its project, validating it and building an output are separate results. The
 saved game design remains editable; an exported game package is read-only in Studio. Keep the design for later changes.
 
@@ -43,7 +49,7 @@ POKIE has seven user-facing objects. Everything else is implementation detail.
 | **Game design (Blueprint)** | The JSON file where you describe the game. |
 | **Project** | A folder POKIE can open. |
 | **Game package** | A runnable package built from a game design. |
-| **Outcome library** | Every possible round outcome and how often it occurs. |
+| **Outcome library** | Every possible outcome of one paid entry spin and how often it occurs. Feature payouts that settle later are derived or simulated separately. |
 | **Round record** | What happened in one round, saved for replay or audit. |
 | **Simulation report** | RTP, hit frequency, volatility and payout statistics. |
 | **Certification pack** | The evidence folder prepared for an auditor. |

@@ -328,7 +328,7 @@ describe("SimulationReportBuilder", () => {
 
             const report = builder.build({gameInfo, requestedRounds: 100, seed: "demo", statistics: accumulator.getStatistics(), durationMs: 10});
 
-            expect(report.warnings!.some((warning) => warning.includes("Usable samples (1) is low"))).toBe(true);
+            expect(report.warnings!.some((warning) => warning.includes("Completed paid rounds (1) is low"))).toBe(true);
         });
 
         test("does not warn about low rounds at/above the threshold", () => {
@@ -354,7 +354,7 @@ describe("SimulationReportBuilder", () => {
 
             const report = builder.build({gameInfo, requestedRounds: 1, seed: "demo", statistics: accumulator.getStatistics(), durationMs: 10});
 
-            expect(report.warnings!).toContain("Max win is 0 — no round produced a payout.");
+            expect(report.warnings!).toContain("Largest observed win is 0 — no round produced a payout.");
         });
 
         test("warns when total bet is 0", () => {
@@ -378,7 +378,7 @@ describe("SimulationReportBuilder", () => {
 
             const report = builder.build({gameInfo, requestedRounds: 100, seed: "demo", statistics: accumulator.getStatistics(), durationMs: 10});
 
-            expect(report.warnings!.some((warning) => warning.includes("Actual rounds (1) is less than requested rounds (100)"))).toBe(true);
+            expect(report.warnings!.some((warning) => warning.includes("Completed paid rounds (1) is less than requested plays (100)"))).toBe(true);
         });
 
         test("does not warn about stopping early when stopReason is 'converged'", () => {
@@ -1069,6 +1069,6 @@ it("uses completed usable samples for low-evidence diagnostics even with a large
     accumulator.enableLogicalRoundSampling();
     const report = new SimulationReportBuilder().build({gameInfo: {id: "early", name: "Early", version: "1"}, requestedRounds: 100000, statistics: accumulator.getStatistics(), durationMs: 1, stopReason: "sessionStopped"});
     expect(report.diagnostics).toMatchObject({samples: 0, sampleUnit: "completed-logical-round", precision: "insufficientSamples"});
-    expect(report.warnings?.join("\n")).toContain("Usable samples (0) is low");
+    expect(report.warnings?.join("\n")).toContain("Completed paid rounds (0) is low");
     expect(report.sampling?.acceptedSubrounds).toBe(1);
 });

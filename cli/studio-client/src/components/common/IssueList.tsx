@@ -4,7 +4,7 @@ export type IssueListEntry = {code?: string; message: string; path?: string; sug
 
 // Shared by every errors/warnings/suggestions panel (Blueprint validate, project Validate, Build
 // preview/result) -- one rendering for `{code, message}` validation issues.
-export function IssueList({title, issues}: {title: string; issues: IssueListEntry[]}) {
+export function IssueList({title, issues, showCode = true}: {title: string; issues: IssueListEntry[]; showCode?: boolean}) {
     if (issues.length === 0) {
         return null;
     }
@@ -16,10 +16,16 @@ export function IssueList({title, issues}: {title: string; issues: IssueListEntr
             <List size="sm" spacing={4} style={{overflowWrap: "anywhere"}}>
                 {issues.map((issue, index) => (
                     <List.Item key={`${issue.code ?? "issue"}-${index}`}>
-                        {issue.code ? `${issue.code}: ${issue.message}` : issue.message}
+                        {issue.message}
                         {issue.path && <Text size="sm">Path: {issue.path}</Text>}
                         {issue.suggestion && <Text size="sm">{issue.suggestion}</Text>}
                         {issue.details && <details><summary>Evidence</summary><pre style={{whiteSpace: "pre-wrap"}}>{JSON.stringify(issue.details, null, 2)}</pre></details>}
+                        {issue.code && showCode && (
+                            <details>
+                                <summary>Technical code</summary>
+                                <Text size="xs">{issue.code}</Text>
+                            </details>
+                        )}
                     </List.Item>
                 ))}
             </List>

@@ -1,4 +1,5 @@
 import {createHashRouter, Navigate, RouterProvider} from "react-router-dom";
+import {DocsPage} from "./components/docs/DocsPage";
 import {HomePage} from "./components/home/HomePage";
 import {LegacyProjectDashboardRoute, ProjectDashboardRoute} from "./components/project/ProjectDashboardPage";
 import {StudioLanding} from "./components/StudioLanding";
@@ -19,6 +20,7 @@ const router = createHashRouter([
     // "/" asks the server which mode it was started in before landing (see StudioLanding) instead of
     // hardcoding Home, which is what made `pokie .` start a project-mode server but open Home anyway.
     {path: "/", element: <StudioLanding />},
+    {path: "/docs/:doc", element: <DocsPage />},
     {path: "/home/:tab", element: <HomePage />},
     {path: "/project", element: <Navigate to="/project/overview" replace />},
     // A project opened from Home carries its root in the history entry. ProjectDashboardRoute

@@ -141,6 +141,11 @@ export type GenerateExactWeightedOutcomeLibraryOptions = {
     readonly onPostEnumeration?: () => void;
     readonly onPostEnumerationProgress?: (emittedOutcomes: bigint) => void;
     readonly recordValidator?: ValidationRule<RoundRecord>;
+    /**
+     * Reuses one exact-enumeration session for every distinct grid. Only valid when every paid spin
+     * settles in one step (no free games/cascades/other mechanics); callers must guarantee that.
+     */
+    readonly reuseFeaturelessExactSession?: boolean;
     readonly now?: () => Date;
     // Runtime memory safety net for the accumulation phase (see accumulateUniqueGridWeights and
     // HEAP_SAFETY_FRACTION above) -- both default to real values (an 85%-of-heap-limit ceiling, real
@@ -210,6 +215,7 @@ function legacyOptionsForRequest(
         ...(request.onPostEnumeration === undefined ? {} : {onPostEnumeration: request.onPostEnumeration}),
         ...(request.onPostEnumerationProgress === undefined ? { } : {onPostEnumerationProgress: request.onPostEnumerationProgress}),
         ...(prepared.recordValidator === undefined ? {} : {recordValidator: prepared.recordValidator}),
+        ...(prepared.reuseFeaturelessExactSession === undefined ? {} : {reuseFeaturelessExactSession: prepared.reuseFeaturelessExactSession}),
         ...(prepared.now === undefined ? {} : {now: prepared.now}),
         ...(prepared.heapUsedLimitBytes === undefined ? {} : {heapUsedLimitBytes: prepared.heapUsedLimitBytes}),
         ...(prepared.getHeapUsedBytes === undefined ? {} : {getHeapUsedBytes: prepared.getHeapUsedBytes}),
@@ -429,19 +435,7 @@ async function *streamExactWeightedOutcomesInternal(
         ...(prepared.configHash !== undefined ? {configHash: prepared.configHash} : {}),
     };
 
-    const createOutcome = (id: string, entry: UniqueGridWeightEntry<string>): WeightedOutcomeInput => {
-        // Guaranteed non-null by prepare(): a game whose createExactEnumerationSession was undefined would
-        // already have thrown before this point.
-        const session = game.createExactEnumerationSession!(new ForcedSymbolsCombinationsGenerator<string>(entry.grid));
-        if (options.selectBetMode && options.betMode !== undefined) {
-            if (!supportsBetModeSelecting(session)) {
-                throw new WeightedOutcomeLibraryGenerationError(
-                    "weighted-outcome-library-generation-bet-mode-unsupported",
-                    `"${info.id}" cannot exactly enumerate bet mode "${options.betMode}" because its exact-enumeration session does not support bet-mode selection.`,
-                );
-            }
-            session.setBetMode(options.betMode);
-        }
+    const buildOutcome = (id: string, entry: UniqueGridWeightEntry<string>, session: ReturnType<NonNullable<PokieGame["createExactEnumerationSession"]>>): WeightedOutcomeInput => {
         if (!session.canPlayNextGame()) {
             throw new WeightedOutcomeLibraryGenerationError(
                 "weighted-outcome-library-generation-session-not-playable",
@@ -461,8 +455,33 @@ async function *streamExactWeightedOutcomesInternal(
             ...(options.betMode !== undefined ? {betMode: options.betMode} : {}),
             stake,
         });
+        // The reuse option is caller-guaranteed for featureless designs; fail closed instead of
+        // silently recording a later free spin/cascade as an independent paid outcome if that
+        // guarantee is ever wrong.
+        if (options.reuseFeaturelessExactSession === true && (record.steps.length !== 1 || (record.featureEvents?.length ?? 0) > 0)) {
+            throw new WeightedOutcomeLibraryGenerationError(
+                "weighted-outcome-library-generation-session-reuse-unsupported",
+                `"${info.id}" cannot reuse one exact-enumeration session: outcome "${id}" produced a multi-step or feature-bearing round.`,
+            );
+        }
 
         return {id, weight: prepared.weightDenominator ? bigintProbability(entry.weight, prepared.weightDenominator) : toSafeWeightNumber(entry.weight, id), record};
+    };
+
+    const createOutcome = (id: string, entry: UniqueGridWeightEntry<string>): WeightedOutcomeInput => {
+        // Guaranteed non-null by prepare(): a game whose createExactEnumerationSession was undefined would
+        // already have thrown before this point.
+        const session = game.createExactEnumerationSession!(new ForcedSymbolsCombinationsGenerator<string>(entry.grid));
+        if (options.selectBetMode && options.betMode !== undefined) {
+            if (!supportsBetModeSelecting(session)) {
+                throw new WeightedOutcomeLibraryGenerationError(
+                    "weighted-outcome-library-generation-bet-mode-unsupported",
+                    `"${info.id}" cannot exactly enumerate bet mode "${options.betMode}" because its exact-enumeration session does not support bet-mode selection.`,
+                );
+            }
+            session.setBetMode(options.betMode);
+        }
+        return buildOutcome(id, entry, session);
     };
 
     let nextObservation = performance.now() + ARTIFACT_OBSERVATION_INTERVAL_MS;
@@ -523,6 +542,33 @@ async function *streamExactWeightedOutcomesInternal(
             .sort((a, b) => compareIds(a.id, b.id));
         grids.clear();
         options.onPostEnumeration?.();
+        // A featureless paid spin settles in one session step, so one session can be reset and reused
+        // for every distinct grid instead of constructing a new session 3,125 times. The caller opts in
+        // only when the design has no mechanics; buildOutcome also fails closed if a feature appears.
+        let reusableSession: ReturnType<NonNullable<PokieGame["createExactEnumerationSession"]>> | undefined;
+        let reusableGenerator: ForcedSymbolsCombinationsGenerator<string> | undefined;
+        let resetReusableCredits: (() => void) | undefined;
+        if (options.reuseFeaturelessExactSession === true && sortedUniqueGrids.length > 0) {
+            const first = sortedUniqueGrids[0]!;
+            const generator = new ForcedSymbolsCombinationsGenerator<string>(first.entry.grid);
+            const session = game.createExactEnumerationSession!(generator);
+            if (options.selectBetMode && options.betMode !== undefined) {
+                if (!supportsBetModeSelecting(session)) {
+                    throw new WeightedOutcomeLibraryGenerationError(
+                        "weighted-outcome-library-generation-bet-mode-unsupported",
+                        `"${info.id}" cannot exactly enumerate bet mode "${options.betMode}" because its exact-enumeration session does not support bet-mode selection.`,
+                    );
+                }
+                session.setBetMode(options.betMode);
+            }
+            const setter = (session as {setCreditsAmount?: (credits: number) => void}).setCreditsAmount;
+            if (typeof setter === "function") {
+                const initialCredits = session.getCreditsAmount();
+                reusableSession = session;
+                reusableGenerator = generator;
+                resetReusableCredits = () => Reflect.apply(setter, session, [initialCredits]);
+            }
+        }
         let emittedOutcomes = BigInt(0);
         const checkCancellation = (): void => {
             if (!options.signal?.aborted) return;
@@ -537,7 +583,13 @@ async function *streamExactWeightedOutcomesInternal(
         };
         for (const {id, entry} of sortedUniqueGrids) {
             checkCancellation();
-            yield createOutcome(id, entry);
+            if (reusableSession !== undefined && reusableGenerator !== undefined) {
+                reusableGenerator.setGrid(entry.grid);
+                resetReusableCredits?.();
+                yield buildOutcome(id, entry, reusableSession);
+            } else {
+                yield createOutcome(id, entry);
+            }
             options.onPostEnumerationProgress?.(++emittedOutcomes);
             await observe();
         }
