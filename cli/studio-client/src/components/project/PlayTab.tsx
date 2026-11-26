@@ -105,7 +105,7 @@ function PlaySessionSetup({
                     <Text fw={600}>{credits === undefined ? "—" : credits.toFixed(2)}</Text>
                 </div>
                 <div>
-                    <Text size="xs" c="dimmed">Bet</Text>
+                    <Text size="xs" c="dimmed">Total bet</Text>
                     {availableBets.length === 0 ? (
                         <Text fw={600}>{selectedBet ?? "—"}</Text>
                     ) : (

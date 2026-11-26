@@ -705,6 +705,7 @@ test.describe.serial("managed project labels", () => {
         await expect(page.getByText(/No round played yet — this is the session/)).toBeVisible();
         await spin.click();
         await expect(page.getByText(/This paid round is complete: 1 spin, 1 screen/)).toBeVisible({timeout: 30_000});
+        await expect(page.getByText("Bet: 1", {exact: true})).toBeVisible();
         await expect(page.getByText(/1 steps/)).toHaveCount(0);
     });
 
