@@ -1212,6 +1212,12 @@ test("Play offers a one-click finish and labels a feature screen's own win", asy
 
     const finish = page.getByRole("button", {name: "Finish whole round", exact: true});
     await expect(finish).toBeVisible({timeout: 60_000});
+    // Resetting a session in the middle of a feature must not silently discard the paid round.
+    await page.getByRole("button", {name: "Reset Play session"}).click();
+    const resetDialog = page.getByRole("dialog");
+    await expect(resetDialog).toContainText(/in-progress paid round/i);
+    await resetDialog.getByRole("button", {name: "Cancel"}).click();
+    await expect(finish).toBeVisible();
     await finish.click();
     await expect(page.getByText(/This paid round is complete:/).first()).toBeVisible({timeout: 60_000});
     // The player card is the last free-spin screen; its own win must not be labelled as the whole

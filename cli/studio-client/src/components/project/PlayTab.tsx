@@ -4,6 +4,7 @@ import {deriveAvailableBetModeIds, deriveAvailableBets, deriveBetModeId} from ".
 import type {PlayScenarioSummary} from "../../api/apiClient";
 import {describeRuntimeActionError} from "../../domain/runtimeActionError";
 import {formatCount} from "../../domain/formatCount";
+import {useConfirm} from "../../hooks/useConfirm";
 import type {PlaySessionView} from "../../hooks/usePlaySession";
 import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
@@ -189,6 +190,7 @@ export function PlayTab({
     availableModes?: string[];
     onRestore?: (state: unknown) => void;
 }) {
+    const confirm = useConfirm();
     const [checkpoint, setCheckpoint] = useState("");
     const [pendingAction, setPendingAction] = useState<"newSession" | "spin" | "findAnyWin" | "findSymbolWin" | "findFreeGames">("newSession");
     const [checkpointError, setCheckpointError] = useState<string>();
@@ -561,8 +563,18 @@ export function PlayTab({
                         variant="default"
                         loading={loading}
                         onClick={() => {
-                            setPendingAction("newSession");
-                            onNewSession(seed.trim() || undefined, selectedMode ?? undefined);
+                            const reset = (): void => {
+                                setPendingAction("newSession");
+                                onNewSession(seed.trim() || undefined, selectedMode ?? undefined);
+                            };
+                            if (pendingRound) {
+                                confirm(
+                                    "Reset the Play session? The in-progress paid round and its current screens will be discarded. Completed rounds remain in Replay → Played rounds.",
+                                    reset,
+                                );
+                                return;
+                            }
+                            reset();
                         }}
                     >
                         Reset Play session
