@@ -477,7 +477,7 @@ specialized workflow.
 The public CLI supports the executable output formats `json`, `markdown`, and `html`. Project-defined mode names are accepted where a command exposes `--mode`; `pokie sim` additionally accepts `all` to process every declared mode.
 
 ```
-pokie build <project> --target <format> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]
+pokie build <project> --target <format> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run] [--portable] [--portable]
 ```
 
 ```
@@ -507,6 +507,7 @@ Options:
  empty directory (a file target like `wasm` or `parWorkbook` must simply not exist yet) — see [Conflict
  handling](#conflict-handling-an-existing---out-destination) below.
 - `--dry-run` — validate and preview without writing anything.
+- `--portable` — for `--target tsPackage`, write a normal `@fromstan/pokie` version range (`^2.0.0`) instead of the default relative local `file:` link. Use this for a package that will be copied or published; the default keeps the generated package immediately loadable next to the checkout that built it without leaking an absolute host path into `package.json` or `package-lock.json`.
 
 The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its conditional supported edges are
 `blueprint` → `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`, `tsPackage` → `outcomeLibrary`/`stakeAdapter`, plus `blueprint`/`tsPackage`/`parWorkbook`/`wasm` when public model extraction is complete,
@@ -583,8 +584,9 @@ handling](#conflict-handling-an-existing---out-destination) below) — and write
  all pointing at `./dist/index.js` — the exact same entry path `pokie init` packages compile their own
  TypeScript source into, written by the exact same shared `buildPackageJsonPatch` those commands use;
 - `package-lock.json`/`tsconfig.json` — a lockfile seed matching the generated dependencies and the shared
- compiler config. CLI/Studio builds persist the running POKIE installation as a `file:` dependency in
- both manifests, so `npm install && npm run build` also works with an unpublished local candidate;
+ compiler config. CLI/Studio builds persist the running POKIE installation as a relative `file:` dependency
+ in both manifests, so `npm install && npm run build` also works with an unpublished local candidate without
+ leaking an absolute host path; use `--portable` for a version-range dependency that can be copied alone;
 - `README.md` — a short orientation doc for the built package itself: what each file is, that `src/index.ts`/
  `dist/index.js` shouldn't be hand-edited, and the `build -> inspect -> validate -> sim -> report -> replay ->
  serve`/`dev` workflow below;
@@ -970,11 +972,12 @@ real build would produce, with no `--out` destination created or touched.
 
 The minimal loop from a blueprint to a running local server, chaining every command this file documents. Unlike
 the [`init` workflow](#workflow) below, there's no `npm run build` step in the middle — `pokie build`
-output is locally loadable immediately through a link to the running POKIE installation. Its `file:`
+output is locally loadable immediately through a link to the running POKIE installation. Its relative `file:`
 dependency keeps a later `npm install` bound to that installation, including local checkouts without a registry release.
-Keep the installation at its recorded location. To move the output to another machine, explicitly
-select an available POKIE archive or installation there before installing developer dependencies;
-see [the package dependency interface](game-packages.md#native-imports-and-moving-a-generated-package) and the generated README.
+Keep the installation at its recorded relative location. For a package that will be copied or published on its own,
+rebuild with `--portable` to get a normal version-range dependency; otherwise explicitly select an available POKIE
+archive or installation on the destination before installing developer dependencies.
+See [the package dependency interface](game-packages.md#native-imports-and-moving-a-generated-package) and the generated README.
 Direct `GamePackageGenerator` library callers must supply/install runtime dependencies themselves or
 pass `runtimePackageRoot` in the generation options. No TypeScript compile step is required for the generated entry:
 

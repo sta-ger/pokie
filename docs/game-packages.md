@@ -100,12 +100,13 @@ for portable execution and independent format versions.
 
 Code-first preparation can temporarily resolve an unpublished POKIE dependency against the running
 installation, restoring its authored package files and lockfile afterwards. Builds through the
-CLI and Studio instead persist that installation as a `file:` dependency in both generated manifests,
-alongside the immediate runtime link. Thus their documented `npm install` reuses the same runtime
-without assuming a registry release exists. Keep that installation at its recorded location.
-When moving to another machine, explicitly select the same candidate archive with
-`npm install /absolute/path/to/fromstan-pokie.tgz`, or select an available installed runtime directory,
-then install the remaining developer dependencies. The local dependency is not portable by itself.
+CLI and Studio instead persist that installation as a **relative** `file:` dependency in both generated
+manifests, alongside the immediate runtime link. Thus their documented `npm install` reuses the same runtime
+without assuming a registry release exists, and `package.json`/`package-lock.json` never contain an absolute
+host path. Keep that installation at its recorded relative location. When moving the package on its own,
+rebuild with `--portable` to get a normal version-range dependency, or explicitly select the same candidate
+archive with `npm install /absolute/path/to/fromstan-pokie.tgz` or an available installed runtime directory,
+then install the remaining developer dependencies. The relative local dependency is not portable by itself.
 Direct `GamePackageGenerator` callers can opt into this behavior with
 `{runtimePackageRoot}` in the generate options; omitting it retains the registry version range and
 requires the caller to install an available runtime. Generated imports remain `@fromstan/pokie`.

@@ -125,11 +125,12 @@ describe("TsPackageOutputBuilder", () => {
 
         await new TsPackageOutputBuilder("1.3.0").withRuntimePackageRoot(runtimeRoot).build(blueprintProjectOf(blueprintPath), destinationDir);
 
-        expect(fs.readlinkSync(path.join(destinationDir, "node_modules", "@fromstan", "pokie"))).toBe(runtimeRoot);
+        expect(fs.readlinkSync(path.join(destinationDir, "node_modules", "@fromstan", "pokie"))).toBe(path.relative(path.join(destinationDir, "node_modules", "@fromstan"), runtimeRoot));
         const pkg = JSON.parse(fs.readFileSync(path.join(destinationDir, "package.json"), "utf8"));
         const lock = JSON.parse(fs.readFileSync(path.join(destinationDir, "package-lock.json"), "utf8"));
-        expect(pkg.dependencies["@fromstan/pokie"]).toBe(`file:${runtimeRoot}`);
-        expect(lock.packages[""].dependencies["@fromstan/pokie"]).toBe(`file:${runtimeRoot}`);
+        const relativeRuntime = path.relative(destinationDir, runtimeRoot).split(path.sep).join("/");
+        expect(pkg.dependencies["@fromstan/pokie"]).toBe(`file:${relativeRuntime}`);
+        expect(lock.packages[""].dependencies["@fromstan/pokie"]).toBe(`file:${relativeRuntime}`);
     });
 
     it.each([false, true])("cleans a failed scoped runtime link while preserving the original empty destination (%s)", async existed => {
@@ -146,7 +147,7 @@ describe("TsPackageOutputBuilder", () => {
             expect(fs.readdirSync(dir).some(entry => entry.startsWith("built-package.tmp-"))).toBe(false);
             for (const output of [destinationDir, path.join(dir, "second-success")]) {
                 await expect(builder.build(blueprintProjectOf(blueprintPath), output)).resolves.toMatchObject({outputPath: output});
-                expect(JSON.parse(fs.readFileSync(path.join(output, "package.json"), "utf8")).dependencies["@fromstan/pokie"]).toBe(`file:${dir}`);
+                expect(JSON.parse(fs.readFileSync(path.join(output, "package.json"), "utf8")).dependencies["@fromstan/pokie"]).toBe(`file:${path.relative(output, dir).split(path.sep).join("/")}`);
             }
         } finally {
             link.mockRestore(); 

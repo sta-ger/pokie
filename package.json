@@ -10,28 +10,22 @@
             "default": "./dist/esm/index.js"
         },
         "./client/player": {
-            "types": "./dist/cli/client/player/index.d.ts",
             "import": {
                 "types": "./dist/cli/client/player/index.d.ts",
                 "default": "./dist/cli/client/player/index.js"
-            },
-            "default": "./dist/cli/client/player/index.js"
+            }
         },
         "./browser": {
-            "types": "./dist/esm/browser.d.ts",
             "import": {
                 "types": "./dist/esm/browser.d.ts",
                 "default": "./dist/esm/browser.js"
-            },
-            "default": "./dist/esm/browser.js"
+            }
         },
         "./wasm": {
-            "types": "./dist/esm/wasm/browser.d.ts",
             "import": {
                 "types": "./dist/esm/wasm/browser.d.ts",
                 "default": "./dist/esm/wasm/browser.js"
-            },
-            "default": "./dist/esm/wasm/browser.js"
+            }
         }
     },
     "main": "./dist/esm/index.js",

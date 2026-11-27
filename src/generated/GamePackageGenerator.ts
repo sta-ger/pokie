@@ -4,7 +4,7 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import {buildPackageJsonPatch} from "../gamepackage/buildPackageJsonPatch.js";
-import {withLocalPokieDependency} from "../gamepackage/withLocalPokieDependency.js";
+import {withRelativeLocalPokieDependency} from "../gamepackage/withLocalPokieDependency.js";
 import {renderTsconfig} from "../gamepackage/renderTsconfig.js";
 import {BUILT_PACKAGE_FILES} from "./buildGameBuildInfo.js";
 import type {GameBlueprint} from "./GameBlueprint.js";
@@ -107,7 +107,7 @@ export class GamePackageGenerator implements GamePackageGenerating {
             },
             this.pokieVersion,
         );
-        const packageJson = runtimePackageRoot === undefined ? basePackageJson : withLocalPokieDependency(basePackageJson, runtimePackageRoot);
+        const packageJson = runtimePackageRoot === undefined ? basePackageJson : withRelativeLocalPokieDependency(basePackageJson, projectRoot, runtimePackageRoot);
 
         this.publish(projectRoot, {
             "package.json": `${JSON.stringify(packageJson, null, 4)}\n`,
@@ -150,7 +150,11 @@ export class GamePackageGenerator implements GamePackageGenerating {
             if (runtimePackageRoot !== undefined) {
                 const runtimeLink = path.join(tempDir, "node_modules", "@fromstan", "pokie");
                 fs.mkdirSync(path.dirname(runtimeLink), {recursive: true});
-                fs.symlinkSync(runtimePackageRoot, runtimeLink, "junction");
+                // Keep the local execution link portable too: POSIX symlinks store a relative target
+                // so the generated tree can move together with its runtime. Windows junctions require
+                // an absolute target; package.json still carries the portable relative dependency.
+                if (process.platform === "win32") fs.symlinkSync(runtimePackageRoot, runtimeLink, "junction");
+                else fs.symlinkSync(path.relative(path.dirname(runtimeLink), runtimePackageRoot), runtimeLink, "dir");
             }
             assertNotCancelled(options);
             fs.renameSync(tempDir, projectRoot);

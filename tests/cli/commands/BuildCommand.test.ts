@@ -45,8 +45,15 @@ describe("canonical package extraction CLI", () => {
         for (const [file, dependency] of [["package.json", "dependencies"], ["package-lock.json", "packages"]]) {
             const metadata = JSON.parse(fs.readFileSync(path.join(destination, file), "utf8"));
             const dependencies = dependency === "packages" ? metadata.packages[""].dependencies : metadata.dependencies;
-            expect(dependencies["@fromstan/pokie"]).toBe(`file:${runtimeRoot}`);
+            expect(dependencies["@fromstan/pokie"]).toBe(`file:${path.relative(destination, runtimeRoot).split(path.sep).join("/")}`);
         }
+        const portableDestination = path.join(root, "portable-package");
+        expect(await building.run([source, "--target", "tsPackage", "--out", portableDestination, "--portable"])).toBe(0);
+        const portablePackage = JSON.parse(fs.readFileSync(path.join(portableDestination, "package.json"), "utf8"));
+        const portableLock = JSON.parse(fs.readFileSync(path.join(portableDestination, "package-lock.json"), "utf8"));
+        expect(portablePackage.dependencies["@fromstan/pokie"]).toBe("^2.0.0");
+        expect(portableLock.packages[""].dependencies["@fromstan/pokie"]).toBe("^2.0.0");
+        expect(fs.existsSync(path.join(portableDestination, "node_modules"))).toBe(false);
         const projects = new StudioProjectRegistrationService();
         expect(await projects.previewImport(destination)).toMatchObject({status: "recognized", type: "tsPackage"});
         expect(await projects.list()).toEqual([]);

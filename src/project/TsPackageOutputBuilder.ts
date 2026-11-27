@@ -45,7 +45,7 @@ export class TsPackageOutputBuilder implements BuildOutputBuilder {
         this.generator = generator;
     }
 
-    public withRuntimePackageRoot(pokiePackageRoot: string): this {
+    public withRuntimePackageRoot(pokiePackageRoot: string | undefined): this {
         this.pokiePackageRoot = pokiePackageRoot;
         return this;
     }

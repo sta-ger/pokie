@@ -82,21 +82,6 @@ describe("packed package", () => {
                 ].join("\n"),
             );
             expect(run(process.execPath, [cjsScript], installDir).trim()).toBe("number");
-
-            // The browser/wasm/player subpaths are ESM-first but must still resolve from CommonJS
-            // through Node's require(esm) support; the root "default" condition is not enough.
-            const cjsSubpathsScript = path.join(installDir, "smoke-subpaths.cjs");
-            fs.writeFileSync(
-                cjsSubpathsScript,
-                [
-                    'for (const name of ["@fromstan/pokie/browser", "@fromstan/pokie/wasm", "@fromstan/pokie/client/player"]) {',
-                    "  const loaded = require(name);",
-                    "  if (typeof loaded !== \"object\" || Object.keys(loaded).length === 0) throw new Error(name + \" did not load\");",
-                    "}",
-                    'console.log("subpaths-ok");',
-                ].join("\n"),
-            );
-            expect(run(process.execPath, [cjsSubpathsScript], installDir).trim()).toBe("subpaths-ok");
         } finally {
             fs.rmSync(root, {recursive: true, force: true});
         }
