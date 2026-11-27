@@ -361,6 +361,20 @@ describe("SimCommand", () => {
         logSpy.mockRestore();
     });
 
+    it("accepts --plays as the explicit paid-and-free play budget", async () => {
+        const writeFile = jest.fn();
+        const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)), writeFile);
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["./sample-slot", "--plays", "30", "--out", "report.json"]);
+
+        const [, contents] = writeFile.mock.calls[0];
+        const report = JSON.parse(contents) as SimulationReport;
+        expect(report.requestedRounds).toBe(30);
+
+        (console.log as jest.Mock).mockRestore();
+    });
+
     it("writes a machine-readable JSON report when --out is given", async () => {
         const writeFile = jest.fn();
         const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)), writeFile);

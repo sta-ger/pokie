@@ -60,6 +60,7 @@ type SimOptions = {
 // from four of these properties, not something Commander itself could ever produce.
 type SimCliOptions = {
     rounds: number;
+    plays?: number;
     seed?: string;
     workers: number;
     out?: string;
@@ -89,7 +90,7 @@ type SimulateOutcomeSourceFn = (
 const ALL_MODES = "all";
 
 const USAGE =
-    "Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] " +
+    "Usage: pokie sim <packageRoot> [--plays <number>|--rounds <number>] [--seed <string>] [--workers <number>] " +
     `[--mode <betModeId>|${ALL_MODES}] [--out <file>] [--format json] ` +
     "[--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]\n" +
     "   or: pokie sim <game.wasm> --rounds <number> --workers 1 --seed <string> [--format json]";
@@ -189,6 +190,8 @@ export class SimCommand implements CliCommandHandling {
                     switch (flag) {
                         case "--rounds":
                             return `--rounds must be a positive integer. ${USAGE}`;
+                        case "--plays":
+                            return `--plays must be a positive integer. ${USAGE}`;
                         case "--seed":
                             return `--seed requires a value. ${USAGE}`;
                         case "--workers":
@@ -223,7 +226,14 @@ export class SimCommand implements CliCommandHandling {
             .description(this.getDescription())
             .argument("<packageRoot>", "a POKIE game package, game design, WASM build, or outcome-library folder (with --mode)")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
-            .option("--rounds <number>", `accepted plays (paid + free) to simulate; free games can mean fewer completed paid rounds (default: ${SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS})`, (value: string): number => {
+            .option("--plays <number>", `accepted plays (paid + free) to simulate; free games can mean fewer completed paid rounds (default: ${SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS})`, (value: string): number => {
+                const parsed = Number(value);
+                if (!Number.isInteger(parsed) || parsed <= 0) {
+                    throw new Error(`--plays must be a positive integer. ${USAGE}`);
+                }
+                return parsed;
+            })
+            .option("--rounds <number>", `historical alias for --plays; kept for reproducible command lines (default: ${SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS})`, (value: string): number => {
                 const parsed = Number(value);
                 if (!Number.isInteger(parsed) || parsed <= 0) {
                     throw new Error(`--rounds must be a positive integer. ${USAGE}`);
@@ -305,7 +315,7 @@ export class SimCommand implements CliCommandHandling {
 
                 await this.execute({
                     packageRoot,
-                    rounds: rawOptions.rounds,
+                    rounds: rawOptions.plays ?? rawOptions.rounds,
                     seed: rawOptions.seed,
                     out: rawOptions.out,
                     format: rawOptions.format,

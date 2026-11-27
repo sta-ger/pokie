@@ -1795,13 +1795,14 @@ The positional also accepts a Blueprint, a native Outcome Library (with `--mode`
 build. See the [WASM quick start](#wasm-quick-start) for the seeded single-worker comparison with replay.
 
 ```
-pokie sim./sample-slot --rounds 10000 --seed demo --out report.json
-pokie sim./sample-slot --rounds 1000000 --seed demo --workers 4 --out report.json
+pokie sim./sample-slot --plays 10000 --seed demo --out report.json
+pokie sim./sample-slot --plays 1000000 --seed demo --workers 4 --out report.json
 ```
 
 Options:
 
-- `--rounds <number>` — how many plays to simulate (paid spins plus free-game spins; default `1000`, `SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS`). The flag keeps its historical name; reports also show completed paid rounds.
+- `--plays <number>` — how many accepted plays to simulate (paid spins plus free-game spins; default `1000`, `SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS`). Reports show completed paid rounds separately; a free-games game can finish fewer paid rounds than the play budget.
+- `--rounds <number>` — historical alias for `--plays`, kept so existing command lines and saved report commands remain reproducible. When both are supplied, `--plays` wins.
 - `--seed <string>` — forwarded as `context.seed` to `game.createSession(context)`. **Best-effort, not guaranteed**:
  POKIE has no built-in way to seed an arbitrary loaded game — it's up to the game package's own `createSession`
  to read `context.seed` and thread it into a `SeededRandomNumberGenerator`. A game that ignores `context` will
