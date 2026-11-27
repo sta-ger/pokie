@@ -170,7 +170,10 @@ function wasmSidecarRepair(sidecarPath: string, failure: WasmSidecarFailure): st
 }
 
 function wasmSidecarCause(sidecarPath: string, failure: WasmSidecarFailure, detail: string | undefined): string {
-    const detailSuffix = detail === undefined ? "." : `: ${detail}`;
+    // The cause and the repair sentence are separate clauses; a detail without terminal punctuation
+    // must not run straight into "Repair the malformed sidecar..." as if it were one sentence.
+    const cleanDetail = detail?.trim().replace(/[.!?]+$/, "");
+    const detailSuffix = cleanDetail === undefined || cleanDetail.length === 0 ? "." : `: ${cleanDetail}.`;
     switch (failure) {
         case "missing":
             return `but no compatible PokieWasmComponentInfo sidecar was found at "${sidecarPath}".`;
