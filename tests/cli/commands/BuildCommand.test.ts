@@ -48,6 +48,22 @@ describe("canonical package extraction CLI", () => {
         }
     });
 
+    it("rejects --portable when the target is not a TypeScript package", async () => {
+        const source = path.join(root, "source.json");
+        fs.writeFileSync(source, JSON.stringify({
+            info: {id: "portable-check", name: "Portable check", version: "1.0.0"},
+            reels: 2,
+            rows: 1,
+            symbols: ["A"],
+            paytable: {A: {2: 1}},
+            reelStrips: [["A"], ["A"]],
+        }));
+
+        await expect(command().run([source, "--target", "wasm", "--out", path.join(root, "game.wasm"), "--portable"])).rejects.toThrow(
+            /--portable is only valid with --target tsPackage/,
+        );
+    });
+
     it("keeps an unpublished CLI runtime installable and recognized by Studio before package-to-Blueprint review", async () => {
         const source = path.join(root, "source.json");
         const model = {

@@ -174,6 +174,9 @@ export class BuildCommand implements CliCommandHandling {
         if (options.target === undefined) {
             throw new Error(`--target is required. ${TARGET_HINT}\n\n${USAGE}`);
         }
+        if (options.portable && options.target !== "tsPackage") {
+            throw new Error(`--portable is only valid with --target tsPackage; it does not affect a ${options.target} artifact. ${USAGE}`);
+        }
         const generation = this.outcomeLibraryGeneration(options);
         // The generated package defaults to a relative local runtime link so it installs and runs next
         // to the checkout that built it. --portable selects the version-range dependency instead, and
