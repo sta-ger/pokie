@@ -28,6 +28,7 @@ import {CliCommandHandling} from "../CliCommandHandling.js";
 import {ensureArtifactDestinationParent} from "../../src/project/BuildOutputOptions.js";
 import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOperationError.js";
 import {assertBlueprintImportDestination} from "./internal/assertBlueprintImportDestination.js";
+import {assertParWorkbookDestination} from "./internal/assertParWorkbookDestination.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {BlueprintFileWriteResult, writeBlueprintFileAtomically} from "./internal/writeBlueprintFileAtomically.js";
 
@@ -230,6 +231,7 @@ export class ParCommand implements CliCommandHandling {
                     throw new Error(`Unknown option "${excess[0]}". ${EXPORT_USAGE}`);
                 }
                 const outPath = options.out ?? defaultParSheetPath(blueprintPath);
+                assertParWorkbookDestination(outPath);
                 if (options.dryRun) {
                     const prepared = this.prepareDescriptorExportOperation(blueprintPath, outPath);
                     await prepared.validate();

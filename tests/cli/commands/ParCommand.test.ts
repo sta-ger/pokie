@@ -290,6 +290,14 @@ describe("ParCommand", () => {
             expect(exporter.calledWith?.filePath).toBe("custom.xlsx");
         });
 
+        it("refuses a workbook destination POKIE cannot recognize later", async () => {
+            const exporter = createStubExporter([]);
+            const command = new ParCommand("1.3.0", createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}), exporter, () => rawBlueprint);
+
+            await expect(command.run(["export", "game.json", "--out", "game"])).rejects.toThrow(/ending in "\.xlsx"/);
+            expect(exporter.calledWith).toBeUndefined();
+        });
+
         it("refuses occupied and resolved Blueprint-alias outputs without changing either file", async () => {
             const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-par-command-export-conflict-test-"));
             const blueprintPath = path.join(workDir, "source.blueprint.json");
