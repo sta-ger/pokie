@@ -103,7 +103,7 @@ export function ExactMathPanel({
     projectRoot: string;
     sourceRevision?: string;
     refreshKey?: number;
-    /** A new token means "the saved design just changed; rebuild a stale table once instead of leaving old numbers current". */
+    /** A new token means "the saved design just changed; offer a stale-table rebuild once instead of running it silently". */
     autoRefreshStale?: number;
     featureCheck?: AdvancedModelValidationReport;
     autoCompute?: boolean;
@@ -122,6 +122,8 @@ export function ExactMathPanel({
     const [starting, setStarting] = useState(false);
     const [job, setJob] = useState<StudioOutcomeLibraryGenerateJobView>();
     const [notice, setNotice] = useState<string>();
+    const [lastDurationMs, setLastDurationMs] = useState<number>();
+    const [rebuildDeferred, setRebuildDeferred] = useState(false);
     const loadGeneration = useRef(0);
     const pollGeneration = useRef(0);
     const autoComputeStarted = useRef(false);
@@ -129,6 +131,7 @@ export function ExactMathPanel({
     // is still running; the next start must cancel and drain it first, or the server rejects the new
     // request with "job already owns this resource".
     const activeJobId = useRef<string | undefined>(undefined);
+    const promptedStaleToken = useRef<number | undefined>(undefined);
 
     const load = (): void => {
         const generation = ++loadGeneration.current;
@@ -145,6 +148,12 @@ export function ExactMathPanel({
                 if (generation === loadGeneration.current) setLoading(false);
             });
     };
+
+    useEffect(() => {
+        setLastDurationMs(undefined);
+        setRebuildDeferred(false);
+        promptedStaleToken.current = undefined;
+    }, [projectRoot]);
 
     useEffect(() => {
         setJob(undefined);
@@ -188,6 +197,8 @@ export function ExactMathPanel({
             activeJobId.current = undefined;
             setStarting(false);
             if (next.status === "completed") {
+                const duration = next.durationMs ?? (next.startedAt === undefined ? undefined : Date.now() - next.startedAt);
+                if (duration !== undefined && Number.isFinite(duration)) setLastDurationMs(duration);
                 setNotice(
                     "Exact outcome table generated. This is the complete paid-spin outcome table for this saved design.",
                 );
@@ -323,17 +334,14 @@ export function ExactMathPanel({
 
     const active = job !== undefined && !isTerminal(job) && job.status !== "recovery-required";
 
-    // A Save or reviewed Apply changed the saved design. Re-read the stale table, then immediately
-    // rebuild it once for this token, so the author does not have to hunt for "Recompute" after every
-    // edit. A token, not a boolean, keeps this one-shot per save rather than a generation loop.
-    const autoRefreshStartedFor = useRef<number | undefined>(undefined);
+    // A Save or reviewed Apply changed the saved design. Offer the rebuild once for this token rather
+    // than starting a possibly slow enumeration silently. "Later" leaves the normal stale-state action
+    // in place; a new token offers the choice again.
     useEffect(() => {
         if (autoRefreshStale === undefined || view?.status !== "stale" || starting || active) return;
-        if (autoRefreshStartedFor.current === autoRefreshStale) return;
-        autoRefreshStartedFor.current = autoRefreshStale;
-        start();
-        // start is intentionally not a dependency; the token guard makes this one-shot per apply.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        if (promptedStaleToken.current === autoRefreshStale) return;
+        promptedStaleToken.current = autoRefreshStale;
+        setRebuildDeferred(true);
     }, [autoRefreshStale, view?.status, starting, active]);
 
     useEffect(() => {
@@ -823,24 +831,54 @@ export function ExactMathPanel({
         );
     } else if (view?.status === "missing" || view?.status === "stale") {
         const stale = view.status === "stale";
+        const durationHint = lastDurationMs === undefined
+            ? "Typical rebuilds take a few seconds; feature-heavy tables can take a minute or more."
+            : `The last exact rebuild took ${formatElapsed(lastDurationMs)}.`;
         body = (
             <Stack gap="sm">
-                <EmptyState message={view.message} />
-                {stale && (
-                    <Text size="sm" c="dimmed">
-                        Generating again replaces the stale outcome table with one computed from the current saved
-                        design.
-                    </Text>
+                {stale && rebuildDeferred ? (
+                    <Alert color="blue" variant="light" title="The exact table is out of date" data-pokie-exact-rebuild-choice="true">
+                        <Text size="sm">
+                            The saved design changed. {durationHint}
+                        </Text>
+                        <Group mt="xs">
+                            <Button
+                                onClick={() => {
+                                    setRebuildDeferred(false);
+                                    start();
+                                }}
+                                loading={starting || active}
+                            >
+                                Rebuild now
+                            </Button>
+                            <Button variant="default" onClick={() => setRebuildDeferred(false)}>
+                                Later
+                            </Button>
+                        </Group>
+                        <Text size="xs" c="dimmed" mt={4}>
+                            Later leaves the old table unavailable until you choose Recompute exact outcome table.
+                        </Text>
+                    </Alert>
+                ) : (
+                    <>
+                        <EmptyState message={view.message} />
+                        {stale && (
+                            <Text size="sm" c="dimmed">
+                                Generating again replaces the stale outcome table with one computed from the current saved
+                                design. {durationHint}
+                            </Text>
+                        )}
+                        <Group>
+                            <Button onClick={start} loading={starting || active}>
+                                {stale ? "Recompute exact outcome table" : "Compute exact outcome table"}
+                            </Button>
+                        </Group>
+                        <Text size="xs" c="dimmed">
+                            This writes the exact outcome table into the project&apos;s <code>outcomelibrary</code> folder. It
+                            can take a while for a large game; progress is shown below.
+                        </Text>
+                    </>
                 )}
-                <Group>
-                    <Button onClick={start} loading={starting || active}>
-                        {stale ? "Recompute exact outcome table" : "Compute exact outcome table"}
-                    </Button>
-                </Group>
-                <Text size="xs" c="dimmed">
-                    This writes the exact outcome table into the project&apos;s <code>outcomelibrary</code> folder. It
-                    can take a while for a large game; progress is shown below.
-                </Text>
                 <AdvancedDisclosure label="technical file name">
                     <Text size="xs" c="dimmed">
                         The project folder and API call this an Outcome Library; the UI calls it an outcome table. It is
@@ -886,7 +924,7 @@ export function ExactMathPanel({
                     <Text size="xs" c="dimmed" mt={4}>
                         This runs in the background. You can switch tabs or keep editing; the old table stays
                         out of the current RTP until the replacement is ready.
-                        {autoRefreshStale === undefined ? "" : " Studio started this rebuild because the saved design changed."}
+                        {autoRefreshStale === undefined ? "" : " Studio offered this rebuild because the saved design changed."}
                     </Text>
                     <Group mt="xs">
                         {!job.cancellationRequested && (

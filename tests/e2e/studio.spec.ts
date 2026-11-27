@@ -11,6 +11,19 @@ test("Home opens at the top with the design intro visible", async ({page}) => {
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
 });
 
+test("the starting-point launcher stays compact after the starter is loaded", async ({page}) => {
+    await page.goto("/#/home/design");
+    const launcher = page.locator("[data-pokie-starting-point]");
+    await expect(launcher).toBeVisible();
+    const box = await launcher.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.height).toBeLessThan(300);
+    await expect(page.getByRole("button", {name: "Use the starter"})).toBeVisible();
+    await expect(page.getByRole("button", {name: "Open PAR import"})).toBeVisible();
+    await expect(page.getByRole("button", {name: "Open Projects"})).toBeVisible();
+    await expect(page.getByText("Start from the ready-to-edit 5×3 starter", {exact: false})).toBeHidden();
+});
+
 test("the guided landing offers the three starting paths before the full form", async ({page}) => {
     await page.goto("/#/home/design");
     await expect(page.getByText("Choose a starting point", {exact: true})).toBeVisible();
@@ -1045,7 +1058,7 @@ test.describe.serial("managed project labels", () => {
         await expect(events.getByRole("row", {name: /A × 3/})).toContainText("1.9200%");
     });
 
-    test("apply asks for confirmation and automatically refreshes exact math", async ({page}) => {
+    test("apply asks for confirmation and offers a timed exact-math rebuild", async ({page}) => {
         // Exact optimization evaluates several complete outcome sets; leave a generous bound for a
         // loaded CI host while still failing a genuinely stuck job.
         test.setTimeout(360_000);
@@ -1086,10 +1099,15 @@ test.describe.serial("managed project labels", () => {
         // show the newly saved payout without a manual reload.
         const tunedRow = page.getByRole("row", {name: /A, 3 symbols payout/});
         await expect(tunedRow.getByRole("cell").nth(2)).toHaveText("7", {timeout: 30_000});
-        // A reviewed Apply invalidates the stored exact table, but Studio now rebuilds it automatically
-        // instead of leaving the author with a stale receipt and a manual Recompute hunt. The transient
-        // progress label can be too fast to catch for a small table; assert the durable end state instead:
-        // exact numbers are back and no stale-table warning remains.
+        // A reviewed Apply invalidates the stored exact table. Studio asks before a potentially slow
+        // rebuild instead of starting it silently; the prompt includes a time expectation and a
+        // "Later" escape hatch.
+        const rebuildChoice = page.locator('[data-pokie-exact-rebuild-choice="true"]');
+        await expect(rebuildChoice).toBeVisible({timeout: 120_000});
+        await expect(rebuildChoice).toContainText(/last exact rebuild took|Typical rebuilds/);
+        await expect(rebuildChoice.getByRole("button", {name: "Rebuild now"})).toBeVisible();
+        await expect(rebuildChoice.getByRole("button", {name: "Later"})).toBeVisible();
+        await rebuildChoice.getByRole("button", {name: "Rebuild now"}).click();
         await expect(page.getByText("At a glance", {exact: true}).first()).toBeVisible({timeout: 180_000});
         await expect(page.getByText(/computed from a different saved design/)).toHaveCount(0);
         // Switching tabs unmounts the optimization panel, not the 15-minute server receipt. Undo must
@@ -1131,9 +1149,13 @@ test.describe.serial("managed project labels", () => {
         // not the pre-save validation result and not only after a page reload.
         await expect(page.getByText(/Structure valid, with warnings/)).toBeVisible({timeout: 30_000});
         await expect(page.getByText(/"A" pays more than "K"/)).toBeVisible({timeout: 30_000});
-        // The ordinary Save scheduled the same one-shot exact-table rebuild as an optimization Apply;
-        // wait for the producer/exact summary to settle before starting the next edit.
-        await expect(page.getByText("At a glance", {exact: true}).first()).toBeVisible({timeout: 120_000});
+        // The ordinary Save offers the same one-shot exact-table rebuild as an optimization Apply.
+        // Choose Later here: validation must still refresh without waiting for enumeration.
+        const firstChoice = page.locator('[data-pokie-exact-rebuild-choice="true"]');
+        await expect(firstChoice).toBeVisible({timeout: 60_000});
+        await expect(firstChoice).toContainText(/last exact rebuild took|Typical rebuilds/);
+        await firstChoice.getByRole("button", {name: "Later"}).click();
+        await expect(page.getByRole("button", {name: "Recompute exact outcome table"})).toBeVisible({timeout: 30_000});
 
         await page.getByRole("button", {name: "Game design", exact: true}).click();
         await page.getByRole("button", {name: "Edit", exact: true}).nth(4).click();
@@ -1144,7 +1166,7 @@ test.describe.serial("managed project labels", () => {
         await page.getByRole("button", {name: "Overview", exact: true}).click();
         await expect(page.getByText(/Structure valid/)).toBeVisible({timeout: 30_000});
         await expect(page.getByText(/"A" pays more than "K"/)).toHaveCount(0, {timeout: 30_000});
-        await expect(page.getByText("At a glance", {exact: true}).first()).toBeVisible({timeout: 120_000});
+        await expect(page.locator('[data-pokie-exact-rebuild-choice="true"]')).toBeVisible({timeout: 60_000});
     });
 
     test("saving a design resets a Play session created from the old design", async ({page}) => {
@@ -1697,7 +1719,7 @@ test("a saved game design can be duplicated from Projects with a fresh identity"
     const designerEntry = page.locator("[data-pokie-game-model-open-designer]");
     await expect(designerEntry).toBeVisible({timeout: 60_000});
     await designerEntry.getByRole("button", {name: "Edit full design"}).click();
-    await expect(page.getByText(/This design is open from/)).toBeVisible({timeout: 90_000});
+    await expect(page.getByText(/This design is open from/).first()).toBeVisible({timeout: 90_000});
     await expect(page.getByText(/You are editing the saved game design/)).toBeVisible();
     await expect(page.getByText(/This is a new design draft, not the last saved project/)).toHaveCount(0);
     await expect(page.getByText("Saved design is ready to update", {exact: true})).toBeVisible({timeout: 60_000});

@@ -1128,9 +1128,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // until the page is reloaded.
     const [exactMathRefreshKey, setExactMathRefreshKey] = useState(0);
     // Incremented by every successful Save (including an optimization Apply/Undo), so Overview can
-    // rebuild a stale exact table once instead of leaving old numbers on screen until a manual Recompute.
-    // It is a one-shot token, never a loop: the generation it starts does not itself save the design.
-    const [autoRefreshStaleExactMathKey, setAutoRefreshStaleExactMathKey] = useState(0);
+    // offer a stale-table rebuild once instead of leaving old numbers on screen until a manual Recompute.
+    // It is a one-shot token, never a loop: choosing Rebuild does not itself save the design.
+    const [autoRefreshStaleExactMathKey, setAutoRefreshStaleExactMathKey] = useState<number | undefined>(undefined);
     // A completed exact-math generation should refresh the optimizer's RTP hint without resetting
     // the optimizer's own reviewed result or in-progress request.
     const [exactMathHintKey, setExactMathHintKey] = useState(0);
@@ -1141,10 +1141,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const handleBlueprintSaved = (sourceRevision?: string): void => {
         if (projectKey !== undefined) setOptimizerSourceChange({projectRoot: projectKey, sourceRevision});
         setExactMathRefreshKey((value) => value + 1);
-        // Any successful Save can change the saved math, not just an optimization Apply. Rebuild once
-        // after the save settles so Overview never leaves an old exact table looking current until a
-        // manual Recompute. The token is one-shot per save, so it cannot loop with the generation itself.
-        setAutoRefreshStaleExactMathKey((value) => value + 1);
+        // Any successful Save can change the saved math, not just an optimization Apply. Offer one
+        // rebuild after the save settles so Overview never leaves an old exact table looking current
+        // until a manual Recompute. The token is one-shot per save, so it cannot loop with generation.
+        setAutoRefreshStaleExactMathKey((value) => (value ?? 0) + 1);
         // Saving a design changes the project-level validation report too. Refresh it here instead of
         // leaving Overview's card on the validation result read before the write (the card could even
         // describe the previous payout after the file already contained the new one).
