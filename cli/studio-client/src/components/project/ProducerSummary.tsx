@@ -4,11 +4,14 @@ import {getGameModel, getReport, listReports} from "../../api/apiClient";
 import type {StudioSimulationReportListEntry} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
+import type {ExactMathSummary} from "../../domain/exactMathSummary";
 import {formatConfidenceInterval} from "../../domain/interpret/formatConfidenceInterval";
 import {describeSimulationReport, type SingleSimulationReportView} from "../../domain/interpret/Simulation";
+import {formatAnalysisNumber} from "../../../../../src/internal/formatAnalysisNumber";
 import type {SimulationReport} from "../../../../../src/reporting/SimulationReport.js";
 import type {SimulationReportSet} from "../../../../../src/reporting/SimulationReportSet.js";
 import {LoadingState} from "../common/LoadingState";
+import {MathTermHelp} from "../common/MathTermHelp";
 import {VolatilityBandBadge} from "../common/VolatilityBandsControl";
 
 type ProducerSummaryState =
@@ -68,11 +71,14 @@ export function ProducerSummary({
     projectRoot,
     refreshKey,
     onOpenSimulation,
+    exact,
 }: {
     projectRoot: string;
     /** Bumped by every save/apply so a new report or design is picked up without a reload. */
     refreshKey?: number;
     onOpenSimulation: () => void;
+    /** Lifted from ExactMathPanel so the exact reference, when it covers the whole round, is the first number. */
+    exact?: ExactMathSummary;
 }) {
     const fetchImpl = useStudioApi();
     const [state, setState] = useState<ProducerSummaryState>({status: "loading"});
@@ -119,37 +125,20 @@ export function ProducerSummary({
         };
     }, [fetchImpl, projectRoot, refreshKey]);
 
-    return (
-        <Paper
-            withBorder
-            p="md"
-            radius="md"
-            mb="md"
-            data-pokie-producer-summary="whole-round"
-            data-pokie-producer-summary-state={state.status}
-        >
-            <Group justify="space-between" align="flex-start" wrap="wrap" gap="sm">
-                <div>
-                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                        Producer summary
-                    </Text>
-                    <Title order={3}>Whole round (incl. free games)</Title>
-                </div>
-                <Button size="sm" variant="default" onClick={onOpenSimulation}>
-                    Open Simulation
-                </Button>
-            </Group>
-
+    const exactWholeRound = exact?.wholeRound === true;
+    const sampleBody = (
+        <>
             {state.status === "loading" && <LoadingState label="Reading the latest whole-round simulation…" />}
 
             {state.status === "ready" && (
                 <>
                     <Group align="baseline" gap="xs" mt="sm" wrap="wrap">
-                        <Text fw={700} fz={34} lh={1.05}>
+                        <Text fw={700} fz={exactWholeRound ? 24 : 34} lh={1.05}>
                             {(state.report.rtp * 100).toFixed(2)}%
                         </Text>
                         <Text size="sm" c="dimmed">
                             RTP — sampled whole-round estimate (incl. free games)
+                            <MathTermHelp term="RTP">The long-run share of wagers returned to players. This sampled estimate is not a sign-off number.</MathTermHelp>
                         </Text>
                         <Badge color="blue" variant="light" tt="none">
                             Sampled
@@ -182,24 +171,23 @@ export function ProducerSummary({
                     </Text>
                     <SimpleGrid cols={{base: 1, sm: 3}} spacing="md" mt="sm">
                         <ProducerMetric
-                            label="Hit frequency (whole round)"
+                            label={<>Hit frequency (whole round)<MathTermHelp term="Hit frequency">The share of completed paid rounds that return any win, including wins settled in free games.</MathTermHelp></>}
                             value={`${(state.report.hitFrequency * 100).toFixed(2)}%`}
                         />
                         <ProducerMetric
-                            label="Volatility (whole round)"
+                            label={<>Volatility (whole round)<MathTermHelp term="Volatility">The standard deviation of payout per completed paid round, in bet units. Higher means a bumpier ride; it is not an industry low/medium/high class.</MathTermHelp></>}
                             value={state.report.volatility === undefined ? "—" : state.report.volatility.toFixed(2)}
                             accessory={state.report.volatility === undefined ? undefined : <VolatilityBandBadge value={state.report.volatility} size="xs" />}
                         />
                         <ProducerMetric
-                            label="Largest observed whole-round win"
+                            label={<>Largest observed whole-round win<MathTermHelp term="Max win">The largest payout seen in this sample, not the theoretical maximum the game can produce.</MathTermHelp></>}
                             value={`${state.report.maxWin.toFixed(2)}× bet`}
                         />
                     </SimpleGrid>
                     <Text size="xs" c="dimmed" mt="sm">
-                        Simulation estimates whole-round behaviour including free games. The exact card below says
-                        whether its number is a whole-round or paid-spin reference; when it says
-                        &quot;Whole-round exact&quot;, use that exact number for sign-off and treat this sample as
-                        the behavioural estimate.
+                        Simulation estimates whole-round behaviour including free games. The exact card below is
+                        the sign-off reference when its badge says &quot;Whole-round exact&quot;; this sample is
+                        the behavioural estimate, not a second exact result.
                     </Text>
                 </>
             )}
@@ -222,11 +210,75 @@ export function ProducerSummary({
                     <Text size="sm">{state.message}</Text>
                 </Alert>
             )}
+        </>
+    );
+
+    return (
+        <Paper
+            withBorder
+            p="md"
+            radius="md"
+            mb="md"
+            data-pokie-producer-summary="whole-round"
+            data-pokie-producer-summary-state={state.status}
+        >
+            <Group justify="space-between" align="flex-start" wrap="wrap" gap="sm">
+                <div>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                        Producer summary
+                    </Text>
+                    <Title order={3}>Whole round (incl. free games)</Title>
+                </div>
+                <Button size="sm" variant="default" onClick={onOpenSimulation}>
+                    Open Simulation
+                </Button>
+            </Group>
+
+            {exact !== undefined && (
+                <div data-pokie-exact-headline="true">
+                    <Group align="baseline" gap="xs" mt="sm" wrap="wrap">
+                        <Text fw={700} fz={34} lh={1.05}>
+                            {formatAnalysisNumber((exactWholeRound ? exact.rtp : exact.paidRtp) * 100, 4)}%
+                        </Text>
+                        <Badge color="teal" variant="light" tt="none">
+                            Exact
+                        </Badge>
+                        <Text size="sm" c="dimmed">
+                            {exactWholeRound ? "Whole-round exact RTP" : "Paid-spin exact RTP (not whole-round)"}
+                            <MathTermHelp term="Exact math">
+                                A complete enumeration of every possible paid-spin outcome and its weight; exact for the model it covers, not a sample or a certification.
+                            </MathTermHelp>
+                        </Text>
+                    </Group>
+                    <Text size="xs" c="dimmed" mt={2}>
+                        {exactWholeRound
+                            ? `Exact reference for the saved design from ${exact.outcomes.toLocaleString("en-US")} paid-spin outcomes. The sampled whole-round estimate is below; it is not a second exact number.`
+                            : "The exact table covers paid spins only. Use the sampled whole-round estimate below for player experience, and the exact card for the paid-spin reference."}
+                    </Text>
+                </div>
+            )}
+
+            {exactWholeRound ? (
+                <details style={{marginTop: "var(--mantine-spacing-sm)"}}>
+                    <summary>Latest whole-round sample — behavioural estimate, not the exact reference</summary>
+                    {sampleBody}
+                </details>
+            ) : (
+                <>
+                    {sampleBody}
+                    {exact !== undefined && (
+                        <Text size="xs" c="dimmed" mt="sm" data-pokie-exact-paid-spin-reference="true">
+                            Exact paid-spin reference: {formatAnalysisNumber(exact.paidRtp * 100, 4)}% from{" "}
+                            {exact.outcomes.toLocaleString("en-US")} outcomes. This is not the whole-round RTP.
+                        </Text>
+                    )}
+                </>
+            )}
         </Paper>
     );
 }
 
-function ProducerMetric({label, value, accessory}: {label: string; value: string; accessory?: ReactNode}) {
+function ProducerMetric({label, value, accessory}: {label: ReactNode; value: string; accessory?: ReactNode}) {
     return (
         <div>
             <Text size="xs" c="dimmed">

@@ -428,6 +428,9 @@ function TargetCard({
     const [opened, setOpened] = useState(initiallyOpened);
     const contentId = useId();
     const conflictDestination = artifactPreview.status === "conflict" ? artifactPreview.result.destination : undefined;
+    const versionedConflictDestination = artifactPreview.status === "conflict"
+        ? versionedDestination(artifactPreview.result.destination, artifactPreview.result.destinationKind)
+        : undefined;
     const [existingBuildJob, setExistingBuildJob] = useState<StudioJobView>();
     const [existingBuildJobLookup, setExistingBuildJobLookup] = useState<"idle" | "loading" | "done">("idle");
     useEffect(() => {
@@ -920,8 +923,8 @@ function TargetCard({
                                             Existing output: {artifactPreview.result.destination}
                                         </Text>
                                         <QuickActions>
-                                            <Button size="xs" variant="default" onClick={() => onArtifactDestinationChange(card.artifactTarget!, versionedDestination(artifactPreview.result.destination, artifactPreview.result.destinationKind))}>
-                                                {existingDownloadJobId !== undefined && existingOutputFreshness?.status === "current" ? "Use a new name" : "Build current copy"}
+                                            <Button size="xs" variant="default" title="Keep the existing output and write this build to a new timestamped name." onClick={() => onArtifactDestinationChange(card.artifactTarget!, versionedDestination(artifactPreview.result.destination, artifactPreview.result.destinationKind))}>
+                                                {existingDownloadJobId !== undefined && existingOutputFreshness?.status === "current" ? "Save as a new version" : "Build current version"}
                                             </Button>
                                             <Button size="xs" variant="default" onClick={() => onCopyPath(artifactPreview.result.destination)}>
                                                 Copy path
@@ -943,6 +946,11 @@ function TargetCard({
                                                 </Button>
                                             )}
                                         </QuickActions>
+                                        {versionedConflictDestination !== undefined && (
+                                            <Text size="xs" c="dimmed" mt={4}>
+                                                A new version will be written to: <span className="studio-technical-text">{versionedConflictDestination}</span>
+                                            </Text>
+                                        )}
                                         {existingDownloadJobId !== undefined && (
                                             <Text size="xs" c="dimmed" mt={4}>
                                                 {existingOutputFreshness?.status === "current"

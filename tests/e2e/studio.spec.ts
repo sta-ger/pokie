@@ -55,6 +55,19 @@ test("Layout exposes the lines, ways and clusters win model", async ({page}) => 
     await expect(page.getByLabel("Minimum cluster size")).toBeVisible();
 });
 
+test("switching to symbol weights fills a valid table from the current reels", async ({page}) => {
+    await page.goto("/#/home/design");
+    await page.getByRole("tab", {name: /Reels/}).click();
+    await page.getByRole("radio", {name: "Symbol weights"}).check({force: true});
+    await expect(page.getByText(/Symbol weights were filled from the reels/)).toBeVisible();
+    await expect(page.getByRole("textbox", {name: "A weight"})).toBeVisible({timeout: 30_000});
+    await expect(page.getByRole("textbox", {name: "K weight"})).toBeVisible();
+    await expect(page.getByRole("textbox", {name: "Q weight"})).toBeVisible();
+    await expect(page.getByRole("textbox", {name: "J weight"})).toBeVisible();
+    await expect(page.getByText(/never appears in "symbolWeights"/)).toHaveCount(0);
+    await expect(page.locator('[data-pokie-readiness-checklist]')).toHaveAttribute("data-pokie-validation-state", "ok", {timeout: 45_000});
+});
+
 test("the starter can open directly in ways or clusters mode", async ({page}) => {
     await page.goto("/#/home/design");
     await expect(page.getByRole("button", {name: "Use the starter"})).toBeVisible();
@@ -199,7 +212,7 @@ test("a completed PAR build stays downloadable after a page reload", async ({pag
     await page.reload();
     await expect(page.getByRole("button", {name: "Build/Export", exact: true})).toBeVisible({timeout: 90_000});
     await expect(page.getByText("Existing output", {exact: true})).toBeVisible({timeout: 60_000});
-    await expect(page.getByRole("button", {name: /Use a new name|Build current copy/})).toBeVisible();
+    await expect(page.getByRole("button", {name: /Save as a new version|Build current version/})).toBeVisible();
     await expect(page.getByRole("link", {name: /Download PAR sheet/})).toBeVisible();
     await expect(page.getByText(/This file matches the current saved design|Download serves the existing copy|This output is from an earlier design/)).toBeVisible();
 });
@@ -292,10 +305,16 @@ test("free games guides scatter placement and the mechanic setup in one step", a
     await expect(
         dialog.getByRole("checkbox", {name: "Use 10-stop demo reels on the scatter reels"}),
     ).toBeChecked();
+    await expect(dialog.getByText("Starting values", {exact: true})).toBeVisible();
+    await dialog.getByText("Conservative", {exact: true}).click();
+    await expect(dialog.getByLabel("3 scatters free games awarded")).toHaveValue("3");
+    await expect(dialog.getByLabel("Maximum free games per feature")).toHaveValue("25");
+    await dialog.getByText("Safe demo", {exact: true}).click();
+    await expect(dialog.getByLabel("3 scatters free games awarded")).toHaveValue("7");
     await expect(dialog.getByText(/Trigger probability: 2\.7000%/)).toBeVisible();
     await dialog.getByRole("button", {name: "Calculate exact RTP for this setup"}).click();
     await expect(dialog.getByText(/Total RTP/)).toBeVisible({timeout: 120_000});
-    await expect(dialog.getByText(/free games\./)).toBeVisible();
+    await expect(dialog.getByText(/paid-spin \+/).first()).toBeVisible();
     await expect(dialog.getByText(/Max whole-round win: .*upper bound with cap/)).toBeVisible();
     await expect(dialog.getByLabel("Maximum free games per feature")).toHaveValue("50");
     const addDemo = dialog.getByRole("button", {name: "Add scatter and free games"});
@@ -1146,13 +1165,41 @@ test.describe.serial("managed project labels", () => {
     test("Overview defaults to a whole-round producer summary", async ({page}) => {
         await page.goto("/");
         const summary = page.locator('[data-pokie-producer-summary="whole-round"]');
+        const designHeading = page.getByRole("heading", {name: "Design Your Game"});
+        await expect(designHeading.or(summary)).toBeVisible({timeout: 60_000});
+        if (await designHeading.isVisible().catch(() => false)) {
+            await page.getByRole("button", {name: "Use the starter"}).click();
+            await page.getByLabel("Game id").fill("producer-summary-e2e");
+            await page.getByLabel("Game name").fill("Producer Summary E2E");
+            const create = page.getByRole("button", {name: "Create game design"});
+            await expect(create).toBeEnabled({timeout: 60_000});
+            await create.click();
+            await expect(page.getByRole("button", {name: "Overview", exact: true})).toBeVisible({timeout: 90_000});
+        }
         await expect(summary).toBeVisible({timeout: 60_000});
+        if (await summary.getAttribute("data-pokie-producer-summary-state") === "empty") {
+            await summary.getByRole("button", {name: "Open Simulation"}).click();
+            const change = page.getByRole("button", {name: "Change settings", exact: true});
+            if (await change.isVisible().catch(() => false)) await change.click();
+            const rounds = page.getByLabel(/^Spins \(paid \+ free\)/);
+            await rounds.fill("1000");
+            await page.getByRole("button", {name: "Run Simulation", exact: true}).click();
+            await expect(page.getByText(/Simulation completed/).first()).toBeVisible({timeout: 60_000});
+            await page.getByRole("button", {name: "Overview", exact: true}).click();
+        }
         await expect(summary).toHaveAttribute("data-pokie-producer-summary-state", "ready", {timeout: 60_000});
         await expect(summary.getByText("Whole round (incl. free games)", {exact: true})).toBeVisible();
-        await expect(summary.getByText("Hit frequency (whole round)", {exact: true})).toBeVisible();
-        await expect(summary.getByText("Volatility (whole round)", {exact: true})).toBeVisible();
-        await expect(summary.getByText("Largest observed whole-round win", {exact: true})).toBeVisible();
+        await expect(summary.getByText(/Hit frequency \(whole round\)/)).toBeVisible();
+        await expect(summary.getByText(/Volatility \(whole round\)/)).toBeVisible();
+        await expect(summary.getByText(/Largest observed whole-round win/)).toBeVisible();
+        await expect(summary.getByRole("link", {name: "Glossary: Hit frequency"})).toBeVisible();
         await expect(summary.getByRole("button", {name: "Open Simulation"})).toBeVisible();
+        const compute = page.getByRole("button", {name: /^(Compute|Recompute) exact outcome table$/}).first();
+        if (await compute.isVisible().catch(() => false)) await compute.click();
+        const exactHeadline = page.locator('[data-pokie-exact-headline="true"]');
+        await expect(exactHeadline).toBeVisible({timeout: 180_000});
+        await expect(exactHeadline).toContainText("Whole-round exact RTP");
+        await expect(summary.locator("details")).toContainText("Latest whole-round sample");
     });
 });
 
@@ -1604,6 +1651,24 @@ test("a saved game design can be duplicated from Projects with a fresh identity"
     await expect(designerEntry).toBeVisible({timeout: 60_000});
     await designerEntry.getByRole("button", {name: "Open in Start a game"}).click();
     await expect(page.getByText(/This design is open from/)).toBeVisible({timeout: 90_000});
+    await expect(page.getByText(/You are editing the saved game design/)).toBeVisible();
+    await expect(page.getByText(/This is a new design draft, not the last saved project/)).toHaveCount(0);
+    await expect(page.getByText("Saved design is ready to update", {exact: true})).toBeVisible({timeout: 60_000});
     await page.getByRole("button", {name: /Show advanced options/}).click();
     await expect(page.getByText("PAR Sheet Import", {exact: true})).toBeVisible({timeout: 30_000});
+});
+
+test("Play describes its math preview without promising a stakeholder demo", async ({page}) => {
+    test.setTimeout(240_000);
+    await page.goto("/#/home/design");
+    await page.getByRole("button", {name: "Use the starter"}).click();
+    await page.getByLabel("Game id").fill("play-copy-e2e");
+    await page.getByLabel("Game name").fill("Play Copy E2E");
+    const create = page.getByRole("button", {name: "Create game design"});
+    await expect(create).toBeEnabled({timeout: 60_000});
+    await create.click();
+    await expect(page.getByRole("button", {name: "Play", exact: true})).toBeVisible({timeout: 90_000});
+    await page.getByRole("button", {name: "Play", exact: true}).click();
+    await expect(page.getByText(/not for a stakeholder presentation/)).toBeVisible({timeout: 60_000});
+    await expect(page.getByText("Use a built game, not this screen")).toHaveCount(0);
 });

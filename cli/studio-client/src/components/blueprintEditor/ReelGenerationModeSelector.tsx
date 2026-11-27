@@ -1,13 +1,17 @@
 import {useState} from "react";
 import {useConfirm} from "../../hooks/useConfirm";
 import {WholeSequencesEditor} from "./WholeSequencesEditor";
-import {Group, Radio, Stack, Text} from "@mantine/core";
+import {Alert, Group, Radio, Stack, Text} from "@mantine/core";
 import {getReelGenerationMode, setReelGenerationMode, type ReelGenerationMode} from "../../domain/blueprintFormOps";
 import type {BlueprintMutate, ReelGenerationModeDraftsRef, ReelStripGenerationDraftsRef} from "../../hooks/useBlueprintEditor";
 import {PageSection} from "../common/PageSection";
 import {ReelStripGenerationEditor} from "./ReelStripGenerationEditor";
 import {ReelStripsEditor} from "./ReelStripsEditor";
 import {SymbolWeightsEditor} from "./SymbolWeightsEditor";
+
+function hasWeights(value: unknown): boolean {
+    return typeof value === "object" && value !== null && !Array.isArray(value) && Object.keys(value).length > 0;
+}
 
 export function ReelGenerationModeSelector({
     blueprint,
@@ -26,6 +30,7 @@ export function ReelGenerationModeSelector({
 }) {
     const confirm = useConfirm();
     const [sequenceDirty, setSequenceDirty] = useState(false);
+    const [weightNotice, setWeightNotice] = useState<string>();
     const mode = getReelGenerationMode(blueprint);
 
     return (
@@ -43,11 +48,16 @@ export function ReelGenerationModeSelector({
                 <Text size="xs"><strong>Whole-sequence variants (advanced)</strong> — choose from alternative complete reel sequences with weights.</Text>
             </Stack>
             <Radio.Group value={mode} onChange={(value) => {
+                const targetMode = value as ReelGenerationMode;
+                const hadWeights = hasWeights(blueprint.symbolWeights) || hasWeights(modeDrafts.current.symbolWeights);
                 const change = (): void => {
                     setSequenceDirty(false);
                     Reflect.deleteProperty(modeDrafts.current, "wholeSequenceDraft");
                     onDirtyChange?.(false);
-                    mutate((b) => setReelGenerationMode(b, value as ReelGenerationMode, modeDrafts.current));
+                    setWeightNotice(targetMode === "symbolWeights" && mode !== "symbolWeights" && !hadWeights
+                        ? "Symbol weights were filled from the reels already in this design. Review the new table before saving."
+                        : undefined);
+                    mutate((b) => setReelGenerationMode(b, targetMode, modeDrafts.current));
                 };
                 if (sequenceDirty || modeDrafts.current.wholeSequenceDraft?.dirty) confirm("Switch reel source and discard unapplied whole-sequence edits?", change);
                 else change();
@@ -60,6 +70,11 @@ export function ReelGenerationModeSelector({
                     <Radio value="symbolWeights" label="Symbol weights" />
                 </Group>
             </Radio.Group>
+            {weightNotice !== undefined && (
+                <Alert color="blue" variant="light" mb="sm" data-pokie-symbol-weights-prefill="true">
+                    <Text size="sm">{weightNotice}</Text>
+                </Alert>
+            )}
 
             {mode === "reelSequences" && <WholeSequencesEditor blueprint={blueprint} mutate={mutate} revision={revision} modeDrafts={modeDrafts} onDirtyChange={dirty => {
                 setSequenceDirty(dirty);

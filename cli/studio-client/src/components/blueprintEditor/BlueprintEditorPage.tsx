@@ -103,6 +103,7 @@ const SOURCE_CHECK_POLL_MS = 500;
 // fine, just isn't what was last confirmed) or "unavailable" (deleted, moved, or no longer valid JSON).
 type SourceDrift = {kind: "changed"} | {kind: "unavailable"; message: string};
 
+import {nextAvailableLookingGameId} from "../../domain/gameIdSuggestion";
 // `guided`/`initialPath`/`initialParSheetPath` are purely additive -- omitted (the removed "Advanced
 // Tools" raw editor's own usage), this component renders exactly as it always has. `guided` adds a step
 // indicator + next-step hint and tucks JSON mode/Load-by-path/Save/PAR Sheet Import-Export/package builds
@@ -1214,8 +1215,19 @@ export function BlueprintEditorPage({
         setExistingProjectOpenError(undefined);
     };
     const suggestedGameId = managedSaveView.status === "failed" ? managedSaveView.suggestedGameId : undefined;
-    const gameIdConflict = guided && suggestedGameId !== undefined
-        ? {suggestedGameId, onUseSuggested: () => applySuggestedGameId(suggestedGameId)}
+    // Older/damaged collisions may not carry a server suggestion. Offer a concrete next id anyway so
+    // the author has a one-click recovery instead of an error that only says "choose a different id".
+    const submittedGameId = (() => {
+        const info = editor.state.blueprint.info;
+        return typeof info === "object" && info !== null && !Array.isArray(info) && typeof (info as Record<string, unknown>).id === "string"
+            ? String((info as Record<string, unknown>).id)
+            : "";
+    })();
+    const collisionNeedsFallback = managedSaveView.status === "failed"
+        && (/Game id|already exists|belongs to a game design/i).test(managedSaveView.message);
+    const conflictGameId = suggestedGameId ?? (collisionNeedsFallback ? nextAvailableLookingGameId(submittedGameId) : undefined);
+    const gameIdConflict = guided && conflictGameId !== undefined
+        ? {suggestedGameId: conflictGameId, onUseSuggested: () => applySuggestedGameId(conflictGameId)}
         : undefined;
     // The collision message describes the id that was submitted. Once the author changes that id,
     // keeping the old red error (and its suggestion) visible would be misleading.
@@ -1324,13 +1336,16 @@ export function BlueprintEditorPage({
                 <>
                     <Title id="design-game-heading" order={2}>Design Your Game</Title>
                     <Text c="dimmed" size="sm" mb="md">
-                        Start with the ready-to-edit starter, then make it your own. Studio checks the design as you
-                        work; Create game design saves it and opens the workspace.
+                        {savingBackToSource
+                            ? "You are editing the saved game design. Studio checks it as you work; Save to source file writes back to the same project."
+                            : "Start with the ready-to-edit starter, then make it your own. Studio checks the design as you work; Create game design saves it and opens the workspace."}
                     </Text>
-                    <Text c="dimmed" size="xs" mb="md">
-                        This is a new design draft, not the last saved project. To continue an existing game, open it
-                        from Projects.
-                    </Text>
+                    {!savingBackToSource && (
+                        <Text c="dimmed" size="xs" mb="md">
+                            This is a new design draft, not the last saved project. To continue an existing game, open it
+                            from Projects.
+                        </Text>
+                    )}
                     <div className="studio-create-action-bar" data-pokie-primary-action-bar>
                         <QuickActions>
                             <Button
@@ -1421,26 +1436,26 @@ export function BlueprintEditorPage({
                                 )}
                             </div>
                         )}
-                        {managedSaveView.status === "failed" && (suggestedGameId !== undefined || managedSaveView.existingProjectPath !== undefined) ? (
+                        {managedSaveView.status === "failed" && (conflictGameId !== undefined || managedSaveView.existingProjectPath !== undefined) ? (
                             <div>
                                 <RecoveryNotice
                                     title="Game id already in use"
-                                    message={suggestedGameId !== undefined
-                                        ? `A POKIE project with this Game id already exists. Use ${suggestedGameId} instead, or open the existing project if you need it.`
+                                    message={conflictGameId !== undefined
+                                        ? `A POKIE project with this Game id already exists. Use ${conflictGameId} instead, or open the existing project if you need it.`
                                         : "A POKIE project with this Game id already exists. Open it, or change the Game id and create a new design."}
-                                    actionLabel={suggestedGameId !== undefined ? `Use ${suggestedGameId}` : "Open existing project"}
+                                    actionLabel={conflictGameId !== undefined ? `Use ${conflictGameId}` : "Open existing project"}
                                     onAction={() => {
                                         setExistingProjectOpenError(undefined);
-                                        if (suggestedGameId !== undefined) {
-                                            applySuggestedGameId(suggestedGameId);
+                                        if (conflictGameId !== undefined) {
+                                            applySuggestedGameId(conflictGameId);
                                             return;
                                         }
                                         openProject(managedSaveView.existingProjectPath as string).catch((error: unknown) => {
                                             setExistingProjectOpenError(describeExistingProjectOpenError(error));
                                         });
                                     }}
-                                    secondaryActionLabel={suggestedGameId !== undefined && managedSaveView.existingProjectPath !== undefined ? "Open existing project" : undefined}
-                                    onSecondaryAction={suggestedGameId !== undefined && managedSaveView.existingProjectPath !== undefined
+                                    secondaryActionLabel={conflictGameId !== undefined && managedSaveView.existingProjectPath !== undefined ? "Open existing project" : undefined}
+                                    onSecondaryAction={conflictGameId !== undefined && managedSaveView.existingProjectPath !== undefined
                                         ? () => {
                                             setExistingProjectOpenError(undefined);
                                             openProject(managedSaveView.existingProjectPath as string).catch((error: unknown) => {
@@ -1514,7 +1529,7 @@ export function BlueprintEditorPage({
                             </Text>
                         </Alert>
                     )}
-                    <ReadinessChecklist validationView={validationView} mathPreviewStatus={mathPreviewStatus} />
+                    <ReadinessChecklist validationView={validationView} mathPreviewStatus={mathPreviewStatus} savedDesign={savingBackToSource} />
                     <GettingStartedGuide />
                 </>
             )}

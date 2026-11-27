@@ -8,6 +8,7 @@ import {formatOneIn} from "../../domain/formatOneIn";
 import {describeRtpSanityWarning} from "../../../../../src/reporting/describeRtpSanityWarning";
 import {VOLATILITY_SCALE_DECISION} from "../../domain/volatilityScale";
 import {describeExactMathScope, freeGamesAreUncapped, type ExactMathScope} from "../../domain/exactMathScope";
+import type {ExactMathSummary} from "../../domain/exactMathSummary";
 import {
     cancelOutcomeLibraryGeneration,
     estimateOutcomeLibraryGeneration,
@@ -96,6 +97,7 @@ export function ExactMathPanel({
     autoCompute,
     onGenerated,
     onStatusChange,
+    onSummaryChange,
     onOpenPlay,
 }: {
     projectRoot: string;
@@ -108,6 +110,8 @@ export function ExactMathPanel({
     onGenerated?: () => void;
     /** Lets Overview's structure/math badges say "exact", "stale" or "not checked" truthfully. */
     onStatusChange?: (status: ProjectMathStatus) => void;
+    /** Lifts the exact headline so the producer summary can lead with it instead of a sampled RTP. */
+    onSummaryChange?: (summary: ExactMathSummary | undefined) => void;
     /** The compact key-numbers card's single primary action; omitted for read-only surfaces. */
     onOpenPlay?: () => void;
 }) {
@@ -338,6 +342,26 @@ export function ExactMathPanel({
             : view?.status ?? (error === undefined ? "loading" : "error");
         onStatusChange?.(status);
     }, [active, error, onStatusChange, starting, view?.status]);
+
+    useEffect(() => {
+        if (view?.status !== "ok") {
+            onSummaryChange?.(undefined);
+            return;
+        }
+        const freeGamesTotal = view.freeGamesRtp?.status === "available" ? view.freeGamesRtp : undefined;
+        const scope = describeExactMathScope(view.freeGamesRtp, view.featurePayoutsIncluded);
+        onSummaryChange?.({
+            rtp: freeGamesTotal?.totalRtp ?? view.analysis.rtp,
+            paidRtp: view.analysis.rtp,
+            ...(freeGamesTotal === undefined ? {} : {freeRtp: freeGamesTotal.featureRtp}),
+            hitFrequency: view.analysis.hitFrequency,
+            volatility: view.analysis.standardDeviation,
+            maxWin: view.analysis.maxWin / view.stake,
+            outcomes: view.outcomeCount,
+            scope,
+            wholeRound: scope === "whole-round",
+        });
+    }, [onSummaryChange, view]);
 
     const progress = job?.progress;
     const durable = job?.durableProgress;

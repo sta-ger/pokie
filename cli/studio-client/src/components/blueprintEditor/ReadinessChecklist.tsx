@@ -62,10 +62,12 @@ function sectionItems(view: BlueprintValidationView): ChecklistItem[] {
     });
 }
 
-function mathItems(status: BlueprintMathPreviewStatus): ChecklistItem[] {
+function mathItems(status: BlueprintMathPreviewStatus, savedDesign: boolean): ChecklistItem[] {
     let exactMath: ChecklistItem;
     if (status === "ok") {
-        exactMath = {id: "exact-math", label: "Exact math", tone: "done", detail: "Calculated for this draft only — the saved project needs its own exact result."};
+        exactMath = {id: "exact-math", label: "Exact math", tone: "done", detail: savedDesign
+            ? "Calculated for this draft only — save the design, then recompute the project's own exact table."
+            : "Calculated for this draft only — the saved project needs its own exact result."};
     } else if (status === "loading") {
         exactMath = {id: "exact-math", label: "Exact math", tone: "checking", detail: "Calculating the current draft…"};
     } else if (status === "unavailable") {
@@ -77,8 +79,12 @@ function mathItems(status: BlueprintMathPreviewStatus): ChecklistItem[] {
     }
     return [
         exactMath,
-        {id: "simulation", label: "Simulation", tone: "later", detail: "After creating the game design: open Simulation and run paid rounds."},
-        {id: "par", label: "PAR sheet", tone: "later", detail: "After creating the game design: open Build/Export and build PAR sheet (.xlsx)."},
+        {id: "simulation", label: "Simulation", tone: "later", detail: savedDesign
+            ? "After saving: open Simulation and run paid rounds."
+            : "After creating the game design: open Simulation and run paid rounds."},
+        {id: "par", label: "PAR sheet", tone: "later", detail: savedDesign
+            ? "After saving: open Build/Export and build PAR sheet (.xlsx)."
+            : "After creating the game design: open Build/Export and build PAR sheet (.xlsx)."},
     ];
 }
 
@@ -95,11 +101,13 @@ function remainingAlertTitle(checking: boolean, blocked: boolean, count: number)
 export function ReadinessChecklist({
     validationView,
     mathPreviewStatus,
+    savedDesign = false,
 }: {
     validationView: BlueprintValidationView;
     mathPreviewStatus: BlueprintMathPreviewStatus;
+    savedDesign?: boolean;
 }) {
-    const items = [...sectionItems(validationView), ...mathItems(mathPreviewStatus)];
+    const items = [...sectionItems(validationView), ...mathItems(mathPreviewStatus, savedDesign)];
     const remaining = items.filter((item) => item.tone !== "done" && item.tone !== "later" && item.tone !== "optional");
     const remainingNames = remaining.map((item) => item.label).join(", ");
     const checking = validationView.status === "loading" || validationView.status === "stale";
@@ -122,10 +130,12 @@ export function ReadinessChecklist({
             <div data-pokie-readiness-checklist data-pokie-validation-state={validationView.status}>
                 <BlueprintValidationScopeBadges view={validationView} mathStatus={mathPreviewStatus} />
                 {remaining.length === 0 ? (
-                    <Alert color={mathWarning ? "yellow" : "green"} variant="light" title="Draft is ready to save" mt="xs" mb="sm">
+                    <Alert color={mathWarning ? "yellow" : "green"} variant="light" title={savedDesign ? "Saved design is ready to update" : "Draft is ready to save"} mt="xs" mb="sm">
                         <Text size="sm">
-                            Structure is valid{mathWarning ? " (review the math warning above)" : ""}. Create game design saves this
-                            draft and opens its workspace.
+                            Structure is valid{mathWarning ? " (review the math warning above)" : ""}.{" "}
+                            {savedDesign
+                                ? "Save to source file updates this saved design and opens its workspace."
+                                : "Create game design saves this draft and opens its workspace."}
                         </Text>
                         <Text size="xs" c="dimmed" mt={4}>
                             Exact math is optional now. Simulation and PAR export come after saving.

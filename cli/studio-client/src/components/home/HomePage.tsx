@@ -255,9 +255,16 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
                         {needsAttentionHomeJobs.length === 1 ? (
                             <>
                                 <Text size="sm" c="dimmed">
-                                    This operation stopped before confirming a result. Retry it, or review the details.
+                                    This is an earlier operation that did not finish, usually because Studio restarted.
+                                    Nothing is retried automatically. Retry only if you still need that operation, or
+                                    dismiss this old record.
                                 </Text>
                                 {needsAttentionHomeJobs.map(renderHomeJob)}
+                                <QuickActions>
+                                    <Button variant="default" size="xs" loading={dismissingHomeJobs.includes(needsAttentionHomeJobs[0]!.id)} onClick={() => dismissHomeJobs(needsAttentionHomeJobs.map(job => job.id))}>
+                                        Dismiss this old record
+                                    </Button>
+                                </QuickActions>
                             </>
                         ) : (
                             <Alert color="orange" variant="light" title={`${needsAttentionHomeJobs.length} earlier operations need attention`} data-pokie-home-attention-summary>

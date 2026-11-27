@@ -21,7 +21,7 @@ export function GettingStartedGuide() {
                         <Text span fw={600}>Check the math.</Text> Use exact math for a complete enumeration; use Simulation when the design is too large to enumerate.
                     </List.Item>
                     <List.Item>
-                        <Text span fw={600}>Make it real.</Text> Create game design saves the design under your POKIE Projects folder, then Play,
+                        <Text span fw={600}>Make it real.</Text> Saving the design stores it under your POKIE Projects folder, then Play,
                     Replay and Build/Export open in the workspace.
                     </List.Item>
                 </List>

@@ -764,6 +764,81 @@ function asSymbolWeights(value: unknown): Record<string, number> {
     return result;
 }
 
+function symbolIdsReferencedByDesign(blueprint: Record<string, unknown>): string[] {
+    const ids = new Set(asStringArray(blueprint.symbols));
+    for (const field of ["wilds", "scatters"] as const) {
+        for (const id of asStringArray(blueprint[field])) ids.add(id);
+    }
+    if (isRecord(blueprint.paytable)) {
+        for (const id of Object.keys(blueprint.paytable)) ids.add(id);
+    }
+    return [...ids];
+}
+
+function addSymbolCount(counts: Record<string, number>, symbolId: unknown, amount = 1): void {
+    if (typeof symbolId !== "string" || symbolId.length === 0 || !Number.isFinite(amount) || amount <= 0) return;
+    counts[symbolId] = (counts[symbolId] ?? 0) + amount;
+}
+
+function countSymbolsInReelSequences(blueprint: Record<string, unknown>, counts: Record<string, number>): void {
+    if (!Array.isArray(blueprint.reelSequences)) return;
+    for (const reel of blueprint.reelSequences) {
+        if (!isRecord(reel)) continue;
+        if (Array.isArray(reel.symbols)) {
+            for (const symbolId of reel.symbols) addSymbolCount(counts, symbolId);
+        }
+        if (Array.isArray(reel.variants)) {
+            for (const variant of reel.variants) {
+                if (!isRecord(variant) || !Array.isArray(variant.symbols)) continue;
+                for (const symbolId of variant.symbols) addSymbolCount(counts, symbolId);
+            }
+        }
+    }
+}
+
+function countSymbolsInReelStripGeneration(blueprint: Record<string, unknown>, counts: Record<string, number>): void {
+    if (!Array.isArray(blueprint.reelStripGeneration)) return;
+    for (const entry of asReelStripGenerationEntries(blueprint.reelStripGeneration)) {
+        if (entry.type === "literal") {
+            for (const symbolId of asStringArray(entry.strip)) addSymbolCount(counts, symbolId);
+            continue;
+        }
+        for (const [symbolId, count] of Object.entries(asNumberRecord(entry.symbolCounts))) addSymbolCount(counts, symbolId, count);
+        for (const [symbolId, weight] of Object.entries(asNumberRecord(entry.symbolWeights))) addSymbolCount(counts, symbolId, weight);
+    }
+}
+
+/**
+ * A switch from literal/per-reel reels to the shared "Symbol weights" source must not start by
+ * deleting the reels that are already on screen. This derives a usable starting table from whichever
+ * reel representation is currently authored, then guarantees every symbol referenced by the design has
+ * a positive entry so the switch cannot immediately produce "symbol never appears on the reels" errors.
+ *
+ * Counts are deliberately whole numbers: they read like stop counts to an author, and the engine only
+ * needs relative weights. A design with no authored reels falls back to equal weights.
+ */
+export function deriveSymbolWeightsFromReels(blueprint: Record<string, unknown>): Record<string, number> {
+    const counts: Record<string, number> = {};
+    if (Array.isArray(blueprint.reelStrips)) {
+        for (const strip of asReelStrips(blueprint.reelStrips)) {
+            for (const symbolId of strip) addSymbolCount(counts, symbolId);
+        }
+    } else {
+        countSymbolsInReelSequences(blueprint, counts);
+        countSymbolsInReelStripGeneration(blueprint, counts);
+    }
+    if (Object.keys(counts).length === 0 && blueprint.symbolWeights !== undefined) {
+        for (const [symbolId, weight] of Object.entries(asSymbolWeights(blueprint.symbolWeights))) addSymbolCount(counts, symbolId, weight);
+    }
+    for (const symbolId of symbolIdsReferencedByDesign(blueprint)) {
+        if (counts[symbolId] === undefined) counts[symbolId] = 1;
+    }
+    if (Object.keys(counts).length === 0) {
+        for (const symbolId of asStringArray(blueprint.symbols)) counts[symbolId] = 1;
+    }
+    return counts;
+}
+
 export function setSymbolWeight(blueprint: Record<string, unknown>, symbolId: string, weight: number): void {
     blueprint.symbolWeights = {...asSymbolWeights(blueprint.symbolWeights), [symbolId]: weight};
 }
@@ -1151,6 +1226,10 @@ export function setReelGenerationMode(blueprint: Record<string, unknown>, mode: 
     if (currentMode === mode) {
         return;
     }
+    // Swapping to shared symbol weights must not start from an empty table: that instantly makes
+    // every paytable symbol unreachable and turns a source switch into a validation wall. Derive the
+    // starting weights from the reels the author already has before the old representation is removed.
+    const derivedSymbolWeights = mode === "symbolWeights" ? deriveSymbolWeightsFromReels(blueprint) : undefined;
     if (drafts !== undefined) {
         rememberReelGenerationMode(blueprint, currentMode, drafts);
     }
@@ -1196,7 +1275,12 @@ export function setReelGenerationMode(blueprint: Record<string, unknown>, mode: 
         Reflect.deleteProperty(blueprint, "reelStrips");
         Reflect.deleteProperty(blueprint, "symbolWeights");
     } else if (mode === "symbolWeights") {
-        blueprint.symbolWeights = blueprint.symbolWeights !== undefined ? asSymbolWeights(blueprint.symbolWeights) : cloneReelGenerationDraft(drafts?.symbolWeights ?? {});
+        const existingWeights = blueprint.symbolWeights !== undefined
+            ? asSymbolWeights(blueprint.symbolWeights)
+            : cloneReelGenerationDraft(drafts?.symbolWeights ?? {});
+        blueprint.symbolWeights = Object.keys(existingWeights).length > 0
+            ? existingWeights
+            : cloneReelGenerationDraft(derivedSymbolWeights ?? {});
         Reflect.deleteProperty(blueprint, "reelStrips");
         Reflect.deleteProperty(blueprint, "reelStripGeneration");
     } else {

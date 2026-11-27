@@ -1,4 +1,4 @@
-import {addFreeGames, applyScatterFreeGamesSetup, payingScatterSymbols, readFreeGames, repeatSelectedReelStrips, replaceReelStripSymbols, setFreeGamesMaxFreeGames} from "../../../cli/studio-client/src/domain/blueprintFormOps.js";
+import {addFreeGames, applyScatterFreeGamesSetup, deriveSymbolWeightsFromReels, payingScatterSymbols, readFreeGames, repeatSelectedReelStrips, replaceReelStripSymbols, setFreeGamesMaxFreeGames, setReelGenerationMode} from "../../../cli/studio-client/src/domain/blueprintFormOps.js";
 
 describe("Studio blueprint form operations", () => {
     it("starts free games with the safe demo awards and a hard cap", () => {
@@ -146,5 +146,48 @@ describe("Studio blueprint form operations", () => {
             ["A", "K", "Q"],
             ["A", "A", "J", "S"],
         ]);
+    });
+
+    it("switching from manual reels to symbol weights preserves every authored symbol", () => {
+        const blueprint: Record<string, unknown> = {
+            reels: 2,
+            symbols: ["A", "K", "Q", "J"],
+            paytable: {A: {3: 8}, K: {3: 6}, Q: {3: 4}, J: {3: 1}},
+            reelStrips: [
+                ["A", "K", "Q", "J", "J"],
+                ["K", "Q", "A", "J", "J"],
+            ],
+        };
+
+        setReelGenerationMode(blueprint, "symbolWeights");
+
+        expect(blueprint.reelStrips).toBeUndefined();
+        expect(blueprint.symbolWeights).toEqual({A: 2, K: 2, Q: 2, J: 4});
+    });
+
+    it("derives a valid symbol-weight table even when the current mode has no literal reels", () => {
+        const blueprint: Record<string, unknown> = {
+            symbols: ["A", "K", "Q"],
+            wilds: ["W"],
+            paytable: {A: {3: 8}, K: {3: 6}, Q: {3: 4}},
+        };
+
+        expect(deriveSymbolWeightsFromReels(blueprint)).toEqual({A: 1, K: 1, Q: 1, W: 1});
+        setReelGenerationMode(blueprint, "symbolWeights");
+        expect(blueprint.symbolWeights).toEqual({A: 1, K: 1, Q: 1, W: 1});
+    });
+
+    it("keeps an existing symbol-weight draft when one was already entered", () => {
+        const blueprint: Record<string, unknown> = {
+            reels: 1,
+            symbols: ["A", "K"],
+            paytable: {A: {3: 8}, K: {3: 6}},
+            reelStrips: [["A", "K", "A"]],
+        };
+        const drafts = {symbolWeights: {A: 9, K: 1}};
+
+        setReelGenerationMode(blueprint, "symbolWeights", drafts);
+
+        expect(blueprint.symbolWeights).toEqual({A: 9, K: 1});
     });
 });
