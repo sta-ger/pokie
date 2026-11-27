@@ -113,9 +113,23 @@ export function ReadinessChecklist({
     const checking = validationView.status === "loading" || validationView.status === "stale";
     const blocked = validationView.status === "invalid" || validationView.status === "error" || validationView.status === "inconclusive";
     const [opened, setOpened] = useState(false);
+    const [elapsedSeconds, setElapsedSeconds] = useState(0);
     const contentId = useId();
     const scopes = describeBlueprintValidationScopes(validationView, mathPreviewStatus);
     const mathWarning = scopes.some((scope) => scope.scope === "math" && scope.color === "yellow");
+
+    useEffect(() => {
+        if (!checking) {
+            setElapsedSeconds(0);
+            return undefined;
+        }
+        const startedAt = Date.now();
+        setElapsedSeconds(0);
+        const timer = window.setInterval(() => {
+            setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+        }, 1000);
+        return () => window.clearInterval(timer);
+    }, [checking]);
 
     // A structural error is a blocker; show the detail immediately. A merely incomplete draft (exact
     // math not run yet) stays collapsed so the first screen is not a wall of TODOs.
@@ -150,7 +164,9 @@ export function ReadinessChecklist({
                         mb="sm"
                     >
                         <Text size="sm">
-                            {checking ? "Validating the design sections — this usually takes a few seconds." : `${remainingNames}.`}
+                            {checking
+                                ? `Checking structure, then the optional math and feature paths — ${elapsedSeconds}s elapsed. You can keep editing; Studio rechecks after each change.`
+                                : `${remainingNames}.`}
                         </Text>
                     </Alert>
                 )}

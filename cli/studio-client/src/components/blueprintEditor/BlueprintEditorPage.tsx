@@ -1298,7 +1298,7 @@ export function BlueprintEditorPage({
     } else if (sequenceDraftDirty) {
         guidedActionDescriptionId = "blueprint-create-game-sequences";
     }
-    let validationGuidance = "Studio is checking this game design automatically — usually a few seconds. Create game design becomes available when the check succeeds.";
+    let validationGuidance = "Studio is checking this game design automatically — usually a few seconds. You can keep editing; Create game design becomes available when the check succeeds.";
     if (validationView.status === "inconclusive") {
         validationGuidance = "Analysis is inconclusive. Review its limits and retry validation before creating the game.";
     } else if (validationView.status === "invalid") {

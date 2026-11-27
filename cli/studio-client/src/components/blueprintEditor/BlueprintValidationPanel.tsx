@@ -42,7 +42,8 @@ export function BlueprintValidationPanel({
         >
             {automatic ? (
                 <Text c="dimmed" size="sm" mb="sm">
-                    Checked automatically when the game model changes.
+                    Checked automatically when the game model changes. Editing stays available while the check runs;
+                    saving waits for it to finish.
                 </Text>
             ) : (
                 <QuickActions>
