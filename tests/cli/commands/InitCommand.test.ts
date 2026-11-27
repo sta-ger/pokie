@@ -116,6 +116,7 @@ describe("InitCommand", () => {
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toContain("created  package.json");
             expect(printed).toContain(`prepared and verified in "${process.cwd()}"`);
+            expect(printed).toContain("balanced five-line demo");
             expect(printed).toContain(`loadPokieGame("${process.cwd()}")`);
             expect(printed).toContain("npm start");
         });

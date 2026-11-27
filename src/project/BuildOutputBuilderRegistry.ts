@@ -197,7 +197,7 @@ export class BuildOutputBuilderRegistry {
         this.blueprintStakeWorkflow = new BlueprintStakeOutcomeLibraryWorkflow(pokieVersion, loadGameBlueprint, loadPokieGame, managedOutcomeProjects);
     }
 
-    public withRuntimePackageRoot(pokiePackageRoot: string): this {
+    public withRuntimePackageRoot(pokiePackageRoot: string | undefined): this {
         const tsPackageBuilder = this.builders.get("tsPackage");
         if (tsPackageBuilder instanceof TsPackageOutputBuilder) {
             tsPackageBuilder.withRuntimePackageRoot(pokiePackageRoot);

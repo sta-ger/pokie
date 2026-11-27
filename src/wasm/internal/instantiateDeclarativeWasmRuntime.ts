@@ -552,7 +552,10 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
             const origin: PokieWasmFeatureSessionState = {schemaVersion: "pokie.state.v4", artifactIdentity, seed, sequence: 0, drawCount: 0, credits, feature: {bet: built.session.getBet(), state: {}}};
             const captured = checkpoint(built.session, {getLogicalRound: () => undefined}, origin);
             setSimulationModelIdentity(built.session, manifest.artifact?.configurationHash);
-            const analytics = new SessionFeatureAnalyticsObserver(built.session).toState();
+            // The seed is already part of the deterministic run identity. Deriving the analytics
+            // source from it keeps repeated `pokie run --seed ...` output byte-stable without
+            // pretending two concurrent live sessions share a trajectory.
+            const analytics = new SessionFeatureAnalyticsObserver(built.session, `wasm:${seed}`).toState();
             const state = {...captured, feature: {...captured.feature, initialStops: built.generator.getLastStopPositions(), analytics}};
             return {built, state};
         } catch (error) {

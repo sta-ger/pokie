@@ -4,7 +4,7 @@ import {AdvancedDisclosure} from "./AdvancedDisclosure";
 import {IssueList} from "./IssueList";
 
 function describeAnalysisStatus(status: AdvancedModelValidationReport["status"]): string {
-    if (status === "budget-exhausted") return "not finished (too many outcomes to check)";
+    if (status === "budget-exhausted") return "stopped at its analysis budget";
     if (status === "counterexample") return "not every possible round is proven to end";
     if (status === "complete") return "complete";
     return status;
@@ -13,12 +13,12 @@ function describeAnalysisStatus(status: AdvancedModelValidationReport["status"])
 function describeVerdict(verdict: AdvancedModelValidationReport["verdict"], hasTerminationViolation: boolean): string {
     if (verdict === "proved-within-assumptions") return "all declared feature paths passed (within assumptions)";
     if (verdict === "violated") return hasTerminationViolation ? "a possible feature path may not end" : "not all declared feature checks passed";
-    return "not conclusive";
+    return "not conclusive — this is not a design error";
 }
 
-function statusColor(status: AdvancedModelValidationReport["status"]): "red" | "yellow" | "blue" {
-    if (status === "invalid" || status === "failed") return "red";
-    if (status === "counterexample" || status === "budget-exhausted" || status === "cancelled") return "yellow";
+function statusColor(status: AdvancedModelValidationReport["status"]): "red" | "yellow" | "gray" | "blue" {
+    if (status === "invalid" || status === "failed" || status === "counterexample") return "red";
+    if (status === "budget-exhausted" || status === "cancelled") return "gray";
     return "blue";
 }
 
@@ -26,9 +26,11 @@ export function AdvancedValidationPanel({report}: {report?: AdvancedModelValidat
     if (!report) return null;
     const freeGamesTermination = report.checks.find((check) => check.id === "termination.free-games" && check.status === "violation");
     return (
-        <Alert color={statusColor(report.status)} variant="light" title={`Feature check: ${describeAnalysisStatus(report.status)} — ${describeVerdict(report.verdict, freeGamesTermination !== undefined)}`}>
+        <Alert color={statusColor(report.status)} variant="light" title={`Feature termination check: ${describeAnalysisStatus(report.status)} — ${describeVerdict(report.verdict, freeGamesTermination !== undefined)}`}>
             <Text size="sm" c="dimmed">
-                Optional check of feature termination and accounting; it does not prove RTP, payout probabilities or certification. The design check is separate.
+                This advanced check looks for feature termination and accounting gaps. An unfinished or inconclusive
+                optional check does not invalidate the design, does not prove RTP or payout probabilities, and is not
+                certification. The structural design check is separate.
             </Text>
             {freeGamesTermination !== undefined && (
                 <Text size="sm" mt={4}>

@@ -7,6 +7,7 @@ import path from "path";
 import {ValidateCommand} from "../../../cli/commands/ValidateCommand.js";
 import {createStarterGameBlueprint} from "../../../cli/build/createStarterGameBlueprint.js";
 import {buildOutcomeLibraryFolderModeInput} from "../../weightedoutcome/folder/OutcomeLibraryFolderTestFixtures.js";
+import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
 let restoreTemporaryDirectory: () => void;
 beforeAll(() => {
@@ -216,7 +217,7 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
 
         const exitCode = await new ValidateCommand().run([blueprintPath, "--format", "json"]);
 
-        expect(exitCode).toBe(2);
+        expect(exitCode).toBe(0);
         const json = (console.log as jest.Mock).mock.calls.map((call) => call[0]).find((line) => line.startsWith("{"));
         expect(json).toBeDefined();
         const report = JSON.parse(json!) as {
@@ -331,12 +332,12 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
         await writeOutcomeLibraryFolder(libraryDir);
         const command = new ValidateCommand();
 
-        expect(await command.run([libraryDir, "--format", "json"])).toBe(2);
+        expect(await command.run([libraryDir, "--format", "json"])).toBe(0);
         const shallow = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {schemaVersion: number; deep: boolean; valid: boolean; project: {kind: string}; errors: unknown[]; issues: unknown[]};
         expect(shallow).toMatchObject({schemaVersion: 1, deep: false, valid: true, project: {kind: "outcome-library"}, errors: [], issues: []});
 
         (console.log as jest.Mock).mockClear();
-        expect(await command.run([libraryDir, "--deep", "--format", "json"])).toBe(2);
+        expect(await command.run([libraryDir, "--deep", "--format", "json"])).toBe(0);
         const deep = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {schemaVersion: number; deep: boolean; valid: boolean; project: {kind: string}; errors: unknown[]; issues: unknown[]};
         expect(deep).toMatchObject({schemaVersion: 1, deep: true, valid: true, project: {kind: "outcome-library"}, errors: [], issues: []});
     });
@@ -347,7 +348,7 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
         corruptOutcomeContentsWithoutChangingByteLayout(libraryDir);
         const command = new ValidateCommand();
 
-        expect(await command.run([libraryDir, "--format", "json"])).toBe(2);
+        expect(await command.run([libraryDir, "--format", "json"])).toBe(0);
         const shallow = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {schemaVersion: number; deep: boolean; valid: boolean; errors: unknown[]};
         expect(shallow).toMatchObject({schemaVersion: 1, deep: false, valid: true, errors: []});
 
@@ -513,7 +514,7 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
         };
         const command = new ValidateCommand(undefined, undefined, undefined, resolveProject, undefined, stakeEngineImporter);
 
-        expect(await command.run([stakeDir, "--format", "json"])).toBe(2);
+        expect(await command.run([stakeDir, "--format", "json"])).toBe(0);
 
         const report = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {project: {kind: string; path: string}; valid: boolean};
         expect(report).toEqual(expect.objectContaining({project: {kind: "stake-engine", path: stakeDir}, valid: true}));
@@ -580,6 +581,22 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
         })]);
         expect(validator.calledWith).toBeUndefined();
         expect(resolveRuntimePackageRoot).not.toHaveBeenCalled();
+    });
+
+    it("validates a canonical WASM definition without falsely missing GameBlueprint.info", async () => {
+        const fixture = createCanonicalWasmFixture({id: "canonical-validate", reelStrips: [["A", "B"], ["A", "B"]], paytable: {A: {2: 2}, B: {2: 1}}});
+        const wasmPath = path.join(outDir, "canonical-validate.wasm");
+        fs.writeFileSync(wasmPath, fixture.bytes);
+        fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+
+        expect(await new ValidateCommand().run([wasmPath, "--format", "json"])).toBe(0);
+
+        const report = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {
+            valid: boolean;
+            advanced?: {issues?: Array<{code: string}>};
+        };
+        expect(report.valid).toBe(true);
+        expect(report.advanced?.issues?.map((issue) => issue.code) ?? []).not.toContain("blueprint-info-missing");
     });
 });
 
@@ -648,12 +665,18 @@ describe("ValidateCommand (integration, real PokieGamePackageValidator + fixture
         (console.log as jest.Mock).mockRestore();
     });
 
-    it("keeps a valid custom package structurally valid with inconclusive exit code 2", async () => {
+    it("keeps a valid custom package structurally valid and succeeds by default", async () => {
         const command = new ValidateCommand(new PokieGamePackageValidator());
 
         const exitCode = await command.run([path.join(gamepackageFixturesRoot, "valid-game")]);
 
-        expect(exitCode).toBe(2);
+        expect(exitCode).toBe(0);
+    });
+
+    it("--strict turns an inconclusive optional advanced check into exit code 2", async () => {
+        const command = new ValidateCommand(new PokieGamePackageValidator());
+
+        expect(await command.run([path.join(gamepackageFixturesRoot, "valid-game"), "--strict"])).toBe(2);
     });
 
     it("fails with a clear error for a missing/invalid pokie.entry and returns exit code 1", async () => {
@@ -755,7 +778,7 @@ it("analyzes the original PAR workbook while structurally validating its owned r
         await new ParSheetExporter("1.3.0").exportToFile(fractionalBetBlueprint([0.05], true), file);
         const expected = await new AdvancedModelSourceValidator().validate(file);
         const command = new ValidateCommand(validator, undefined, () => Promise.resolve({runtimePath: path.join(root, "generated-runtime"), release}));
-        expect(await command.run([file, "--format", "json"])).toBe(2);
+        expect(await command.run([file, "--format", "json"])).toBe(0);
         expect(validator.calledWith).toBe(path.join(root, "generated-runtime"));
         expect(release).toHaveBeenCalledTimes(1);
         expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({advanced: expected});
@@ -805,7 +828,7 @@ it("rejects mixed source revisions during structural package validation and perm
         expect(await new ValidateCommand(validator).run([source, "--format", "json"])).toBe(1);
         expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({valid: false, errors: [expect.objectContaining({message: "Source changed during validation. Retry against the current source."})]});
         log.mockClear();
-        expect(await new ValidateCommand(createStubValidator(validReport)).run([source, "--format", "json"])).toBe(2);
+        expect(await new ValidateCommand(createStubValidator(validReport)).run([source, "--format", "json"])).toBe(0);
         expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({advanced: {verdict: "inconclusive"}});
     } finally {
         log.mockRestore();

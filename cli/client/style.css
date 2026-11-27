@@ -66,6 +66,11 @@ section {
     margin: 0 0 1rem;
 }
 
+/* Keep the hidden attribute authoritative for hosts that style a section with display:grid/flex. */
+[hidden] {
+    display: none !important;
+}
+
 .stats dt {
     font-weight: bold;
 }

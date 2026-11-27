@@ -13,6 +13,7 @@ export function describeOutcomeLibraryFolderSource(): CanonicalOutcomeSourceDesc
         streaming: true,
         limitations: [
             "Serves already-computed outcomes exactly as built -- never re-derives or recovers the game model/blueprint that produced them.",
+            "Weights describe one paid entry spin; feature payouts that settle in later rounds (for example free games, respins or Hold & Win) are not part of this bundle.",
             "Draws are only ever atomic against this bundle's own current on-disk content -- a rebuild mid-read reports that the source content changed, never a silently stale result.",
         ],
     };

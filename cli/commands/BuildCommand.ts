@@ -36,7 +36,7 @@ import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderErr
 // one registry.  WASM is deliberately not a second build command.
 const TARGET_TYPES: readonly OutputFormat[] = ADVERTISED_BUILD_TARGETS;
 
-const USAGE = "Usage: pokie build <project> --target <format> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]";
+const USAGE = "Usage: pokie build <project> --target <format> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run] [--portable]";
 const TARGET_HINT = `--target must be one of: ${TARGET_TYPES.join(", ")}.`;
 const PROJECT_HINT =
     "<project> is a POKIE game design, game package, outcome library, PAR workbook, Stake Engine export or WASM build. " +
@@ -47,7 +47,7 @@ const PROJECT_HINT =
 const PAR_WORKBOOK_DEFAULT_EXTENSION = ".xlsx";
 const WASM_DEFAULT_EXTENSION = ".wasm";
 
-type BuildOptions = {target?: OutputFormat; out?: string; dryRun?: boolean; exact?: boolean; sample?: bigint; seed?: string};
+type BuildOptions = {target?: OutputFormat; out?: string; dryRun?: boolean; exact?: boolean; sample?: bigint; seed?: string; portable?: boolean};
 
 function parsePositiveBigIntOption(value: string, flag: string): bigint {
     if (!(/^[0-9]+$/).test(value) || BigInt(value) <= BigInt(0)) {
@@ -63,6 +63,7 @@ export class BuildCommand implements CliCommandHandling {
     private readonly resolveProject: ProjectResolving;
     private readonly registry: BuildOutputBuilderRegistry;
     private readonly stakeProjection: StakeProjectionExportService;
+    private readonly pokiePackageRoot: string | undefined;
 
     constructor(
         pokieVersion: string,
@@ -80,7 +81,7 @@ export class BuildCommand implements CliCommandHandling {
         this.resolveProject = projectResolver;
         this.registry = registry ?? new BuildOutputBuilderRegistry(pokieVersion, undefined, managedOutcomeProjects ?? new ManagedOutcomeProjectService(projectResolver));
         this.stakeProjection = new StakeProjectionExportService(this.registry);
-        if (pokiePackageRoot !== undefined) this.registry.withRuntimePackageRoot(pokiePackageRoot);
+        this.pokiePackageRoot = pokiePackageRoot === undefined ? undefined : path.resolve(pokiePackageRoot);
     }
 
     public getName(): string {
@@ -151,6 +152,7 @@ export class BuildCommand implements CliCommandHandling {
             .option("--sample <n>", "directly perform n deterministic Outcome Library draws (requires --seed; only valid with --target outcomeLibrary)", (value: string): bigint => parsePositiveBigIntOption(value, "--sample"))
             .option("--seed <string>", "deterministic seed for --sample")
             .option("--dry-run", "validate and preview without writing anything")
+            .option("--portable", "write a portable @fromstan/pokie version range instead of a local file: link for a tsPackage")
             .action(async (projectPath: string, excess: string[], options: BuildOptions) => {
                 // An empty-string positional ("pokie build ''") is present as far as Commander's own
                 // required-argument check is concerned, but is treated the same as an entirely missing one --
@@ -172,6 +174,10 @@ export class BuildCommand implements CliCommandHandling {
             throw new Error(`--target is required. ${TARGET_HINT}\n\n${USAGE}`);
         }
         const generation = this.outcomeLibraryGeneration(options);
+        // The generated package defaults to a relative local runtime link so it installs and runs next
+        // to the checkout that built it. --portable selects the version-range dependency instead, and
+        // clears any root configured by an earlier run on a reused command instance.
+        this.registry.withRuntimePackageRoot(options.portable ? undefined : this.pokiePackageRoot);
 
         const project = await this.resolveProject.resolve(projectPath);
         if (project === undefined) {

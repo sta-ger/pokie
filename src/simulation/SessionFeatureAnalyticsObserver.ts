@@ -90,13 +90,16 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
     private readonly envelope: AnalyticsEnvelope;
     private readonly session: GameSessionHandling;
     private readonly state: SessionFeatureAnalyticsState;
-    constructor(session: GameSessionHandling) {
+    constructor(session: GameSessionHandling, source?: string) {
         this.session = session;
         this.envelope = sessionAnalyticsEnvelope(session);
         this.holdGrant = initialHoldGrant(session);
         let state = states.get(session);
         if (!state) {
-            state = {source: globalThis.crypto.randomUUID(), position: 0, active: {}};
+            // A caller that owns a deterministic trajectory (the portable WASM host) can supply a
+            // stable source identity; ordinary sessions keep the random UUID that distinguishes
+            // concurrent live trajectories.
+            state = {source: source ?? globalThis.crypto.randomUUID(), position: 0, active: {}};
             states.set(session, state);
         }
         this.state = state;

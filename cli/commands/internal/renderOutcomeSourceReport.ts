@@ -1,18 +1,62 @@
 import {formatAnalysisNumber} from "../../../src/internal/formatAnalysisNumber.js";
-import {OutcomeSourceProjectReport} from "@fromstan/pokie";
+import type {OutcomeSourceProjectModeAnalysis, OutcomeSourceProjectReport} from "@fromstan/pokie";
 
 // The one place a resolved "outcomeLibrary"/"stakeAdapter" project's own OutcomeSourceProjectReport (see
 // OutcomeSourceProjectAnalyzer) is turned into human-readable text -- shared by ReportCommand (which reaches
 // it after a mistakenly-given "pokie report" target turns out to resolve to one) and OutcomeSourceCommand's
 // own "inspect" verb (a direct, first-class route to the same reader), so both print the exact same
-// descriptor/limitations/issues/exact-analysis shape rather than two independently-drifting renderings of the
+// descriptor/limitations/issues/analysis shape rather than two independently-drifting renderings of the
 // same report. "issues" wins over "modes" whenever the reader found a structural problem (see
 // OutcomeSourceProjectReport's own doc comment): "modes" is always empty in that case, so there is never an
-// exact analysis to print alongside a malformed source's own diagnostics.
+// analysis to print alongside a malformed source's own diagnostics.
+//
+// Coverage is deliberately part of the report, not an assumption: a native bundle records whether its
+// weights came from a complete sweep ("exact") or a deterministic sample of a larger space
+// ("capped-coverage"). Calling a sampled bundle "exact" would invite a producer to treat a sample estimate
+// as the game's RTP, which is exactly the mistake this boundary must prevent.
+
+function coverageLabel(mode: OutcomeSourceProjectModeAnalysis): string {
+    const generator = mode.generator;
+    if (generator === undefined) return "coverage metadata unavailable";
+    if (generator.strategy === "exact") return "exact enumeration";
+    return "sampled coverage (not exact)";
+}
+
+function coverageDetail(mode: OutcomeSourceProjectModeAnalysis): string | undefined {
+    const generator = mode.generator;
+    if (generator === undefined) return undefined;
+    const raw = String(generator.totalOutcomeSpaceSize);
+    const sampled = String(generator.sampledRawCount);
+    if (generator.strategy === "exact") {
+        return `every reachable outcome in ${raw} raw reel-stop combination(s) was enumerated; weights are exact counts.`;
+    }
+    return `${sampled} deterministic draw(s) from ${raw} possible reel-stop combination(s); RTP and payout probabilities are sample estimates, not exact game RTP.`;
+}
+
+function hasSampledCoverage(report: OutcomeSourceProjectReport): boolean {
+    return report.modes.some((mode) => mode.generator?.strategy === "capped-coverage");
+}
+
+function analysisHeading(report: OutcomeSourceProjectReport): string {
+    return hasSampledCoverage(report) ? "Sampled analysis" : "Outcome analysis";
+}
+
+function scopeNote(): string {
+    return "Outcome weights describe one paid entry spin; feature payouts that settle in later rounds (free games, respins, Hold & Win and similar) are outside this source and must be analysed separately.";
+}
+
+function coverageRows(report: OutcomeSourceProjectReport): string[] {
+    return report.modes.map((mode) => {
+        const detail = coverageDetail(mode);
+        return `${mode.modeName}: ${coverageLabel(mode)}${detail === undefined ? "" : ` — ${detail}`}`;
+    });
+}
+
 export function renderOutcomeSourceReport(targetPath: string, report: OutcomeSourceProjectReport): string {
     const lines: string[] = [
         `"${targetPath}" is a "${report.descriptor.kind}" canonical outcome source (streaming: ${report.descriptor.streaming}).`,
         ...report.descriptor.limitations.map((limitation) => `  limitation: ${limitation}`),
+        `  scope: ${scopeNote()}`,
     ];
 
     if (report.issues.length > 0) {
@@ -26,13 +70,15 @@ export function renderOutcomeSourceReport(targetPath: string, report: OutcomeSou
         return lines.join("\n");
     }
 
-    lines.push("", "Exact analysis (no simulation -- every outcome's own weight, enumerated exactly):");
+    lines.push("", `${analysisHeading(report)} (no simulation -- each outcome's own declared weight is applied):`);
     for (const mode of report.modes) {
         lines.push(
-            `  mode "${mode.modeName}": rtp ${formatAnalysisNumber(mode.analysis.rtp * 100, 2)}%, ` +
+            `  mode "${mode.modeName}": ${coverageLabel(mode)}, rtp ${formatAnalysisNumber(mode.analysis.rtp * 100, 2)}%, ` +
                 `hit frequency ${formatAnalysisNumber(mode.analysis.hitFrequency * 100, 2)}%, ` +
                 `standard deviation ${formatAnalysisNumber(mode.analysis.standardDeviation, 4)}`,
         );
+        const detail = coverageDetail(mode);
+        if (detail !== undefined) lines.push(`    coverage: ${detail}`);
     }
 
     return lines.join("\n");
@@ -52,7 +98,8 @@ export function renderOutcomeSourceMarkdown(targetPath: string, report: OutcomeS
         "## Reproducibility",
         "",
         `- **Source root**: \`${report.rootPath}\``,
-        "- **Analysis**: exact enumeration of the source's declared outcome weights; no simulation was run.",
+        "- **Analysis**: each outcome's own declared weight is read and applied exactly; no simulation was run.",
+        `- **Scope**: ${scopeNote()}`,
     ];
 
     if (report.descriptor.limitations.length > 0) {
@@ -62,7 +109,9 @@ export function renderOutcomeSourceMarkdown(targetPath: string, report: OutcomeS
         lines.push("", "## Warnings", "", ...report.issues.map((issue) => `- **${issue.severity} ${issue.code}**: ${issue.message}`));
     }
     if (report.modes.length > 0) {
-        lines.push("", "## Exact analysis", "", "| Mode | RTP | Hit frequency | Standard deviation |", "| --- | --- | --- | --- |");
+        lines.push("", `## ${analysisHeading(report)}`, "");
+        lines.push(...coverageRows(report).map((row) => `- ${row}`));
+        lines.push("", "| Mode | RTP | Hit frequency | Standard deviation |", "| --- | --- | --- | --- |");
         report.modes.forEach((mode) => {
             lines.push(`| ${mode.modeName} | ${formatAnalysisNumber(mode.analysis.rtp * 100, 2)}% | ${formatAnalysisNumber(mode.analysis.hitFrequency * 100, 2)}% | ${formatAnalysisNumber(mode.analysis.standardDeviation, 4)} |`);
         });
@@ -73,7 +122,7 @@ export function renderOutcomeSourceMarkdown(targetPath: string, report: OutcomeS
 export function renderOutcomeSourceHtml(targetPath: string, report: OutcomeSourceProjectReport): string {
     const escapeHtml = (value: string): string => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     const list = (items: readonly string[]): string[] => ["        <ul>", ...items.map((item) => `            <li>${escapeHtml(item)}</li>`), "        </ul>"];
-    const rows = report.modes.map((mode) => `            <tr><td>${escapeHtml(mode.modeName)}</td><td>${formatAnalysisNumber(mode.analysis.rtp * 100, 2)}%</td><td>${formatAnalysisNumber(mode.analysis.hitFrequency * 100, 2)}%</td><td>${formatAnalysisNumber(mode.analysis.standardDeviation, 4)}</td></tr>`);
+    const rows = report.modes.map((mode) => `            <tr><td>${escapeHtml(mode.modeName)}</td><td>${escapeHtml(coverageLabel(mode))}</td><td>${formatAnalysisNumber(mode.analysis.rtp * 100, 2)}%</td><td>${formatAnalysisNumber(mode.analysis.hitFrequency * 100, 2)}%</td><td>${formatAnalysisNumber(mode.analysis.standardDeviation, 4)}</td></tr>`);
 
     return [
         "<!DOCTYPE html>",
@@ -91,11 +140,18 @@ export function renderOutcomeSourceHtml(targetPath: string, report: OutcomeSourc
         `            <tr><th scope="row">Streaming</th><td>${report.descriptor.streaming ? "yes" : "no"}</td></tr>`,
         "        </tbody></table>",
         "        <section><h2>Reproducibility</h2>",
-        ...list([`Source root: ${report.rootPath}`, "Analysis: exact enumeration of declared outcome weights; no simulation was run."]),
+        ...list([`Source root: ${report.rootPath}`, "Analysis: each outcome's own declared weight is read and applied exactly; no simulation was run.", `Scope: ${scopeNote()}`]),
         "        </section>",
         ...(report.descriptor.limitations.length > 0 ? ["        <section><h2>Limitations and recommendations</h2>", ...list(report.descriptor.limitations), "        </section>"] : []),
         ...(report.issues.length > 0 ? ["        <section><h2>Warnings</h2>", ...list(report.issues.map((issue) => `${issue.severity} ${issue.code}: ${issue.message}`)), "        </section>"] : []),
-        ...(rows.length > 0 ? ["        <section><h2>Exact analysis</h2>", "        <table><thead><tr><th>Mode</th><th>RTP</th><th>Hit frequency</th><th>Standard deviation</th></tr></thead><tbody>", ...rows, "        </tbody></table></section>"] : []),
+        ...(rows.length > 0 ? [
+            `        <section><h2>${escapeHtml(analysisHeading(report))}</h2>`,
+            "        <h3>Coverage</h3>",
+            ...list(coverageRows(report)),
+            "        <table><thead><tr><th>Mode</th><th>Coverage</th><th>RTP</th><th>Hit frequency</th><th>Standard deviation</th></tr></thead><tbody>",
+            ...rows,
+            "        </tbody></table></section>",
+        ] : []),
         "    </article>",
         "</body>",
         "</html>",

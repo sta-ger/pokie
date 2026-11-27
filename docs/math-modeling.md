@@ -275,6 +275,14 @@ The result contains `schemaVersion: 1`, `comparisonKind: "math-definition"`,
 Statuses are `identical`, `different`, `partial`, `unsupported`, `invalid`,
 `failed`, and `cancelled`. Only two complete supported snapshots can be
 `identical` or `different`. An empty supported subset does not prove equality.
+The optional advanced declaration analysis is retained separately on each
+snapshot; an inconclusive advanced check does not change a complete declared
+math comparison from `identical`/`different` to `partial`. Two sources with the
+same retained revision hash and no changes are `identical` even when a source's
+support is `partial` for coverage reasons (for example a canonical WASM build
+whose original authoring omissions cannot be recovered). `pokie diff --ci` can
+still reject that incomplete coverage or inconclusive advanced state explicitly
+with exit `2`.
 Each source carries identity (kind, location when available, descriptor and
 Blueprint schema versions), support, complete known authored/effective JSON,
 field trusted source evidence, limited diagnostics and comparison limits.

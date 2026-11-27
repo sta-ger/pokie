@@ -9,6 +9,9 @@ export function renderPackageReadme(manifest: PokieGameInfo): string {
 A POKIE game package. \`src/index.ts\` implements the \`PokieGame\` contract -- edit it (and add whatever
 else your game needs under \`src/\`) to build out your own game logic.
 
+The scaffold starts from a small balanced five-line demo. It is a development starting point, not
+production-certified math; run \`pokie sim\` or the exact table before treating its RTP as final.
+
 ## Workflow
 
 \`\`\`
@@ -33,6 +36,10 @@ source directly, so re-run \`npm run build\` after every source change before re
 \`pokie init\`'s own \`npm install\` resolves this package's \`"@fromstan/pokie"\` dependency against the exact \`pokie\` installation that scaffolded it (a dev checkout, an \`npm link\`ed target, a pre-release tarball install, or an ordinarily published copy) rather than the registry -- but only for that one install. Once it finishes, \`package.json\` is left with a normal version range (e.g. \`"^2.0.0"\`), never an absolute, machine-specific \`file:\` path, so this file itself is portable: safe to move or copy to another machine or environment.
 
 Running \`npm install\` again afterward -- by hand, after deleting \`node_modules\`, or on another machine you copied this package to -- reads that version range like any other dependency: it succeeds immediately if \`node_modules\` travels along with it (no reinstall needed) or if \`@fromstan/pokie\` has since been published at a matching version; otherwise, re-run \`pokie init\` in this directory again (or against a \`pokie\` checkout you have available there) to re-resolve it locally.
+
+\`npm ci\` is stricter: it reads only \`package-lock.json\`, and the deliberate local link used during
+\`pokie init\` is not left in that portable lockfile. Until \`@fromstan/pokie 2.0.0\` is published, use
+\`npm install\`, copy \`node_modules\`, or re-run \`pokie init\` on the fresh copy instead of \`npm ci\`.
 
 See [\`pokie\`'s CLI docs](https://github.com/sta-ger/pokie/blob/develop/docs/cli.md) for what each
 command does and every available option.

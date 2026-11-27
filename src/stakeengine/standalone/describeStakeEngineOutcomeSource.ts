@@ -15,6 +15,7 @@ export function describeStakeEngineOutcomeSource(): CanonicalOutcomeSourceDescri
         limitations: [
             "Reads an entire mode's own lookup CSV and books into memory at once, never a single-outcome random-access read.",
             "Normalizes verbatim Stake Engine events into StakeEngineOutcomeRecord -- never reconstructs a RoundRecord-shaped step model or a pokie-info.json provenance record (see StakeEngineOutcomeRecord's own doc comment).",
+            "Weights describe one paid entry spin; feature payouts that settle in later rounds are not established by this export.",
             "Never re-derives or recovers the game model/blueprint that produced these outcomes.",
         ],
     };

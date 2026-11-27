@@ -477,7 +477,7 @@ specialized workflow.
 The public CLI supports the executable output formats `json`, `markdown`, and `html`. Project-defined mode names are accepted where a command exposes `--mode`; `pokie sim` additionally accepts `all` to process every declared mode.
 
 ```
-pokie build <project> --target <format> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]
+pokie build <project> --target <format> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run] [--portable] [--portable]
 ```
 
 ```
@@ -507,6 +507,7 @@ Options:
  empty directory (a file target like `wasm` or `parWorkbook` must simply not exist yet) — see [Conflict
  handling](#conflict-handling-an-existing---out-destination) below.
 - `--dry-run` — validate and preview without writing anything.
+- `--portable` — for `--target tsPackage`, write a normal `@fromstan/pokie` version range (`^2.0.0`) instead of the default relative local `file:` link. Use this for a package that will be copied or published; the default keeps the generated package immediately loadable next to the checkout that built it without leaking an absolute host path into `package.json` or `package-lock.json`.
 
 The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its conditional supported edges are
 `blueprint` → `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`, `tsPackage` → `outcomeLibrary`/`stakeAdapter`, plus `blueprint`/`tsPackage`/`parWorkbook`/`wasm` when public model extraction is complete,
@@ -583,8 +584,9 @@ handling](#conflict-handling-an-existing---out-destination) below) — and write
  all pointing at `./dist/index.js` — the exact same entry path `pokie init` packages compile their own
  TypeScript source into, written by the exact same shared `buildPackageJsonPatch` those commands use;
 - `package-lock.json`/`tsconfig.json` — a lockfile seed matching the generated dependencies and the shared
- compiler config. CLI/Studio builds persist the running POKIE installation as a `file:` dependency in
- both manifests, so `npm install && npm run build` also works with an unpublished local candidate;
+ compiler config. CLI/Studio builds persist the running POKIE installation as a relative `file:` dependency
+ in both manifests, so `npm install && npm run build` also works with an unpublished local candidate without
+ leaking an absolute host path; use `--portable` for a version-range dependency that can be copied alone;
 - `README.md` — a short orientation doc for the built package itself: what each file is, that `src/index.ts`/
  `dist/index.js` shouldn't be hand-edited, and the `build -> inspect -> validate -> sim -> report -> replay ->
  serve`/`dev` workflow below;
@@ -970,11 +972,12 @@ real build would produce, with no `--out` destination created or touched.
 
 The minimal loop from a blueprint to a running local server, chaining every command this file documents. Unlike
 the [`init` workflow](#workflow) below, there's no `npm run build` step in the middle — `pokie build`
-output is locally loadable immediately through a link to the running POKIE installation. Its `file:`
+output is locally loadable immediately through a link to the running POKIE installation. Its relative `file:`
 dependency keeps a later `npm install` bound to that installation, including local checkouts without a registry release.
-Keep the installation at its recorded location. To move the output to another machine, explicitly
-select an available POKIE archive or installation there before installing developer dependencies;
-see [the package dependency interface](game-packages.md#native-imports-and-moving-a-generated-package) and the generated README.
+Keep the installation at its recorded relative location. For a package that will be copied or published on its own,
+rebuild with `--portable` to get a normal version-range dependency; otherwise explicitly select an available POKIE
+archive or installation on the destination before installing developer dependencies.
+See [the package dependency interface](game-packages.md#native-imports-and-moving-a-generated-package) and the generated README.
 Direct `GamePackageGenerator` library callers must supply/install runtime dependencies themselves or
 pass `runtimePackageRoot` in the generation options. No TypeScript compile step is required for the generated entry:
 
@@ -1509,10 +1512,11 @@ cryptographically secure source and prints a human-readable selection only; it d
 provenance. A
 Stake Engine export has no such draw interface, so `sample` against one reports the same missing-supported action
 diagnostic every other unsupported project operation does, rather than attempting to run it. `diff` compares
-two resolved outcome sources' own exact analyses mode-by-mode over the core metrics both a native folder and a
+two resolved outcome sources' own weighted analyses mode-by-mode over the core metrics both a native folder and a
 Stake Engine export already share (rtp, hit frequency, zero-win frequency, variance, standard deviation, max
-win probability) — either side may be either kind, since diffing never draws/samples anything and both kinds
-already expose a reader's own exact analysis.
+win probability) — either side may be either kind, since diffing never draws/samples anything. The comparison
+is exact over each source's retained weights; a source built with capped coverage is still a sample of its
+larger outcome space, so `pokie report` labels that coverage separately instead of calling the result exact.
 
 ## `pokie certification build <folder> <config.json>`
 
@@ -1697,6 +1701,11 @@ in place, with **no game-id subdirectory** — the "programmer-first" package wo
 `src/index.ts` a developer owns, installed and built and verified on the spot. For an editable `GameBlueprint` JSON
 file instead, see [`pokie create`](#pokie-create-name) above.
 
+The scaffold starts from a small balanced five-line demo (mid-90s RTP), not a production-certified model.
+"Prepared and verified" means the package loads and its contract is valid; run `pokie sim` or the exact table
+before treating its math as final. While `@fromstan/pokie 2.0.0` is unpublished, a bare `npm ci` in a fresh
+copy needs a published version or another `pokie init`; `package.json` itself keeps a portable version range.
+
 ```
 npm i -g @fromstan/pokie
 mkdir sample-slot && cd sample-slot
@@ -1789,13 +1798,14 @@ The positional also accepts a Blueprint, a native Outcome Library (with `--mode`
 build. See the [WASM quick start](#wasm-quick-start) for the seeded single-worker comparison with replay.
 
 ```
-pokie sim./sample-slot --rounds 10000 --seed demo --out report.json
-pokie sim./sample-slot --rounds 1000000 --seed demo --workers 4 --out report.json
+pokie sim./sample-slot --plays 10000 --seed demo --out report.json
+pokie sim./sample-slot --plays 1000000 --seed demo --workers 4 --out report.json
 ```
 
 Options:
 
-- `--rounds <number>` — how many plays to simulate (paid spins plus free-game spins; default `1000`, `SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS`). The flag keeps its historical name; reports also show completed paid rounds.
+- `--plays <number>` — how many accepted plays to simulate (paid spins plus free-game spins; default `1000`, `SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS`). Reports show completed paid rounds separately; a free-games game can finish fewer paid rounds than the play budget.
+- `--rounds <number>` — historical alias for `--plays`, kept so existing command lines and saved report commands remain reproducible. When both are supplied, `--plays` wins.
 - `--seed <string>` — forwarded as `context.seed` to `game.createSession(context)`. **Best-effort, not guaranteed**:
  POKIE has no built-in way to seed an arbitrary loaded game — it's up to the game package's own `createSession`
  to read `context.seed` and thread it into a `SeededRandomNumberGenerator`. A game that ignores `context` will
@@ -2475,6 +2485,10 @@ Options:
 - `--format json` — print the JSON report to stdout instead of the default human-readable summary.
 - `--out <file>` — write the JSON report to `<file>`. Independent of `--format json`: combine both to see the
  report and save it in the same run.
+- `--strict` — treat an inconclusive optional advanced declaration check as a CI failure (exit `2`). By
+ default, structural validity is the useful gate; the advanced check remains visible in the report.
+- `--details` — print every advanced check, assumption and limit in the human-readable summary. Without it,
+ the summary prints one advanced-status line and points to `--details`.
 
 The default summary names the project, says whether it is valid, then lists every error or warning as
 `[location] code: explanation` followed by a `Next:` remediation. It never relies on a stack trace or parser
@@ -2513,9 +2527,13 @@ For a package, `game` is populated whenever its game metadata could be read, eve
 field is invalid. For outcome-library inputs, `issues` is the combined diagnostic list; `errors` and `warnings`
 remain available for CI to make its decision without filtering by severity itself.
 
-Exit code is `0` when `valid` is `true` and `1` when it's `false` — no thrown/printed error on top of the report,
-so scripting against `pokie validate` doesn't have to parse stderr. Only usage mistakes (missing `<project>`,
-an unknown option, `--out`/`--format` without a value) throw the usual `Usage: pokie validate...` error.
+Exit code is `0` when `valid` is `true`, even if the optional advanced declaration check is inconclusive or
+unsupported (generated executables and feature-heavy games commonly cannot prove that check), and `1` when
+structural validation fails. `--strict` changes an inconclusive advanced check to exit `2`; an advanced
+counterexample remains exit `1`. `3` means the advanced check itself failed operationally after a structurally
+valid read, and `130` means cancellation. No thrown/printed error is added on top of the report, so scripting
+against `pokie validate` doesn't have to parse stderr. Only usage mistakes (missing `<project>`, an unknown
+option, `--out`/`--format` without a value) throw the usual `Usage: pokie validate...` error.
 
 ## `pokie inspect <packageRoot>`
 
@@ -4117,6 +4135,7 @@ No history database is created.
 | Result | Default `pokie diff` | Definition `--ci` |
 | --- | ---: | ---: |
 | Complete unchanged | 0 | 0 |
+| Complete unchanged, optional advanced check inconclusive | 0 | 2 |
 | Complete mathematical change (including operational order) | 0 | 1 |
 | Representation/provenance/validation-only change with valid complete sources | 0 | 0 |
 | Partial or unsupported definition | 1 | 2 |
@@ -4138,11 +4157,15 @@ neither kind establishes definition equality.
 `pokie validate SOURCE` includes the shared advanced declared-model report in
 human and JSON output. Existing `valid` is structural/interface validity. Advanced
 checks retain unknown outcomes, assumptions, work/limits and witnesses. Exit 0:
-proved within assumptions; 1: structural error/counterexample; 2: inconclusive;
-3: advanced operational failure after structural success; 130: cancellation
-after structural success. `--deep` still means outcome-library deep validation.
-`--out` uses a new unused path outside source directories and never replaces an
-existing report or input. Write failures leave no partial report.
+structurally valid, whether the optional advanced check proved its result or
+remained inconclusive; 1: structural error or advanced counterexample; 2:
+`--strict` plus an inconclusive advanced result, or a structural verdict that
+could not be obtained at all; 3: advanced operational failure after structural
+success; 130: cancellation after structural success. `--details` expands the
+advanced evidence; the default summary prints one line. `--deep` still means
+outcome-library deep validation. `--out` uses a new unused path outside source
+directories and never replaces an existing report or input. Write failures leave
+no partial report.
 
 Definition `diff` includes advanced validation changes. Its existing opt-in
 `--ci` policy treats unresolved advanced analysis as exit 2, rather than accepting

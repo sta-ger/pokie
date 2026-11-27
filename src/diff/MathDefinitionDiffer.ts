@@ -116,7 +116,7 @@ function verifyCompleteness(snapshot: MathDefinitionSnapshot): void {
     const missing =
         !isRecord(model) ||
         !isRecord(snapshot.authored) ||
-        ["manifest", "reels", "rows", "symbols", "paytable"].some((key) => !(key in model)) ||
+        ["reels", "rows", "symbols", "paytable"].some((key) => !(key in model)) ||
         (model.reelStrips === undefined && model.reelSequences === undefined) ||
         model.maxWinPolicy === undefined;
     if (missing || snapshot.fields.some((field) => field.status === "unsupported")) {
@@ -385,12 +385,27 @@ export class MathDefinitionDiffer implements MathDefinitionDiffing {
         changes.sort((a, b) => (a.path < b.path ? -1 : Number(a.path > b.path)));
         let status: MathDefinitionDiff["status"] = changes.length ? "different" : "identical";
         const supports = [left.support, right.support];
-        if (!left.advanced || !right.advanced) status = "partial";
-        if ([left, right].some(source => source.advanced && source.advanced.verdict === "inconclusive")) status = "partial";
-        if ([left, right].some(source => source.advanced?.verdict === "violated")) status = "invalid";
-        if (supports.includes("partial") || supports.includes("unsupported")) status = "partial";
-        if (supports.every((support) => support === "unsupported")) status = "unsupported";
-        for (const failure of ["invalid", "cancelled", "failed"] as const) if (supports.includes(failure)) status = failure;
+        const revisionsEqual = typeof left.identity.revision === "string" && left.identity.revision.length > 0 &&
+            left.identity.revision === right.identity.revision;
+        const fatal = supports.some((support) => support === "invalid" || support === "cancelled" || support === "failed") ||
+            [left, right].some((source) => source.advanced?.verdict === "violated");
+        if (revisionsEqual && changes.length === 0 && !fatal) {
+            // Equal retained revision hashes mean the compared declared/effective definition is identical.
+            // Some sources (notably canonical WASM, and any comparison that cannot recover original
+            // authoring omissions) are deliberately marked partial for coverage, not for a math
+            // difference. Do not turn an unchanged revision into "partial" merely because that optional
+            // coverage/proof is incomplete; strict callers can still reject it via --ci.
+            status = "identical";
+        } else {
+            // Advanced declaration analysis is an optional proof, not part of the declared/effective math
+            // comparison. Keep it visible on each snapshot, but do not turn an unchanged pair of complete
+            // definitions into "partial" merely because the optional proof hit its budget.
+            if (!left.advanced || !right.advanced) status = "partial";
+            if ([left, right].some(source => source.advanced?.verdict === "violated")) status = "invalid";
+            if (supports.includes("partial") || supports.includes("unsupported")) status = "partial";
+            if (supports.every((support) => support === "unsupported")) status = "unsupported";
+            for (const failure of ["invalid", "cancelled", "failed"] as const) if (supports.includes(failure)) status = failure;
+        }
         return {
             schemaVersion: 1,
             comparisonKind: "math-definition",

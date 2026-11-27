@@ -299,11 +299,13 @@ export class InitCommand implements CliCommandHandling {
 
     private printPrepared(scaffold: ScaffoldResult, projectRoot: string): void {
         console.log(`\nGame package "${scaffold.info.name}" (id: "${scaffold.info.id}") prepared and verified in "${projectRoot}".`);
+        console.log(`Starter math is a balanced five-line demo, not a production-certified model; tune it before real-money use.`);
         console.log(`Load it anywhere with: loadPokieGame("${projectRoot}") from "@fromstan/pokie".`);
         console.log(`\nNext:`);
         console.log(`  pokie validate ${projectRoot}`);
         console.log(`  pokie sim ${projectRoot} --rounds 10000 --seed demo --out sim.json`);
         console.log(`  pokie dev ${projectRoot}`);
         console.log(`  npm start`);
+        console.log(`\nNote: while @fromstan/pokie 2.0.0 is unpublished, a bare "npm ci" in a fresh copy needs a published 2.0.0 or another "pokie init" run; the package.json itself stays portable.`);
     }
 }

@@ -32,6 +32,24 @@ describe("MathDefinitionDiffer classifications", () => {
         expect(diff.changes.some((change) => change.mathematical)).toBe(false);
     });
 
+    it("treats an equal retained revision as identical even when coverage is partial", () => {
+        const left = snapshot("Same", 8);
+        const right = snapshot("Same", 8);
+        left.identity = {kind: "wasm", revision: "sha256:same-retained-revision"};
+        right.identity = {kind: "wasm", revision: "sha256:same-retained-revision"};
+
+        expect(new MathDefinitionDiffer().diff(left, right).status).toBe("identical");
+    });
+
+    it("keeps different retained revisions partial when coverage cannot prove more", () => {
+        const left = snapshot("Same", 8);
+        const right = snapshot("Same", 8);
+        left.identity = {kind: "wasm", revision: "sha256:left"};
+        right.identity = {kind: "wasm", revision: "sha256:right"};
+
+        expect(new MathDefinitionDiffer().diff(left, right).status).toBe("partial");
+    });
+
     it("still counts a paytable payout change as mathematical", () => {
         const diff = new MathDefinitionDiffer().diff(snapshot("Starter Slot", 8), snapshot("Starter Slot", 12));
         const payout = diff.changes.find((change) => change.path === "/paytable/A/3");

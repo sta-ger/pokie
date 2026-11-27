@@ -593,9 +593,45 @@ describe("ReportCommand outcome-source project routing", () => {
         expect(outcomeSourceAnalyzer.calls).toEqual([outcomeLibraryProject]);
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).toContain("# Outcome Source Report");
-        expect(printed).toContain("## Exact analysis");
+        expect(printed).toContain("## Outcome analysis");
         expect(printed).toContain("never re-derives the game model that produced these outcomes");
         expect(printed).toContain("| base | 95.50% | 25.00% | 0.3162 |");
+
+        logSpy.mockRestore();
+    });
+
+    it("labels capped-coverage outcome weights as sampled, never as exact", async () => {
+        const report: OutcomeSourceProjectReport = {
+            rootPath: "/libraries/sampled",
+            descriptor: {kind: "native", streaming: true, limitations: ["never re-derives the game model that produced these outcomes"]},
+            issues: [],
+            modes: [
+                {
+                    modeName: "base",
+                    analysis: {totalWeight: 5000, rtp: 1.45, hitFrequency: 0.46, zeroWinFrequency: 0.54, variance: 8.3, standardDeviation: 2.88, maxWin: 31, maxWinProbability: 0.0002, payoutDistribution: []},
+                    generator: {
+                        algorithm: "pokie-exact-reel-enumeration-v1",
+                        strategy: "capped-coverage",
+                        totalOutcomeSpaceSize: 3200000,
+                        sampledRawCount: 5000,
+                        maxExactOutcomeSpaceSize: 50000,
+                        pokieVersion: "2.0.0",
+                        game: {id: "sampled", name: "Sampled", version: "0.1.0"},
+                        generatedAt: "2026-01-01T00:00:00.000Z",
+                    },
+                },
+            ],
+        };
+        const command = new ReportCommand(createStubReadFile({}), undefined, undefined, stubProjectResolver(outcomeLibraryProject), stubAnalyzer(report));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["/libraries/sampled"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("## Sampled analysis");
+        expect(printed).toContain("sampled coverage (not exact)");
+        expect(printed).toContain("5000 deterministic draw(s) from 3200000");
+        expect(printed).not.toContain("## Exact analysis");
 
         logSpy.mockRestore();
     });
@@ -760,7 +796,7 @@ describe("ReportCommand (integration, real outcome-library bundle)", () => {
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).toContain("# Outcome Source Report");
-        expect(printed).toContain("## Exact analysis");
+        expect(printed).toContain("## Outcome analysis");
         expect(printed).not.toContain("run pokie sim");
 
         logSpy.mockRestore();
