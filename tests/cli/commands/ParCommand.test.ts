@@ -145,7 +145,7 @@ describe("ParCommand", () => {
             expect(writeFile).toHaveBeenCalledWith("custom.json", expect.any(String));
         });
 
-        it("refuses occupied and input-alias outputs without changing either file", async () => {
+        it("refuses occupied and non-JSON outputs without changing either file", async () => {
             const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-par-command-import-conflict-test-"));
             const workbookPath = path.join(workDir, "source.par.xlsx");
             const occupiedOutputPath = path.join(workDir, "occupied.blueprint.json");
@@ -167,7 +167,7 @@ describe("ParCommand", () => {
                 fs.symlinkSync(workDir, linkedDir, "dir");
                 const workbookBytes = fs.readFileSync(workbookPath);
                 await expect(command.run(["import", workbookPath, "--out", path.join(linkedDir, "source.par.xlsx")])).rejects.toThrow(
-                    /source itself/i,
+                    /ending in "\.json"/,
                 );
                 expect(fs.readFileSync(workbookPath)).toEqual(workbookBytes);
             } finally {

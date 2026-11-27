@@ -27,6 +27,7 @@ import {
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {ensureArtifactDestinationParent} from "../../src/project/BuildOutputOptions.js";
 import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOperationError.js";
+import {assertBlueprintImportDestination} from "./internal/assertBlueprintImportDestination.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {BlueprintFileWriteResult, writeBlueprintFileAtomically} from "./internal/writeBlueprintFileAtomically.js";
 
@@ -204,6 +205,7 @@ export class ParCommand implements CliCommandHandling {
                 }
                 const outPath = options.out ?? defaultBlueprintPath(inputPath);
                 if (options.dryRun && this.usesDefaultRegistryLifecycle()) {
+                    assertBlueprintImportDestination(outPath);
                     const source = await this.prepareImportSource(inputPath);
                     const plan = await this.registry.preparePlan(source, "blueprint", {destinationPath: outPath});
                     await this.registry.validate("blueprint", source, plan);
@@ -251,6 +253,7 @@ export class ParCommand implements CliCommandHandling {
         format: ImportFormat,
         prepared?: {readonly source: PokieProject; readonly plan: ImportOutputPlan},
     ): Promise<number> {
+        assertBlueprintImportDestination(outPath);
         if (prepared === undefined) {
             // `par import` is a public import entry point in its own right.  Do
             // not let its legacy spelling take a separate read/write path from

@@ -12,6 +12,7 @@ import {
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {ParCommand} from "./ParCommand.js";
 import {StakeEngineCommand} from "./StakeEngineCommand.js";
+import {assertBlueprintImportDestination} from "./internal/assertBlueprintImportDestination.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE = "Usage: pokie import <source> [--out <path>] [--format json] [--dry-run]";
@@ -94,6 +95,7 @@ export class ImportCommand implements CliCommandHandling {
             throw new Error(`${plan.diagnostic?.message ?? "This import source is unavailable."} Next: ${plan.diagnostic?.recovery ?? "resolve a supported exchange source and retry."}`);
         }
         if (source.type === "parWorkbook") {
+            assertBlueprintImportDestination(destination);
             const prepared = await this.registry.preparePlan(source, "blueprint", {destinationPath: destination});
             if (prepared.status !== "planned") throw new Error(prepared.diagnostic?.message ?? "PAR import could not be planned.");
             await this.registry.validate("blueprint", source, prepared);
