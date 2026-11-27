@@ -222,6 +222,13 @@ export class DiffCommand implements CliCommandHandling {
         if (options.ci) throw new Error("--ci requires two definition sources (or explicit --comparison definition).");
         if (left === undefined || right === undefined) {
             if (left !== undefined || right !== undefined) {
+                const unresolvedPath = left === undefined ? options.leftPath : options.rightPath;
+                if (!fs.existsSync(unresolvedPath)) {
+                    throw new Error(
+                        `Cannot compare "${unresolvedPath}" because it does not exist. Check the path, then retry ` +
+                            "with two simulation reports or two Outcome Library bundles / Stake Engine exports.",
+                    );
+                }
                 throw new Error(
                     "Cannot compare a simulation report with an outcome source. Compare two simulation reports, " +
                         "or two Outcome Library bundles / Stake Engine exports.",
