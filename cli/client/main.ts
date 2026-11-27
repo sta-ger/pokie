@@ -24,7 +24,7 @@ import {
     PaytableView,
     VideoSlotRoundResponse,
 } from "./player/videoSlotRoundView.js";
-import {ensureSession} from "./sessionFlow.js";
+import {ensureSession, restoreSession} from "./sessionFlow.js";
 import {clearSessionId, StorageLike} from "./sessionStorage.js";
 import {bindSessionControls, readSessionControlValue} from "./sessionControls.js";
 import type {SessionResponse} from "./types.js";
@@ -463,6 +463,26 @@ function reconnect(elements: Elements, fetchImpl: FetchLike): void {
     boot(elements, fetchImpl, undefined, readSessionControlValue(elements.sessionSeed)).catch((error: unknown) => console.error(error));
 }
 
+async function restoreRequestedSession(elements: Elements, fetchImpl: FetchLike, sessionId: string): Promise<void> {
+    // An explicit Restore click must not silently create a different session when the ID is unknown.
+    // A reload's remembered/preferred ID still falls back through ensureSession as before.
+    const generation = bootGeneration;
+    try {
+        const {apiBaseUrl} = await fetchConfig(fetchImpl);
+        if (generation !== bootGeneration) return;
+        const restored = await restoreSession(fetchImpl, apiBaseUrl, sessionId);
+        if (generation !== bootGeneration) return;
+        if (restored.status === "not-found") {
+            renderStatus(elements.status, `No session with ID "${sessionId}" was found. Check the ID, or start a new session.`);
+            return;
+        }
+        await boot(elements, fetchImpl, sessionId);
+    } catch (error) {
+        if (generation !== bootGeneration) return;
+        renderStatus(elements.status, `Could not restore session "${sessionId}": ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+
 async function main(): Promise<void> {
     const elements = queryElements();
     const fetchImpl = window.fetch.bind(window) as FetchLike;
@@ -473,7 +493,7 @@ async function main(): Promise<void> {
             boot(elements, fetchImpl, undefined, seed).catch((error: unknown) => console.error(error));
         },
         (sessionId) => {
-            boot(elements, fetchImpl, sessionId).catch((error: unknown) => console.error(error));
+            restoreRequestedSession(elements, fetchImpl, sessionId).catch((error: unknown) => console.error(error));
         },
     );
     await boot(elements, fetchImpl);

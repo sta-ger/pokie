@@ -2,6 +2,16 @@ import {createSession, FetchLike, getSession} from "./apiClient.js";
 import {clearSessionId, loadSessionId, saveSessionId, StorageLike} from "./sessionStorage.js";
 import type {SessionResponse} from "./types.js";
 
+export type RestoreSessionResult =
+    | {readonly status: "ok"; readonly session: SessionResponse}
+    | {readonly status: "not-found"};
+
+/** One explicit session-id lookup; unknown ids are a user-facing miss, never a fresh session. */
+export async function restoreSession(fetchImpl: FetchLike, apiBaseUrl: string, sessionId: string): Promise<RestoreSessionResult> {
+    const restored = await getSession(fetchImpl, apiBaseUrl, sessionId);
+    return restored.ok && restored.body !== undefined ? {status: "ok", session: restored.body} : {status: "not-found"};
+}
+
 // The create-or-restore orchestration behind "save the sessionId, restore it after a reload": if
 // `preferredSessionId` is given (a caller opening this player with `?session=<id>`, pointing it at a
 // session already created/restored elsewhere against this same runtime's own HTTP API -- see
@@ -27,10 +37,10 @@ export async function ensureSession(
 
     const existingId = preferredSessionId ?? loadSessionId(storage);
     if (existingId !== null && existingId !== undefined) {
-        const restored = await getSession(fetchImpl, apiBaseUrl, existingId);
-        if (restored.ok && restored.body !== undefined) {
+        const restored = await restoreSession(fetchImpl, apiBaseUrl, existingId);
+        if (restored.status === "ok") {
             saveSessionId(storage, existingId);
-            return restored.body;
+            return restored.session;
         }
         clearSessionId(storage);
     }
