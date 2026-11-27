@@ -115,14 +115,17 @@ export type GameModelReelsSampleControls = {
 // a time" contract, which keeps every save a single, atomic whole-blueprint write against a baseline
 // nothing else in this tab is concurrently mutating), and shows its own loading spinner while its own
 // section is the one still fetching a fresh source.
-function SectionEditAction({id, edit}: {id: GameModelSectionId; edit: GameModelEditController}) {
+function SectionEditAction({id, edit, placement = "header"}: {id: GameModelSectionId; edit: GameModelEditController; placement?: "header" | "footer"}) {
+    const suffix = placement === "footer" ? "-footer" : "";
     if (edit.activeSection === id) {
         if (!edit.ready) {
+            if (placement === "footer") return null;
             return (
                 <Button
                     id={`game-model-${id}-edit`}
                     data-pokie-game-model-action="edit"
                     data-pokie-game-model-section={id}
+                    data-pokie-game-model-placement={placement}
                     size="xs"
                     variant="default"
                     loading
@@ -135,9 +138,10 @@ function SectionEditAction({id, edit}: {id: GameModelSectionId; edit: GameModelE
         return (
             <Group gap="xs" wrap="nowrap">
                 <Button
-                    id={`game-model-${id}-save`}
+                    id={`game-model-${id}-save${suffix}`}
                     data-pokie-game-model-action="save"
                     data-pokie-game-model-section={id}
+                    data-pokie-game-model-placement={placement}
                     size="xs"
                     onClick={edit.onSave}
                     loading={edit.saving}
@@ -147,27 +151,30 @@ function SectionEditAction({id, edit}: {id: GameModelSectionId; edit: GameModelE
                         edit.validationView.status === "invalid"
                     }
                 >
-                    Save
+                    {placement === "footer" ? "Save changes" : "Save"}
                 </Button>
                 <Button
-                    id={`game-model-${id}-cancel`}
+                    id={`game-model-${id}-cancel${suffix}`}
                     data-pokie-game-model-action="cancel"
                     data-pokie-game-model-section={id}
+                    data-pokie-game-model-placement={placement}
                     size="xs"
                     variant="default"
                     onClick={edit.onCancel}
                     disabled={edit.saving}
                 >
-                    Cancel
+                    {placement === "footer" ? "Cancel edit" : "Cancel"}
                 </Button>
             </Group>
         );
     }
+    if (placement === "footer") return null;
     return (
         <Button
             id={`game-model-${id}-edit`}
             data-pokie-game-model-action="edit"
             data-pokie-game-model-section={id}
+            data-pokie-game-model-placement={placement}
             size="xs"
             variant="default"
             onClick={() => edit.onEdit(id)}
@@ -1223,6 +1230,11 @@ export function GameModelSections({
                     <fieldset disabled={edit.saving} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
                         <SectionValidationIssues id="paytable" edit={edit} />
                         <PaytableEditor blueprint={edit.blueprint} mutate={edit.mutate} />
+                        {edit.ready && (
+                            <Group justify="flex-end" mt="md" data-pokie-paytable-footer-actions="true">
+                                <SectionEditAction id="paytable" edit={edit} placement="footer" />
+                            </Group>
+                        )}
                     </fieldset>
                 ) : (
                     <PaytableSection section={projection.paytable} />

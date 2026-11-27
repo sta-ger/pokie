@@ -1116,6 +1116,11 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (method === "POST" && url.pathname === "/api/home/projects/registry/duplicate") {
+            await this.handleHomeProjectRegistryDuplicate(req, res);
+            return;
+        }
+
         if (method === "POST" && url.pathname === "/api/home/projects/registry/remove") {
             await this.handleHomeProjectRegistryRemove(req, res);
             return;
@@ -1813,6 +1818,83 @@ export class StudioServer implements StudioServerHandling {
 
         const result = await this.projectRegistrationService.registerExternal(validated.location, validated.name);
         this.sendJson(res, result.status === "ok" ? 201 : 200, result);
+    }
+
+    // Duplicating a saved game design is a producer's normal variant workflow: copy the authored math,
+    // keep the source untouched, and let Studio pick a fresh managed directory/Game id. Only Blueprint
+    // projects are duplicated here; packages, outcome libraries and worksheets have their own provenance
+    // and are deliberately not silently rewritten into a new game identity.
+    private async handleHomeProjectRegistryDuplicate(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateProjectLocationRequest((body ?? {}) as ProjectLocationRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const source = await this.projectRegistrationService.previewImport(validated.location);
+        if (source.status !== "recognized") {
+            this.sendJson(res, 400, {error: "Studio could not identify that location as a project it can duplicate."});
+            return;
+        }
+        if (source.type !== "blueprint") {
+            this.sendJson(res, 400, {error: "Only saved game designs can be duplicated. Open a game design project and try again."});
+            return;
+        }
+
+        const loaded = this.blueprintService.load(source.location);
+        if (loaded.status !== "ok") {
+            this.sendJson(res, 400, {error: loaded.error});
+            return;
+        }
+        const sourceBlueprint = loaded.blueprint as Record<string, unknown>;
+        const sourceInfo = sourceBlueprint.info;
+        if (typeof sourceInfo !== "object" || sourceInfo === null || Array.isArray(sourceInfo)) {
+            this.sendJson(res, 400, {error: "This game design has no editable info block to duplicate."});
+            return;
+        }
+        const info = sourceInfo as Record<string, unknown>;
+        const sourceName = typeof info.name === "string" && info.name.trim().length > 0
+            ? info.name.trim()
+            : source.suggestedName;
+        const sourceId = typeof info.id === "string" && info.id.trim().length > 0
+            ? info.id.trim()
+            : "game-design";
+        let candidateId = `${sourceId}-copy`;
+        let copyName = `${sourceName} copy`;
+
+        for (let attempt = 0; attempt < 50; attempt++) {
+            const copy = structuredClone(sourceBlueprint);
+            copy.info = {...info, id: candidateId, name: copyName};
+            const result = await Promise.resolve(this.blueprintService.saveManaged(copy));
+            if (result.status === "ok") {
+                let registration;
+                try {
+                    registration = await this.registerManagedProject(result.path, copyName, undefined);
+                } catch {
+                    this.blueprintService.discardManagedSave(result.path);
+                    this.sendJson(res, 500, {error: `Could not register the duplicated game at "${result.path}".`});
+                    return;
+                }
+                if (registration.status !== "ok") {
+                    this.blueprintService.discardManagedSave(result.path);
+                    this.sendJson(res, 500, {error: `Could not register the duplicated game at "${result.path}".`});
+                    return;
+                }
+                this.sendJson(res, 201, {status: "ok", entry: registration.entry, path: result.path, name: copyName});
+                return;
+            }
+            if (result.status === "unavailable" && result.suggestedGameId !== undefined) {
+                candidateId = result.suggestedGameId;
+                copyName = `${sourceName} copy ${attempt + 2}`;
+                continue;
+            }
+            this.sendJson(res, 400, {error: result.error});
+            return;
+        }
+        this.sendJson(res, 409, {error: "Studio could not find a free name for the duplicate. Rename the original or remove an old copy, then try again."});
     }
 
     private async handleHomeProjectRegistryRemove(req: IncomingMessage, res: ServerResponse): Promise<void> {

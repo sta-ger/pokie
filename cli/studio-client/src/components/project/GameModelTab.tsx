@@ -531,6 +531,24 @@ export function GameModelTab({
                     </Button>
                 </Alert>
             )}
+            {editable && projectRoot !== undefined && (
+                <Alert color="blue" variant="light" title="Import a PAR sheet or edit with the full designer" mb="sm" data-pokie-game-model-open-designer>
+                    <Text size="sm">
+                        PAR import, the full section editor and the draft preview live in Start a game. Open this
+                        saved design there, then open <strong>Show advanced options → PAR Sheet Import</strong> to
+                        import and compare a workbook. Saving writes back to this project; nothing is replaced until
+                        you apply the import and save.
+                    </Text>
+                    <Button
+                        variant="default"
+                        size="xs"
+                        mt="xs"
+                        onClick={() => navigate("/home/design", {state: {initialBlueprintPath: projectRoot}})}
+                    >
+                        Open in Start a game
+                    </Button>
+                </Alert>
+            )}
             <details>
                 <summary>Compare mathematical definitions</summary>
                 <MathDefinitionDiffPreview sourcePath={projectRoot} projectRoot={projectRoot} draft={editState.status === "editing" ? editor.state.blueprint : undefined} revision={editor.state.revision} />

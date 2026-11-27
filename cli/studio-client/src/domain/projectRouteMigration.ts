@@ -58,11 +58,11 @@ export function legacyProjectRouteMigration(tab: string | undefined): LegacyProj
     }
     switch (tab) {
         case "game-model":
-            return {destination: "gameModel", message: "Game design is open. The section URL changed, and this older bookmark is still supported."};
+            return {destination: "gameModel", message: "Game design is open. This older bookmark now points to the same saved section."};
         case "build":
         case "buildExport":
         case "build-export":
-            return {destination: "exportDeploy", message: "Build/Export is open. The section URL changed, and this older bookmark is still supported."};
+            return {destination: "exportDeploy", message: "Build/Export is open. This older bookmark now points to the same saved section."};
         case "deployment":
             return {destination: "exportDeploy", message: "Deployment has moved into Build/Export. Choose Remote delivery there to preview or publish to a configured target."};
         case "stakeEngineExport":

@@ -39,6 +39,24 @@ saved game design remains editable; an exported game package is read-only in Stu
 Applying a reviewed optimization asks for confirmation and can be undone once from the same Studio session, until the
 source changes, the undo expires after 15 minutes, or Studio restarts.
 
+### Duplicate a game, import a PAR, and read the numbers
+
+- **Duplicate:** in **Projects**, a saved game design has **Duplicate**. Studio creates a new managed
+  copy with a fresh Game id and display name; the original stays unchanged. This is the intended way to
+  branch a variant without rebuilding the starter by hand.
+- **PAR import:** PAR import remains a draft workflow in **Start a game**. A saved design's Game design
+  page offers **Open in Start a game**; the full editor loads that exact saved design, including the PAR
+  Sheet Import panel. Saving writes back to the same project, so review the draft before saving.
+- **Exact scope:** the Overview exact card labels its headline as **Whole-round exact** when the table
+  covers every payoff (no later-settling features, or a supported free-games total). It says
+  **Paid-spin exact** when later-settling feature wins are outside the table. A **Scope not inspected**
+  table is too large to classify here. The producer summary above the card is always a sample and says so.
+- **Rough samples:** a simulation whose 95% RTP interval is wider than ±1 percentage point carries a
+  **Rough sample** badge. Use exact math when the design can be enumerated, or raise **Target precision**.
+- **Volatility bands:** Studio reports standard deviation and never assigns its own low/medium/high
+  class. Use **Set portfolio bands** to add your team's own thresholds; the label is local to this
+  browser and does not change the game design or its math.
+
 POKIE serves developers and game-math authors; Studio provides a local authoring and testing path. It
 does not provide mathematical certification or a casino backend. Delivering a game to an operator
 requires developer integration. See the [CLI reference](cli.md#pokie) for launch and build

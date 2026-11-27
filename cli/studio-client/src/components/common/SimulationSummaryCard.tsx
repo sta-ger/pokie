@@ -1,10 +1,11 @@
 import {describeSimulationDiagnostics} from "../../../../../src/reporting/describeSimulationDiagnostics";
 import {describeRtpSanityWarning} from "../../../../../src/reporting/describeRtpSanityWarning";
-import {Alert, Table, Text} from "@mantine/core";
+import {Alert, Badge, Group, Table, Text} from "@mantine/core";
 import {EmptyState} from "./EmptyState";
 import {ErrorState} from "./ErrorState";
 import {AdvancedDisclosure} from "./AdvancedDisclosure";
 import {SimulationAssessment} from "./SimulationAssessment";
+import {VolatilityBandBadge} from "./VolatilityBandsControl";
 import {simulationScopeSuffix, type SimulationReportView} from "../../domain/interpret/Simulation";
 
 // Shared by the Run step's live elapsed-time readout and this card's duration readout -- one
@@ -53,13 +54,35 @@ export function SimulationSummaryCard({outcome}: {outcome: SimulationOutcome}) {
         rounds: report.rounds,
         confidenceInterval95: report.rtpConfidenceInterval95,
     });
+    const rtpHalfWidth = report.rtpConfidenceInterval95 === undefined
+        ? undefined
+        : (report.rtpConfidenceInterval95.high - report.rtpConfidenceInterval95.low) / 2;
+    const roughSample = rtpHalfWidth !== undefined && Number.isFinite(rtpHalfWidth) && rtpHalfWidth > 0.01;
+    const rtpWarningIntervalCrosses100 = report.rtpConfidenceInterval95 !== undefined &&
+        report.rtpConfidenceInterval95.low <= 1 &&
+        report.rtpConfidenceInterval95.high >= 1;
     return (
         <div className="studio-simulation-summary">
             {report.betMode !== undefined && <Text>Bet mode: {report.betMode}</Text>}
             <Table withRowBorders={false} role="table" className="studio-simulation-metrics studio-simulation-primary-metrics" aria-label="Simulation summary">
                 <Table.Tbody>
                     <Table.Tr>
-                        <Table.Th scope="row">RTP{scopeSuffix}</Table.Th>
+                        <Table.Th scope="row">
+                            <Group gap={6} wrap="wrap">
+                                <span>RTP{scopeSuffix}</span>
+                                {roughSample && (
+                                    <Badge
+                                        color="yellow"
+                                        variant="light"
+                                        tt="none"
+                                        data-pokie-rough-sample="true"
+                                        title="The 95% RTP interval is wider than ±1 percentage point."
+                                    >
+                                        Rough sample
+                                    </Badge>
+                                )}
+                            </Group>
+                        </Table.Th>
                         <Table.Td>{(report.rtp * 100).toFixed(2)}%</Table.Td>
                     </Table.Tr>
                     <Table.Tr>
@@ -68,7 +91,12 @@ export function SimulationSummaryCard({outcome}: {outcome: SimulationOutcome}) {
                     </Table.Tr>
                     <Table.Tr>
                         <Table.Th scope="row" title="Standard deviation of payout per paid round, in bet units.">Volatility (std. deviation, bet units){scopeSuffix}</Table.Th>
-                        <Table.Td>{report.volatility === undefined ? "—" : report.volatility.toFixed(2)}</Table.Td>
+                        <Table.Td>
+                            <Group gap={6} align="center" wrap="nowrap">
+                                <span>{report.volatility === undefined ? "—" : report.volatility.toFixed(2)}</span>
+                                {report.volatility !== undefined && <VolatilityBandBadge value={report.volatility} size="xs" />}
+                            </Group>
+                        </Table.Td>
                     </Table.Tr>
                     <Table.Tr>
                         <Table.Th scope="row" title="Largest whole-paid-round payout observed in this sample, not the theoretical maximum; it can exceed the top paytable entry when several lines or a feature win together. The technical report's single-spin maximum is a smaller unit.">Largest observed whole-round win (× bet){scopeSuffix}</Table.Th>
@@ -83,8 +111,20 @@ export function SimulationSummaryCard({outcome}: {outcome: SimulationOutcome}) {
 
             <Text size="sm" className="studio-simulation-run-facts">Duration: {formatElapsedMs(report.durationMs)}</Text>
             <Text size="xs" c="dimmed">Volatility is the standard deviation of payout per completed paid round, in bet units. The largest observed win is a sample maximum, not the theoretical game maximum.{scopeSuffix === "" ? "" : " These metrics include free games and other observed features; exact math reports paid-spin figures separately."}</Text>
+            {roughSample && (
+                <Text size="xs" c="dimmed" mt={4} data-pokie-rough-sample-note="true">
+                    Rough sample: the 95% RTP interval is wider than ±1 percentage point. Use exact math when the
+                    design can be enumerated, or raise Target precision before treating this RTP as a sign-off
+                    number.
+                </Text>
+            )}
             {rtpWarning !== undefined && (
-                <Alert color="red" variant="light" title="RTP looks unusual" mt="sm">
+                <Alert
+                    color={rtpWarningIntervalCrosses100 ? "yellow" : "red"}
+                    variant="light"
+                    title={rtpWarningIntervalCrosses100 ? "RTP sample looks unusual — the interval crosses 100%" : "RTP looks unusual"}
+                    mt="sm"
+                >
                     <Text size="sm">{rtpWarning}</Text>
                 </Alert>
             )}

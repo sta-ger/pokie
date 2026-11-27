@@ -2,6 +2,7 @@ import {Alert, Anchor, Badge, Button, Checkbox, Group, Select, Table, Text, Text
 import {useCallback, useEffect, useRef, useState, type ReactNode} from "react";
 import {useNavigate} from "react-router-dom";
 import {
+    duplicateProjectRegistryEntry,
     listProjectRegistry,
     previewProjectImport,
     ProjectOpenError,
@@ -123,6 +124,9 @@ export function ProjectsPanel({
     const [importView, setImportView] = useState<ImportView>({status: "idle"});
     const [registerName, setRegisterName] = useState("");
     const [removeError, setRemoveError] = useState<string | undefined>(undefined);
+    const [duplicateError, setDuplicateError] = useState<string | undefined>(undefined);
+    const [duplicateNotice, setDuplicateNotice] = useState<string | undefined>(undefined);
+    const [duplicatingLocation, setDuplicatingLocation] = useState<string | undefined>(undefined);
     const [openingLocation, setOpeningLocation] = useState<string | undefined>(undefined);
     const [relocatingEntry, setRelocatingEntry] = useState<StudioProjectRegistryView | undefined>(undefined);
     const [relocationLocation, setRelocationLocation] = useState("");
@@ -236,6 +240,24 @@ export function ProjectsPanel({
                 openGuard.end();
                 setOpeningLocation(undefined);
             });
+    };
+
+    const handleDuplicate = (entry: StudioProjectRegistryView): void => {
+        if (duplicatingLocation !== undefined) return;
+        setDuplicateError(undefined);
+        setDuplicateNotice(undefined);
+        setDuplicatingLocation(entry.location);
+        duplicateProjectRegistryEntry(fetchImpl, entry.location)
+            .then((result) => {
+                upsertEntry(result.entry);
+                setDuplicateNotice(
+                    `Created "${result.name}" as a new game design with a fresh Game id. The original is unchanged.`,
+                );
+            })
+            .catch((error: unknown) => {
+                setDuplicateError(describeProjectActionError("Duplicating this game", errorMessage(error)));
+            })
+            .finally(() => setDuplicatingLocation(undefined));
     };
 
     const handleRemove = (entry: StudioProjectRegistryView): void => {
@@ -494,6 +516,16 @@ export function ProjectsPanel({
                     {entry.status === "ok" && entry.type === "parWorkbook" && (
                         <Button variant="default" size="xs" onClick={() => handleGoToDesignGame(entry.location)}>Open in Start a game</Button>
                     )}
+                    {entry.status === "ok" && entry.type === "blueprint" && (
+                        <Button
+                            variant="default"
+                            size="xs"
+                            onClick={() => navigate("/home/design", {state: {initialBlueprintPath: entry.location}})}
+                            title="Open this saved design in the full Start a game editor, including PAR import; saving writes back to this project."
+                        >
+                            Edit in Start a game
+                        </Button>
+                    )}
                     {entry.status === "missing" && (
                         <Button variant="default" size="xs" onClick={() => {
                             setRelocatingEntry(entry);
@@ -501,6 +533,18 @@ export function ProjectsPanel({
                             relocationLocationRef.current = "";
                             setRelocationError(undefined);
                         }}>Relocate</Button>
+                    )}
+                    {entry.status === "ok" && entry.type === "blueprint" && (
+                        <Button
+                            variant="default"
+                            size="xs"
+                            loading={duplicatingLocation === entry.location}
+                            disabled={duplicatingLocation !== undefined || openingLocation !== undefined}
+                            onClick={() => handleDuplicate(entry)}
+                            title="Make a copy with a new Game id and display name; the original stays unchanged."
+                        >
+                            Duplicate
+                        </Button>
                     )}
                     <Button variant="subtle" color="red" size="xs" onClick={() => handleRemove(entry)}>Remove</Button>
                 </QuickActions>
@@ -529,6 +573,12 @@ export function ProjectsPanel({
                     <>
                         {listView.openError && <ErrorState message={listView.openError.message} detail={listView.openError.detail} />}
                         {removeError !== undefined && <ErrorState message={removeError} />}
+                        {duplicateError !== undefined && <ErrorState message={duplicateError} />}
+                        {duplicateNotice !== undefined && (
+                            <Alert color="green" variant="light" onClose={() => setDuplicateNotice(undefined)} withCloseButton>
+                                {duplicateNotice}
+                            </Alert>
+                        )}
                         <QuickActions>
                             <TextInput
                                 label="Search projects"
@@ -642,7 +692,7 @@ export function ProjectsPanel({
                                             <Table.Th>Type</Table.Th>
                                             <Table.Th>Added to Studio</Table.Th>
                                             <Table.Th>Last opened</Table.Th>
-                                            <Table.Th style={{width: "11rem"}}>Actions</Table.Th>
+                                            <Table.Th style={{width: "14rem"}}>Actions</Table.Th>
                                         </Table.Tr>
                                     </Table.Thead>
                                     <Table.Tbody>

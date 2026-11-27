@@ -2231,6 +2231,20 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                     );
                 })
             )}
+            <PageSection legend="Certification and audit">
+                <div data-pokie-certification-help="true">
+                    <Text size="sm" c="dimmed">
+                        Certification and Provably Fair appear once Studio has a runnable game package; Certification
+                        can also open a native outcome table. A bare game design or a PAR workbook is not a runtime
+                        package. Build a game package from Developer outputs, open it as a project, then use
+                        Certification there and select its outcome-library folder for model-bound evidence. PAR is a
+                        math-review snapshot, not a certification pack.
+                    </Text>
+                    <Anchor href="#/docs/certification-pack" size="sm" mt={6} display="block">
+                        Read the certification guide
+                    </Anchor>
+                </div>
+            </PageSection>
         </div>
     );
 }

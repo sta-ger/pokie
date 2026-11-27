@@ -158,8 +158,11 @@ Other commands include `inspect`, `edit`, `reel`, `par`, `optimize`, `replay`, `
 `pokie` opens a local web app for designing a game, building outputs, running simulations, replaying
 rounds and playing a game in-process. The guided design covers line, ways and cluster win models, and
 its **Mechanics** section holds free games, weighted bonuses, cascades, respins, collection, wild
-modifiers, Hold & Win and jackpots. It is a local development tool, not a hosted service or production
-RGS.
+modifiers, Hold & Win and jackpots. Projects can duplicate a saved game design with a fresh Game id,
+and a saved design can reopen in the full editor for PAR import and write back to the same project.
+Overview labels exact tables as whole-round or paid-spin scope, marks wide simulation intervals as
+rough samples, and can apply optional portfolio volatility bands. It is a local development tool, not
+a hosted service or production RGS.
 
 ## Documentation
 

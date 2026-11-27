@@ -1,5 +1,5 @@
 import {Alert, Anchor, Badge, Button, Group, Paper, SimpleGrid, Stack, Table, Text, Title} from "@mantine/core";
-import {useEffect, useRef, useState} from "react";
+import {useEffect, useRef, useState, type ReactNode} from "react";
 import {formatAnalysisNumber} from "../../../../../src/internal/formatAnalysisNumber";
 import type {AdvancedModelValidationReport} from "../../../../../src/validation/AdvancedModelValidation.js";
 import {orderContributionEntries} from "../../domain/contributionTableOrder";
@@ -7,6 +7,7 @@ import {describeFeatureEventLabel} from "../../domain/featureEventLabels";
 import {formatOneIn} from "../../domain/formatOneIn";
 import {describeRtpSanityWarning} from "../../../../../src/reporting/describeRtpSanityWarning";
 import {VOLATILITY_SCALE_DECISION} from "../../domain/volatilityScale";
+import {describeExactMathScope, freeGamesAreUncapped, type ExactMathScope} from "../../domain/exactMathScope";
 import {
     cancelOutcomeLibraryGeneration,
     estimateOutcomeLibraryGeneration,
@@ -31,6 +32,7 @@ import {ErrorState} from "../common/ErrorState";
 import {ExactPayoutDistribution} from "../common/ExactPayoutDistribution";
 import {LoadingState} from "../common/LoadingState";
 import {PageSection} from "../common/PageSection";
+import {VolatilityBandBadge} from "../common/VolatilityBandsControl";
 
 const STAGE_LABELS: Record<string, string> = {
     generation: "Enumerating combinations",
@@ -387,6 +389,8 @@ export function ExactMathPanel({
         const analysis = view.analysis;
         const contribution = view.contributions;
         const freeGamesTotal = view.freeGamesRtp?.status === "available" ? view.freeGamesRtp : undefined;
+        const exactScope = describeExactMathScope(view.freeGamesRtp, view.featurePayoutsIncluded);
+        const uncapped = freeGamesAreUncapped(view.freeGamesRtp);
         const wholeRoundMaxUpperBound =
             freeGamesTotal !== undefined &&
             freeGamesTotal.maxFreeGames !== undefined &&
@@ -471,7 +475,8 @@ export function ExactMathPanel({
                     wholeRoundMaxLabel={wholeRoundMaxCardLabel}
                     wholeRoundMaxValue={wholeRoundMaxValue}
                     outcomes={view.outcomeCount}
-                    uncapped={freeGamesTotal?.maxFreeGames === undefined}
+                    exactScope={exactScope}
+                    uncapped={uncapped}
                     onOpenPlay={onOpenPlay}
                 />
                 {rtpWarning !== undefined && (
@@ -561,13 +566,15 @@ export function ExactMathPanel({
                 </AdvancedDisclosure>
                 <AdvancedDisclosure label="how to read these figures">
                     <Text size="sm" c="dimmed">
-                        Volatility and max win here are paid-spin figures. Volatility is the standard deviation of
-                        payout per round, in bet units. Max win is the largest single-round paid-spin payout, also in
-                        bet units; it can exceed the largest paytable entry when several lines win in the same round.
-                        Simulation reports whole paid rounds; when the design has free games or other features, its
-                        volatility and largest observed win include them and can be larger. Product decision: Studio
-                        reports the standard deviation instead of a low/medium/high class because there is no single
-                        industry threshold for those labels. With a free-games cap, the whole-round maximum shown here is an upper bound:
+                        Volatility and max win here are paid-spin figures. A paid spin is the spin that starts a
+                        round. Volatility is the standard deviation of payout per paid spin, in bet units. Max win is
+                        the largest single-round paid-spin payout, also in bet units; it can exceed the largest
+                        paytable entry when several lines win in the same round. Simulation reports whole rounds; when
+                        the design has free games or other features, its volatility and largest observed win include
+                        them and can be larger. Studio reports the standard deviation rather than imposing a
+                        low/medium/high class, because there is no single industry threshold for those labels. If you
+                        define portfolio bands, Studio adds an explicit label without changing the number or the
+                        game&apos;s math. With a free-games cap, the whole-round maximum shown here is an upper bound:
                         the paid-spin maximum plus the cap in free spins, each at the paid-spin maximum. Without a cap,
                         retriggers can chain indefinitely, so the theoretical whole-round maximum is unbounded even
                         when expected RTP is finite. Simulation&apos;s largest observed win is a sample, not a
@@ -869,15 +876,18 @@ export function ExactMathPanel({
     );
 }
 
-function KeyStat({label, value, title, tone}: {label: string; value: string; title?: string; tone?: "warning"}) {
+function KeyStat({label, value, title, tone, badge}: {label: string; value: string; title?: string; tone?: "warning"; badge?: ReactNode}) {
     return (
         <div title={title}>
             <Text size="sm" c="dimmed">
                 {label}
             </Text>
-            <Text size="md" fw={700} c={tone === "warning" ? "yellow.9" : undefined}>
-                {value}
-            </Text>
+            <Group gap={6} align="center" wrap="nowrap">
+                <Text size="md" fw={700} c={tone === "warning" ? "yellow.9" : undefined}>
+                    {value}
+                </Text>
+                {badge}
+            </Group>
         </div>
     );
 }
@@ -894,6 +904,7 @@ function KeyNumbersCard({
     wholeRoundMaxLabel,
     wholeRoundMaxValue,
     outcomes,
+    exactScope,
     uncapped,
     onOpenPlay,
 }: {
@@ -908,10 +919,26 @@ function KeyNumbersCard({
     wholeRoundMaxLabel?: string;
     wholeRoundMaxValue?: string;
     outcomes: number;
+    exactScope: ExactMathScope;
     uncapped: boolean;
     onOpenPlay?: () => void;
 }) {
     const headline = totalRtp ?? paidRtp;
+    let scopeBadgeColor = "gray";
+    let scopeBadgeLabel = "Scope not inspected";
+    let scopeNote =
+        "This table is too large to inspect feature payouts here. If this design has later-settling features, these exact figures cover paid entry spins only.";
+    if (exactScope === "whole-round") {
+        scopeBadgeColor = "teal";
+        scopeBadgeLabel = "Whole-round exact";
+        scopeNote =
+            "Use this exact RTP as the whole-round reference. Any sampled summary above is an estimate, not a second exact result.";
+    } else if (exactScope === "base-spins") {
+        scopeBadgeColor = "yellow";
+        scopeBadgeLabel = "Paid-spin exact";
+        scopeNote =
+            "This exact RTP covers paid entry spins only. A paid spin starts a round; use Simulation for whole-round RTP.";
+    }
     return (
         <Paper withBorder p="md" radius="md" className="studio-key-numbers" data-pokie-producer-summary="true">
             <Group justify="space-between" align="flex-start" wrap="wrap" gap="md">
@@ -926,7 +953,18 @@ function KeyNumbersCard({
                         <Text size="sm" c="dimmed">
                             {totalRtp === undefined ? "Exact RTP" : "Total RTP (paid + free games)"}
                         </Text>
+                        <Badge
+                            color={scopeBadgeColor}
+                            variant="light"
+                            tt="none"
+                            data-pokie-exact-scope={exactScope}
+                        >
+                            {scopeBadgeLabel}
+                        </Badge>
                     </Group>
+                    <Text size="sm" c="dimmed" mt={4} data-pokie-exact-scope-note={exactScope}>
+                        {scopeNote}
+                    </Text>
                     {freeRtp !== undefined && (
                         <Text size="sm" c="dimmed" mt={2}>
                             Paid-spin RTP {formatAnalysisNumber(paidRtp * 100, 4)}% · Free-games RTP{" "}
@@ -942,6 +980,7 @@ function KeyNumbersCard({
                             label={volatilityLabel}
                             value={formatAnalysisNumber(volatility, 4)}
                             title="Standard deviation of payout per paid round, in bet units."
+                            badge={<VolatilityBandBadge value={volatility} />}
                         />
                         <KeyStat
                             label={maxWinLabel}

@@ -363,6 +363,15 @@ export type StudioProjectImportPreviewResult =
 // expected outcome of pointing registration at an arbitrary path, never a thrown error.
 export type StudioProjectRegistrationResult = {status: "ok"; entry: StudioProjectRegistryView} | {status: "unrecognized"; path: string};
 
+// POST /api/home/projects/registry/duplicate's own DTO. A duplicate is a new managed Blueprint Project
+// under a new Game id and display name; the source project on disk is never modified.
+export type StudioProjectDuplicateResult = {
+    status: "ok";
+    entry: StudioProjectRegistryView;
+    path: string;
+    name: string;
+};
+
 // GET /api/home/fs/browse's own DTO — see cli/studio/home/StudioFsBrowseService.ts's own doc comment.
 // Backs the "Browse" action on every filesystem-path input in Home's project-creation forms.
 export type StudioFsEntry = {name: string; isDirectory: boolean};

@@ -5,4 +5,4 @@
  * units; a producer can still apply bands agreed for their own portfolio.
  */
 export const VOLATILITY_SCALE_DECISION =
-    "Volatility is shown as standard deviation (σ, × bet), not as low, medium or high. There is no single industry threshold set, so Studio does not assign a band that would imply a universal scale. Compare this number across runs, or apply bands agreed for your own portfolio.";
+    "Volatility is shown as standard deviation (σ, × bet). There is no single industry threshold for low/medium/high, so Studio does not assign a band that would imply a universal scale. Compare this number across runs, or use Set portfolio bands to apply a convention agreed for your own portfolio.";

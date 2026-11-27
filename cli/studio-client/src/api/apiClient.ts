@@ -47,6 +47,7 @@ import type {
     StudioOutcomeLibraryRegistryView,
     StudioParSheetExportView,
     StudioParSheetImportView,
+    StudioProjectDuplicateResult,
     StudioProjectImportPreviewResult,
     StudioProjectRegistrationResult,
     StudioProjectRegistryView,
@@ -318,6 +319,22 @@ export async function registerProjectImport(fetchImpl: FetchLike, location: stri
         throw new Error(await extractErrorMessage(response, "Failed to register the project"));
     }
     return (await response.json()) as StudioProjectRegistrationResult;
+}
+
+// Duplicates a managed Blueprint Project under a new Game id and display name. This copies the design
+// (and the artwork it references) into a fresh POKIE Projects directory; the source is untouched. A
+// game-design project is the producer's unit of iteration, so duplicating one must not require rebuilding
+// it by hand from the starter.
+export async function duplicateProjectRegistryEntry(fetchImpl: FetchLike, location: string): Promise<StudioProjectDuplicateResult> {
+    const response = await fetchImpl("/api/home/projects/registry/duplicate", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({location}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to duplicate the project"));
+    }
+    return (await response.json()) as StudioProjectDuplicateResult;
 }
 
 export async function removeProjectRegistryEntry(fetchImpl: FetchLike, location: string): Promise<void> {

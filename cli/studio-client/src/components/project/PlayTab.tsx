@@ -599,8 +599,10 @@ export function PlayTab({
             <PageSection legend="Scenarios">
                 <Text size="sm" c="dimmed" mb="sm">
                     Scenario searches play real paid spins at the selected bet until they find a match, up to 2,000
-                    spins. Every paid spin is charged to Play credits; free spins are not. The final round stays in this
-                    Play session.
+                    spins. Every paid spin is charged to Play credits; free spins are not. At the selected bet of{" "}
+                    {bet.toLocaleString("en-US")}, a full search charges at most{" "}
+                    {(bet * 2_000).toLocaleString("en-US")} Play credits, so keep enough credits for the round you
+                    want to inspect. The final round stays in this Play session.
                 </Text>
                 {scenarioSummary && (() => {
                     const summary = describeScenarioSummary(scenarioSummary);

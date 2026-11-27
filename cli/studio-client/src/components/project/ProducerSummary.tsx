@@ -1,5 +1,5 @@
 import {Alert, Badge, Button, Group, Paper, SimpleGrid, Text, Title} from "@mantine/core";
-import {useEffect, useRef, useState} from "react";
+import {useEffect, useRef, useState, type ReactNode} from "react";
 import {getGameModel, getReport, listReports} from "../../api/apiClient";
 import type {StudioSimulationReportListEntry} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -9,6 +9,7 @@ import {describeSimulationReport, type SingleSimulationReportView} from "../../d
 import type {SimulationReport} from "../../../../../src/reporting/SimulationReport.js";
 import type {SimulationReportSet} from "../../../../../src/reporting/SimulationReportSet.js";
 import {LoadingState} from "../common/LoadingState";
+import {VolatilityBandBadge} from "../common/VolatilityBandsControl";
 
 type ProducerSummaryState =
     | {status: "loading"}
@@ -25,6 +26,13 @@ function reportStart(entry: StudioSimulationReportListEntry): number {
 
 function sampledRounds(entry: StudioSimulationReportListEntry): number {
     return entry.actualRounds ?? entry.requestedRounds;
+}
+
+// A 95% interval wider than two percentage points cannot support a one-point decision. Keep the
+// sample useful for whole-round behaviour, but never let the headline look like a signed-off RTP.
+function isRoughRtpSample(interval: {low: number; high: number} | undefined): boolean {
+    return interval !== undefined && Number.isFinite(interval.low) && Number.isFinite(interval.high)
+        && (interval.high - interval.low) / 2 > 0.01;
 }
 
 // A producer should not see a noisy 1,000-spin check-out replace a 100,000-spin run just because it
@@ -125,7 +133,7 @@ export function ProducerSummary({
                     <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
                         Producer summary
                     </Text>
-                    <Title order={3}>Whole paid round</Title>
+                    <Title order={3}>Whole round (incl. free games)</Title>
                 </div>
                 <Button size="sm" variant="default" onClick={onOpenSimulation}>
                     Open Simulation
@@ -141,11 +149,22 @@ export function ProducerSummary({
                             {(state.report.rtp * 100).toFixed(2)}%
                         </Text>
                         <Text size="sm" c="dimmed">
-                            RTP — whole paid round, incl. features
+                            RTP — sampled whole-round estimate (incl. free games)
                         </Text>
                         <Badge color="blue" variant="light" tt="none">
                             Sampled
                         </Badge>
+                        {isRoughRtpSample(state.report.rtpConfidenceInterval95) && (
+                            <Badge
+                                color="yellow"
+                                variant="light"
+                                tt="none"
+                                data-pokie-rough-sample="true"
+                                title="The 95% RTP interval is wider than ±1 percentage point. Use exact math or more spins before treating this as a sign-off number."
+                            >
+                                Rough sample
+                            </Badge>
+                        )}
                         {state.modeName !== undefined && (
                             <Badge color="gray" variant="light" tt="none">
                                 Mode {state.modeName}
@@ -153,7 +172,8 @@ export function ProducerSummary({
                         )}
                     </Group>
                     <Text size="sm" c="dimmed" mt={2}>
-                        Most representative completed simulation for this saved design ·{" "}
+                        A whole round starts with one paid spin and includes any free games it triggers. Most
+                        representative completed simulation for this saved design ·{" "}
                         {state.report.rounds.toLocaleString("en-US")} paid rounds
                         {state.report.rtpConfidenceInterval95 === undefined
                             ? ""
@@ -166,8 +186,9 @@ export function ProducerSummary({
                             value={`${(state.report.hitFrequency * 100).toFixed(2)}%`}
                         />
                         <ProducerMetric
-                            label="Volatility (whole paid round)"
+                            label="Volatility (whole round)"
                             value={state.report.volatility === undefined ? "—" : state.report.volatility.toFixed(2)}
+                            accessory={state.report.volatility === undefined ? undefined : <VolatilityBandBadge value={state.report.volatility} size="xs" />}
                         />
                         <ProducerMetric
                             label="Largest observed whole-round win"
@@ -175,17 +196,20 @@ export function ProducerSummary({
                         />
                     </SimpleGrid>
                     <Text size="xs" c="dimmed" mt="sm">
-                        Simulation estimates whole-round behaviour including free games. The exact card below is
-                        paid-spin exact math; its RTP is the proven reference for the paid entry spin, not this sample.
+                        Simulation estimates whole-round behaviour including free games. The exact card below says
+                        whether its number is a whole-round or paid-spin reference; when it says
+                        &quot;Whole-round exact&quot;, use that exact number for sign-off and treat this sample as
+                        the behavioural estimate.
                     </Text>
                 </>
             )}
 
             {state.status === "empty" && (
-                <Alert color="blue" variant="light" title="No whole-round sample for this design yet" mt="sm">
+                <Alert color="blue" variant="light" title="No whole-round simulation sample for this design yet" mt="sm">
                     <Text size="sm">
-                        Exact math below covers paid entry spins. Run Simulation to estimate whole-round hit
-                        frequency, volatility and the largest observed win including free games.
+                        Run Simulation to estimate whole-round hit frequency, volatility and the largest observed
+                        win including free games. The exact card below states whether its RTP is a whole-round or a
+                        paid-spin reference.
                         {state.earlierRuns === 0
                             ? ""
                             : ` ${state.earlierRuns.toLocaleString("en-US")} earlier simulation report${state.earlierRuns === 1 ? "" : "s"} belong${state.earlierRuns === 1 ? "s" : ""} to an earlier design and ${state.earlierRuns === 1 ? "is" : "are"} not used here.`}
@@ -202,15 +226,18 @@ export function ProducerSummary({
     );
 }
 
-function ProducerMetric({label, value}: {label: string; value: string}) {
+function ProducerMetric({label, value, accessory}: {label: string; value: string; accessory?: ReactNode}) {
     return (
         <div>
             <Text size="xs" c="dimmed">
                 {label}
             </Text>
-            <Text fw={700} size="lg">
-                {value}
-            </Text>
+            <Group gap={6} align="center" wrap="nowrap">
+                <Text fw={700} size="lg">
+                    {value}
+                </Text>
+                {accessory}
+            </Group>
         </div>
     );
 }

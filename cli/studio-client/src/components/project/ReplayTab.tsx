@@ -1,7 +1,7 @@
 import {Alert, Anchor, Badge, Button, Checkbox, Group, List, NumberInput, Progress, SegmentedControl, Select, Table, Text, Textarea, TextInput} from "@mantine/core";
 import {useForm} from "@mantine/form";
 import {useMediaQuery} from "@mantine/hooks";
-import {useEffect, useRef, useState} from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 import {buildReplayDownloadUrl, getExactMath, getGameModel} from "../../api/apiClient";
 import type {OutcomeSourceReplayDescriptorView, RoundRecord, StudioRuntimeSessionView, StudioSimulationReportListEntry} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -342,6 +342,8 @@ export function ReplayTab({
     const [pending, setPending] = useState<ReplayLoadTarget>();
     const [artifactText, setArtifactText] = useState("");
     const [selectedSpin, setSelectedSpin] = useState<StudioRuntimeSessionView>();
+    const [recordedReplayError, setRecordedReplayError] = useState<string>();
+    const [pendingRecordedReplay, setPendingRecordedReplay] = useState<string>();
     const [selectedSimulationMode, setSelectedSimulationMode] = useState<string>();
     const [selectedSimEntry, setSelectedSimEntry] = useState<StudioSimulationReportListEntry>();
     const [simRound, setSimRound] = useState(1);
@@ -428,8 +430,15 @@ export function ReplayTab({
             .reduce<StudioRuntimeSessionView | undefined>((latest, entry) =>
                 latest === undefined || (entry.logicalRound?.cursor ?? 0) > (latest.logicalRound?.cursor ?? 0) ? entry : latest, undefined);
 
+    const markLoaded = useCallback((method: FindMethod, resultReady: boolean): void => {
+        setLoadedForMethod(method);
+        setJobLoaded(resultReady);
+    }, []);
+
     function inspectSpin(entry: StudioRuntimeSessionView): void {
         setSelectedSpin(entry);
+        setRecordedReplayError(undefined);
+        setPendingRecordedReplay(undefined);
         markLoaded("spin", false);
     }
 
@@ -444,14 +453,32 @@ export function ReplayTab({
         // the completed last screen's stateAfter is the round's final state.
         const stateBefore = paidEntry?.debug?.stateBefore ?? debug.stateBefore;
         const stateAfter = debug.stateAfter ?? paidEntry?.debug?.stateAfter;
-        setFindMethod("artifact");
+        setSelectedSpin(entry);
+        setRecordedReplayError(undefined);
+        setPendingRecordedReplay(`${entry.sessionId}:${entry.studioRound ?? entry.studioRequestId}`);
+        markLoaded("spin", false);
         onLoadExpectedFromPaste(JSON.stringify({
             ...debug.recording,
             ...(stateBefore !== undefined ? {stateBefore} : {}),
             ...(stateAfter !== undefined ? {stateAfter} : {}),
         }), "session-spin");
-        markLoaded("artifact", false);
     }
+
+    // Keep a failed recorded-round load in the Played rounds context that produced it. Switching to the
+    // Saved round tab before the descriptor validates made a normal "this saved design changed" outcome
+    // look like an unexplained tab jump. A successful load still moves to Saved round, where the
+    // comparison and Reproduce actions live.
+    useEffect(() => {
+        if (pendingRecordedReplay === undefined) return;
+        if (expected.status === "empty" || expected.status === "loading") return;
+        setPendingRecordedReplay(undefined);
+        if (expected.status === "loaded") {
+            setFindMethod("artifact");
+            markLoaded("artifact", false);
+        } else if (expected.status === "error") {
+            setRecordedReplayError(expected.message);
+        }
+    }, [expected, markLoaded, pendingRecordedReplay]);
 
     function isSelectedSpin(entry: StudioRuntimeSessionView): boolean {
         return (
@@ -471,6 +498,8 @@ export function ReplayTab({
     // behind under the newly-selected source.
     function switchSource(next: FindMethod): void {
         setFindMethod(next);
+        setRecordedReplayError(undefined);
+        setPendingRecordedReplay(undefined);
         setLoadedForMethod(undefined);
         setJobLoaded(false);
         setPending(undefined);
@@ -490,11 +519,6 @@ export function ReplayTab({
     // `jobLoaded`: false correctly means this fresh target has no job of its own yet (any progress/
     // result still showing belongs to whatever was loaded before), true means the job now backing
     // `progress`/`result` genuinely is this target's.
-    function markLoaded(method: FindMethod, resultReady: boolean): void {
-        setLoadedForMethod(method);
-        setJobLoaded(resultReady);
-    }
-
     function loadTarget(round: number, seed: string | undefined, modeName?: string): void {
         setPending({round, seed, modeName});
         markLoaded(findMethod, false);
@@ -1107,9 +1131,37 @@ export function ReplayTab({
                                 </Alert>
                             )}
                             {selectedSpin.debug?.recording && recordedSpinStake(selectedSpin) > 0 && (
-                                <Button variant="default" onClick={() => openRecordedRound(selectedSpin)}>
-                                    {selectedSpin.logicalRound?.status === "completed" ? "Replay recorded round" : "Replay paid trigger"}
-                                </Button>
+                                <div>
+                                    <Button
+                                        variant="default"
+                                        disabled={!selectedSpinMatchesCurrentGame}
+                                        onClick={() => openRecordedRound(selectedSpin)}
+                                    >
+                                        {selectedSpin.logicalRound?.status === "completed" ? "Replay recorded round" : "Replay paid trigger"}
+                                    </Button>
+                                    {savedExactMathStale && (
+                                        <Text size="xs" c="dimmed" mt={4} data-pokie-recorded-replay-stale-note="true">
+                                            The saved design changed after its exact table was generated. Inspection still
+                                            works; reproduction may refuse this recorded round against the current design.
+                                        </Text>
+                                    )}
+                                    {recordedReplayError !== undefined && (
+                                        <Alert color="red" variant="light" title="Could not load this recorded round" mt="sm" data-pokie-recorded-replay-error="true">
+                                            <Text size="sm">{recordedReplayError}</Text>
+                                            <Button
+                                                variant="default"
+                                                size="xs"
+                                                mt="xs"
+                                                onClick={() => {
+                                                    setFindMethod("artifact");
+                                                    markLoaded("artifact", false);
+                                                }}
+                                            >
+                                                Open Saved round details
+                                            </Button>
+                                        </Alert>
+                                    )}
+                                </div>
                             )}
                             {selectedSpin.debug?.recording && recordedSpinStake(selectedSpin) === 0 && (
                                 <Text size="sm" c="dimmed">

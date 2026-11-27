@@ -970,7 +970,7 @@ test.describe.serial("managed project labels", () => {
         await expect.poll(() => page.getByText(/outcome records/).count(), {timeout: 30_000}).toBeGreaterThan(1);
         await expect(page.getByText(/unknown outcome records/)).toHaveCount(0);
         await expect(page.getByRole("button", {name: "Show all exact math figures", exact: true})).toBeVisible({timeout: 120_000});
-        await expect(page.getByText(/not as low, medium or high/)).toBeVisible();
+        await expect(page.getByText(/no single industry threshold for low\/medium\/high/)).toBeVisible();
         await page.getByRole("button", {name: "Show all exact math figures", exact: true}).click();
         await expect(page.getByText(/Exact enumeration of/)).toBeVisible();
         await expect(page.getByText(/Outcome table starter-slot/)).toBeVisible();
@@ -1148,9 +1148,9 @@ test.describe.serial("managed project labels", () => {
         const summary = page.locator('[data-pokie-producer-summary="whole-round"]');
         await expect(summary).toBeVisible({timeout: 60_000});
         await expect(summary).toHaveAttribute("data-pokie-producer-summary-state", "ready", {timeout: 60_000});
-        await expect(summary.getByText("Whole paid round", {exact: true})).toBeVisible();
+        await expect(summary.getByText("Whole round (incl. free games)", {exact: true})).toBeVisible();
         await expect(summary.getByText("Hit frequency (whole round)", {exact: true})).toBeVisible();
-        await expect(summary.getByText("Volatility (whole paid round)", {exact: true})).toBeVisible();
+        await expect(summary.getByText("Volatility (whole round)", {exact: true})).toBeVisible();
         await expect(summary.getByText("Largest observed whole-round win", {exact: true})).toBeVisible();
         await expect(summary.getByRole("button", {name: "Open Simulation"})).toBeVisible();
     });
@@ -1530,4 +1530,80 @@ test("PAR import says mathematical fields match when only metadata differs", asy
     await expect(page.getByText(/Definition comparison: no mathematical differences/)).toBeVisible({timeout: 60_000});
     await expect(page.getByText(/Some technical metadata could not be compared/)).toBeVisible();
     fs.rmSync(workDir, {recursive: true, force: true});
+});
+
+test("a featureless design reports whole-round exact math without uncapped free games", async ({page}) => {
+    test.setTimeout(240_000);
+    await page.goto("/#/home/design");
+    await page.getByRole("button", {name: "Use the starter"}).click();
+    await page.getByLabel("Game id").fill("scope-no-features-e2e");
+    await page.getByLabel("Game name").fill("Scope No Features E2E");
+    const create = page.getByRole("button", {name: "Create game design"});
+    await expect(create).toBeEnabled({timeout: 60_000});
+    await create.click();
+    await expect(page.getByRole("button", {name: "Overview", exact: true})).toBeVisible({timeout: 90_000});
+
+    const compute = page.getByRole("button", {name: "Compute exact outcome table"});
+    await expect(compute).toBeVisible({timeout: 60_000});
+    await compute.click();
+    await expect(page.locator('[data-pokie-exact-scope="whole-round"]')).toBeVisible({timeout: 120_000});
+    await expect(page.getByText("Whole-round exact", {exact: true})).toBeVisible();
+    await expect(page.locator('[data-pokie-exact-scope-note="whole-round"]')).toContainText(/whole-round reference/i);
+    await expect(page.getByText("Uncapped free games", {exact: true})).toHaveCount(0);
+    await expect(page.locator("[data-pokie-producer-uncapped-note]")).toHaveCount(0);
+
+    // The producer's own portfolio bands are optional, local, and must actually label the same number.
+    await page.getByRole("button", {name: "Set portfolio bands"}).click();
+    await page.getByLabel("Low is below").fill("2");
+    await page.getByLabel("Medium is up to").fill("5");
+    await page.getByRole("button", {name: "Save bands"}).click();
+    await expect(page.locator('[data-pokie-volatility-band="medium"]').first()).toBeVisible();
+
+    // The long paytable editor must offer the same Save action at the bottom of the table.
+    await page.getByRole("button", {name: "Game design", exact: true}).click();
+    await page.getByRole("button", {name: "Edit", exact: true}).nth(4).click();
+    const footer = page.locator('[data-pokie-paytable-footer-actions="true"]');
+    await expect(footer).toBeVisible({timeout: 30_000});
+    await expect(footer.getByRole("button", {name: "Save changes", exact: true})).toBeVisible();
+    await footer.getByRole("button", {name: "Cancel edit", exact: true}).click();
+});
+
+test("a saved game design can be duplicated from Projects with a fresh identity", async ({page}) => {
+    test.setTimeout(240_000);
+    await page.goto("/#/home/design");
+    await page.getByRole("button", {name: "Use the starter"}).click();
+    await page.getByLabel("Game id").fill("duplicate-source-e2e");
+    await page.getByLabel("Game name").fill("Duplicate Source E2E");
+    const create = page.getByRole("button", {name: "Create game design"});
+    await expect(create).toBeEnabled({timeout: 60_000});
+    await create.click();
+    await expect(page.getByRole("button", {name: "Overview", exact: true})).toBeVisible({timeout: 90_000});
+
+    await page.goto("/#/home/projects");
+    const sourceRow = page.getByRole("row").filter({
+        has: page.getByRole("button", {name: "Duplicate Source E2E", exact: true}),
+    });
+    await expect(sourceRow).toBeVisible({timeout: 60_000});
+    await sourceRow.getByRole("button", {name: "Duplicate", exact: true}).click();
+    await expect(page.getByText(/Created "Duplicate Source E2E copy" as a new game design/)).toBeVisible({
+        timeout: 60_000,
+    });
+
+    const copyRow = page.getByRole("row").filter({
+        has: page.getByRole("button", {name: "Duplicate Source E2E copy", exact: true}),
+    });
+    await expect(copyRow).toBeVisible();
+    await copyRow.getByRole("button", {name: "Open", exact: true}).click();
+    await expect(page.getByRole("heading", {name: "Duplicate Source E2E copy"})).toBeVisible({timeout: 90_000});
+    await expect(page.getByText(/valera-fortune|duplicate-source-e2e-copy/).first()).toBeVisible();
+
+    // A saved design must offer the full editor/PAR path without pretending PAR import edits the open
+    // project in place. The destination is Start a game, and saving there writes back to this project.
+    await page.getByRole("button", {name: "Game design", exact: true}).click();
+    const designerEntry = page.locator("[data-pokie-game-model-open-designer]");
+    await expect(designerEntry).toBeVisible({timeout: 60_000});
+    await designerEntry.getByRole("button", {name: "Open in Start a game"}).click();
+    await expect(page.getByText(/This design is open from/)).toBeVisible({timeout: 90_000});
+    await page.getByRole("button", {name: /Show advanced options/}).click();
+    await expect(page.getByText("PAR Sheet Import", {exact: true})).toBeVisible({timeout: 30_000});
 });

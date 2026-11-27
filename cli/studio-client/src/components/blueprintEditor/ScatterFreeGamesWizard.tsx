@@ -183,6 +183,20 @@ export function ScatterFreeGamesWizard({
                 if (isCurrent()) setExactProgress(undefined);
             });
     };
+    const exactEtaSeconds =
+        exactProgress !== undefined &&
+        exactProgress.total > 0n &&
+        exactProgress.processed > 0n &&
+        exactProgress.processed < exactProgress.total &&
+        exactElapsedSeconds >= 5
+            ? Math.max(
+                1,
+                Math.round(
+                    (exactElapsedSeconds / Number(exactProgress.processed)) *
+                        Number(exactProgress.total - exactProgress.processed),
+                ),
+            )
+            : undefined;
     const exactFreeGames = exactPreview.status === "ok" && exactPreview.view.freeGamesRtp.status === "available"
         ? exactPreview.view.freeGamesRtp
         : undefined;
@@ -357,7 +371,11 @@ export function ScatterFreeGamesWizard({
                 </Group>
                 {exactPreview.status === "loading" && (
                     <>
-                        <LoadingState label={`Enumerating this setup… ${exactElapsedSeconds}s`} />
+                        <LoadingState
+                            label={`Enumerating this setup… ${exactElapsedSeconds}s${
+                                exactEtaSeconds === undefined ? "" : ` · rough ETA ~${exactEtaSeconds}s`
+                            }`}
+                        />
                         {exactProgress !== undefined && exactProgress.total > 0n && (
                             <div>
                                 <Progress

@@ -19,6 +19,7 @@ import {NextStepCallout} from "../common/NextStepCallout";
 import {QuickActions} from "../common/QuickActions";
 import {ExactMathPanel} from "./ExactMathPanel";
 import {ProducerSummary} from "./ProducerSummary";
+import {VolatilityBandsControl} from "../common/VolatilityBandsControl";
 import {hasFeatureTerminationWarning, type ProjectMathStatus} from "../../domain/validationScope";
 
 function describeAddedToStudio(origin: StudioProjectOrigin | undefined): string {
@@ -124,6 +125,9 @@ export function OverviewTab({
 
     return (
         <div>
+            <div style={{marginBottom: "var(--mantine-spacing-sm)"}}>
+                <VolatilityBandsControl compact />
+            </div>
             {/* A producer reads whole-round behaviour first. The exact card below remains the proven
                 paid-spin reference; this summary defaults to the latest current simulation so the first
                 metrics on the page are the ones a player actually experiences. */}
