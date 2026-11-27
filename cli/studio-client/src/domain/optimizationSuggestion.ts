@@ -3,11 +3,23 @@ type Evaluation = {
     measured?: number[];
 };
 
+// Paytable payouts are allowed to be decimal (the field itself says so), unlike counts such as free
+// games or match counts. When every evaluated payout happened to be an integer, rounding the
+// interpolated value back to an integer can land on a value that was already measured and hide the
+// actually reachable decimal between two candidates (for example 95% between payout 7 and 8).
+function allowsDecimalValue(path: string): boolean {
+    return (/^\/paytable\/[^/]+\/\d+$/).test(path);
+}
+
 /**
  * Estimate the next value of a single tunable field that would hit an exact target, using the
  * candidate evaluations the caller already has. This is deliberately only a hint: the estimate is
  * linear between measured candidates, so the UI must still ask for an exact re-run. Returns undefined
  * for multi-field or non-numeric cases where a one-dimensional estimate would be misleading.
+ *
+ * Integer-only fields keep an integer suggestion. Paytable payouts fall back to a two-decimal value
+ * when the nearest integer has already been evaluated -- that is the case where the old hint vanished
+ * exactly when it was most useful.
  */
 export function suggestNextTunableValue(
     path: string,
@@ -43,8 +55,13 @@ export function suggestNextTunableValue(
     const rawValue = left.x + (target - left.y) / slope;
     if (!Number.isFinite(rawValue) || rawValue <= 0) return undefined;
 
-    const integer = unique.every((point) => Number.isInteger(point.x));
-    const value = integer ? Math.round(rawValue) : Math.round(rawValue * 100) / 100;
-    if (unique.some((point) => point.x === value)) return undefined;
-    return {value, integer};
+    const allInteger = unique.every((point) => Number.isInteger(point.x));
+    if (allInteger) {
+        const rounded = Math.round(rawValue);
+        if (!unique.some((point) => point.x === rounded)) return {value: rounded, integer: true};
+        if (!allowsDecimalValue(path)) return undefined;
+    }
+    const decimal = Math.round(rawValue * 100) / 100;
+    if (unique.some((point) => point.x === decimal)) return undefined;
+    return {value: decimal, integer: false};
 }

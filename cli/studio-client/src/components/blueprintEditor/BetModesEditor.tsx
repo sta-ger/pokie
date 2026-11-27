@@ -1,4 +1,4 @@
-import {Button, Checkbox, Group, NumberInput, Select, Table, Text, TextInput} from "@mantine/core";
+import {Button, Checkbox, Group, NumberInput, Select, Stack, Table, Text, TextInput} from "@mantine/core";
 import {addBetMode, duplicateBetModeAt, moveBetModeAt, removeBetModeAt, type BlueprintBetMode, updateBetMode} from "../../domain/blueprintFormOps";
 import type {BlueprintMutate} from "../../hooks/useBlueprintEditor";
 import {PageSection} from "../common/PageSection";
@@ -20,7 +20,24 @@ export function BetModesEditor({blueprint, mutate}: {blueprint: Record<string, u
 
     return (
         <PageSection legend="Bet modes">
-            {modes.length === 0 ? <Text size="sm" c="dimmed">No bet modes configured.</Text> : (
+            <Text size="sm" c="dimmed">
+                Bet modes are optional variants of the same game. Leave this empty for a normal base game. An
+                <strong> ante</strong> mode charges more for a better feature chance; a <strong>buy feature</strong> mode
+                lets the player pay a multiplier to start free games.
+            </Text>
+            <details>
+                <summary>What each column means</summary>
+                <Stack gap={4} mt="xs">
+                    <Text size="sm"><strong>Id</strong> — short unique name used by the game code and reports, for example <code>base</code>, <code>ante</code> or <code>buy-bonus</code>.</Text>
+                    <Text size="sm"><strong>Label</strong> — the player-facing name.</Text>
+                    <Text size="sm"><strong>Cost multiplier</strong> — how many times the base bet this mode costs. <code>1</code> is the same stake.</Text>
+                    <Text size="sm"><strong>Target RTP</strong> — optional math target for this mode. It is used for review and does not change the gameplay by itself.</Text>
+                    <Text size="sm"><strong>Runtime</strong> — <em>Metadata only</em> keeps the row as documentation; <em>Base</em>, <em>Ante</em> and <em>Buy feature</em> wire the mode into the game. Set this on every row or leave every row as metadata only.</Text>
+                    <Text size="sm"><strong>Default</strong> — exactly one mode should be the default when runtime modes are enabled; that is the mode a player starts in.</Text>
+                    <Text size="sm"><strong>Forced free games</strong> — how many free games the purchase starts. Required for a <em>Buy feature</em> mode.</Text>
+                </Stack>
+            </details>
+            {modes.length === 0 ? <Text size="sm" c="dimmed" mt="sm">No bet modes configured.</Text> : (
                 <Table.ScrollContainer minWidth={760}>
                     <Table>
                         <Table.Thead><Table.Tr><Table.Th>Id</Table.Th><Table.Th>Label</Table.Th><Table.Th>Cost multiplier</Table.Th><Table.Th>Target RTP</Table.Th><Table.Th>Runtime</Table.Th><Table.Th>Default</Table.Th><Table.Th>Forced free games</Table.Th><Table.Th /></Table.Tr></Table.Thead>

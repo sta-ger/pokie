@@ -372,6 +372,8 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const migratedFrom = new URLSearchParams(location.search).get("migrated");
     const migration = legacyProjectRouteMigration(migratedFrom ?? undefined);
     const autoComputeExactMath = (location.state as {exactMathAfterOpen?: boolean} | null)?.exactMathAfterOpen === true;
+    const focusOptimize = (location.state as {focusOptimize?: boolean} | null)?.focusOptimize === true;
+    const optimizeFocusKeyRef = useRef<string | undefined>(undefined);
     const navigationRequestIdRef = useRef(0);
     const [navigationLifecycle, setNavigationLifecycle] = useState<{tab: ProjectTab; status: "loading" | "rendered" | "error"; message?: string; retryTab?: ProjectTab}>({tab: activeTab, status: "rendered"});
     // This generation is deliberately shared by a completed durable operation
@@ -1270,6 +1272,22 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         if (focusedTabRef.current !== activeTab || document.activeElement === document.body) panelRef.current.focus({preventScroll: true});
         focusedTabRef.current = activeTab;
     }, [activeTab, header.status]);
+
+    // "Save and tune RTP" lands here with focusOptimize in history state. The optimizer sits below the
+    // overview cards, so an author who just saved a 640%-RTP experiment would otherwise have to hunt
+    // for it. Focus and scroll once per navigation entry, never on every tab switch.
+    useEffect(() => {
+        if (!focusOptimize || activeTab !== "overview" || header.status !== "loaded") return undefined;
+        if (optimizeFocusKeyRef.current === location.key) return undefined;
+        const frame = requestAnimationFrame(() => {
+            const panel = document.querySelector<HTMLElement>("[data-pokie-optimize-math]");
+            if (panel === null) return;
+            optimizeFocusKeyRef.current = location.key;
+            panel.scrollIntoView({block: "start"});
+            panel.focus({preventScroll: true});
+        });
+        return () => cancelAnimationFrame(frame);
+    }, [activeTab, focusOptimize, header.status, location.key]);
 
     const [closeError, setCloseError] = useState<string>();
     const [copyPathNotice, setCopyPathNotice] = useState<string>();

@@ -980,8 +980,8 @@ export function OptimizationPanel({
     ) : undefined;
 
     return (
-        <Stack mt="lg">
-            <Title order={3}>Optimize math</Title>
+        <Stack mt="lg" data-pokie-optimize-math tabIndex={-1} aria-labelledby="project-optimize-math-heading">
+            <Title order={3} id="project-optimize-math-heading">Optimize math</Title>
             <Text size="md">
                 Pick a target and candidate values, review the settings, then run. The search evaluates only the values
                 you list, and nothing is written until you apply a reviewed candidate.

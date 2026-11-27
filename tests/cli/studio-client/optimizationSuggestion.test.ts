@@ -25,6 +25,22 @@ describe("suggestNextTunableValue", () => {
         expect(decimal).toEqual({value: 8.88, integer: false});
     });
 
+    it("suggests the reachable decimal payout when the nearest integer was already evaluated", () => {
+        const evaluations = [
+            {parameters: {"/paytable/A/3": 7}, measured: [0.936893]},
+            {parameters: {"/paytable/A/3": 8}, measured: [0.960567]},
+        ];
+        expect(suggestNextTunableValue("/paytable/A/3", 0.95, evaluations)).toEqual({value: 7.55, integer: false});
+    });
+
+    it("keeps integer-only fields integer-only when the rounded value was already evaluated", () => {
+        const evaluations = [
+            {parameters: {"/mechanics/freeGames/awards/3": 7}, measured: [0.936893]},
+            {parameters: {"/mechanics/freeGames/awards/3": 8}, measured: [0.960567]},
+        ];
+        expect(suggestNextTunableValue("/mechanics/freeGames/awards/3", 0.95, evaluations)).toBeUndefined();
+    });
+
     it("does not suggest a value that was already evaluated or has no usable slope", () => {
         const evaluations = [
             {parameters: {"/paytable/A/3": 8}, measured: [0.84]},

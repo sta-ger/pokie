@@ -33,6 +33,8 @@ export function BlueprintMathPreviewPanel({
     disabledReason,
     onRetryDisabled,
     onStatusChange,
+    onSaveAndTune,
+    saveAndTuneDisabledReason,
 }: {
     blueprint: unknown;
     /** "saved" keeps the same preview mounted after a Game Model save; "draft" is Design Game. */
@@ -45,6 +47,10 @@ export function BlueprintMathPreviewPanel({
     /** Offered only for a failed saved-design load, never while the first read is still in flight. */
     onRetryDisabled?: () => void;
     onStatusChange?: (status: BlueprintMathPreviewStatus) => void;
+    /** Save the current design, then open Overview with Optimize math in view. */
+    onSaveAndTune?: () => void;
+    /** Why the save-and-tune action is unavailable in the current editor state. */
+    saveAndTuneDisabledReason?: string;
 }) {
     const fetchImpl = useStudioApi();
     const [state, setState] = useState<PreviewState>({status: "idle"});
@@ -273,6 +279,24 @@ export function BlueprintMathPreviewPanel({
                         )}
                         <Metric label={freeGamesTotal !== undefined ? "Outcomes (paid spins)" : "Outcomes"} value={state.view.outcomeCount.toLocaleString("en-US")} />
                     </SimpleGrid>
+                    {onSaveAndTune !== undefined && (
+                        <QuickActions>
+                            <Button
+                                variant="default"
+                                onClick={onSaveAndTune}
+                                disabled={saveAndTuneDisabledReason !== undefined}
+                                data-pokie-save-and-tune
+                            >
+                                Save and tune RTP
+                            </Button>
+                        </QuickActions>
+                    )}
+                    {onSaveAndTune !== undefined && (
+                        <Text size="xs" c="dimmed" mt={4}>
+                            Saves this design and opens Optimize math on Overview, where you can search for a target
+                            RTP.{saveAndTuneDisabledReason === undefined ? "" : ` ${saveAndTuneDisabledReason}`}
+                        </Text>
+                    )}
                     <Text size="xs" c="dimmed" mt="xs">
                         {mode === "saved"
                             ? "Preview only — these figures are not the project's stored outcome table. Use Compute exact outcome table on Overview to write it."

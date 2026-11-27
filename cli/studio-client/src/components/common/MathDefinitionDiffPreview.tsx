@@ -27,7 +27,7 @@ function describeComparison(diff: MathDefinitionDiff): string {
     if (diff.status === "identical") return "The editable mathematical fields match.";
     const mathematical = diff.changes.filter((change) => change.mathematical);
     if (mathematical.length === 0) {
-        return diff.status === "partial"
+        return diff.status === "partial" || diff.status === "invalid"
             ? "Some technical metadata could not be compared; see technical comparison details."
             : "";
     }

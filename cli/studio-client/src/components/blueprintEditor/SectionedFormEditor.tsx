@@ -2,7 +2,7 @@ import {ExistingMechanicsFieldset} from "./ExistingMechanicsFieldset";
 import {FreeGamesFieldset} from "./FreeGamesFieldset";
 import {BetModesEditor} from "./BetModesEditor";
 import {Tabs} from "@mantine/core";
-import {useEffect, useMemo, useRef, useState} from "react";
+import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import type {ValidationIssue} from "../../api/types";
 import {
     BLUEPRINT_SECTIONS,
@@ -51,6 +51,8 @@ export function SectionedFormEditor({
     gameIdConflict,
     onGameIdChanged,
     onSequenceDirtyChange,
+    initialSection,
+    onSectionChange,
 }: {
     blueprint: Record<string, unknown>;
     mutate: BlueprintMutate;
@@ -61,17 +63,23 @@ export function SectionedFormEditor({
     gameIdConflict?: {suggestedGameId: string; onUseSuggested: () => void};
     onGameIdChanged?: () => void;
     onSequenceDirtyChange?: (dirty: boolean) => void;
+    /** Survives the form remount that a wholesale restore (Undo/Redo) performs. */
+    initialSection?: BlueprintSectionId;
+    onSectionChange?: (section: BlueprintSectionId) => void;
 }) {
-    const [activeSection, setActiveSection] = useState<BlueprintSectionId>("basics");
+    const [activeSection, setActiveSection] = useState<BlueprintSectionId>(initialSection ?? "basics");
     // Mantine's keepMounted mode preserves local field state, but mounting every heavy editor panel on
     // first paint makes even the basic screen pay for Reels, Paytable, and the remaining hidden forms.
     // Mount each section on first visit and keep it from then on: startup stays small without losing an
     // in-progress local input when the user switches away and back.
-    const [visitedSections, setVisitedSections] = useState<ReadonlySet<BlueprintSectionId>>(() => new Set(["basics"]));
-    const activateSection = (section: BlueprintSectionId): void => {
+    const [visitedSections, setVisitedSections] = useState<ReadonlySet<BlueprintSectionId>>(
+        () => new Set(["basics", initialSection ?? "basics"]),
+    );
+    const activateSection = useCallback((section: BlueprintSectionId): void => {
         setActiveSection(section);
+        onSectionChange?.(section);
         setVisitedSections((visited) => visited.has(section) ? visited : new Set([...visited, section]));
-    };
+    }, [onSectionChange]);
 
     // A Game-id collision is a field-level problem in Game basics, not a page-level dead end. Bring that
     // section into view as soon as the server offers a replacement id, so the author can fix it here.
@@ -112,7 +120,7 @@ export function SectionedFormEditor({
         }
         activateSection(firstErrorSection.id);
         tabRefs[firstErrorSection.id].current?.focus();
-    }, [tabRefs, validationView]);
+    }, [activateSection, tabRefs, validationView]);
 
     const errors: ValidationIssue[] = validationView.status === "invalid" ? validationView.errors : [];
     const warnings: ValidationIssue[] =

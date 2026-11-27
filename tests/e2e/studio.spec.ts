@@ -1683,7 +1683,7 @@ test("a saved game design can be duplicated from Projects with a fresh identity"
     const designerEntry = page.locator("[data-pokie-game-model-open-designer]");
     await expect(designerEntry).toBeVisible({timeout: 60_000});
     await designerEntry.getByRole("button", {name: "Open in Start a game"}).click();
-    await expect(page.getByText(/This design is open from/)).toBeVisible({timeout: 90_000});
+    await expect(page.getByText(/This design is open from/).first()).toBeVisible({timeout: 90_000});
     await expect(page.getByText(/You are editing the saved game design/)).toBeVisible();
     await expect(page.getByText(/This is a new design draft, not the last saved project/)).toHaveCount(0);
     await expect(page.getByText("Saved design is ready to update", {exact: true})).toBeVisible({timeout: 60_000});
@@ -1704,4 +1704,90 @@ test("Play describes its math preview without promising a stakeholder demo", asy
     await page.getByRole("button", {name: "Play", exact: true}).click();
     await expect(page.getByText(/not for a stakeholder presentation/)).toBeVisible({timeout: 60_000});
     await expect(page.getByText("Use a built game, not this screen")).toHaveCount(0);
+});
+
+test("Undo edit restores the previous paytable value and Redo puts it back", async ({page}) => {
+    await page.goto("/#/home/design");
+    await page.getByRole("button", {name: "Use the starter"}).click();
+    const undo = page.getByRole("button", {name: "Undo edit", exact: true});
+    const redo = page.getByRole("button", {name: "Redo edit", exact: true});
+    await expect(undo).toBeDisabled();
+    await page.getByRole("tab", {name: /Paytable/}).click();
+    const payout = page.getByRole("textbox", {name: "A, 3 symbols payout"});
+    await expect(payout).toHaveValue("8");
+    await payout.fill("9");
+    await payout.blur();
+    await expect(payout).toHaveValue("9");
+    await expect(undo).toBeEnabled();
+    await undo.click();
+    await expect(page.getByRole("tab", {name: /Paytable/})).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("textbox", {name: "A, 3 symbols payout"})).toHaveValue("8");
+    await expect(redo).toBeEnabled();
+    await redo.click();
+    await expect(page.getByRole("textbox", {name: "A, 3 symbols payout"})).toHaveValue("9");
+});
+
+test("Bet modes explain their producer-facing fields before the first row", async ({page}) => {
+    await page.goto("/#/home/design");
+    await page.getByRole("button", {name: "Use the starter"}).click();
+    await page.getByRole("tab", {name: /Bets/}).click();
+    await page.getByRole("button", {name: "Add bet mode"}).click();
+    await page.getByText("What each column means", {exact: true}).click();
+    await expect(page.getByText(/short unique name used by the game code/)).toBeVisible();
+    await expect(page.getByText(/how many times the base bet this mode costs/)).toBeVisible();
+    await expect(page.getByText(/Required for a Buy feature mode/)).toBeVisible();
+});
+
+test("editing another saved design warns before replacing an unsaved draft", async ({page}) => {
+    test.setTimeout(240_000);
+    await page.goto("/#/home/design");
+    await page.getByRole("button", {name: "Use the starter"}).click();
+    await page.getByLabel("Game id").fill("guard-source-e2e");
+    await page.getByLabel("Game name").fill("Guard Source E2E");
+    const create = page.getByRole("button", {name: "Create game design"});
+    await expect(create).toBeEnabled({timeout: 60_000});
+    await create.click();
+    await expect(page.getByRole("button", {name: "Overview", exact: true})).toBeVisible({timeout: 90_000});
+
+    await page.getByRole("button", {name: "Your projects", exact: true}).click();
+    await page.getByRole("button", {name: "Start a game", exact: true}).click();
+    const starter = page.getByRole("button", {name: "Use the starter"});
+    if (await starter.isVisible().catch(() => false)) await starter.click();
+    await page.getByLabel("Game name").fill("Unsaved Guard E2E");
+    await page.getByLabel("Game name").press("Tab");
+    await page.waitForTimeout(500);
+
+    await page.getByRole("button", {name: "Projects", exact: true}).click();
+    const row = page.getByRole("row").filter({has: page.getByRole("button", {name: "Guard Source E2E", exact: true})});
+    await expect(row).toBeVisible({timeout: 60_000});
+    await row.getByRole("button", {name: "Edit in Start a game"}).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("Unsaved changes");
+    await dialog.getByRole("button", {name: "Stay"}).click();
+    await page.getByRole("button", {name: "Start a game", exact: true}).click();
+    await expect(page.getByLabel("Game name")).toHaveValue("Unsaved Guard E2E");
+
+    await page.getByRole("button", {name: "Projects", exact: true}).click();
+    await row.getByRole("button", {name: "Edit in Start a game"}).click();
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", {name: "Leave"}).click();
+    await expect(page.getByText(/This design is open from/).first()).toBeVisible({timeout: 90_000});
+    await expect(page.getByLabel("Game name")).toHaveValue("Guard Source E2E");
+    await expect(page.getByRole("button", {name: "Save JSON copy", exact: true})).toBeVisible();
+});
+
+test("Save and tune RTP opens Overview with Optimize math in view", async ({page}) => {
+    test.setTimeout(240_000);
+    await page.goto("/#/home/design");
+    await page.getByRole("button", {name: "Use the starter"}).click();
+    await page.getByLabel("Game id").fill("tune-rtp-e2e");
+    await page.getByLabel("Game name").fill("Tune RTP E2E");
+    await page.getByRole("button", {name: "Calculate exact math"}).click();
+    await expect(page.getByText("Exact RTP", {exact: true}).first()).toBeVisible({timeout: 60_000});
+    const tune = page.getByRole("button", {name: "Save and tune RTP"});
+    await expect(tune).toBeEnabled({timeout: 60_000});
+    await tune.click();
+    await expect(page.getByRole("button", {name: "Overview", exact: true})).toBeVisible({timeout: 120_000});
+    await expect(page.locator("[data-pokie-optimize-math]")).toBeInViewport({timeout: 120_000});
 });

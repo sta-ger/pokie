@@ -8,6 +8,7 @@ import {useAllowNextDesignNavigation} from "../../context/DesignNavigationGuardC
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {clearPersistedBlueprintDraft, loadPersistedBlueprintDraft, savePersistedBlueprintDraft} from "../../domain/blueprintDraftStorage";
 import {createRecommendedBlueprint} from "../../domain/blueprintEditorState";
+import type {BlueprintSectionId} from "../../domain/interpret/BlueprintSections";
 import {errorMessage} from "../../domain/errorMessage";
 import {
     describeExistingProjectOpenError,
@@ -65,6 +66,9 @@ type DebouncedCallbackTimer = {
 // BlueprintValidationView's own doc comment) never lingers long enough to read as broken. Only ever
 // scheduled in guided mode -- the raw/non-guided editor keeps its existing manual-only "Validate" button.
 const AUTO_VALIDATE_DEBOUNCE_MS = 600;
+// One entry per field edit; enough to recover a normal paytable experiment without retaining the
+// entire editing session in memory.
+const EDIT_HISTORY_LIMIT = 50;
 
 function useDebouncedCallbackTimer(): DebouncedCallbackTimer {
     const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -153,6 +157,26 @@ export function BlueprintEditorPage({
     // Design Game opens on a real, immediately playable Recommended Project. The raw editor remains
     // intentionally blank when used outside this guided entry point.
     const editor = useBlueprintEditor(guided ? createRecommendedBlueprint() : undefined);
+    // A small, purely local edit history. It deliberately sits above the form sections so every
+    // section's mutate() call passes through the same snapshot point; wholesale replacements
+    // (New/Load/JSON Apply/PAR import) clear it via the formGeneration effect below.
+    const editHistoryRef = useRef<Record<string, unknown>[]>([]);
+    const editRedoRef = useRef<Record<string, unknown>[]>([]);
+    const restoringEditHistoryRef = useRef(false);
+    const [editHistoryAvailability, setEditHistoryAvailability] = useState({canUndo: false, canRedo: false});
+    const [activeDesignSection, setActiveDesignSection] = useState<BlueprintSectionId>("basics");
+    useEffect(() => {
+        // loadFrom() is used both by wholesale replacements and by the two history handlers. Only the
+        // latter may keep the stacks alive; every other formGeneration bump starts a new edit lifetime.
+        if (restoringEditHistoryRef.current) {
+            restoringEditHistoryRef.current = false;
+            return;
+        }
+        editHistoryRef.current = [];
+        editRedoRef.current = [];
+        setEditHistoryAvailability({canUndo: false, canRedo: false});
+        setActiveDesignSection("basics");
+    }, [editor.formGeneration]);
     const [mode, setMode] = useState<BlueprintMode>("form");
     const [blueprintPath, setBlueprintPath] = useState<string>();
     const [recoveredDestination, setRecoveredDestination] = useState<string>();
@@ -361,7 +385,11 @@ export function BlueprintEditorPage({
             }
             return previous.status === "ok" || previous.status === "invalid" ? {status: "stale"} : previous;
         });
+        const before = editor.getCurrentState().blueprint;
         editor.mutate(mutate);
+        editHistoryRef.current = [...editHistoryRef.current.slice(-(EDIT_HISTORY_LIMIT - 1)), before];
+        editRedoRef.current = [];
+        setEditHistoryAvailability({canUndo: true, canRedo: false});
     };
     const {schedule: scheduleAutoValidate, cancel: cancelAutoValidate, isScheduled: isAutoValidateScheduled} = useDebouncedCallbackTimer();
 
@@ -1056,7 +1084,7 @@ export function BlueprintEditorPage({
     // Only activation of the terminal ok control saves this exact validated model. The first
     // save chooses a managed project; subsequent saves overwrite its confirmed source path.
     // Success clears the recoverable draft and opens the saved project's workspace.
-    const saveGuidedProject = (savedRevision: number, savedBlueprint: Record<string, unknown>): void => {
+    const saveGuidedProject = (savedRevision: number, savedBlueprint: Record<string, unknown>, tuneRtp = false): void => {
         if (editor.modeDrafts.current.wholeSequenceDraft?.dirty) {
             setManagedSaveView({status: "error", message: "Apply or cancel whole-sequence edits before saving."});
             saveGuard.end();
@@ -1152,7 +1180,10 @@ export function BlueprintEditorPage({
                             // A deferred route render otherwise leaves Home actionable under Overview.
                             navigate(`/project/${encodeURIComponent(context.projectRoot)}/overview`, {
                                 flushSync: true,
-                                ...(mathPreviewStatus === "ok" ? {state: {exactMathAfterOpen: true}} : {}),
+                                state: {
+                                    ...(mathPreviewStatus === "ok" ? {exactMathAfterOpen: true} : {}),
+                                    ...(tuneRtp ? {focusOptimize: true} : {}),
+                                },
                             });
                         })
                         .catch((error: unknown) => {
@@ -1177,7 +1208,7 @@ export function BlueprintEditorPage({
             && completedValidation.blueprint === currentState.blueprint ? currentState : undefined;
     };
 
-    const handleGuidedSave = (): void => {
+    const handleGuidedSave = (tuneRtp = false): void => {
         // Reject a blur-committed edit synchronously, even when this event still sees the preceding
         // rendered ok state. Such an activation must neither acquire the save guard nor queue work.
         if (validationView.status !== "ok" || workspaceOpenPending || !getValidatedGuidedSaveState() || !saveGuard.begin()) {
@@ -1196,7 +1227,7 @@ export function BlueprintEditorPage({
                 saveGuard.end();
                 return;
             }
-            saveGuidedProject(savedState.revision, savedState.blueprint);
+            saveGuidedProject(savedState.revision, savedState.blueprint, tuneRtp);
         }, 0);
     };
 
@@ -1256,6 +1287,8 @@ export function BlueprintEditorPage({
             gameIdConflict={gameIdConflict}
             onGameIdChanged={dismissSaveFailureOnGameIdEdit}
             onSequenceDirtyChange={setSequenceDraftDirty}
+            initialSection={activeDesignSection}
+            onSectionChange={setActiveDesignSection}
         />
     ) : (
         <div key={editor.formGeneration}>
@@ -1275,6 +1308,45 @@ export function BlueprintEditorPage({
     // primary action through Open so a valid model cannot authorize another
     // Create/Save while the first pointer's Overview transition is pending.
     const guidedActionPending = managedSaveView.status === "loading" || validationView.status === "loading" || workspaceOpenPending;
+    let saveAndTuneDisabledReason: string | undefined;
+    if (validationView.status === "loading") {
+        saveAndTuneDisabledReason = "Wait for the design check to finish.";
+    } else if (validationView.status !== "ok") {
+        saveAndTuneDisabledReason = "Fix the design checks before saving and tuning.";
+    } else if (sequenceDraftDirty) {
+        saveAndTuneDisabledReason = "Apply or cancel whole-sequence edits first.";
+    } else if (sourceDrift !== undefined) {
+        saveAndTuneDisabledReason = "Reload or resolve the changed source first.";
+    } else if (guidedActionPending) {
+        saveAndTuneDisabledReason = "Wait for the current save to finish.";
+    }
+    const editSavePending = managedSaveView.status === "loading" || workspaceOpenPending;
+    const editHistoryBlocked = jsonDraftDirty || sequenceDraftDirty || sourceDrift !== undefined || editSavePending;
+    const canUndoEdit = editHistoryAvailability.canUndo && !editHistoryBlocked;
+    const canRedoEdit = editHistoryAvailability.canRedo && !editHistoryBlocked;
+    let editHistoryBlockedReason: string | undefined;
+    if (jsonDraftDirty) editHistoryBlockedReason = "Apply or discard the JSON edit first.";
+    else if (sequenceDraftDirty) editHistoryBlockedReason = "Apply or cancel whole-sequence edits first.";
+    else if (sourceDrift !== undefined) editHistoryBlockedReason = "Reload or resolve the changed source first.";
+    else if (editSavePending) editHistoryBlockedReason = "Wait for the current save to finish.";
+    const restoreEditSnapshot = (direction: "undo" | "redo"): void => {
+        const source = direction === "undo" ? editHistoryRef.current : editRedoRef.current;
+        const target = direction === "undo" ? editRedoRef.current : editHistoryRef.current;
+        const snapshot = source.pop();
+        if (snapshot === undefined) return;
+        target.push(editor.getCurrentState().blueprint);
+        restoringEditHistoryRef.current = true;
+        completedValidationRef.current = undefined;
+        validationAbortRef.current?.abort();
+        setValidationView((previous) =>
+            previous.status === "ok" || previous.status === "invalid" ? {status: "stale"} : previous,
+        );
+        editor.loadFrom(snapshot);
+        setEditHistoryAvailability({
+            canUndo: editHistoryRef.current.length > 0,
+            canRedo: editRedoRef.current.length > 0,
+        });
+    };
     // Mantine hides a Button's label while `loading` is true. During validation that left the primary
     // action as an unlabeled spinner, so keep the validation phase disabled-but-labelled and reserve
     // the loading treatment for the actual save/open writes.
@@ -1351,7 +1423,7 @@ export function BlueprintEditorPage({
                             <Button
                                 id="blueprint-create-game"
                                 data-pokie-validation-state={validationView.status}
-                                onClick={handleGuidedSave}
+                                onClick={() => handleGuidedSave()}
                                 disabled={sequenceDraftDirty || guidedActionPending || validationView.status !== "ok"}
                                 aria-describedby={guidedActionDescriptionId}
                                 loading={managedSaveView.status === "loading" || workspaceOpenPending}
@@ -1359,16 +1431,35 @@ export function BlueprintEditorPage({
                             >
                                 {guidedActionLabel}
                             </Button>
+                            <Button
+                                variant="default"
+                                onClick={() => restoreEditSnapshot("undo")}
+                                disabled={!canUndoEdit}
+                                title={canUndoEdit ? "Undo the last edit" : editHistoryBlockedReason ?? "Nothing to undo yet."}
+                                data-pokie-undo-edit
+                            >
+                                Undo edit
+                            </Button>
+                            <Button
+                                variant="default"
+                                onClick={() => restoreEditSnapshot("redo")}
+                                disabled={!canRedoEdit}
+                                title={canRedoEdit ? "Redo the last undone edit" : editHistoryBlockedReason ?? "Nothing to redo yet."}
+                                data-pokie-redo-edit
+                            >
+                                Redo edit
+                            </Button>
                             {savingBackToSource && (
                                 <Button variant="default" onClick={openAdvanced}>
-                                Save a copy
+                                Save JSON copy
                                 </Button>
                             )}
                         </QuickActions>
                         {savingBackToSource && (
                             <Text size="xs" c="dimmed" mb="sm">
                             This design is open from <strong style={{overflowWrap: "anywhere"}}>{blueprintPath}</strong>.
-                            Saving writes back to that file. Use Save a copy under Advanced options if you want to keep the original unchanged.
+                            Saving writes back to that file. Use Save JSON copy for a raw file copy; to create another
+                            Studio project with a fresh Game id, use Projects → Duplicate.
                             </Text>
                         )}
                         {mathPreviewStatus === "ok" && !savingBackToSource && (
@@ -1417,7 +1508,7 @@ export function BlueprintEditorPage({
                                 />
                                 {managedSaveView.canSaveAs && (
                                     <Button variant="default" size="xs" mb="sm" onClick={openAdvanced}>
-                                    Save a copy
+                                    Save JSON copy
                                     </Button>
                                 )}
                                 {showManagedConflictComparison && (
@@ -1695,6 +1786,8 @@ export function BlueprintEditorPage({
                 key={`mathpreview-${editor.formGeneration}`}
                 blueprint={blueprint}
                 onStatusChange={setMathPreviewStatus}
+                onSaveAndTune={guided ? () => handleGuidedSave(true) : undefined}
+                saveAndTuneDisabledReason={guided ? saveAndTuneDisabledReason : undefined}
             />
             <Collapse expanded={!guided || advancedOpened}>
                 {guided && <Text size="sm" c="dimmed" mb="sm">

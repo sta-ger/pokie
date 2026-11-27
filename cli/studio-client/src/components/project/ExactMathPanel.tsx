@@ -1024,6 +1024,11 @@ function KeyNumbersCard({
                             />
                         )}
                     </Group>
+                    <Text size="xs" c="dimmed" mt="sm" data-pokie-volatility-threshold-note="true">
+                        Studio reports volatility as a standard deviation. It does not assign a low/medium/high class,
+                        because there is no single industry threshold for low/medium/high. Optional portfolio bands only
+                        add a label; they never change the number.
+                    </Text>
                     {uncapped && (
                         <Text size="sm" mt="sm" data-pokie-producer-uncapped-note="true">
                             The average RTP is exact, but this game has no hard cap on free games: one round can run

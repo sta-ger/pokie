@@ -14,6 +14,7 @@ import {
     type FetchLike,
 } from "../../api/apiClient";
 import type {StudioProjectImportPreviewResult, StudioProjectRegistryView, StudioProjectType} from "../../api/types";
+import {useGuardedAction} from "../../context/DesignNavigationGuardContext";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
 import {formatTimestamp} from "../../domain/formatTimestamp";
@@ -115,6 +116,7 @@ export function ProjectsPanel({
     const fetchImpl = useStudioApi();
     const navigate = useNavigate();
     const confirm = useConfirm();
+    const guardedAction = useGuardedAction();
     const controlsRegion = useRef<HTMLDivElement>(null);
     useDesignFocusVisibility(controlsRegion, isVisible);
     const openAndNavigate = useOpenProject();
@@ -416,8 +418,14 @@ export function ProjectsPanel({
         return <Text fw={600}>{entry.name}</Text>;
     };
 
+    const guardedOpenInDesigner = (state: {initialBlueprintPath?: string; initialParSheetPath?: string}): void => {
+        guardedAction(() => {
+            navigate("/home/design", {state});
+            return Promise.resolve();
+        }).catch(() => undefined);
+    };
     const handleGoToDesignGame = (path: string): void => {
-        navigate("/home/design", {state: {initialParSheetPath: path}});
+        guardedOpenInDesigner({initialParSheetPath: path});
     };
 
     const handleRegister = (): void => {
@@ -520,7 +528,7 @@ export function ProjectsPanel({
                         <Button
                             variant="default"
                             size="xs"
-                            onClick={() => navigate("/home/design", {state: {initialBlueprintPath: entry.location}})}
+                            onClick={() => guardedOpenInDesigner({initialBlueprintPath: entry.location})}
                             title="Open this saved design in the full Start a game editor, including PAR import; saving writes back to this project."
                         >
                             Edit in Start a game
