@@ -770,13 +770,16 @@ describe("advanced validation report publication", () => {
     it("keeps a lease cleanup failure observable", async () => {
         const release = jest.fn(() => Promise.reject(new Error("cleanup failure")));
         const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-validate-lease-failure-"));
+        fs.writeFileSync(path.join(projectRoot, "package.json"), JSON.stringify({pokie: {entry: "./dist/index.js"}}));
         try {
-            const command = new ValidateCommand(createStubValidator(validReport), undefined, () => Promise.resolve({runtimePath: "unavailable", release}));
-            expect(await command.run(["unavailable", "--format", "json"])).toBe(1);
+            const command = new ValidateCommand(createStubValidator(validReport), undefined, () => Promise.resolve({runtimePath: projectRoot, release}));
+            expect(await command.run([projectRoot, "--format", "json"])).toBe(1);
             expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({valid: false, errors: [expect.objectContaining({code: "validate-lease-release-failed"})]});
             expect(release).toHaveBeenCalledTimes(1);
         } finally {
             log.mockRestore();
+            fs.rmSync(projectRoot, {recursive: true, force: true});
         }
     });
 });

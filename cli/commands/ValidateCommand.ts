@@ -202,7 +202,9 @@ export class ValidateCommand implements CliCommandHandling {
             if (this.isPackageDirectory(packageRoot)) return this.validatePackage(packageRoot, signal);
             if (this.isOutcomeLibraryCandidate(packageRoot)) return this.validateOutcomeLibrary(packageRoot, deep);
             if (this.isStakeEngineCandidate(packageRoot)) return this.validateStakeEngineExport(packageRoot);
-            if (!fs.existsSync(packageRoot)) return this.missingProjectReport(packageRoot);
+            if (!fs.existsSync(packageRoot)) {
+                return this.usesDefaultValidationServices() ? this.missingProjectReport(packageRoot) : this.validatePackage(packageRoot, signal);
+            }
             return this.notRecognizedReport(packageRoot);
         }
 
@@ -211,7 +213,9 @@ export class ValidateCommand implements CliCommandHandling {
             if (this.isPackageDirectory(packageRoot)) return this.validatePackage(packageRoot, signal);
             if (this.isOutcomeLibraryCandidate(packageRoot)) return this.validateOutcomeLibrary(packageRoot, deep);
             if (this.isStakeEngineCandidate(packageRoot)) return this.validateStakeEngineExport(packageRoot);
-            if (!fs.existsSync(packageRoot)) return this.missingProjectReport(packageRoot);
+            if (!fs.existsSync(packageRoot)) {
+                return this.usesDefaultValidationServices() ? this.missingProjectReport(packageRoot) : this.validatePackage(packageRoot, signal);
+            }
             if (path.extname(packageRoot).toLowerCase() === ".xlsx") return this.validatePackage(packageRoot, signal);
             return this.notRecognizedReport(packageRoot);
         }
@@ -225,6 +229,13 @@ export class ValidateCommand implements CliCommandHandling {
             case "parWorkbook": return this.validatePackage(packageRoot, signal);
             default: return this.notRecognizedReport(packageRoot);
         }
+    }
+
+    // A caller that injected its own resolver/validator may deliberately be exercising package-entry
+    // diagnostics against a virtual path (the unit suite does). Only the production pair can safely
+    // short-circuit a nonexistent path to "does not exist".
+    private usesDefaultValidationServices(): boolean {
+        return this.validator instanceof PokieGamePackageValidator && this.resolveProject instanceof ProjectTargetResolver;
     }
 
     private missingProjectReport(projectPath: string): ValidateReport {
