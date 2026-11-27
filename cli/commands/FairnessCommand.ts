@@ -17,6 +17,7 @@ import {
     ValidationIssue,
 } from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {assertDeclaredOutcomeLibraryMode} from "./internal/assertDeclaredOutcomeLibraryMode.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {normalizeServerSeedFileContents} from "./internal/normalizeServerSeedFileContents.js";
 import {parseCanonicalNonNegativeInteger} from "./internal/parseCanonicalNonNegativeInteger.js";
@@ -354,6 +355,7 @@ export class FairnessCommand implements CliCommandHandling {
     private async runCommit(options: CommitOptions): Promise<number> {
         const serverSeedCommitment = this.loadJson(options.serverSeedCommitmentPath) as FairnessServerSeedCommitment;
 
+        await assertDeclaredOutcomeLibraryMode(options.sourceLibraryDir, options.modeName);
         let libraryId: string;
         let libraryHash: string;
         try {
