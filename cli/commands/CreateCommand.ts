@@ -141,7 +141,7 @@ export class CreateCommand implements CliCommandHandling {
                 throw translateCommanderError(error, {
                     unknownOption: (flag) => `Unknown option "${flag}". ${usage}`,
                     optionMissingArgument: (flag) => {
-                        if (flag === "--seed") return `--seed requires an integer value. ${RANDOM_USAGE}`;
+                        if (flag === "--seed") return `--seed requires a safe integer value. ${RANDOM_USAGE}`;
                         if (flag === "--preset") return `--preset must be one of: ${RANDOM_PRESETS.join(", ")}. ${RANDOM_USAGE}`;
                         if (flag === "--out") return `--out requires a file path. ${usage}`;
                         return `Unknown option "${flag}". ${usage}`;
@@ -171,8 +171,8 @@ export class CreateCommand implements CliCommandHandling {
             .option("--blank", "write a bare-minimum blueprint straight from the starter template, no wizard")
             .option("--random", "write an always-valid, randomly generated blueprint directly, no wizard")
             .option("--seed <integer>", "reproduce a specific random blueprint (requires --random)", (value: string) => {
-                if (!Number.isInteger(Number(value))) {
-                    throw new Error(`--seed requires an integer value. ${RANDOM_USAGE}`);
+                if (!Number.isSafeInteger(Number(value))) {
+                    throw new Error(`--seed requires a safe integer value. ${RANDOM_USAGE}`);
                 }
                 return Number(value);
             })

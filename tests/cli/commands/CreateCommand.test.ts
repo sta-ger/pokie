@@ -566,7 +566,14 @@ describe("CreateCommand", () => {
         it("throws a descriptive error for a non-integer --seed", async () => {
             const {command} = createRandomCommand();
 
-            await expect(command.run(["--random", "--seed", "abc"])).rejects.toThrow(/--seed requires an integer value/);
+            await expect(command.run(["--random", "--seed", "abc"])).rejects.toThrow(/--seed requires a safe integer value/);
+        });
+
+        it("rejects a numeric seed that cannot be reproduced exactly", async () => {
+            const {command} = createRandomCommand();
+
+            await expect(command.run(["--random", "--seed", "9007199254740992"])).rejects.toThrow(/--seed requires a safe integer value/);
+            await expect(command.run(["--random", "--seed", "999999999999999999999"])).rejects.toThrow(/--seed requires a safe integer value/);
         });
 
         it("rejects a path-like positional name before generation", async () => {
