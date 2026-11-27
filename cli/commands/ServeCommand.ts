@@ -1,3 +1,4 @@
+import fs from "fs";
 import {Command} from "commander";
 import {
     describeUnsupportedProjectOperation,
@@ -20,6 +21,7 @@ import {passthroughRuntimePackageResolver, RuntimePackageResolution, RuntimePack
 import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOperationError.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {describeLocalServerStartError, describeRuntimePackageLoadError} from "./internal/describeLocalRuntimeError.js";
+import {assertDeclaredOutcomeLibraryMode} from "./internal/assertDeclaredOutcomeLibraryMode.js";
 
 const USAGE = "Usage: pokie serve <packageRoot> [--port <number>] [--host <string>]\n   or: pokie serve <outcomeLibraryPath> --mode <modeName> [--port <number>] [--host <string>]";
 
@@ -192,6 +194,7 @@ export class ServeCommand implements CliCommandHandling {
         if (!options.mode) {
             throw new Error(`--mode <modeName> is required to serve a native outcome-library project. ${USAGE}`);
         }
+        if (project.type === "outcomeLibrary" && fs.existsSync(project.rootPath)) await assertDeclaredOutcomeLibraryMode(project.rootPath, options.mode);
 
         // `serve` is the native Outcome Library's local/dev entry point, just as `dev` is for a
         // runtime package. Keep its captured rounds inspectable for Studio/local troubleshooting;

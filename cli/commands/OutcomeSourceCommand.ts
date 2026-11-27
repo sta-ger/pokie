@@ -21,6 +21,7 @@ import fs from "fs";
 import {deriveDeterministicSeed} from "../../src/pregenerated/internal/deriveDeterministicSeed.js";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOperationError.js";
+import {assertDeclaredOutcomeLibraryMode} from "./internal/assertDeclaredOutcomeLibraryMode.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {renderOutcomeSourceProjectDiff} from "./internal/renderOutcomeSourceProjectDiff.js";
 import {renderOutcomeSourceReport} from "./internal/renderOutcomeSourceReport.js";
@@ -228,6 +229,7 @@ export class OutcomeSourceCommand implements CliCommandHandling {
         if (project === undefined) {
             throw new Error(`"${targetPath}" does not resolve to a recognized POKIE project.`);
         }
+        if (project.type === "outcomeLibrary" && fs.existsSync(project.rootPath)) await assertDeclaredOutcomeLibraryMode(project.rootPath, mode);
 
         const startedAt = Date.now();
         const result = await this.sample(project, mode, this.buildRandomSource(seed));

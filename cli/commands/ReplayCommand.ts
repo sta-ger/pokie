@@ -26,6 +26,7 @@ import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../run
 import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOperationError.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {describeRuntimePackageLoadError} from "./internal/describeLocalRuntimeError.js";
+import {assertDeclaredOutcomeLibraryMode} from "./internal/assertDeclaredOutcomeLibraryMode.js";
 
 type ReplayOptions = {
     packageRoot: string;
@@ -277,6 +278,7 @@ export class ReplayCommand implements CliCommandHandling {
         if (!options.seed) {
             throw new Error(`--seed is required to replay a native outcome-library round. ${USAGE}`);
         }
+        if (project.type === "outcomeLibrary" && fs.existsSync(project.rootPath)) await assertDeclaredOutcomeLibraryMode(project.rootPath, options.mode);
 
         const result = await this.replayOutcomeSource(project, options.mode, options.seed, options.round);
         if (!result.supported) {

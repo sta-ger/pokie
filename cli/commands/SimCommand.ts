@@ -1,3 +1,4 @@
+import fs from "fs";
 import {releaseSimulationGame} from "../../src/simulation/parallel/internal/releaseSimulationGame.js";
 import {collectPokieWasmSimulation} from "../../src/wasm/PokieWasmCommands.js";
 import {projectOutcomeSourceSimulationReport} from "../../src/reporting/projectOutcomeSourceSimulationReport.js";
@@ -37,6 +38,7 @@ import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOpe
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {writeOutputFileAtomically} from "./internal/writeOutputFile.js";
 import {describeRuntimePackageLoadError} from "./internal/describeLocalRuntimeError.js";
+import {assertDeclaredOutcomeLibraryMode} from "./internal/assertDeclaredOutcomeLibraryMode.js";
 
 type SimFormat = "summary" | "json";
 
@@ -418,6 +420,7 @@ export class SimCommand implements CliCommandHandling {
         if (options.seed !== undefined && options.seed.trim().length === 0) {
             throw new Error("--seed must be a non-empty string for an exactly replayable outcome-library simulation. Omit --seed for a best-effort secure simulation.");
         }
+        if (project.type === "outcomeLibrary" && fs.existsSync(project.rootPath)) await assertDeclaredOutcomeLibraryMode(project.rootPath, options.mode);
 
         const result = await this.simulateOutcomeSource(
             project,
