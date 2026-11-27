@@ -16,6 +16,7 @@ import type {PokieProject} from "../project/PokieProject.js";
 import {ProjectTargetResolver} from "../project/ProjectTargetResolver.js";
 import {assertBuildDestinationAvailable} from "../project/internal/assertBuildDestinationAvailable.js";
 import {assertBuildDestinationIsSafe} from "../project/internal/assertBuildDestinationIsSafe.js";
+import {assertOptimizationOutputDestination} from "./internal/assertOptimizationOutputDestination.js";
 import {OutputPublicationOwnership, rollbackArtifactPublication} from "../project/OutputPublicationOwnership.js";
 import type {
     OptimizationCandidate,
@@ -428,6 +429,11 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
         assertBuildDestinationIsSafe(candidate.workspace, destination);
         assertBuildDestinationIsSafe(this.scratchRoot, destination);
         const directory = fs.statSync(candidate.path).isDirectory();
+        try {
+            assertOptimizationOutputDestination(candidate.type, destination, directory);
+        } catch (error) {
+            throw new OptimizationInputError([{path: "out", message: (error as Error).message}]);
+        }
         assertBuildDestinationAvailable(destination, directory ? "directory" : "file");
         const members = [[candidate.path, destination]];
         if (candidate.type === "wasm") for (const suffix of [".pokie-wasm.json", ".tuning.json"]) members.push([`${candidate.path}${suffix}`, `${destination}${suffix}`]);

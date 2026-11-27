@@ -152,7 +152,7 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                                     <Table.Tr>
                                         <Table.Th>Category</Table.Th>
                                         <Table.Th>Samples</Table.Th>
-                                        <Table.Th>RTP</Table.Th>
+                                        <Table.Th>Own-stake RTP</Table.Th>
                                         <Table.Th>Contribution</Table.Th>
                                         <Table.Th>Hit freq.</Table.Th>
                                         <Table.Th>Largest observed whole-round win (× bet)</Table.Th>
@@ -163,7 +163,7 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                                         <Table.Tr key={row.category}>
                                             <Table.Td>{row.category}</Table.Td>
                                             <Table.Td>{row.rounds}</Table.Td>
-                                            <Table.Td>{(row.rtp * 100).toFixed(2)}%</Table.Td>
+                                            <Table.Td>{row.totalBet === 0 ? "—" : `${(row.rtp * 100).toFixed(2)}%`}</Table.Td>
                                             <Table.Td>{(row.contribution * 100).toFixed(2)} pp</Table.Td>
                                             <Table.Td>{(row.hitFrequency * 100).toFixed(2)}%</Table.Td>
                                             <Table.Td>{row.maxWin.toFixed(2)}</Table.Td>
@@ -172,7 +172,7 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                                 </Table.Tbody>
                             </Table>
                         </Table.ScrollContainer>
-                        <Text size="xs" c="dimmed">Base rows count paid rounds; feature rows count feature spins. These sample counts are not additive as rounds.</Text>
+                        <Text size="xs" c="dimmed">Own-stake RTP uses only a category&apos;s charged stake, so categories that charge no stake show —. Contribution is always relative to the report&apos;s total charged stake. Base rows count paid rounds; feature rows count feature spins, so these sample counts are not additive as rounds.</Text>
                     </PageSection>
                 )}
 

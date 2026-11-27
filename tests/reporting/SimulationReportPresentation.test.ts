@@ -67,6 +67,23 @@ describe("simulation report presentation for math authors", () => {
         expect((markdown.match(/Keep the JSON export/g) ?? []).length).toBe(1);
     });
 
+    it("renders a zero-stake feature category as own-stake RTP n/a instead of a misleading 0.00%", () => {
+        const source = report();
+        source.breakdown = {
+            components: {
+                base: {rounds: 9900, totalBet: 9900, totalWin: 8800, rtp: 0.8889, contribution: 0.88, hitFrequency: 0.2, maxWin: 20},
+                freeGames: {rounds: 100, totalBet: 0, totalWin: 640, rtp: 0, contribution: 0.064, hitFrequency: 0.2, maxWin: 15},
+            },
+        };
+
+        const markdown = new MarkdownSimulationReportRenderer().render(source);
+        const html = new HtmlSimulationReportRenderer().render(source);
+        expect(markdown).toContain("Own-stake RTP");
+        expect(markdown).toContain("| freeGames | 100 | 0.00 | 640.00 | — | 6.40 pp |");
+        expect(html).toContain("Own-stake RTP");
+        expect(html).toContain("<td>freeGames</td><td>100</td><td>0.00</td><td>640.00</td><td>—</td>");
+    });
+
     it("attaches the exact reference to the JSON download without changing the persisted report", () => {
         const source = report();
         const withoutReference: SimulationReport = {...source};

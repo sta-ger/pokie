@@ -1269,13 +1269,16 @@ describe("SimCommand runtime package materialization boundary", () => {
         const command = new SimCommand(loadGame, undefined, undefined, undefined, undefined, resolveRuntimePackageRoot);
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run([rawPackageRoot, "--rounds", "5"]);
+        await command.run([rawPackageRoot, "--rounds", "5", "--seed", "materialized-seed", "--format", "json"]);
 
+        const report = JSON.parse(logSpy.mock.calls[logSpy.mock.calls.length - 1]?.[0] as string);
         logSpy.mockRestore();
         expect(resolveCalls).toEqual([rawPackageRoot]);
         expect(loadCalls.length).toBeGreaterThan(0);
         expect(loadCalls.every((call) => call === resolvedRuntimePath)).toBe(true);
         expect(loadCalls).not.toContain(rawPackageRoot);
+        expect(report.reproducibility.command).toContain(rawPackageRoot);
+        expect(report.reproducibility.command).not.toContain(resolvedRuntimePath);
     });
 
     it("propagates a materialization failure without ever loading or simulating the game", async () => {

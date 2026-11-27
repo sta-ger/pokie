@@ -42,6 +42,7 @@ type SimFormat = "summary" | "json";
 
 type SimOptions = {
     packageRoot: string;
+    reproducibilityPath?: string;
     rounds: number;
     seed?: string;
     out?: string;
@@ -356,9 +357,10 @@ export class SimCommand implements CliCommandHandling {
         // options.packageRoot itself. This is also what makes --workers > 1 work for a Blueprint: a worker
         // thread can't receive this.loadGame as a closure (see ParallelSimulationRunner's own worker
         // entry), but it can receive a plain, already-materialized real package path.
+        const reproducibilityPath = project?.rootPath ?? options.packageRoot;
         const resolution = await this.resolveRuntimePackageRoot(options.packageRoot);
         try {
-            await this.executeAgainstRuntimePackage({...options, packageRoot: resolution.runtimePath});
+            await this.executeAgainstRuntimePackage({...options, packageRoot: resolution.runtimePath, reproducibilityPath});
         } finally {
             await resolution.release();
         }
@@ -507,6 +509,7 @@ export class SimCommand implements CliCommandHandling {
             statistics: result.statistics,
             durationMs,
             packageRoot: options.packageRoot,
+            reproducibilityPath: options.reproducibilityPath,
             configHash: result.configHash,
             pokieVersion: this.pokieVersion,
             breakdown: result.breakdown,
@@ -677,12 +680,16 @@ export class SimCommand implements CliCommandHandling {
         if (report.breakdown) {
             console.log("\nBreakdown:");
             Object.entries(report.breakdown.components).forEach(([category, component]) => {
+                const ownStakeRtp = component.totalBet === 0 ? "n/a" : `${(component.rtp * 100).toFixed(2)}%`;
                 console.log(
-                    `  ${category.padEnd(14)}rounds ${component.rounds}, rtp ${(component.rtp * 100).toFixed(2)}%, ` +
+                    `  ${category.padEnd(14)}rounds ${component.rounds}, own-stake RTP ${ownStakeRtp}, ` +
                         `contribution ${(component.contribution * 100).toFixed(2)} pp, ` +
                         `hit frequency ${(component.hitFrequency * 100).toFixed(2)}%, max win ${component.maxWin.toFixed(2)}`,
                 );
             });
+            if (Object.values(report.breakdown.components).some((component) => component.totalBet === 0)) {
+                console.log("  own-stake RTP is n/a when a category charges no stake; contribution is relative to the report's total charged stake.");
+            }
         }
 
         if (report.jackpot) {

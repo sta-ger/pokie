@@ -18,6 +18,7 @@ export * from "./certification/CertificationPackVerifying.js";
 export * from "./certification/computeCertificationPackContentHash.js";
 export * from "./certification/computeCertificationSampleRecordHash.js";
 export * from "./diff/MathDefinitionDiff.js";
+export * from "./diff/MathDefinitionDiffSummary.js";
 export * from "./diff/MathDefinitionDiffer.js";
 export * from "./diff/MathDefinitionSourceReader.js";
 export * from "./diff/SimulationReportDiff.js";

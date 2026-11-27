@@ -1,5 +1,8 @@
 import {recognizesNativeStakeTuningManifest} from "../../src/optimization/internal/NativeStakeTuningManifest.js";
-import {readValidationSourceRevision} from "../validation/readValidationSourceRevision.js";
+import {
+    describeValidationSourceChanges,
+    readValidationSourceSnapshot,
+} from "../validation/readValidationSourceRevision.js";
 import {AdvancedModelSourceValidator} from "../../src/validation/AdvancedModelSourceValidator.js";
 import type {AdvancedModelValidationReport} from "../../src/validation/AdvancedModelValidation.js";
 import {writeNewValidationReportAtomically} from "./internal/writeNewValidationReportAtomically.js";
@@ -143,10 +146,16 @@ export class ValidateCommand implements CliCommandHandling {
             process.stdout.write = stdoutWrite;
         };
         try {
-            const revision = readValidationSourceRevision(packageRoot);
+            const sourceBefore = readValidationSourceSnapshot(packageRoot);
             report = await this.validateProject(packageRoot, resultRef.deep ?? false, controller.signal);
             report.advanced ??= await new AdvancedModelSourceValidator().validate(packageRoot, {signal: controller.signal});
-            if (readValidationSourceRevision(packageRoot) !== revision) throw new Error("Source changed during validation. Retry against the current source.");
+            const sourceAfter = readValidationSourceSnapshot(packageRoot);
+            if (sourceAfter.revision !== sourceBefore.revision) {
+                const changes = describeValidationSourceChanges(sourceBefore, sourceAfter, packageRoot);
+                throw new Error(
+                    `Source changed during validation${changes.length ? `: ${changes.slice(0, 5).join(", ")}` : ""}. Retry against the current source.`,
+                );
+            }
         } catch (error) {
             let message = `POKIE could not inspect "${packageRoot}" as a supported project.`;
             if (error instanceof Error && error.message.startsWith("Source changed")) message = error.message;
@@ -583,7 +592,7 @@ export class ValidateCommand implements CliCommandHandling {
 
     private describeAdvancedStatus(status: AdvancedModelValidationReport["status"]): string {
         switch (status) {
-            case "budget-exhausted": return "not finished (analysis limit reached)";
+            case "budget-exhausted": return "optional check skipped (analysis limit reached)";
             case "unsupported": return "not available for this source";
             case "invalid": return "failed";
             case "complete": return "complete";

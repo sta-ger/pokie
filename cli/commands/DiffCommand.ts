@@ -1,5 +1,6 @@
 import {compareMathDefinitions} from "../../src/diff/MathDefinitionSourceReader.js";
 import type {MathDefinitionDiff} from "../../src/diff/MathDefinitionDiff.js";
+import {mathDefinitionDiffCiExitCode, summarizeMathDefinitionDiff} from "../../src/diff/MathDefinitionDiffSummary.js";
 import {Command} from "commander";
 import {
     diffOutcomeSourceProjects,
@@ -268,18 +269,23 @@ export class DiffCommand implements CliCommandHandling {
         }
         const json = JSON.stringify(diff, null, 4);
         if (options.out) this.writeFile(options.out, json);
-        const advancedUnresolved = [diff.left, diff.right].some(
-            (source) => source.support !== "complete" || source.advanced === undefined || source.advanced.verdict !== "proved-within-assumptions",
-        );
+        const summary = summarizeMathDefinitionDiff(diff);
         if (options.format === "json") console.log(json);
         else {
-            console.log(`Math definition diff: ${diff.status} (${diff.scope})${advancedUnresolved ? " — optional advanced check inconclusive" : ""}`);
+            console.log(
+                `Math definition diff: ${summary.label} (${diff.scope})` +
+                (summary.advancedInconclusive ? " — optional advanced check inconclusive" : ""),
+            );
             console.log(`${JSON.stringify(diff.left.identity)} -> ${JSON.stringify(diff.right.identity)}`);
-            const mathChanges = diff.changes.filter((change) => change.classification !== "validation");
-            for (const change of mathChanges) console.log(`${change.path} [${change.classification}${change.seededTraceImpact ? "; seeded trace may change" : ""}] ${JSON.stringify(change.before)} -> ${JSON.stringify(change.after)} context=${JSON.stringify(change.context)}`);
-            const validationChanges = diff.changes.length - mathChanges.length;
-            if (validationChanges > 0) {
-                console.log(`${validationChanges} validation/diagnostic change(s) are present in the JSON result; use --format json or --ci for the full listing.`);
+            const visibleChanges = diff.changes.filter(
+                (change) => change.classification !== "validation" && change.classification !== "provenance",
+            );
+            for (const change of visibleChanges) console.log(`${change.path} [${change.classification}${change.seededTraceImpact ? "; seeded trace may change" : ""}] ${JSON.stringify(change.before)} -> ${JSON.stringify(change.after)} context=${JSON.stringify(change.context)}`);
+            if (summary.provenanceChanges > 0) {
+                console.log(`${summary.provenanceChanges} provenance-only change(s) are present in the JSON result and do not affect the declared math.`);
+            }
+            if (summary.validationChanges > 0) {
+                console.log(`${summary.validationChanges} validation/diagnostic change(s) are present in the JSON result; use --format json or --ci for the full listing.`);
             }
             for (const [side, source] of [["left", diff.left], ["right", diff.right]] as const) {
                 console.log(`${side}: ${source.support}`);
@@ -293,9 +299,8 @@ export class DiffCommand implements CliCommandHandling {
                 }
             }
         }
-        if (!["identical", "different"].includes(diff.status)) return options.ci ? 2 : 1;
-        if (options.ci && advancedUnresolved) return 2;
-        return options.ci && diff.changes.some(change => change.mathematical) ? 1 : 0;
+        if (options.ci) return mathDefinitionDiffCiExitCode(diff);
+        return ["identical", "different"].includes(diff.status) ? 0 : 1;
     }
 
     private parseArgs(args: string[]): DiffOptions {

@@ -116,13 +116,16 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
                 "",
                 "### Breakdown",
                 "",
-                "| Category | Samples | Total bet | Total win | RTP | Contribution | Hit frequency | Largest observed win in category |",
+                "Own-stake RTP is the category's total win divided by its own charged stake. Categories that charge no stake show —; contribution is always relative to the report's total charged stake.",
+                "",
+                "| Category | Samples | Total bet | Total win | Own-stake RTP | Contribution | Hit frequency | Largest observed win in category |",
                 "| --- | --- | --- | --- | --- | --- | --- | --- |",
             );
             Object.entries(report.breakdown.components).forEach(([category, component]) => {
+                const ownStakeRtp = component.totalBet === 0 ? "—" : `${(component.rtp * 100).toFixed(2)}%`;
                 lines.push(
                     `| ${category} | ${component.rounds} | ${component.totalBet.toFixed(2)} | ${component.totalWin.toFixed(2)} | ` +
-                        `${(component.rtp * 100).toFixed(2)}% | ${(component.contribution * 100).toFixed(2)} pp | ` +
+                        `${ownStakeRtp} | ${(component.contribution * 100).toFixed(2)} pp | ` +
                         `${(component.hitFrequency * 100).toFixed(2)}% | ${component.maxWin.toFixed(2)} |`,
                 );
             });

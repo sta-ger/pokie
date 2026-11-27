@@ -156,7 +156,10 @@ export function validateOptimizationRequest(input: unknown): OptimizationRequest
         if (!values.length || values.length > 10000 || new Set(values).size !== values.length) bad(`${field}/values`, "Supply 1–10000 distinct values.");
         values.forEach((v, j) => scalar(v, `${field}/values/${j}`));
     });
-    array(p.locks, "policy/locks").forEach((lock, i) => {
+    // An omitted lock list means "no additional locks". The request still protects every undeclared model
+    // field through the shared readback comparison; this is not an opt-out from those checks.
+    const locks = p.locks === undefined ? [] : array(p.locks, "policy/locks");
+    locks.forEach((lock, i) => {
         if (pointer(lock, `policy/locks/${i}`) && paths.some((field) => optimizationPathsOverlap(field, lock))) bad(`policy/locks/${i}`, "Locked field overlaps a tunable.");
     });
     if (p.protectedFiles !== undefined) array(p.protectedFiles, "policy/protectedFiles").forEach((file, i) => {
@@ -212,5 +215,7 @@ export function validateOptimizationRequest(input: unknown): OptimizationRequest
         regions.set(key, region);
     }
     if (errors.length) throw new OptimizationInputError(errors);
-    return JSON.parse(JSON.stringify(input)) as OptimizationRequest;
+    const result = JSON.parse(JSON.stringify(input)) as OptimizationRequest;
+    result.policy.locks ??= [];
+    return result;
 }

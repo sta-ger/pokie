@@ -525,6 +525,8 @@ describe("CreateCommand", () => {
             expect(printed).toContain('Generated random game "Blazing Riches" (id: "blazing-riches-4821") from seed 20260721');
             expect(printed).toContain('Origin: generator 1.0.0, strategy "default-line-pay".');
             expect(printed).toContain('created at "./blazing-riches-4821.blueprint.json"');
+            expect(printed).toContain("RTP note: this random design is structurally valid but not RTP-tuned.");
+            expect(printed).toContain('pokie sim ./blazing-riches-4821.blueprint.json --plays 10000 --seed 20260721');
         });
 
         it("leaves a blueprint that already has reelStrips or reelStripGeneration untouched", async () => {

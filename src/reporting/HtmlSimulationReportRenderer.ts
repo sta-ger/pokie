@@ -288,12 +288,13 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
         }
 
         const headerRow =
-            "            <tr><th>Category</th><th>Samples</th><th>Total bet</th><th>Total win</th><th>RTP</th>" +
+            "            <tr><th>Category</th><th>Samples</th><th>Total bet</th><th>Total win</th><th>Own-stake RTP</th>" +
             "<th>Contribution</th><th>Hit frequency</th><th>Largest observed win in category</th></tr>";
         const rows = Object.entries(report.breakdown.components).map(([category, component]) => {
+            const ownStakeRtp = component.totalBet === 0 ? "—" : `${(component.rtp * 100).toFixed(2)}%`;
             return (
                 `            <tr><td>${this.escapeHtml(category)}</td><td>${component.rounds}</td><td>${component.totalBet.toFixed(2)}</td>` +
-                `<td>${component.totalWin.toFixed(2)}</td><td>${(component.rtp * 100).toFixed(2)}%</td>` +
+                `<td>${component.totalWin.toFixed(2)}</td><td>${ownStakeRtp}</td>` +
                 `<td>${(component.contribution * 100).toFixed(2)} pp</td>` +
                 `<td>${(component.hitFrequency * 100).toFixed(2)}%</td><td>${component.maxWin.toFixed(2)}</td></tr>`
             );
@@ -302,6 +303,7 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
         return [
             "        <section>",
             "            <h3>Breakdown</h3>",
+            "            <p>Own-stake RTP is the category's total win divided by its own charged stake. Categories that charge no stake show —; contribution is always relative to the report's total charged stake.</p>",
             "            <table>",
             "                <thead>",
             headerRow,
