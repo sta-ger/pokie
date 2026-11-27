@@ -463,8 +463,11 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         navigate(`${routePrefix}/${destination}${migrationSearch(tab)}`, {replace: true});
     }, [navigate, requestedMigration, requestedProjectRoot, tab]);
 
+    // An error header still names the attempted path, but the server has no active project. Do not
+    // treat that path as an open project: job polling against /api/project/jobs would return 409 and
+    // the dashboard would report a fake "Connection to Studio lost" beside the real opening error.
     const projectKey =
-        header.status === "loaded" || header.status === "error" || header.status === "outcome-source" || header.status === "artifact"
+        header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact"
             ? header.projectRoot
             : undefined;
     const [projectGeneration, setProjectGeneration] = useState(0);
@@ -1507,7 +1510,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     <ProjectOpeningErrorState message={header.message} detail={header.errorDetail} onReturnToProjects={() => navigate("/home/projects")} />
                 </div>
             )}
-            {(header.status === "loaded" || header.status === "error" || header.status === "outcome-source" || header.status === "artifact") && (
+            {(header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact") && (
                 <div
                     className="studio-page"
                     ref={panelRef}

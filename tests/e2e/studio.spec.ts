@@ -617,6 +617,21 @@ test("multiple historical failed openings collapse into one reviewable group", a
     await expect(page.getByRole("heading", {name: "Needs attention"})).toHaveCount(0);
 });
 
+test("a missing project URL reports the opening failure without inventing a disconnected Studio", async ({page}) => {
+    const missingRoot = `/nonexistent/pokie-e2e-missing-${Date.now()}`;
+    const jobRequests: string[] = [];
+    page.on("request", (request) => {
+        if (request.url().includes("/api/project/jobs")) jobRequests.push(request.url());
+    });
+
+    await page.goto(`/#/project/${encodeURIComponent(missingRoot)}/overview`);
+    await expect(page.getByText(/We couldn't open this game/)).toBeVisible({timeout: 30_000});
+    await page.waitForTimeout(1500);
+    await expect(page.getByText(/Connection to Studio lost/)).toHaveCount(0);
+    await expect(page.getByText("Overview ready", {exact: true})).toHaveCount(0);
+    expect(jobRequests).toHaveLength(0);
+});
+
 test.describe.serial("managed project labels", () => {
     test("creates the starter project through the browser", async ({page}) => {
         await page.goto("/#/home/design");
