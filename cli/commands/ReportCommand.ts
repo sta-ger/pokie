@@ -92,7 +92,14 @@ export class ReportCommand implements CliCommandHandling {
         }
         const {reportPath, format, out, template} = parsedArgs;
 
-        const project = (await this.resolveProjectSafely(reportPath)) ?? this.recognizeStandaloneStakeOutcomeDirectory(reportPath);
+        // A certification pack is a directory whose index.json has a "pack" object. Recognize it before
+        // generic project resolution: otherwise the standalone-Stake fallback sees any index.json and
+        // analyzes the pack as an outcome source, hiding its console/PDF formats.
+        const packIndexPath = this.certificationPackIndexPath(reportPath);
+        const inputPath = packIndexPath ?? reportPath;
+        const project = packIndexPath !== undefined
+            ? undefined
+            : (await this.resolveProjectSafely(reportPath)) ?? this.recognizeStandaloneStakeOutcomeDirectory(reportPath);
         if (project?.type === "outcomeLibrary" || project?.type === "stakeAdapter") {
             if (template !== undefined) throw new Error("--template is supported only for canonical pack inputs.");
             let outcomeSourceReport: OutcomeSourceProjectReport;
@@ -117,14 +124,14 @@ export class ReportCommand implements CliCommandHandling {
 
         let parsed: SimulationReport | SimulationReportSet | CertificationPackIndex;
         try {
-            parsed = this.readReportJson(reportPath);
+            parsed = this.readReportJson(inputPath);
         } catch (error) {
             const alternative = this.resolveReportPathAlternative(reportPath, error instanceof Error ? error : new Error(String(error)), project);
             throw alternative.error;
         }
 
         if ("pack" in parsed) {
-            const packDir = path.dirname(path.resolve(reportPath));
+            const packDir = path.dirname(path.resolve(inputPath));
             if (out !== undefined) {
                 const outputPath = path.resolve(out);
                 const relative = path.relative(packDir, outputPath);
@@ -294,6 +301,20 @@ export class ReportCommand implements CliCommandHandling {
         }
 
         return parsed;
+    }
+
+    /** Returns "<dir>/index.json" when reportPath is a canonical certification pack directory. */
+    private certificationPackIndexPath(reportPath: string): string | undefined {
+        const rootPath = path.resolve(reportPath);
+        try {
+            if (!fs.statSync(rootPath).isDirectory()) return undefined;
+            const indexPath = path.join(rootPath, "index.json");
+            if (!fs.statSync(indexPath).isFile()) return undefined;
+            const parsed: unknown = JSON.parse(fs.readFileSync(indexPath, "utf-8"));
+            return typeof parsed === "object" && parsed !== null && "pack" in parsed ? indexPath : undefined;
+        } catch {
+            return undefined;
+        }
     }
 
     private async resolveProjectSafely(reportPath: string) {

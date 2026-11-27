@@ -149,6 +149,14 @@ describe("ReportCommand", () => {
             expect(bytes.toString()).toContain("%PDF-1.4");
             expect(bytes.toString()).toContain("preparation only");
             expect(log.mock.calls.flat().join(" ")).toContain("preparation only");
+
+            // A pack directory is the natural user spelling; it must route to the same canonical
+            // index rather than being mistaken for a Stake Engine outcome directory because it
+            // happens to contain index.json.
+            const directoryOutput = path.join(root, "assessment-from-directory.pdf");
+            await command.run([out, "--format", "pdf", "--out", directoryOutput]);
+            expect(fs.readFileSync(directoryOutput).toString()).toContain("%PDF-1.4");
+
             await expect(command.run([path.join(out, "index.json"), "--format", "pdf", "--out", output])).rejects.toThrow();
             expect(fs.readFileSync(output)).toEqual(bytes);
             const template = path.join(root, "broken.json"),
