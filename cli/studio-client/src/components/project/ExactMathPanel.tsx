@@ -200,7 +200,17 @@ export function ExactMathPanel({
             } else if (next.status === "cancelled") {
                 setNotice("Exact-math generation was cancelled. The previous result, if any, is unchanged.");
             } else {
-                setError(jobError(next));
+                const failureMessage = jobError(next);
+                setError(failureMessage);
+                // A Save can replace the managed source while enumeration is still running. The old
+                // job has to fail rather than publish partial stale evidence, but its source token was
+                // already consumed by the one-shot auto-refresh guard. Clear that guard and re-read so
+                // the current saved design gets its own rebuild instead of a permanent failed card.
+                if ((/after the check/i).test(failureMessage)) {
+                    autoRefreshStartedFor.current = undefined;
+                    setView(undefined);
+                    load();
+                }
             }
             return;
         }
@@ -240,6 +250,12 @@ export function ExactMathPanel({
                 // whether the compact exact model supports it at all, so a doomed large/stacks job is never queued.
                 const estimate = await estimateOutcomeLibraryGeneration(fetchImpl, {generation: "exact"});
                 if (estimate.status !== "ok") {
+                    // The preflight token is bound to the source revision it saw. A rapid Save can
+                    // invalidate it before the start call; let the bounded outer loop re-preflight
+                    // against the settled source instead of leaving a permanent stale error.
+                    if (estimate.status === "conflict") {
+                        throw new OutcomeLibraryGenerationStartError("conflict", estimate.error);
+                    }
                     setStarting(false);
                     setError(estimate.error);
                     return undefined;
