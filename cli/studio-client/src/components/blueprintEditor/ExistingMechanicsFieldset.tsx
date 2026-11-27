@@ -4,10 +4,13 @@ import {WildModifiersFieldset} from "./WildModifiersFieldset";
 import {validateAuthoredMechanics} from "../../../../../src/generated/validateAuthoredMechanics";
 import {IssueList} from "../common/IssueList";
 import {Button, Checkbox, NumberInput, Select, Stack, Text, TextInput} from "@mantine/core";
+import {useState} from "react";
 import type {GameBlueprintHoldAndWin, GameBlueprintJackpot, GameBlueprintMechanics} from "../../../../../src/generated/GameBlueprint";
 import type {BlueprintMutate} from "../../hooks/useBlueprintEditor";
 import {PageSection} from "../common/PageSection";
 import {asStringList} from "../../domain/asStringList";
+import {holdAndWinPreset, jackpotPreset, type MechanicStartingPreset} from "../../domain/mechanicPresets";
+import {MechanicPresetSelect} from "./MechanicPresetSelect";
 
 /** Shared Home/Project draft controls. Persistence remains the editor's explicit Apply/Save. */
 export function ExistingMechanicsFieldset({blueprint, mutate}: {blueprint: Record<string, unknown>; mutate: BlueprintMutate}) {
@@ -15,6 +18,8 @@ export function ExistingMechanicsFieldset({blueprint, mutate}: {blueprint: Recor
     const symbols = asStringList(blueprint.symbols);
     const hold = mechanics.holdAndWin;
     const jackpot = mechanics.jackpot;
+    const [holdPreset, setHoldPreset] = useState<MechanicStartingPreset>("safe");
+    const [jackpotPresetValue, setJackpotPresetValue] = useState<MechanicStartingPreset>("safe");
     const issues = validateAuthoredMechanics(blueprint);
     const holdEditable = isObject(hold) && typeof hold.minimumCount === "number" && typeof hold.initialRespins === "number" &&
         isObject(hold.payout) && typeof hold.payout.amountsAreBetMultiples === "boolean" && isObject(hold.symbolEffects) &&
@@ -36,7 +41,15 @@ export function ExistingMechanicsFieldset({blueprint, mutate}: {blueprint: Recor
         <FeatureChainsFieldset blueprint={blueprint} mutate={mutate} />
         <WildModifiersFieldset blueprint={blueprint} mutate={mutate} />
         <PageSection legend="Hold & Win">
-            {hold === undefined && <Button onClick={() => set("holdAndWin", {minimumCount: 1, initialRespins: 3, retriggerPolicy: "reset-on-new-lock", symbolEffects: {[symbols[0] ?? ""]: {kind: "value", amount: 1}}, payout: {type: "sum-with-multiplier", amountsAreBetMultiples: false}})}>Add Hold & Win</Button>}
+            {hold === undefined && <Stack gap="xs">
+                <MechanicPresetSelect
+                    mechanic="hold-and-win"
+                    value={holdPreset}
+                    onChange={setHoldPreset}
+                    description="Safe demo: collect 1 symbol, 3 respins, 1× values. Conservative: 2 symbols, 2 respins. Generous: 3 respins, 2× values."
+                />
+                <Button onClick={() => set("holdAndWin", holdAndWinPreset(symbols, holdPreset))}>Add Hold & Win</Button>
+            </Stack>}
             {hold !== undefined && !holdEditable && <Stack>
                 <Text>The Hold & Win draft is incomplete or malformed. Correct mechanics.holdAndWin in JSON and Apply JSON, or remove the mechanic. Your draft is saved.</Text>
                 <Button onClick={() => set("holdAndWin", undefined)}>Remove Hold & Win</Button>
@@ -62,7 +75,15 @@ export function ExistingMechanicsFieldset({blueprint, mutate}: {blueprint: Recor
             </Stack>}
         </PageSection>
         <PageSection legend="Jackpot">
-            {jackpot === undefined && <Button onClick={() => set("jackpot", {pool: {id: "mini", type: "fixed", amount: 10}, contribution: {type: "percentage", percentage: 0.01}, trigger: {type: "symbol-count", symbolId: symbols[0] ?? "", minimumCount: 1}, award: "single-tier"})}>Add jackpot</Button>}
+            {jackpot === undefined && <Stack gap="xs">
+                <MechanicPresetSelect
+                    mechanic="jackpot"
+                    value={jackpotPresetValue}
+                    onChange={setJackpotPresetValue}
+                    description="Safe demo: 10× fixed pool, 1% contribution, 1 trigger symbol. Conservative: 25×, 0.5%, 2 symbols. Generous: 100×, 1%, 1 symbol."
+                />
+                <Button onClick={() => set("jackpot", jackpotPreset(symbols, jackpotPresetValue))}>Add jackpot</Button>
+            </Stack>}
             {jackpot !== undefined && !jackpotEditable && <Stack>
                 <Text>The jackpot draft is incomplete or malformed. Correct mechanics.jackpot in JSON and Apply JSON, or remove the mechanic. Your draft is saved.</Text>
                 <Button onClick={() => set("jackpot", undefined)}>Remove jackpot</Button>

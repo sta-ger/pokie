@@ -68,6 +68,39 @@ test("switching to symbol weights fills a valid table from the current reels", a
     await expect(page.locator('[data-pokie-readiness-checklist]')).toHaveAttribute("data-pokie-validation-state", "ok", {timeout: 45_000});
 });
 
+test("producer mechanic presets start the other mechanics with explicit values", async ({page}) => {
+    await page.goto("/#/home/design");
+    await page.getByRole("tab", {name: /Mechanics/}).click();
+
+    const cascadePreset = page.locator('[data-pokie-mechanic-preset="cascade"]');
+    await cascadePreset.getByText("Conservative", {exact: true}).click();
+    await page.getByRole("button", {name: "Add cascade", exact: true}).click();
+    await expect(page.getByLabel("Maximum winning cascades")).toHaveValue("10");
+
+    const respinsPreset = page.locator('[data-pokie-mechanic-preset="respins"]');
+    await respinsPreset.getByText("Generous", {exact: true}).click();
+    await page.getByRole("button", {name: "Add respins", exact: true}).click();
+    await expect(page.getByLabel("Respin grant")).toHaveValue("5");
+    await expect(page.getByLabel("Maximum executed respins")).toHaveValue("50");
+
+    const holdPreset = page.locator('[data-pokie-mechanic-preset="hold-and-win"]');
+    await holdPreset.getByText("Generous", {exact: true}).click();
+    await page.getByRole("button", {name: "Add Hold & Win", exact: true}).click();
+    await expect(page.getByLabel("Initial and reset respins")).toHaveValue("5");
+    await expect(page.getByText(/Hold & Win minimum count/)).toBeVisible();
+
+    const bonusPreset = page.locator('[data-pokie-mechanic-preset="weighted-bonus"]');
+    await bonusPreset.getByText("Conservative", {exact: true}).click();
+    await page.getByRole("button", {name: "Add weighted bonus", exact: true}).click();
+    await expect(page.getByRole("textbox", {name: "Outcome 1 weight"})).toHaveValue("5");
+    await expect(page.getByRole("textbox", {name: "Outcome 2 payout"})).toHaveValue("3");
+
+    const jackpotPreset = page.locator('[data-pokie-mechanic-preset="jackpot"]');
+    await jackpotPreset.getByText("Generous", {exact: true}).click();
+    await page.getByRole("button", {name: "Add jackpot", exact: true}).click();
+    await expect(page.getByLabel("Jackpot amount or seed")).toHaveValue("100");
+});
+
 test("the starter can open directly in ways or clusters mode", async ({page}) => {
     await page.goto("/#/home/design");
     await expect(page.getByRole("button", {name: "Use the starter"})).toBeVisible();

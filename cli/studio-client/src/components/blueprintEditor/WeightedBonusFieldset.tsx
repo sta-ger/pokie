@@ -1,8 +1,11 @@
 import {Button, NumberInput, Select, Stack, Text, TextInput} from "@mantine/core";
+import {useState} from "react";
 import type {WeightedBonus} from "../../../../../src/session/videoslot/authored/WeightedBonus";
 import {asStringList} from "../../domain/asStringList";
+import {weightedBonusPreset, type MechanicStartingPreset} from "../../domain/mechanicPresets";
 import type {BlueprintMutate} from "../../hooks/useBlueprintEditor";
 import {PageSection} from "../common/PageSection";
+import {MechanicPresetSelect} from "./MechanicPresetSelect";
 
 /** Recoverable shared draft; explicit save/build ownership belongs to the enclosing editor. */
 export function WeightedBonusFieldset({
@@ -22,16 +25,7 @@ export function WeightedBonusFieldset({
             else mechanics.weightedBonus = value;
             b.mechanics = mechanics;
         });
-    const defaults: WeightedBonus = {
-        id: "bonus",
-        context: "triggered-paid-entry",
-        trigger: {symbolId: symbols[0] ?? "", minimumCount: 1},
-        feature: {id: "bonus-respins", type: "bonus-respins", maxDuration: 10},
-        outcomes: [
-            {id: "small", weight: 1, targetId: "bonus-respins", payout: 1, payoutUnits: "bet-multiple", duration: 0},
-            {id: "large", weight: 3, targetId: "bonus-respins", payout: 5, payoutUnits: "bet-multiple", duration: 2},
-        ],
-    };
+    const [preset, setPreset] = useState<MechanicStartingPreset>("safe");
     const numericValue = (v: unknown): boolean => typeof v === "number" || typeof v === "string";
     const validShape =
         object(raw) &&
@@ -68,7 +62,10 @@ export function WeightedBonusFieldset({
                 immediately and start a bonus of a set length.
             </Text>
             {raw === undefined ? (
-                <Button onClick={() => set(defaults)}>Add weighted bonus</Button>
+                <Stack gap="xs">
+                    <MechanicPresetSelect mechanic="weighted-bonus" value={preset} onChange={setPreset} />
+                    <Button onClick={() => set(weightedBonusPreset(symbols, preset))}>Add weighted bonus</Button>
+                </Stack>
             ) : (
                 <Stack>
                     {!validShape ? (

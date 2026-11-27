@@ -1,25 +1,27 @@
 import {Button, NumberInput, Select, Stack, Text} from "@mantine/core";
+import {useState} from "react";
 import type {FeatureChains} from "../../../../../src/session/videoslot/authored/FeatureChains";
 import type {BlueprintMutate} from "../../hooks/useBlueprintEditor";
+import {featureChainPreset, type FeatureChainPresetKey, type MechanicStartingPreset} from "../../domain/mechanicPresets";
 import {PageSection} from "../common/PageSection";
 import {asStringList} from "../../domain/asStringList";
+import {MechanicPresetSelect} from "./MechanicPresetSelect";
 
 /** Values belong to the shared recoverable draft; saving/building remains explicit. */
 export function FeatureChainsFieldset({blueprint, mutate}: {blueprint: Record<string, unknown>; mutate: BlueprintMutate}) {
     const mechanics = (blueprint.mechanics ?? {}) as FeatureChains;
     const symbols = asStringList(blueprint.symbols);
-    const first = symbols[0] ?? "";
+    const [presets, setPresets] = useState<Record<FeatureChainPresetKey, MechanicStartingPreset>>({
+        cascade: "safe",
+        respins: "safe",
+        collection: "safe",
+    });
     const set = <K extends keyof FeatureChains>(key: K, value: FeatureChains[K]): void => mutate(b => {
         const next = {...(b.mechanics as Record<string, unknown> ?? {})};
         if (value === undefined) Reflect.deleteProperty(next, key);
         else next[key] = value;
         b.mechanics = next;
     });
-    const defaults: Required<Omit<FeatureChains, "weightedBonus">> = {
-        cascade: {maxCascades: 20},
-        respins: {trigger: {symbolId: first, minimumCount: 1}, grant: 3, retrigger: "none", maxRespins: 30},
-        collection: {symbolId: first, contribution: 1, threshold: 10, cap: 10, reset: "zero", payout: 5},
-    };
     const numeric = (label: string, value: number, change: (value: number) => void) => <NumberInput key={label} label={label} value={value} onChange={v => change(Number(v))} />;
     const cascade = mechanics.cascade,
         respins = mechanics.respins,
@@ -41,7 +43,14 @@ export function FeatureChainsFieldset({blueprint, mutate}: {blueprint: Record<st
             }[key];
             return <PageSection key={key} legend={label}>
                 <Text size="sm" c="dimmed">{description}</Text>
-                {rule === undefined ? <Button onClick={() => set(key, defaults[key])}>Add {key}</Button> : <Stack>
+                {rule === undefined ? <Stack gap="xs">
+                    <MechanicPresetSelect
+                        mechanic={key}
+                        value={presets[key]}
+                        onChange={(preset) => setPresets((current) => ({...current, [key]: preset}))}
+                    />
+                    <Button onClick={() => set(key, featureChainPreset(key, symbols, presets[key]) as FeatureChains[typeof key])}>Add {key}</Button>
+                </Stack> : <Stack>
                     {invalid ? <Text>Correct mechanics.{key} in JSON and Apply JSON. The current draft is saved.</Text> : <>
                         {key === "cascade" && cascade && numeric("Maximum winning cascades", cascade.maxCascades, maxCascades => set("cascade", {...cascade, maxCascades}))}
                         {key === "respins" && respins && <>

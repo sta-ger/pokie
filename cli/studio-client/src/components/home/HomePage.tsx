@@ -257,7 +257,8 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
                                 <Text size="sm" c="dimmed">
                                     This is an earlier operation that did not finish, usually because Studio restarted.
                                     Nothing is retried automatically. Retry only if you still need that operation, or
-                                    dismiss this old record.
+                                    dismiss this old record. Interrupted records are forgotten after a week; files and
+                                    outputs are not deleted.
                                 </Text>
                                 {needsAttentionHomeJobs.map(renderHomeJob)}
                                 <QuickActions>
@@ -271,6 +272,7 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
                                 <Text size="sm" mb="xs">
                                     Most often this is an earlier project opening whose source has since moved. Nothing is retried
                                     automatically. Review only the ones you need, or dismiss this whole historical group.
+                                    Interrupted records are forgotten after a week; files and outputs are not deleted.
                                 </Text>
                                 <QuickActions>
                                     <Button variant="default" size="xs" loading={needsAttentionHomeJobs.some(job => dismissingHomeJobs.includes(job.id))} onClick={() => dismissHomeJobs(needsAttentionHomeJobs.map(job => job.id))}>
