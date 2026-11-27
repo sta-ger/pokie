@@ -110,6 +110,10 @@ export class DiffCommand implements CliCommandHandling {
         try {
             const options = this.parseArgs(args);
             this.preflightOutput(options);
+            if (options.comparison === "definition") {
+                this.assertNotSimulationReport(options.leftPath);
+                this.assertNotSimulationReport(options.rightPath);
+            }
             const projectResult = await this.tryDiffOutcomeSourceProjects(options);
             if (projectResult !== false) return projectResult === 0 ? undefined : projectResult;
             if (options.ci) throw new Error("--ci applies to definition comparisons; select --comparison definition.");
@@ -335,6 +339,25 @@ export class DiffCommand implements CliCommandHandling {
             });
         }
         return resultRef.value!;
+    }
+
+    // --comparison definition compares authored/effective models, never sampled analytics. A saved
+    // simulation report is structured JSON too, so without this guard it was parsed as a definition
+    // and every sampled histogram/component difference was reported as a "mathematical" change.
+    private assertNotSimulationReport(file: string): void {
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(this.readFile(file));
+        } catch {
+            return;
+        }
+        if (isSimulationReport(parsed) || isSimulationReportSet(parsed)) {
+            throw new Error(
+                `Cannot compare "${file}" as a definition source: it is a simulation report. ` +
+                    'Use the default comparison (or "--comparison statistics") for two simulation reports, ' +
+                    'or compare two Game Blueprints/packages with "--comparison definition".',
+            );
+        }
     }
 
     private preflightOutput(options: DiffOptions): void {
