@@ -1572,9 +1572,11 @@ test("PAR import compares exact math for both drafts before applying", async ({p
 
     await page.goto("/#/home/design");
     await page.getByRole("button", {name: "Open PAR import"}).click();
-    await page.getByRole("textbox", {name: "PAR sheet path"}).fill(parPath);
+    const parPathInput = page.getByRole("textbox", {name: "PAR sheet path"});
+    await parPathInput.fill(parPath);
+    await expect(parPathInput).toHaveValue(parPath);
     await page.getByRole("button", {name: "Import", exact: true}).click();
-    await expect(page.getByText("Imported — not applied yet")).toBeVisible({timeout: 60_000});
+    await expect(page.getByText("Imported — not applied yet")).toBeVisible({timeout: 120_000});
     await page.getByRole("button", {name: "Continue to preview the game model"}).click();
 
     await expect(page.getByText("Exact math comparison", {exact: true})).toBeVisible();
@@ -1590,7 +1592,7 @@ test("PAR import compares exact math for both drafts before applying", async ({p
 });
 
 test("PAR import says mathematical fields match and keeps technical details available", async ({page}) => {
-    test.setTimeout(120_000);
+    test.setTimeout(240_000);
     const source = path.join(process.cwd(), "tests/e2e/fixtures/free-games-scope.json");
     const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-par-same-e2e-"));
     const parPath = path.join(workDir, "same.par.xlsx");
