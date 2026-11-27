@@ -384,6 +384,9 @@ export class FairnessCommand implements CliCommandHandling {
 
     private async runReveal(options: RevealOptions): Promise<number> {
         const commitment = this.loadJson(options.commitmentPath) as FairnessCommitment;
+        if (typeof commitment.modeName === "string" && commitment.modeName.length > 0) {
+            await assertDeclaredOutcomeLibraryMode(options.sourceLibraryDir, commitment.modeName);
+        }
         const serverSeed = this.readServerSeedFile(options.serverSeedPath);
 
         const proof = await this.proofBuilder.build(commitment, serverSeed, options.sourceLibraryDir);
