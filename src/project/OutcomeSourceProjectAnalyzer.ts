@@ -72,7 +72,11 @@ export class OutcomeSourceProjectAnalyzer implements OutcomeSourceProjectAnalyzi
             rootPath: libraryDir,
             descriptor,
             issues,
-            modes: manifest.modes.map((mode) => ({modeName: mode.modeName, analysis: mode.analysis})),
+            modes: manifest.modes.map((mode) => ({
+                modeName: mode.modeName,
+                analysis: mode.analysis,
+                ...(mode.generator === undefined ? {} : {generator: mode.generator}),
+            })),
         };
     }
 

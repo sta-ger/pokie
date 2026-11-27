@@ -73,7 +73,9 @@ type OutcomeLibraryFolderIndexModeEntry = {
 run's own diagnostics (algorithm/strategy/seed/build/provenance, `totalOutcomeSpaceSize`/`sampledRawCount` using the
 same bigint-safe number-or-decimal-string convention as [Stake Engine Standalone](stake-engine-standalone.md)'s own
 `StakeEngineStandaloneExactDecimal`) — never recomputed by the writer, and absent for a mode built from any other
-outcome source.
+outcome source. `pokie report` exposes this field in its JSON mode and uses it to label the human report:
+`"exact"` is presented as exact coverage; `"capped-coverage"` is presented as **Sampled analysis** with the
+sampled/raw counts; absent metadata is presented as unknown coverage, never as exact.
 
 The index also carries two distinct, deliberately-never-conflated pokie-version fields:
 

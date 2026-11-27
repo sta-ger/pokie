@@ -1509,10 +1509,11 @@ cryptographically secure source and prints a human-readable selection only; it d
 provenance. A
 Stake Engine export has no such draw interface, so `sample` against one reports the same missing-supported action
 diagnostic every other unsupported project operation does, rather than attempting to run it. `diff` compares
-two resolved outcome sources' own exact analyses mode-by-mode over the core metrics both a native folder and a
+two resolved outcome sources' own weighted analyses mode-by-mode over the core metrics both a native folder and a
 Stake Engine export already share (rtp, hit frequency, zero-win frequency, variance, standard deviation, max
-win probability) — either side may be either kind, since diffing never draws/samples anything and both kinds
-already expose a reader's own exact analysis.
+win probability) — either side may be either kind, since diffing never draws/samples anything. The comparison
+is exact over each source's retained weights; a source built with capped coverage is still a sample of its
+larger outcome space, so `pokie report` labels that coverage separately instead of calling the result exact.
 
 ## `pokie certification build <folder> <config.json>`
 
@@ -1696,6 +1697,11 @@ Turns the current or given `[directory]` into a **prepared, immediately valid** 
 in place, with **no game-id subdirectory** — the "programmer-first" package workflow: a real, editable
 `src/index.ts` a developer owns, installed and built and verified on the spot. For an editable `GameBlueprint` JSON
 file instead, see [`pokie create`](#pokie-create-name) above.
+
+The scaffold starts from a small balanced five-line demo (mid-90s RTP), not a production-certified model.
+"Prepared and verified" means the package loads and its contract is valid; run `pokie sim` or the exact table
+before treating its math as final. While `@fromstan/pokie 2.0.0` is unpublished, a bare `npm ci` in a fresh
+copy needs a published version or another `pokie init`; `package.json` itself keeps a portable version range.
 
 ```
 npm i -g @fromstan/pokie
@@ -2475,6 +2481,10 @@ Options:
 - `--format json` — print the JSON report to stdout instead of the default human-readable summary.
 - `--out <file>` — write the JSON report to `<file>`. Independent of `--format json`: combine both to see the
  report and save it in the same run.
+- `--strict` — treat an inconclusive optional advanced declaration check as a CI failure (exit `2`). By
+ default, structural validity is the useful gate; the advanced check remains visible in the report.
+- `--details` — print every advanced check, assumption and limit in the human-readable summary. Without it,
+ the summary prints one advanced-status line and points to `--details`.
 
 The default summary names the project, says whether it is valid, then lists every error or warning as
 `[location] code: explanation` followed by a `Next:` remediation. It never relies on a stack trace or parser
@@ -2513,9 +2523,13 @@ For a package, `game` is populated whenever its game metadata could be read, eve
 field is invalid. For outcome-library inputs, `issues` is the combined diagnostic list; `errors` and `warnings`
 remain available for CI to make its decision without filtering by severity itself.
 
-Exit code is `0` when `valid` is `true` and `1` when it's `false` — no thrown/printed error on top of the report,
-so scripting against `pokie validate` doesn't have to parse stderr. Only usage mistakes (missing `<project>`,
-an unknown option, `--out`/`--format` without a value) throw the usual `Usage: pokie validate...` error.
+Exit code is `0` when `valid` is `true`, even if the optional advanced declaration check is inconclusive or
+unsupported (generated executables and feature-heavy games commonly cannot prove that check), and `1` when
+structural validation fails. `--strict` changes an inconclusive advanced check to exit `2`; an advanced
+counterexample remains exit `1`. `3` means the advanced check itself failed operationally after a structurally
+valid read, and `130` means cancellation. No thrown/printed error is added on top of the report, so scripting
+against `pokie validate` doesn't have to parse stderr. Only usage mistakes (missing `<project>`, an unknown
+option, `--out`/`--format` without a value) throw the usual `Usage: pokie validate...` error.
 
 ## `pokie inspect <packageRoot>`
 
@@ -4117,6 +4131,7 @@ No history database is created.
 | Result | Default `pokie diff` | Definition `--ci` |
 | --- | ---: | ---: |
 | Complete unchanged | 0 | 0 |
+| Complete unchanged, optional advanced check inconclusive | 0 | 2 |
 | Complete mathematical change (including operational order) | 0 | 1 |
 | Representation/provenance/validation-only change with valid complete sources | 0 | 0 |
 | Partial or unsupported definition | 1 | 2 |
@@ -4138,11 +4153,15 @@ neither kind establishes definition equality.
 `pokie validate SOURCE` includes the shared advanced declared-model report in
 human and JSON output. Existing `valid` is structural/interface validity. Advanced
 checks retain unknown outcomes, assumptions, work/limits and witnesses. Exit 0:
-proved within assumptions; 1: structural error/counterexample; 2: inconclusive;
-3: advanced operational failure after structural success; 130: cancellation
-after structural success. `--deep` still means outcome-library deep validation.
-`--out` uses a new unused path outside source directories and never replaces an
-existing report or input. Write failures leave no partial report.
+structurally valid, whether the optional advanced check proved its result or
+remained inconclusive; 1: structural error or advanced counterexample; 2:
+`--strict` plus an inconclusive advanced result, or a structural verdict that
+could not be obtained at all; 3: advanced operational failure after structural
+success; 130: cancellation after structural success. `--details` expands the
+advanced evidence; the default summary prints one line. `--deep` still means
+outcome-library deep validation. `--out` uses a new unused path outside source
+directories and never replaces an existing report or input. Write failures leave
+no partial report.
 
 Definition `diff` includes advanced validation changes. Its existing opt-in
 `--ci` policy treats unresolved advanced analysis as exit 2, rather than accepting

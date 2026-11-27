@@ -268,22 +268,33 @@ export class DiffCommand implements CliCommandHandling {
         }
         const json = JSON.stringify(diff, null, 4);
         if (options.out) this.writeFile(options.out, json);
+        const advancedUnresolved = [diff.left, diff.right].some(
+            (source) => source.support !== "complete" || source.advanced === undefined || source.advanced.verdict !== "proved-within-assumptions",
+        );
         if (options.format === "json") console.log(json);
         else {
-            console.log(`Math definition diff: ${diff.status} (${diff.scope})`);
+            console.log(`Math definition diff: ${diff.status} (${diff.scope})${advancedUnresolved ? " — optional advanced check inconclusive" : ""}`);
             console.log(`${JSON.stringify(diff.left.identity)} -> ${JSON.stringify(diff.right.identity)}`);
-            for (const change of diff.changes) console.log(`${change.path} [${change.classification}${change.seededTraceImpact ? "; seeded trace may change" : ""}] ${JSON.stringify(change.before)} -> ${JSON.stringify(change.after)} context=${JSON.stringify(change.context)}`);
+            const mathChanges = diff.changes.filter((change) => change.classification !== "validation");
+            for (const change of mathChanges) console.log(`${change.path} [${change.classification}${change.seededTraceImpact ? "; seeded trace may change" : ""}] ${JSON.stringify(change.before)} -> ${JSON.stringify(change.after)} context=${JSON.stringify(change.context)}`);
+            const validationChanges = diff.changes.length - mathChanges.length;
+            if (validationChanges > 0) {
+                console.log(`${validationChanges} validation/diagnostic change(s) are present in the JSON result; use --format json or --ci for the full listing.`);
+            }
             for (const [side, source] of [["left", diff.left], ["right", diff.right]] as const) {
                 console.log(`${side}: ${source.support}`);
                 if (source.advanced) {
                     console.log(`Advanced ${source.advanced.status}: ${source.advanced.verdict}`);
-                    for (const check of source.advanced.checks) console.log(`${check.status} ${check.id} [${check.path}]: ${check.message} ${JSON.stringify(check.evidence ?? {})}`);
+                    if (options.ci) for (const check of source.advanced.checks) console.log(`${check.status} ${check.id} [${check.path}]: ${check.message} ${JSON.stringify(check.evidence ?? {})}`);
                 }
-                for (const issue of source.diagnostics) console.log(`${issue.severity} ${issue.code} ${issue.path}: ${issue.message}`);
-                for (const limit of source.limits) console.log(`Limit: ${limit}`);
+                if (options.ci) {
+                    for (const issue of source.diagnostics) console.log(`${issue.severity} ${issue.code} ${issue.path}: ${issue.message}`);
+                    for (const limit of source.limits) console.log(`Limit: ${limit}`);
+                }
             }
         }
         if (!["identical", "different"].includes(diff.status)) return options.ci ? 2 : 1;
+        if (options.ci && advancedUnresolved) return 2;
         return options.ci && diff.changes.some(change => change.mathematical) ? 1 : 0;
     }
 

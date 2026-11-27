@@ -37,6 +37,13 @@ This page explains the words POKIE uses. If a term is missing, the page that int
   Older reports may not record one; the run list omits that suffix when it is unknown.
 - **Exact math** — a complete enumeration of every paid-spin outcome and its weight. Exact for the
   paid-spin model; it is not a sample and does not estimate.
+- **Coverage** — what a result's weights actually count. **Exact coverage** means every reachable
+  outcome was enumerated. **Sampled coverage** (also called capped coverage) means a deterministic
+  sample was drawn from a larger space; its RTP and probabilities are estimates, not exact game math.
+  **Coverage metadata unavailable** means the source does not record which case applies.
+- **Outcome analysis** — the weighted report computed from an outcome library's own retained weights.
+  It is exact over those weights, but it is not automatically the whole game: feature payouts that
+  settle in later rounds are outside a paid-entry library.
 - **Paid-spin RTP** — RTP from the paid entry spin only. Feature wins that settle later (for example
   free-game wins) are not part of this figure.
 - **Whole-round RTP** — RTP that also includes feature wins and retriggers. When a game has free games,

@@ -58,7 +58,7 @@ type ValidateReport = {
     };
 };
 
-const USAGE = "Usage: pokie validate <project> [--deep] [--format json] [--out <file>]";
+const USAGE = "Usage: pokie validate <project> [--deep] [--strict] [--details] [--format json] [--out <file>]";
 
 export class ValidateCommand implements CliCommandHandling {
     private readonly validator: PokieGamePackageValidating;
@@ -101,7 +101,7 @@ export class ValidateCommand implements CliCommandHandling {
     }
 
     public async run(args: string[]): Promise<number> {
-        const resultRef: {packageRoot?: string; format?: ValidateFormat; out?: string; deep?: boolean} = {};
+        const resultRef: {packageRoot?: string; format?: ValidateFormat; out?: string; deep?: boolean; strict?: boolean; details?: boolean} = {};
         const command = this.buildCommand(resultRef);
 
         try {
@@ -162,13 +162,19 @@ export class ValidateCommand implements CliCommandHandling {
             restoreStdout();
             process.off("SIGINT", cancel);
         }
-        this.writeAndPrint(report, format, out);
+        this.writeAndPrint(report, format, out, resultRef.details ?? false);
         if (report.errors.some(issue => ["pokie-package-release-failed", "validate-lease-release-failed"].includes(issue.code))) return 1;
         if (report.advanced?.status === "cancelled") return 130;
+        // A structural answer that could not be obtained at all remains inconclusive even in the
+        // default mode; there is nothing safe to call "valid" yet.
         if (report.advanced?.status === "budget-exhausted" && report.advanced.structuralValid === null) return 2;
         if (!report.valid || report.advanced?.verdict === "violated") return 1;
         if (report.advanced?.status === "failed") return 3;
-        return report.advanced?.verdict === "inconclusive" ? 2 : 0;
+        // Advanced declaration analysis is optional. Structural validity is the useful default gate;
+        // --strict is the explicit opt-in for callers that require the stronger proof and accept that
+        // generated executables and feature-heavy games can remain inconclusive.
+        const advancedUnresolved = report.advanced !== undefined && report.advanced.verdict !== "proved-within-assumptions";
+        return resultRef.strict && advancedUnresolved ? 2 : 0;
     }
 
     private async validateProject(packageRoot: string, deep: boolean, signal?: AbortSignal): Promise<ValidateReport> {
@@ -520,7 +526,7 @@ export class ValidateCommand implements CliCommandHandling {
         return "index.json";
     }
 
-    private writeAndPrint(report: ValidateReport, format: ValidateFormat, out: string | undefined): void {
+    private writeAndPrint(report: ValidateReport, format: ValidateFormat, out: string | undefined, details: boolean): void {
         const json = JSON.stringify(report, null, 4);
         if (out) {
             try {
@@ -533,7 +539,7 @@ export class ValidateCommand implements CliCommandHandling {
             console.log(json);
             return;
         }
-        this.printSummary(report);
+        this.printSummary(report, details);
         if (out) {
             console.log(`\nReport written to "${out}".`);
         }
@@ -544,7 +550,7 @@ export class ValidateCommand implements CliCommandHandling {
     // two can never drift apart. `resultRef` is written by the action; run() supplies its own real box
     // and reads it back once parsing resolves, while getCommanderCommand() never parses this tree at
     // all, so its own default box is never read.
-    private buildCommand(resultRef: {packageRoot?: string; format?: ValidateFormat; out?: string; deep?: boolean} = {}): Command {
+    private buildCommand(resultRef: {packageRoot?: string; format?: ValidateFormat; out?: string; deep?: boolean; strict?: boolean; details?: boolean} = {}): Command {
         return createCommanderCliCommand("validate")
             .description(this.getDescription())
             .argument("<project>", "an existing POKIE project")
@@ -557,7 +563,9 @@ export class ValidateCommand implements CliCommandHandling {
             })
             .option("--out <file>", "file path to write the report to")
             .option("--deep", "also validate every outcome in an outcome-library project")
-            .action((root: string, excess: string[], options: {format?: ValidateFormat; out?: string; deep?: boolean}) => {
+            .option("--strict", "exit 2 when the optional advanced declaration check is inconclusive")
+            .option("--details", "print every advanced check, assumption and limit")
+            .action((root: string, excess: string[], options: {format?: ValidateFormat; out?: string; deep?: boolean; strict?: boolean; details?: boolean}) => {
                 // An empty-string positional is "present" as far as Commander's own required-argument
                 // check is concerned, but the pre-Commander behavior this preserves treated it the same
                 // as an entirely missing one.
@@ -568,10 +576,30 @@ export class ValidateCommand implements CliCommandHandling {
                 resultRef.format = options.format ?? "summary";
                 resultRef.out = options.out;
                 resultRef.deep = options.deep ?? false;
+                resultRef.strict = options.strict ?? false;
+                resultRef.details = options.details ?? false;
             });
     }
 
-    private printSummary(report: ValidateReport): void {
+    private describeAdvancedStatus(status: AdvancedModelValidationReport["status"]): string {
+        switch (status) {
+            case "budget-exhausted": return "not finished (analysis limit reached)";
+            case "unsupported": return "not available for this source";
+            case "invalid": return "failed";
+            case "complete": return "complete";
+            default: return status;
+        }
+    }
+
+    private describeAdvancedVerdict(verdict: AdvancedModelValidationReport["verdict"]): string {
+        switch (verdict) {
+            case "proved-within-assumptions": return "proved within assumptions";
+            case "violated": return "counterexample found";
+            default: return "not conclusive";
+        }
+    }
+
+    private printSummary(report: ValidateReport, details = false): void {
         if (report.game) {
             console.log(`Validating "${report.game.name}" (id: "${report.game.id}", v${report.game.version}) at "${report.project.path}"`);
         } else {
@@ -579,14 +607,23 @@ export class ValidateCommand implements CliCommandHandling {
         }
         console.log(`  valid           ${report.valid ? "yes" : "no"} (structural/contract validation)`);
         if (report.advanced) {
-            const advancedStatus = report.advanced.status === "budget-exhausted" ? "not finished (analysis limit reached)" : report.advanced.status;
-            console.log(`  advanced        ${advancedStatus}: ${report.advanced.verdict} (${report.advanced.scope})`);
-            for (const check of report.advanced.checks) {
-                console.log(`  ${check.status} ${check.id} [${check.path}]: ${check.message}`);
-                if (check.evidence !== undefined) console.log(`    Witness: ${JSON.stringify(check.evidence)}`);
+            const advancedStatus = this.describeAdvancedStatus(report.advanced.status);
+            const advancedSummary = report.advanced.status === "unsupported"
+                ? advancedStatus
+                : `${advancedStatus}: ${this.describeAdvancedVerdict(report.advanced.verdict)}`;
+            const optional = report.advanced.verdict === "proved-within-assumptions" ? "" : " — optional check; it does not change structural validity";
+            const scope = report.advanced.scope === "declared-model" ? "declared design model" : report.advanced.scope;
+            console.log(`  advanced check  ${advancedSummary} (${scope})${optional}`);
+            if (details) {
+                for (const check of report.advanced.checks) {
+                    console.log(`  ${check.status} ${check.id} [${check.path}]: ${check.message}`);
+                    if (check.evidence !== undefined) console.log(`    Witness: ${JSON.stringify(check.evidence)}`);
+                }
+                for (const assumption of report.advanced.assumptions) console.log(`  Assumption: ${assumption}`);
+                for (const limitation of report.advanced.limitations) console.log(`  Limit: ${limitation}`);
+            } else {
+                console.log("  (run with --details to print every advanced check, assumption and limit)");
             }
-            for (const assumption of report.advanced.assumptions) console.log(`  Assumption: ${assumption}`);
-            for (const limitation of report.advanced.limitations) console.log(`  Limit: ${limitation}`);
         }
         if (report.wasm !== undefined) {
             console.log(`  wasm ABI        ${report.wasm.abiVersion} (${report.wasm.compatibility})`);

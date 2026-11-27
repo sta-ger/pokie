@@ -2,6 +2,7 @@ import type {CanonicalOutcomeSourceDescriptor} from "../pregenerated/CanonicalOu
 import type {StakeEngineStandaloneModeAnalysis} from "../stakeengine/standalone/StakeEngineStandaloneAnalysis.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import type {WeightedOutcomeLibraryAnalysis} from "../weightedoutcome/WeightedOutcomeLibraryAnalysis.js";
+import type {OutcomeLibraryGeneratorDiagnostics} from "../weightedoutcome/generate/OutcomeLibraryGeneratorDiagnostics.js";
 
 // One mode's own exact analysis, whichever canonical reader family produced it -- a native bundle's own
 // WeightedOutcomeLibraryAnalysis (rtp/hitFrequency/variance/standardDeviation/... over record.payoutMultiplier)
@@ -11,6 +12,8 @@ import type {WeightedOutcomeLibraryAnalysis} from "../weightedoutcome/WeightedOu
 export type OutcomeSourceProjectModeAnalysis = {
     readonly modeName: string;
     readonly analysis: WeightedOutcomeLibraryAnalysis | StakeEngineStandaloneModeAnalysis;
+    /** Present on POKIE-generated native bundles; absent for older bundles and Stake exports. */
+    readonly generator?: OutcomeLibraryGeneratorDiagnostics;
 };
 
 // What OutcomeSourceProjectAnalyzer.analyze() returns for a resolved "outcomeLibrary"/"stakeAdapter"

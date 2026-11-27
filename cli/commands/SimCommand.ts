@@ -223,7 +223,7 @@ export class SimCommand implements CliCommandHandling {
             .description(this.getDescription())
             .argument("<packageRoot>", "a POKIE game package, game design, WASM build, or outcome-library folder (with --mode)")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
-            .option("--rounds <number>", `number of rounds to simulate (default: ${SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS})`, (value: string): number => {
+            .option("--rounds <number>", `accepted plays (paid + free) to simulate; free games can mean fewer completed paid rounds (default: ${SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS})`, (value: string): number => {
                 const parsed = Number(value);
                 if (!Number.isInteger(parsed) || parsed <= 0) {
                     throw new Error(`--rounds must be a positive integer. ${USAGE}`);
@@ -380,8 +380,10 @@ export class SimCommand implements CliCommandHandling {
         const runtime = await loadPokieWasmFileRuntime(project.rootPath, new SeededPokieWasmHost(seed));
         try {
             const results = await collectPokieWasmSimulation(runtime, seed, options.rounds, {mode: options.mode});
+            const authoredInfo = manifestRead.canonical?.model.features?.blueprint.info;
+            const gameInfo = authoredInfo ?? {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version};
             const reports = results.map(result => this.reportBuilder.build({
-                gameInfo: {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version},
+                gameInfo,
                 requestedRounds: options.rounds, seed, statistics: result.statistics, durationMs: Date.now() - startedAt,
                 packageRoot: project.rootPath, configHash: runtime.manifest.artifact?.configurationHash, pokieVersion: this.pokieVersion,
                 workers: 1, workerSeedStrategy: "portable seeded host stream (single in-process WASM runtime)", stopReason: "maxRounds", betMode: result.mode, targetRtp: result.targetRtp,
@@ -606,7 +608,13 @@ export class SimCommand implements CliCommandHandling {
         for (const line of describeSimulationDiagnostics(report)) console.log(`  ${line}`);
         for (const line of describeFeatureAnalytics(report.analytics)) console.log(`  ${line}`);
         console.log(`Simulated "${report.game.name}" (id: "${report.game.id}", v${report.game.version})`);
-        const roundsSuffix = report.rounds !== report.requestedRounds ? ` (requested ${report.requestedRounds})` : "";
+        const accepted = report.sampling?.acceptedSubrounds;
+        let roundsSuffix = "";
+        if (accepted !== undefined) {
+            roundsSuffix = ` completed paid (${accepted} accepted plays; budget ${report.requestedRounds})`;
+        } else if (report.rounds !== report.requestedRounds) {
+            roundsSuffix = ` (play budget ${report.requestedRounds})`;
+        }
         console.log(`  rounds          ${report.rounds}${roundsSuffix}`);
         if (report.seed !== null) {
             console.log(`  seed            ${report.seed}`);

@@ -73,7 +73,7 @@ function nativeRuntimeFixture(directory: string): void {
 }
 
 describe("Package delivery identity", () => {
-    it("binds metadata, lockfile, binary, pack declarations and explicit ESM-only subpaths", () => {
+    it("binds metadata, lockfile, binary, pack declarations and explicit ESM/CJS subpaths", () => {
         const lock = JSON.parse(fs.readFileSync(path.join(root, "package-lock.json"), "utf8"));
         expect(metadata.name).toBe(identity);
         expect(lock.name).toBe(identity);
@@ -91,8 +91,11 @@ describe("Package delivery identity", () => {
         expect(metadata.exports["."].require).toBeUndefined();
         expect(Object.keys(metadata.exports).sort()).toEqual([".", "./browser", "./client/player", "./wasm"]);
         for (const subpath of ["./browser", "./wasm", "./client/player"]) {
-            expect(Object.keys(metadata.exports[subpath])).toEqual(["import"]);
+            expect(Object.keys(metadata.exports[subpath])).toEqual(["types", "import", "default"]);
+            expect(metadata.exports[subpath].types).toMatch(/\.d\.ts$/);
             expect(metadata.exports[subpath].import.types).toMatch(/\.d\.ts$/);
+            expect(metadata.exports[subpath].import.default).toMatch(/\.js$/);
+            expect(metadata.exports[subpath].default).toBe(metadata.exports[subpath].import.default);
         }
         expect(metadata.files).toEqual(expect.arrayContaining(["dist/", "src/", "LICENSE"]));
         expect(metadata.publishConfig).toEqual({access: "public"});
@@ -144,7 +147,7 @@ describe("Package delivery identity", () => {
                 assert.equal(new ESM('native').getRandomInt(0, 100), new CJS('native').getRandomInt(0, 100));
                 assert.equal(new Browser('native').getRandomInt(0, 100), new ESM('native').getRandomInt(0, 100));
                 assert.equal(typeof instantiatePokieWasm, 'function'); assert.ok(Object.keys(player).length);
-                for (const suffix of ['browser', 'wasm', 'client/player']) assert.throws(() => require('${identity}/' + suffix), {code:'ERR_PACKAGE_PATH_NOT_EXPORTED'});
+                for (const suffix of ['browser', 'wasm', 'client/player']) assert.ok(Object.keys(require('${identity}/' + suffix)).length);
                 assert.throws(() => require('pokie'), {code:'MODULE_NOT_FOUND'});
                 for (const file of ['./private-slot/dist/index.js', './generated/dist/index.js']) {
                     const exports = require(file); const game = exports.default ?? exports;

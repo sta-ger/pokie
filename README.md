@@ -117,6 +117,7 @@ const stats = runner.run().getStatistics();
 stats.rtp;
 stats.rtpConfidenceInterval95; // {low, high}
 stats.hitCount;
+stats.logicalRoundMetrics?.rounds; // completed paid rounds, when the session reports them
 ```
 
 ## Reproducible RNG
@@ -152,6 +153,10 @@ pokie report sim.json
 
 Other commands include `inspect`, `edit`, `reel`, `par`, `optimize`, `replay`, `run`, `serve`, `client`,
 `dev`, `fairness`, `certification` and `diff`. Use `pokie <command> --help` for the exact grammar.
+
+A simulation's play budget counts paid and free spins; when free games are frequent, fewer paid rounds finish.
+Reports show both numbers. `pokie validate` accepts a structurally valid project by default; add `--strict` when
+CI should also require the optional deeper feature check to reach a proof.
 
 ## Studio
 

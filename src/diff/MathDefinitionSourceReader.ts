@@ -22,6 +22,7 @@ import {ParSheetImporter} from "../parsheet/ParSheetImporter.js";
 import type {PokieProject} from "../project/PokieProject.js";
 import {ProjectTargetResolver} from "../project/ProjectTargetResolver.js";
 import {readWasmComponentInfo} from "../project/readWasmComponentInfo.js";
+import {canonicalWasmBlueprint} from "../wasm/DeclarativeWasmModel.js";
 import type {
     DefinitionJson,
     MathDefinitionBlueprintInput,
@@ -201,18 +202,24 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
                             );
                             return snapshot;
                         }
-                        const {schemaVersion: _schema, mathVersion: _mathVersion, ...model} = read.canonical.model;
+                        const manifest = {
+                            id: read.manifest.component.id,
+                            name: read.manifest.component.id,
+                            version: read.manifest.component.version,
+                        };
+                        // A canonical WASM model is not itself a GameBlueprint: the arithmetic half has
+                        // no info block, while a feature-bearing component keeps the authored Blueprint
+                        // under model.features. Use the same normalization the build/read path uses, then
+                        // restore the component identity so the advanced declaration check has the
+                        // mandatory GameBlueprint.info field instead of falsely reporting it missing.
+                        const canonicalBlueprint = canonicalWasmBlueprint(read.canonical.model);
                         const result = await this.blueprint(
                             {
                                 kind: "blueprint",
                                 location: project.rootPath,
                                 model: {
-                                    ...model,
-                                    manifest: {
-                                        id: read.manifest.component.id,
-                                        name: read.manifest.component.id,
-                                        version: read.manifest.component.version,
-                                    },
+                                    ...canonicalBlueprint,
+                                    info: read.canonical.model.features?.blueprint.info ?? manifest,
                                 },
                             },
                             options,

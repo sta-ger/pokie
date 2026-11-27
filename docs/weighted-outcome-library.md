@@ -163,6 +163,14 @@ rounding to some fixed precision — two outcomes whose multipliers differ by an
 get separate entries), sorted ascending, with `probability` values summing to 1 — not a binned histogram the way
 `pokie sim`'s Monte Carlo `payoutHistogram` is.
 
+> **Coverage, not just arithmetic:** this analysis is exact over the library's retained weights. If that
+> library came from the `capped-coverage` generator, those weights are a deterministic sample of a larger
+> outcome space, so the result is a sample estimate of the game's RTP and probabilities. `pokie report` reads
+> the saved `generator.strategy` and labels the section **Sampled analysis** with the raw-space and draw
+> counts; only an `exact` generator may be presented as exact coverage. A paid-entry library also excludes
+> feature payouts that settle in later rounds, so its RTP is a paid-spin figure, not automatically the whole
+> round.
+
 `WeightedOutcomeLibraryAnalyzer` assumes its input is already a validly-built library (as `buildWeightedOutcomeLibrary`
 guarantees) and does not re-validate; validate a library from an untrusted source first.
 

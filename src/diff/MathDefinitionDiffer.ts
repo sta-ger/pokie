@@ -116,7 +116,7 @@ function verifyCompleteness(snapshot: MathDefinitionSnapshot): void {
     const missing =
         !isRecord(model) ||
         !isRecord(snapshot.authored) ||
-        ["manifest", "reels", "rows", "symbols", "paytable"].some((key) => !(key in model)) ||
+        ["reels", "rows", "symbols", "paytable"].some((key) => !(key in model)) ||
         (model.reelStrips === undefined && model.reelSequences === undefined) ||
         model.maxWinPolicy === undefined;
     if (missing || snapshot.fields.some((field) => field.status === "unsupported")) {
@@ -385,8 +385,11 @@ export class MathDefinitionDiffer implements MathDefinitionDiffing {
         changes.sort((a, b) => (a.path < b.path ? -1 : Number(a.path > b.path)));
         let status: MathDefinitionDiff["status"] = changes.length ? "different" : "identical";
         const supports = [left.support, right.support];
+        // Advanced declaration analysis is an optional proof, not part of the declared/effective math
+        // comparison. Keep it visible on each snapshot, but do not turn an unchanged pair of complete
+        // definitions into "partial" merely because the optional proof hit its budget. Strict callers
+        // (the CLI's --ci mode) can still reject that unresolved state explicitly.
         if (!left.advanced || !right.advanced) status = "partial";
-        if ([left, right].some(source => source.advanced && source.advanced.verdict === "inconclusive")) status = "partial";
         if ([left, right].some(source => source.advanced?.verdict === "violated")) status = "invalid";
         if (supports.includes("partial") || supports.includes("unsupported")) status = "partial";
         if (supports.every((support) => support === "unsupported")) status = "unsupported";

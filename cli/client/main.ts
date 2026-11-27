@@ -36,6 +36,7 @@ type Elements = {
     credits: HTMLElement;
     win: HTMLElement;
     payoutMultiplier: HTMLElement;
+    roundStats: HTMLElement;
     screen: HTMLElement;
     spinButton: HTMLButtonElement;
     roundDelivery?: HTMLSelectElement;
@@ -118,6 +119,7 @@ function queryElements(): Elements {
         credits: requireElement("credits"),
         win: requireElement("win"),
         payoutMultiplier: requireElement("payout-multiplier"),
+        roundStats: requireElement("round-stats"),
         screen: requireElement("screen"),
         spinButton: requireElement("spin-button"),
         roundDelivery: (document.getElementById("round-delivery") as HTMLSelectElement | null) ?? undefined,
@@ -237,6 +239,10 @@ function render(
 
     const isVideoSlot = isVideoSlotRoundResponse(response);
     elements.playerSection.hidden = !isVideoSlot;
+    // The player section owns the complete round view for a video slot. The legacy stats block above
+    // it only carries bet/screen data, so leaving it visible showed stale em dashes (Credits —, Win —)
+    // next to the real values. Keep it for non-video responses, where it is the only renderer.
+    elements.roundStats.hidden = isVideoSlot;
     elements.screen.hidden = isVideoSlot;
     if (isVideoSlot) {
         renderVideoSlotRound(elements, response, staticView, selectedBet, onSelectBet, selectedMode, onSelectMode, roundView.credits);
