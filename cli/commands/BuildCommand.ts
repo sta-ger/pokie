@@ -186,13 +186,16 @@ export class BuildCommand implements CliCommandHandling {
             // (malformed, ambiguous, unsupported) propagate unchanged above.
             if (options.target === "outcomeLibrary" || options.target === "stakeAdapter" || options.target === "parWorkbook") {
                 if (generation !== undefined) throw new Error("--exact/--sample/--seed require a recognized generation source, not a standalone descriptor.");
-                return this.buildDescriptor(projectPath, options.target, options.out ?? this.resolveDestination(projectPath, options.target), options.dryRun ?? false);
+                const descriptorOut = options.out ?? this.resolveDestination(projectPath, options.target);
+                this.assertFileTargetExtension(options.target, descriptorOut);
+                return this.buildDescriptor(projectPath, options.target, descriptorOut, options.dryRun ?? false);
             }
             throw new Error(`"${projectPath}" was not recognized as a POKIE project.\n\n${PROJECT_HINT}`);
         }
 
         const target = options.target;
         const out = options.out ?? this.resolveDestination(project.rootPath, target);
+        this.assertFileTargetExtension(target, out);
         const conversionPlan = await this.runWithArtifactLifecycle(async lifecycle => {
             const conversionPlan = target === "stakeAdapter"
                 ? await this.stakeProjection.prepare(project, out, {...lifecycle, outcomeLibraryGeneration: generation})
@@ -304,6 +307,22 @@ export class BuildCommand implements CliCommandHandling {
     // name a directory. Never collides with `rootPath` itself: a sibling name always differs from the resolved
     // project's own basename, so the existing conflict protections (assertBuildDestinationAvailable) are
     // the only thing standing between this default and an existing, unrelated file/directory of the same name.
+    // POKIE recognizes file artifacts by their suffix (the same suffix "pokie inspect"/"validate" and
+    // every later conversion use). Refuse to write a valid component/workbook under a path those
+    // commands cannot recognize; the old behavior produced a file that POKIE itself rejected.
+    private assertFileTargetExtension(target: OutputFormat, destination: string): void {
+        const expected = ({
+            parWorkbook: PAR_WORKBOOK_DEFAULT_EXTENSION,
+            wasm: WASM_DEFAULT_EXTENSION,
+            blueprint: ".json",
+        } as Partial<Record<OutputFormat, string>>)[target];
+        if (expected === undefined || path.extname(destination).toLowerCase() === expected) return;
+        throw new Error(
+            `--out for a ${target} artifact must be a file ending in "${expected}" (for example "result${expected}"); ` +
+                `"${destination}" does not. Choose a recognized suffix so "pokie inspect" and "pokie validate" can reopen it.`,
+        );
+    }
+
     private resolveDestination(rootPath: string, target: OutputFormat): string {
         let siblingName: string = target;
         if (target === "parWorkbook") siblingName = `${target}${PAR_WORKBOOK_DEFAULT_EXTENSION}`;

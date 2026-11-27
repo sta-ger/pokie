@@ -31,6 +31,23 @@ describe("canonical package extraction CLI", () => {
     const command = () => new BuildCommand("1.3.0");
     const output = () => log.mock.calls.flat().join("\n");
 
+    it("refuses a file artifact destination whose suffix POKIE itself cannot reopen", async () => {
+        const source = path.join(root, "source.json");
+        fs.writeFileSync(source, JSON.stringify({
+            info: {id: "suffix-check", name: "Suffix check", version: "1.0.0"},
+            reels: 2,
+            rows: 1,
+            symbols: ["A"],
+            paytable: {A: {2: 1}},
+            reelStrips: [["A"], ["A"]],
+        }));
+        for (const [target, name, suffix] of [["wasm", "game", ".wasm"], ["parWorkbook", "workbook", ".xlsx"]] as const) {
+            const destination = path.join(root, name);
+            await expect(command().run([source, "--target", target, "--out", destination])).rejects.toThrow(`ending in "${suffix}"`);
+            expect(fs.existsSync(destination)).toBe(false);
+        }
+    });
+
     it("keeps an unpublished CLI runtime installable and recognized by Studio before package-to-Blueprint review", async () => {
         const source = path.join(root, "source.json");
         const model = {
