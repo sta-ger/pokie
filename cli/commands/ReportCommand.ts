@@ -178,7 +178,7 @@ export class ReportCommand implements CliCommandHandling {
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
             .option("--format <value>", '"markdown", "html", "json", "console" or "pdf" (pack only for console/pdf; default: "markdown")', (value: string) => {
                 if (value !== "markdown" && value !== "html" && value !== "json" && value !== "pdf" && value !== "console") {
-                    throw new Error(`--format must be "markdown", "html", or "json". ${USAGE}`);
+                    throw new Error(`--format must be "markdown", "html", "json", "console", or "pdf". ${USAGE}`);
                 }
                 return value as ReportFormat;
             })
@@ -258,7 +258,7 @@ export class ReportCommand implements CliCommandHandling {
                 missingArgument: USAGE,
                 unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
                 optionMissingArgument: (flag) =>
-                    flag === "--format" ? `--format must be "markdown", "html", or "json". ${USAGE}` : `--out requires a file path. ${USAGE}`,
+                    flag === "--format" ? `--format must be "markdown", "html", "json", "console", or "pdf". ${USAGE}` : `--out requires a file path. ${USAGE}`,
             });
         }
 

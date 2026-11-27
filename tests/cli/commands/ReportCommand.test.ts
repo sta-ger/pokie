@@ -194,10 +194,10 @@ describe("ReportCommand", () => {
         await expect(command.run(["sim.json", "--bogus"])).rejects.toThrow(/Unknown option "--bogus"/);
     });
 
-    it("throws a descriptive error when --format is not markdown, html, or json", async () => {
+    it("throws a descriptive error that lists every accepted format", async () => {
         const command = new ReportCommand(createStubReadFile({"sim.json": JSON.stringify(report)}));
 
-        await expect(command.run(["sim.json", "--format", "xml"])).rejects.toThrow(/--format must be "markdown", "html", or "json"/);
+        await expect(command.run(["sim.json", "--format", "xml"])).rejects.toThrow(/--format must be "markdown", "html", "json", "console", or "pdf"/);
     });
 
     it("throws a descriptive error when --out has no value", async () => {
