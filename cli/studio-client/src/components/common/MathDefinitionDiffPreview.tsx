@@ -6,6 +6,7 @@ import {previewMathDefinitionDiff} from "../../api/apiClient";
 import type {MathDefinitionDiff} from "../../api/types";
 import type {MathDefinitionValue} from "../../../../../src/diff/MathDefinitionDiff.js";
 import {describeDefinitionChangePath} from "../../domain/definitionChangeLabels";
+import {describeDefinitionComparison} from "../../domain/definitionComparisonNotice";
 import {useStudioApi} from "../../context/StudioApiProvider";
 
 type PreviewState =
@@ -21,17 +22,6 @@ function formatDefinitionValue(value: MathDefinitionValue): string {
     if (typeof raw === "number" || typeof raw === "boolean") return String(raw);
     const serialized = JSON.stringify(raw);
     return serialized.length > 180 ? `${serialized.slice(0, 177)}…` : serialized;
-}
-
-function describeComparison(diff: MathDefinitionDiff): string {
-    if (diff.status === "identical") return "The editable mathematical fields match.";
-    const mathematical = diff.changes.filter((change) => change.mathematical);
-    if (mathematical.length === 0) {
-        return diff.status === "partial"
-            ? "Some technical metadata could not be compared; see technical comparison details."
-            : "";
-    }
-    return `${mathematical.length} mathematical field${mathematical.length === 1 ? "" : "s"} differ.`;
 }
 
 /** Renders server results; owns only request lifecycle, never definition comparison logic. */
@@ -111,7 +101,7 @@ export function MathDefinitionDiffPreview({
     let compareDisabledReason: string | undefined;
     if (!sourcePath) compareDisabledReason = "Load or save a source before comparing definitions.";
     else if (draft === undefined && !rightPath.trim()) compareDisabledReason = "Choose a saved source to compare with the current definition.";
-    const comparisonDescription = state.status === "loaded" ? describeComparison(state.diff) : "";
+    const comparisonNotice = state.status === "loaded" ? describeDefinitionComparison(state.diff) : undefined;
     return (
         <section aria-label="Mathematical definition comparison">
             <h3>Mathematical definition comparison</h3>
@@ -151,10 +141,12 @@ export function MathDefinitionDiffPreview({
             )}
             {state.status === "loaded" && (
                 <div>
-                    <Text role="status" size="sm">
-                        Definition comparison: <strong>{state.diff.changes.some((change) => change.mathematical) ? state.diff.status : "no mathematical differences"}</strong>.
-                        {comparisonDescription === "" ? "" : ` ${comparisonDescription}`}
-                    </Text>
+                    {comparisonNotice !== undefined && (
+                        <Text role="status" size="sm">
+                            Definition comparison: <strong>{comparisonNotice.label}</strong>.
+                            {comparisonNotice.detail === undefined ? "" : ` ${comparisonNotice.detail}`}
+                        </Text>
+                    )}
                     {state.diff.changes.some((change) => change.mathematical) && (
                         <Table.ScrollContainer minWidth={620} mt="xs">
                             <Table aria-label="Mathematical definition differences">

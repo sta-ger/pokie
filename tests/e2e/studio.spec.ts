@@ -1587,7 +1587,7 @@ test("PAR import compares exact math for both drafts before applying", async ({p
     fs.rmSync(workDir, {recursive: true, force: true});
 });
 
-test("PAR import says mathematical fields match when only metadata differs", async ({page}) => {
+test("PAR import never presents an invalid definition comparison as a clean match", async ({page}) => {
     test.setTimeout(120_000);
     const source = path.join(process.cwd(), "tests/e2e/fixtures/free-games-scope.json");
     const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-par-same-e2e-"));
@@ -1607,8 +1607,10 @@ test("PAR import says mathematical fields match when only metadata differs", asy
     await expect(page.getByText("Imported — not applied yet")).toBeVisible({timeout: 60_000});
     await page.getByRole("button", {name: "Continue to preview the game model"}).click();
 
-    await expect(page.getByText(/Definition comparison: no mathematical differences/)).toBeVisible({timeout: 60_000});
-    await expect(page.getByText(/Some technical metadata could not be compared/)).toBeVisible();
+    // The fixture's uncapped free games make the optional termination proof fail even though the
+    // editable mathematical fields match. Say so instead of presenting the comparison as clean.
+    await expect(page.getByText(/Definition comparison: invalid/)).toBeVisible({timeout: 60_000});
+    await expect(page.getByText(/At least one compared definition failed validation/)).toBeVisible();
     fs.rmSync(workDir, {recursive: true, force: true});
 });
 
