@@ -435,7 +435,7 @@ export class StudioOutcomeLibraryGenerateService {
                     const preparedRequest = prepareOutcomeLibraryGeneration(this.createDomainRequest(
                         game,
                         request,
-                        request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR,
+                        request.outDir ?? snapshot.binding.destination,
                         projectRoot,
                     ));
                     if (
@@ -558,7 +558,10 @@ export class StudioOutcomeLibraryGenerateService {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
         try {
-            outDirRelative = request.outDir ?? await this.defaultBundleDirectory(projectRoot, game.getInfo().id);
+            // A preflight may have chosen a per-game sibling because the conventional directory already
+            // belongs to another design. Keep that exact destination on start/resume; falling back to the
+            // conventional default here made every such token look like destination drift and return 409.
+            outDirRelative = request.outDir ?? snapshot?.binding.destination ?? await this.defaultBundleDirectory(projectRoot, game.getInfo().id);
             try {
                 domainRequest = this.createDomainRequest(game, request, outDirRelative, projectRoot);
                 domainRequest = {
