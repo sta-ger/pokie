@@ -176,6 +176,9 @@ describe("FairnessRoundProofVerifier", () => {
         const codes = issues.map((issue) => issue.code);
 
         expect(codes).toContain("fairness-verify-commitment-mismatch");
+        expect(issues.find((issue) => issue.code === "fairness-verify-commitment-mismatch")?.message).toContain(
+            "nonce no longer matches",
+        );
     });
 
     it("detects a tampered libraryId/libraryHash/modeName between commitment and proof", async () => {

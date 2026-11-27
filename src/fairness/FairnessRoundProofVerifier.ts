@@ -138,7 +138,9 @@ export class FairnessRoundProofVerifier implements FairnessRoundProofVerifying {
             issues.push({
                 code: "fairness-verify-commitment-mismatch",
                 severity: "error",
-                message: `this proof's own ${mismatchedFields.join("/")} no longer match the given commitment's own recorded values.`,
+                message:
+                    `this proof's own ${mismatchedFields.join("/")} no longer ` +
+                    `${mismatchedFields.length === 1 ? "matches" : "match"} the given commitment's own recorded values.`,
                 details: {fields: mismatchedFields},
             });
         }
