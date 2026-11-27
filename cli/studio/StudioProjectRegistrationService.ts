@@ -278,12 +278,14 @@ export class StudioProjectRegistrationService {
         if (resolved === undefined) {
             return {status: "unrecognized", path: await this.canonicalize(location)};
         }
+        const existing = (await this.entriesAt(resolved.location))[0];
         const preview = {
             status: "recognized" as const,
             location: resolved.location,
             type: resolved.project.type,
             capabilities: resolved.project.capabilities,
             suggestedName: defaultProjectName(resolved.location, resolved.project.type),
+            ...(existing === undefined ? {} : {existing: registryView(existing, "ok")}),
         };
         return resolved.project.type === "wasm"
             ? {
@@ -369,17 +371,26 @@ export class StudioProjectRegistrationService {
         }
 
         const trimmedName = name?.trim();
+        const existingEntries = await this.entriesAt(resolved.location);
+        const existing = existingEntries[0];
+        // Re-adding a path that is already registered is not a rename or an origin downgrade. A
+        // managed project re-added from Your projects must stay managed, keep its display name and
+        // keep any PAR provenance; a fresh managed registration may still upgrade an old external
+        // row because POKIE really did just create that project.
+        const managed = origin === "managed";
+        const providedName = trimmedName !== undefined && trimmedName.length > 0 ? trimmedName : undefined;
+        const defaultName = defaultProjectName(resolved.location, resolved.project.type);
         const entry: StudioProjectRegistryEntry = {
             location: resolved.location,
-            name: trimmedName && trimmedName.length > 0 ? trimmedName : defaultProjectName(resolved.location, resolved.project.type),
+            name: managed ? providedName ?? existing?.name ?? defaultName : existing?.name ?? providedName ?? defaultName,
             type: resolved.project.type,
             capabilities: resolved.project.capabilities,
-            origin,
+            origin: managed ? "managed" : existing?.origin ?? "external",
             lastOpenedAt: new Date().toISOString(),
-            importedFromParSheetPath,
-            conversionEvidencePath,
+            importedFromParSheetPath: managed ? importedFromParSheetPath : existing?.importedFromParSheetPath ?? importedFromParSheetPath,
+            conversionEvidencePath: managed ? conversionEvidencePath : existing?.conversionEvidencePath ?? conversionEvidencePath,
         };
-        await this.replace(entry, await this.entriesAt(resolved.location));
+        await this.replace(entry, existingEntries);
         return {status: "ok", entry: registryView(entry, "ok")};
     }
 

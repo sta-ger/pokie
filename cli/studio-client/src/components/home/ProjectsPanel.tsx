@@ -425,6 +425,10 @@ export function ProjectsPanel({
             return;
         }
         const {result} = importView;
+        if (result.existing !== undefined) {
+            registerGuard.end();
+            return;
+        }
         const trimmedName = registerName.trim();
         setImportView({status: "registering", result});
         registerProjectImport(fetchImpl, result.location, trimmedName.length > 0 ? trimmedName : result.suggestedName)
@@ -830,28 +834,54 @@ export function ProjectsPanel({
                             Found a {importView.result.type === "wasm" ? describeProjectType(importView.result.type, importView.result.wasmPresentation) : describeProjectType(importView.result.type)} at{" "}
                             <strong style={{overflowWrap: "anywhere"}}>{importView.result.location}</strong>.
                         </Text>
-                        {importView.result.type === "parWorkbook" && (
-                            <Text size="sm" c="dimmed" mb="sm">
-                                Add it to open its export tools, or choose Open in Start a game to bring its PAR data into a game design.
-                            </Text>
+                        {importView.result.existing !== undefined ? (
+                            <>
+                                <Text size="sm" mb="sm">
+                                    This game is already in Your projects as <strong>{importView.result.existing.name}</strong>.
+                                    Open it from the list above instead of adding a second copy.
+                                </Text>
+                                <QuickActions>
+                                    <Button
+                                        onClick={() => {
+                                            const existing = importView.result.existing;
+                                            if (existing !== undefined) handleOpen(existing);
+                                        }}
+                                    >
+                                        Open
+                                    </Button>
+                                    {importView.result.type === "parWorkbook" && (
+                                        <Button variant="default" onClick={() => handleGoToDesignGame(importView.result.location)}>
+                                            Open in Start a game
+                                        </Button>
+                                    )}
+                                </QuickActions>
+                            </>
+                        ) : (
+                            <>
+                                {importView.result.type === "parWorkbook" && (
+                                    <Text size="sm" c="dimmed" mb="sm">
+                                        Add it to open its export tools, or choose Open in Start a game to bring its PAR data into a game design.
+                                    </Text>
+                                )}
+                                <TextInput
+                                    label="Name"
+                                    mb="sm"
+                                    value={registerName}
+                                    onChange={(event) => setRegisterName(event.currentTarget.value)}
+                                    description="This is how the game will appear in Your projects."
+                                />
+                                <QuickActions>
+                                    <Button id="project-import-add" onClick={handleRegister} loading={importView.status === "registering"}>
+                                        Add to projects
+                                    </Button>
+                                    {importView.result.type === "parWorkbook" && (
+                                        <Button variant="default" onClick={() => handleGoToDesignGame(importView.result.location)}>
+                                            Open in Start a game
+                                        </Button>
+                                    )}
+                                </QuickActions>
+                            </>
                         )}
-                        <TextInput
-                            label="Name"
-                            mb="sm"
-                            value={registerName}
-                            onChange={(event) => setRegisterName(event.currentTarget.value)}
-                            description="This is how the game will appear in Your projects."
-                        />
-                        <QuickActions>
-                            <Button id="project-import-add" onClick={handleRegister} loading={importView.status === "registering"}>
-                                Add to projects
-                            </Button>
-                            {importView.result.type === "parWorkbook" && (
-                                <Button variant="default" onClick={() => handleGoToDesignGame(importView.result.location)}>
-                                    Open in Start a game
-                                </Button>
-                            )}
-                        </QuickActions>
                     </div>
                 )}
             </PageSection>

@@ -351,6 +351,7 @@ type StudioRecognizedProjectImportPreview = {
     location: string;
     capabilities: StudioProjectCapability[];
     suggestedName: string;
+    existing?: StudioProjectRegistryView;
 };
 
 export type StudioProjectImportPreviewResult =

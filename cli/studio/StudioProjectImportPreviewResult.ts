@@ -1,4 +1,5 @@
 import type {ProjectCapabilities, ProjectType, WasmProductContractView} from "@fromstan/pokie";
+import type {StudioProjectRegistryView} from "./StudioProjectRegistryView.js";
 
 // The outcome of StudioProjectRegistrationService.previewImport — a read-only "detect" step Import
 // Project runs before ever calling registerExternal, so a user can see what a path resolves to (and
@@ -10,6 +11,8 @@ type StudioRecognizedProjectImportPreview = {
     readonly location: string;
     readonly capabilities: ProjectCapabilities;
     readonly suggestedName: string;
+    /** Present when this exact location is already in Your projects; adding it again is never needed. */
+    readonly existing?: StudioProjectRegistryView;
 };
 
 export type StudioProjectImportPreviewResult =
