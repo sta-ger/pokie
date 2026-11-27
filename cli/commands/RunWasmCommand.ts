@@ -61,7 +61,7 @@ export class RunWasmCommand implements CliCommandHandling {
                             ...(options.roundId ? {roundId: options.roundId} : {}), ...(options.delivery ? {delivery: options.delivery, roundId: options.roundId ?? `run:${options.seed}`} : {})};
                         const round = await session.play(command);
                         if (options.format === "json") console.log(JSON.stringify({round, ...(runtime.manifest.capabilities.includes("runtime.serialize") ? {state: session.serialize()} : {})}, null, 2));
-                        else console.log(`POKIE WASM round ${round.sequence}: sequence=${round.sequence} draw=${round.draw} stops=${round.stops.join(",")} win=${round.win} seed=${options.seed}`);
+                        else console.log(`POKIE WASM round ${round.sequence}: sequence=${round.sequence} draw=${round.draw} stops=${round.stops.join(",")} payout=${round.payout} seed=${options.seed}`);
                     } finally {
                         session.dispose();
                     }
