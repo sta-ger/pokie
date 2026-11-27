@@ -23,9 +23,13 @@ Run `npx --package @fromstan/pokie pokie` to open Home. Choose a starter, change
 its workspace. The Layout section chooses **lines**, **ways** or **clusters**. The Ways and Clusters
 starter variants are structural demos: they keep the line paytable until you retune it, so check exact
 RTP before treating one as balanced. **Mechanics** holds free games,
-weighted bonuses, cascades, respins, collection, wild modifiers, Hold & Win and jackpots. **Overview** checks the design and shows **Exact math** when a compatible Outcome Library exists; if none
-exists yet, **Compute exact outcome table** generates one and then shows exact RTP, the complete payout distribution, and line/symbol
-contributions. **Math preview** in Game design is a draft/read-only preview only; it does not write the project's stored
+weighted bonuses, cascades, respins, collection, wild modifiers, Hold & Win and jackpots. **Overview** starts with a producer summary of the most representative completed simulation for the
+current saved design: whole-round RTP, hit frequency, volatility and the largest observed win including free games.
+It then checks the design and shows **Exact math** when a compatible Outcome Library exists; if none exists yet,
+**Compute exact outcome table** generates one and then shows exact RTP, the complete payout distribution, and
+line/symbol contributions. The exact card covers paid spins; the producer summary is where whole-round behaviour lives.
+A successful Save or optimization Apply automatically rebuilds a stale exact table instead of leaving old numbers
+looking current. **Math preview** in Game design is a draft/read-only preview only; it does not write the project's stored
 outcome table. After saving, the preview stays visible for the saved design, and **Compute exact outcome table** on
 Overview writes the table that other Studio views treat as exact. **Play** runs real local rounds. **Simulation** estimates RTP; its optional **Target precision** keeps
 **Plays** as a ceiling and stops once the 95% RTP interval is tight enough. **Build/Export** writes a game package or

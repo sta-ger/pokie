@@ -1,4 +1,4 @@
-import {Alert, Button, Group, NumberInput, Select, Table, Text} from "@mantine/core";
+import {Alert, Button, Checkbox, Group, NumberInput, Select, Table, Text} from "@mantine/core";
 import {useState} from "react";
 import type {ValidationIssue} from "../../api/types";
 import {asStringList} from "../../domain/asStringList";
@@ -34,10 +34,14 @@ export function FreeGamesFieldset({
     const [newMatchCount, setNewMatchCount] = useState<number | string>("");
     const [newAwarded, setNewAwarded] = useState<number | string>("");
     const [wizardOpen, setWizardOpen] = useState(false);
+    const [demoAcknowledged, setDemoAcknowledged] = useState(false);
     const errors = issues.filter((issue) => issue.severity === "error");
     const warnings = issues.filter((issue) => issue.severity !== "error");
 
     const hasScatter = scatters.length > 0;
+    let addFreeGamesTitle: string | undefined;
+    if (!hasScatter) addFreeGamesTitle = "Add a scatter symbol in Symbols first.";
+    else if (!demoAcknowledged) addFreeGamesTitle = "Confirm that you understand this is a demo setup before adding.";
     const scatterHint = (
         <Alert color="yellow" variant="light" title="Add a scatter symbol first" mb="xs">
             <Text size="sm">
@@ -74,11 +78,18 @@ export function FreeGamesFieldset({
                 ) : (
                     scatterHint
                 )}
+                <Checkbox
+                    label="I understand this is a demo starting point, not a balanced production game. I will retune the paytable or reels before production."
+                    checked={demoAcknowledged}
+                    onChange={(event) => setDemoAcknowledged(event.currentTarget.checked)}
+                    data-pokie-demo-acknowledgement="free-games"
+                    mb="xs"
+                />
                 <Button
                     variant="default"
                     size="xs"
-                    disabled={!hasScatter}
-                    title={hasScatter ? undefined : "Add a scatter symbol in Symbols first."}
+                    disabled={!hasScatter || !demoAcknowledged}
+                    title={addFreeGamesTitle}
                     onClick={() => mutate((b) => addFreeGames(b))}
                 >
                     Add free games

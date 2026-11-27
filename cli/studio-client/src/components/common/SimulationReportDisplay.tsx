@@ -40,7 +40,7 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                             <Table.Td>{view.volatility === undefined ? "—" : view.volatility.toFixed(2)}</Table.Td>
                         </Table.Tr>
                         <Table.Tr>
-                            <Table.Th scope="row">Largest observed win (× bet){scopeSuffix}</Table.Th>
+                            <Table.Th scope="row">Largest observed whole-round win (× bet){scopeSuffix}</Table.Th>
                             <Table.Td>{view.maxWin.toFixed(2)}</Table.Td>
                         </Table.Tr>
                     </Table.Tbody>
@@ -48,7 +48,7 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                 <Table withRowBorders={false} aria-label="Additional result metrics" className="studio-simulation-facts">
                     <Table.Tbody>
                         <Table.Tr>
-                            <Table.Th>Largest observed win frequency</Table.Th>
+                            <Table.Th>Largest observed whole-round win frequency</Table.Th>
                             <Table.Td>{view.maxWinFrequency === undefined ? "—" : `${(view.maxWinFrequency * 100).toFixed(4)}%`}</Table.Td>
                         </Table.Tr>
                         <Table.Tr>
@@ -155,7 +155,7 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                                         <Table.Th>RTP</Table.Th>
                                         <Table.Th>Contribution</Table.Th>
                                         <Table.Th>Hit freq.</Table.Th>
-                                        <Table.Th>Largest observed win (× bet)</Table.Th>
+                                        <Table.Th>Largest observed whole-round win (× bet)</Table.Th>
                                     </Table.Tr>
                                 </Table.Thead>
                                 <Table.Tbody>

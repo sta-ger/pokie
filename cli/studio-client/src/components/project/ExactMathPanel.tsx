@@ -12,6 +12,7 @@ import {
     estimateOutcomeLibraryGeneration,
     getExactMath,
     getOutcomeLibraryGenerationJob,
+    listOutcomeLibraryGenerationJobs,
     OutcomeLibraryGenerationStartError,
     startOutcomeLibraryGeneration,
 } from "../../api/apiClient";
@@ -88,6 +89,7 @@ export function ExactMathPanel({
     projectRoot,
     sourceRevision,
     refreshKey,
+    autoRefreshStale,
     featureCheck,
     autoCompute,
     onGenerated,
@@ -97,6 +99,8 @@ export function ExactMathPanel({
     projectRoot: string;
     sourceRevision?: string;
     refreshKey?: number;
+    /** A new token means "the saved design just changed; rebuild a stale table once instead of leaving old numbers current". */
+    autoRefreshStale?: number;
     featureCheck?: AdvancedModelValidationReport;
     autoCompute?: boolean;
     onGenerated?: () => void;
@@ -115,6 +119,10 @@ export function ExactMathPanel({
     const loadGeneration = useRef(0);
     const pollGeneration = useRef(0);
     const autoComputeStarted = useRef(false);
+    // The generation this panel last started. A Save/Apply can re-read the stale table while that job
+    // is still running; the next start must cancel and drain it first, or the server rejects the new
+    // request with "job already owns this resource".
+    const activeJobId = useRef<string | undefined>(undefined);
 
     const load = (): void => {
         const generation = ++loadGeneration.current;
@@ -171,6 +179,7 @@ export function ExactMathPanel({
             if (generation !== pollGeneration.current) return;
             setJob(next);
             if (!isTerminal(next)) continue;
+            activeJobId.current = undefined;
             setStarting(false);
             if (next.status === "completed") {
                 setNotice(
@@ -191,18 +200,43 @@ export function ExactMathPanel({
         }
     };
 
+    const waitForGenerationToStop = async (id: string): Promise<void> => {
+        for (let attempt = 0; attempt < 600; attempt++) {
+            const next = await getOutcomeLibraryGenerationJob(fetchImpl, id).catch(() => undefined);
+            if (next === undefined || isTerminal(next)) return;
+            await new Promise<void>((resolve) => {
+                setTimeout(resolve, 100);
+            });
+        }
+    };
+
+    const cancelTrackedJob = async (): Promise<void> => {
+        const id = activeJobId.current;
+        if (id === undefined) return;
+        activeJobId.current = undefined;
+        try {
+            const cancelled = await cancelOutcomeLibraryGeneration(fetchImpl, id);
+            if (!isTerminal(cancelled)) await waitForGenerationToStop(id);
+        } catch {
+            // The job may already have reached a terminal state and released the resource. A new
+            // preflight/start below will surface a real conflict if the resource is still owned.
+        }
+    };
+
     const start = (): void => {
         setStarting(true);
         setError(undefined);
         setNotice(undefined);
-        // Ask the cheap preflight first. It tells us whether this design can fit an exact enumeration and
-        // whether the compact exact model supports it at all, so a doomed large/stacks job is never queued.
-        estimateOutcomeLibraryGeneration(fetchImpl, {generation: "exact"})
-            .then(async (estimate) => {
+        (async () => {
+            await cancelTrackedJob();
+            const startGeneration = async (): Promise<StudioOutcomeLibraryGenerateJobView | undefined> => {
+                // Ask the cheap preflight first. It tells us whether this design can fit an exact enumeration and
+                // whether the compact exact model supports it at all, so a doomed large/stacks job is never queued.
+                const estimate = await estimateOutcomeLibraryGeneration(fetchImpl, {generation: "exact"});
                 if (estimate.status !== "ok") {
                     setStarting(false);
                     setError(estimate.error);
-                    return;
+                    return undefined;
                 }
                 if (estimate.requiresBounded) {
                     setStarting(false);
@@ -215,28 +249,53 @@ export function ExactMathPanel({
                             estimate.maxOutcomeSpaceSize,
                         )}. Use Simulation, or generate a sampled outcome table in Build/Export.`,
                     );
-                    return;
+                    return undefined;
                 }
-                const started = await startOutcomeLibraryGeneration(fetchImpl, {
+                return startOutcomeLibraryGeneration(fetchImpl, {
                     generation: "exact",
                     preflightToken: estimate.preflightToken,
                 });
-                setJob(started);
-                await poll(started.id);
-            })
-            .catch((failure: unknown) => {
-                setStarting(false);
-                if (
-                    failure instanceof OutcomeLibraryGenerationStartError &&
-                    failure.outcomeStatus === "requires-bounded"
-                ) {
-                    setError(
-                        "This game's outcome space is too large for one-click exact enumeration. Use Build/Export → Outcome tables to generate a sampled outcome table, or raise the exact cap explicitly.",
-                    );
-                } else {
-                    setError(errorMessage(failure));
+            };
+            let started: StudioOutcomeLibraryGenerateJobView | undefined;
+            try {
+                started = await startGeneration();
+            } catch (failure) {
+                // A reload or a rapid Save can leave a previous generation owning the destination after
+                // this panel lost its job id. Wait for that job to release the resource, then retry the
+                // preflight/start once. Never cancel someone else's explicit generation silently.
+                if (!(failure instanceof OutcomeLibraryGenerationStartError) || failure.outcomeStatus !== "conflict") {
+                    throw failure;
                 }
-            });
+                const active = (await listOutcomeLibraryGenerationJobs(fetchImpl)).filter((candidate) => !isTerminal(candidate));
+                if (active.length > 0) {
+                    setNotice("Waiting for the active exact-math generation to finish before rebuilding this table…");
+                    await Promise.all(active.map((candidate) => waitForGenerationToStop(candidate.id)));
+                } else {
+                    // Terminal status and destination-owner release are adjacent but not atomic.
+                    await new Promise<void>((resolve) => {
+                        setTimeout(resolve, 250);
+                    });
+                }
+                started = await startGeneration();
+            }
+            if (started === undefined) return;
+            setNotice(undefined);
+            activeJobId.current = started.id;
+            setJob(started);
+            await poll(started.id);
+        })().catch((failure: unknown) => {
+            setStarting(false);
+            if (
+                failure instanceof OutcomeLibraryGenerationStartError &&
+                failure.outcomeStatus === "requires-bounded"
+            ) {
+                setError(
+                    "This game's outcome space is too large for one-click exact enumeration. Use Build/Export → Outcome tables to generate a sampled outcome table, or raise the exact cap explicitly.",
+                );
+            } else {
+                setError(errorMessage(failure));
+            }
+        });
     };
 
     useEffect(() => {
@@ -250,12 +309,26 @@ export function ExactMathPanel({
 
     const cancel = (): void => {
         if (job === undefined) return;
+        activeJobId.current = undefined;
         cancelOutcomeLibraryGeneration(fetchImpl, job.id)
             .then(setJob)
             .catch((failure: unknown) => setError(errorMessage(failure)));
     };
 
     const active = job !== undefined && !isTerminal(job) && job.status !== "recovery-required";
+
+    // A Save or reviewed Apply changed the saved design. Re-read the stale table, then immediately
+    // rebuild it once for this token, so the author does not have to hunt for "Recompute" after every
+    // edit. A token, not a boolean, keeps this one-shot per save rather than a generation loop.
+    const autoRefreshStartedFor = useRef<number | undefined>(undefined);
+    useEffect(() => {
+        if (autoRefreshStale === undefined || view?.status !== "stale" || starting || active) return;
+        if (autoRefreshStartedFor.current === autoRefreshStale) return;
+        autoRefreshStartedFor.current = autoRefreshStale;
+        start();
+        // start is intentionally not a dependency; the token guard makes this one-shot per apply.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoRefreshStale, view?.status, starting, active]);
 
     useEffect(() => {
         const status: ProjectMathStatus = starting || active
@@ -321,12 +394,17 @@ export function ExactMathPanel({
                 ? (analysis.maxWin * (1 + freeGamesTotal.maxFreeGames)) / view.stake
                 : undefined;
         let wholeRoundMaxLabel: string | undefined;
+        let wholeRoundMaxCardLabel: string | undefined;
         let wholeRoundMaxValue: string | undefined;
         if (freeGamesTotal !== undefined) {
             wholeRoundMaxLabel =
                 freeGamesTotal.maxFreeGames === undefined
                     ? "Max whole-round win (no cap)"
                     : "Max whole-round win (upper bound, capped)";
+            wholeRoundMaxCardLabel =
+                freeGamesTotal.maxFreeGames === undefined
+                    ? "Whole-round max (no cap)"
+                    : "Whole-round max (capped)";
             if (freeGamesTotal.maxFreeGames === undefined) wholeRoundMaxValue = "Unbounded";
             else if (wholeRoundMaxUpperBound === undefined) wholeRoundMaxValue = "Unavailable";
             else wholeRoundMaxValue = `${formatAnalysisNumber(wholeRoundMaxUpperBound, 4)}× bet`;
@@ -390,8 +468,10 @@ export function ExactMathPanel({
                     maxWin={analysis.maxWin / view.stake}
                     volatilityLabel={volatilityLabel}
                     maxWinLabel={maxWinLabel}
+                    wholeRoundMaxLabel={wholeRoundMaxCardLabel}
+                    wholeRoundMaxValue={wholeRoundMaxValue}
                     outcomes={view.outcomeCount}
-                    uncapped={hasFreeGamesCaveat}
+                    uncapped={freeGamesTotal?.maxFreeGames === undefined}
                     onOpenPlay={onOpenPlay}
                 />
                 {rtpWarning !== undefined && (
@@ -789,13 +869,13 @@ export function ExactMathPanel({
     );
 }
 
-function KeyStat({label, value, title}: {label: string; value: string; title?: string}) {
+function KeyStat({label, value, title, tone}: {label: string; value: string; title?: string; tone?: "warning"}) {
     return (
         <div title={title}>
             <Text size="sm" c="dimmed">
                 {label}
             </Text>
-            <Text size="md" fw={700}>
+            <Text size="md" fw={700} c={tone === "warning" ? "yellow.9" : undefined}>
                 {value}
             </Text>
         </div>
@@ -811,6 +891,8 @@ function KeyNumbersCard({
     maxWin,
     volatilityLabel,
     maxWinLabel,
+    wholeRoundMaxLabel,
+    wholeRoundMaxValue,
     outcomes,
     uncapped,
     onOpenPlay,
@@ -823,6 +905,8 @@ function KeyNumbersCard({
     maxWin: number;
     volatilityLabel: string;
     maxWinLabel: string;
+    wholeRoundMaxLabel?: string;
+    wholeRoundMaxValue?: string;
     outcomes: number;
     uncapped: boolean;
     onOpenPlay?: () => void;
@@ -864,7 +948,26 @@ function KeyNumbersCard({
                             value={formatAnalysisNumber(maxWin, 4)}
                             title="Largest paid-spin payout in bet units. Feature wins that settle later are not included here."
                         />
+                        {wholeRoundMaxLabel !== undefined && wholeRoundMaxValue !== undefined && (
+                            <KeyStat
+                                label={wholeRoundMaxLabel}
+                                value={wholeRoundMaxValue}
+                                tone={uncapped ? "warning" : undefined}
+                                title={
+                                    uncapped
+                                        ? "There is no hard limit on free games, so a single round has no theoretical maximum. The paid-spin maximum above is not the whole-round maximum."
+                                        : "The paid-spin maximum plus the capped free-games allowance, each at the paid-spin maximum."
+                                }
+                            />
+                        )}
                     </Group>
+                    {uncapped && (
+                        <Text size="sm" mt="sm" data-pokie-producer-uncapped-note="true">
+                            The average RTP is exact, but this game has no hard cap on free games: one round can run
+                            indefinitely. The paid-spin maximum above is not the game&apos;s whole-round maximum; use
+                            Simulation to see whole-round hit frequency, volatility and the largest observed win.
+                        </Text>
+                    )}
                     <Group gap="xs" mt="sm">
                         <Badge color="gray" variant="light" tt="none">
                             Exact · {outcomes.toLocaleString("en-US")} outcomes

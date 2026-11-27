@@ -1,5 +1,5 @@
 import {formatAnalysisNumber} from "../../../../src/internal/formatAnalysisNumber";
-import type {GameModelPaytableRow, GameModelProjection, StudioOptimizationRequest} from "../api/types";
+import type {GameModelPaytableRow, GameModelProjection, StudioExactMathView, StudioOptimizationRequest} from "../api/types";
 
 export type OptimizationTarget = StudioOptimizationRequest["targets"][number];
 export type OptimizationPolicy = StudioOptimizationRequest["policy"];
@@ -238,8 +238,31 @@ function defaultMode(model: GameModelProjection | undefined): string {
     return "base";
 }
 
-export function buildDefaultOptimizationRequest(model?: GameModelProjection): StudioOptimizationRequest {
-    const first = paytableRows(model)[0];
+function defaultPaytableRow(model?: GameModelProjection, exactMath?: StudioExactMathView): GameModelPaytableRow | undefined {
+    const rows = paytableRows(model);
+    // Start from the exact win event that contributes the most RTP when that evidence is available.
+    // Tuning the first authored row is arbitrary and often changes a tiny low-pay tier; tuning the
+    // biggest contributor is the change most likely to move total RTP toward the target.
+    if (exactMath?.status === "ok") {
+        const events = [...exactMath.events.entries].sort((left, right) => right.rtpContribution - left.rtpContribution);
+        for (const event of events) {
+            if (event.symbolId === undefined || event.matchCount === undefined) continue;
+            const row = rows.find((candidate) => candidate.symbolId === event.symbolId && candidate.matchCount === event.matchCount);
+            if (row !== undefined) return row;
+        }
+    }
+    return [...rows].sort((left, right) =>
+        right.payout - left.payout
+        || right.matchCount - left.matchCount
+        || left.symbolId.localeCompare(right.symbolId)
+    )[0];
+}
+
+export function buildDefaultOptimizationRequest(
+    model?: GameModelProjection,
+    exactMath?: StudioExactMathView,
+): StudioOptimizationRequest {
+    const first = defaultPaytableRow(model, exactMath);
     const path = first === undefined ? "/paytable/A/3" : paytablePath(first);
     const values = suggestedPaytableValues(first?.payout);
     return {

@@ -354,7 +354,7 @@ describe("SimulationReportBuilder", () => {
 
             const report = builder.build({gameInfo, requestedRounds: 1, seed: "demo", statistics: accumulator.getStatistics(), durationMs: 10});
 
-            expect(report.warnings!).toContain("Largest observed win is 0 — no round produced a payout.");
+            expect(report.warnings!).toContain("No paid round produced a payout (largest observed whole-round win is 0).");
         });
 
         test("warns when total bet is 0", () => {

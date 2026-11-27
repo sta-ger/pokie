@@ -71,7 +71,7 @@ function SimulationComparisonSummary({current, comparison}: {current: Simulation
         ...(current.volatility === undefined || comparison.volatility === undefined ? [] : [
             {label: `Volatility (std. deviation, bet units)${scopeSuffix}`, current: current.volatility, comparison: comparison.volatility, digits: 2, suffix: "", unit: "", deltaDigits: 2},
         ]),
-        {label: `Largest observed win (× bet)${scopeSuffix}`, current: current.maxWin, comparison: comparison.maxWin, digits: 2, suffix: "×", unit: "×", deltaDigits: 2},
+        {label: `Largest observed whole-round win (× bet)${scopeSuffix}`, current: current.maxWin, comparison: comparison.maxWin, digits: 2, suffix: "×", unit: "×", deltaDigits: 2},
         {label: "Paid rounds", current: current.rounds, comparison: comparison.rounds, digits: 0, suffix: "", unit: " paid rounds", deltaDigits: 0},
     ];
     return (
@@ -881,8 +881,11 @@ export function SimulationTab({
                     )}
                     {outcome !== undefined && (
                         <div>
-                            {(outcome.kind !== "completed" || (!fullReportOpened && !comparisonVisible)) && <SimulationSummaryCard outcome={outcome} />}
+                            {/* Put the exact reference before the sampled headline when one exists. A
+                                producer should see the proven number before the estimate, not have to
+                                scroll past a prominent point estimate to discover it is noisy. */}
                             {outcome.kind === "completed" && exactReference !== undefined && <ExactReferencePanel reference={exactReference} />}
+                            {(outcome.kind !== "completed" || (!fullReportOpened && !comparisonVisible)) && <SimulationSummaryCard outcome={outcome} />}
                             {outcome.kind === "completed" && !historicalResult && (exactMathView?.status === "missing" || exactMathView?.status === "stale") && (
                                 <Text size="xs" c="dimmed" mt="sm">
                                     {exactMathView.status === "stale" ? "The exact library is stale for this saved design." : "No exact library exists for this saved design yet."}{" "}

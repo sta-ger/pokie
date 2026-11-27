@@ -21,8 +21,8 @@ describe("validation scopes", () => {
             "idle",
         );
         expect(badges.find((badge) => badge.scope === "structure")?.label).toBe("Structure: valid");
-        expect(badges.find((badge) => badge.scope === "math")?.label).toBe("Math: expected-value warning");
-        expect(badges.find((badge) => badge.scope === "math")?.detail).toMatch(/not proven to terminate/i);
+        expect(badges.find((badge) => badge.scope === "math")?.label).toBe("Math: uncapped free games");
+        expect(badges.find((badge) => badge.scope === "math")?.detail).toMatch(/may never end/i);
     });
 
     it("does not call a structure-valid project mathematically certified", () => {
@@ -70,7 +70,7 @@ describe("validation scopes", () => {
                 advanced: {structuralValid: true, checks: []},
             },
         } as never, "stale");
-        expect(badges.find((badge) => badge.scope === "math")?.label).toBe("Math: exact table stale");
+        expect(badges.find((badge) => badge.scope === "math")?.label).toBe("Math: numbers out of date");
         expect(badges.find((badge) => badge.scope === "math")?.detail).toMatch(/Recompute/i);
     });
 });

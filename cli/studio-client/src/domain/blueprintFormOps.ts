@@ -523,7 +523,14 @@ export function readFreeGames(blueprint: Record<string, unknown>): {scatterSymbo
 // four or five scatters award nothing, which the fieldset explains beside the table.
 export function addFreeGames(blueprint: Record<string, unknown>): void {
     const mechanics = asMechanics(blueprint.mechanics);
-    mechanics.freeGames = {scatterSymbol: asStringArray(blueprint.scatters)[0] ?? "", awardsByCount: {3: 10, 4: 15, 5: 20}};
+    // Safe demo defaults: a 50-free-game cap keeps every round finite, and the smaller 7/10/13
+    // award ladder avoids starting a fresh starter above 100% total RTP on the demo reels. The
+    // exact preview and the Mechanics fields remain the authority for tuning.
+    mechanics.freeGames = {
+        scatterSymbol: asStringArray(blueprint.scatters)[0] ?? "",
+        awardsByCount: {3: 7, 4: 10, 5: 13},
+        maxFreeGames: 50,
+    };
     blueprint.mechanics = mechanics;
 }
 

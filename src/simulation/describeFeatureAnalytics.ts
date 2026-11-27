@@ -10,8 +10,8 @@ export function describeFeatureAnalytics(a?: FeatureAnalytics): string[] {
         `Feature analytics: accepted-spin sampling; zero denominator yields 0. Model: ${a.envelope.modelId ?? "unavailable"}; schema ${a.envelope.schemaVersion}.`,
         `Paid entries: ${a.paidEntries}; all entries: ${a.logicalEntries}; completed paid rounds: ${a.logicalCompletions}; accepted spins: ${a.subrounds}; mathematical cascade steps: ${a.cascadeSteps}; carried-in spins: ${a.carriedSubrounds}.`,
         `Dead spins (zero-win spins): ${ratio(a.deadSpinRate)}.`,
-        `Exact maximum observed win (currency amount; not theoretical game maximum): ${a.maxWin}; occurrence / spins: ${ratio(a.maxWinRate)}; maximum payout share: ${ratio(a.maxWinContribution)}.`,
-        `Top 10 positive spin wins (descending, ties occupy slots): [${a.topWins.join(", ")}]; payout share: ${ratio(a.topWinContribution)}.`,
+        `Largest single-spin win observed (currency amount; not the whole-paid-round or theoretical maximum): ${a.maxWin}; occurrence / accepted spins: ${ratio(a.maxWinRate)}; maximum single-spin payout share: ${ratio(a.maxWinContribution)}.`,
+        `Top 10 positive single-spin wins (descending; ties occupy slots): [${a.topWins.join(", ")}]; single-spin payout share: ${ratio(a.topWinContribution)}.`,
     ];
     if (!a.envelope.lifecycle) lines.push("Feature status unavailable: entry/exit evidence absent; event presence is not duration.");
     else for (const name of FEATURE_NAMES) {

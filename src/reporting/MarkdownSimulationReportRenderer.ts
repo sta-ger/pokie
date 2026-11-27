@@ -37,7 +37,7 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
             `- **RTP**: ${(report.rtp * 100).toFixed(2)}%${report.rtpConfidenceInterval95 === undefined ? "" : ` (95% CI ${formatPercentInterval(report.rtpConfidenceInterval95)})`}. Empirical estimate, not a proof of the configured RTP.`,
             `- **Hit frequency**: ${(report.hitFrequency * 100).toFixed(2)}% of completed paid rounds produced at least one win.`,
             ...(report.volatility !== undefined ? [`- **Volatility (std. deviation, bet units)**: ${report.volatility.toFixed(2)} (standard deviation of payout per paid round, in bet units).`] : []),
-            `- **Largest observed win**: ${report.maxWin.toFixed(2)}× bet${report.maxWinFrequency === undefined ? "" : `; observed in ${(report.maxWinFrequency * 100).toFixed(4)}% of paid rounds`}. This is a sample maximum, not the theoretical game maximum.`,
+            `- **Largest observed whole-round win**: ${report.maxWin.toFixed(2)}× bet${report.maxWinFrequency === undefined ? "" : `; observed in ${(report.maxWinFrequency * 100).toFixed(4)}% of paid rounds`}. This is a sample maximum for a completed paid round, not the theoretical game maximum. The separate single-spin maximum in the technical appendix is a smaller unit.`,
             ...(report.averagePayout !== undefined ? [`- **Average payout**: ${report.averagePayout.toFixed(2)}× bet${report.averagePayoutConfidenceInterval95 === undefined ? "" : ` (95% CI ${formatAmountInterval(report.averagePayoutConfidenceInterval95)})`}.`] : []),
             ...(histogramRows.length > 0
                 ? [`- **Payout profile**: ${histogramRows.map((row) => `${(row.share * 100).toFixed(2)}% ${row.label}`).join("; ")}.`]
@@ -116,7 +116,7 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
                 "",
                 "### Breakdown",
                 "",
-                "| Category | Samples | Total bet | Total win | RTP | Contribution | Hit frequency | Largest observed win |",
+                "| Category | Samples | Total bet | Total win | RTP | Contribution | Hit frequency | Largest observed win in category |",
                 "| --- | --- | --- | --- | --- | --- | --- | --- |",
             );
             Object.entries(report.breakdown.components).forEach(([category, component]) => {
@@ -265,9 +265,9 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
             this.comparisonRow("Stake (avg bet)", modeEntries, (report) => (report.averageBet ?? 0).toFixed(2)),
             this.comparisonRow("Hit / feature rate", modeEntries, (report) => `${(report.hitFrequency * 100).toFixed(2)}%`),
             this.comparisonRow("Average payout", modeEntries, (report) => (report.averagePayout ?? 0).toFixed(2)),
-            this.comparisonRow("Largest observed win", modeEntries, (report) => report.maxWin.toFixed(2)),
+            this.comparisonRow("Largest observed whole-round win", modeEntries, (report) => report.maxWin.toFixed(2)),
             this.comparisonRow("Volatility (std. deviation, bet units)", modeEntries, (report) => (report.volatility ?? 0).toFixed(2)),
-            this.comparisonRow("Largest observed win frequency", modeEntries, (report) => `${((report.maxWinFrequency ?? 0) * 100).toFixed(4)}%`),
+            this.comparisonRow("Largest observed whole-round win frequency", modeEntries, (report) => `${((report.maxWinFrequency ?? 0) * 100).toFixed(4)}%`),
         );
 
         modeEntries.forEach(([modeId, report]) => {

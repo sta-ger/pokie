@@ -1,4 +1,4 @@
-import {Alert, Button, SimpleGrid, Text, Title} from "@mantine/core";
+import {Alert, Button, Progress, SimpleGrid, Text, Title} from "@mantine/core";
 import {useEffect, useRef, useState} from "react";
 import {formatAnalysisNumber} from "../../../../../src/internal/formatAnalysisNumber";
 import {describeRtpSanityWarning} from "../../../../../src/reporting/describeRtpSanityWarning";
@@ -48,6 +48,8 @@ export function BlueprintMathPreviewPanel({
 }) {
     const fetchImpl = useStudioApi();
     const [state, setState] = useState<PreviewState>({status: "idle"});
+    const [progress, setProgress] = useState<{processed: bigint; total: bigint}>();
+    const [elapsedSeconds, setElapsedSeconds] = useState(0);
     // Save itself does not change the authored content, so a save must not erase an exact result the
     // author just computed. Only an actual value change resets it (and aborts any request in flight).
     const blueprintContent = JSON.stringify(blueprint);
@@ -92,6 +94,8 @@ export function BlueprintMathPreviewPanel({
             retryTimer.current = undefined;
         }
         setState({status: "idle"});
+        setProgress(undefined);
+        setElapsedSeconds(0);
         return () => {
             requests.generation++;
             requests.active?.abort();
@@ -106,6 +110,21 @@ export function BlueprintMathPreviewPanel({
         onStatusChange?.(state.status);
     }, [onStatusChange, state.status]);
 
+    // Exact enumeration is opaque server work. The progress endpoint is advisory; the elapsed clock
+    // is the honest fallback signal when the server cannot report a processed/total count yet.
+    useEffect(() => {
+        if (state.status !== "loading") {
+            setElapsedSeconds(0);
+            return undefined;
+        }
+        const startedAt = Date.now();
+        setElapsedSeconds(0);
+        const timer = window.setInterval(() => {
+            setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+        }, 1000);
+        return () => window.clearInterval(timer);
+    }, [state.status]);
+
     function calculate(): void {
         if (disabledReason !== undefined) return;
         if (retryTimer.current !== undefined) {
@@ -118,7 +137,10 @@ export function BlueprintMathPreviewPanel({
         const generation = ++lifecycle.current.generation;
         const isCurrent = (): boolean => lifecycle.current.generation === generation && !controller.signal.aborted;
         setState({status: "loading"});
-        previewBlueprintMath(fetchImpl, blueprint, controller.signal)
+        setProgress(undefined);
+        previewBlueprintMath(fetchImpl, blueprint, controller.signal, (processed, total) => {
+            if (isCurrent()) setProgress({processed, total});
+        })
             .then((view) => {
                 if (!isCurrent()) return;
                 if (view.status === "ok") {
@@ -140,6 +162,9 @@ export function BlueprintMathPreviewPanel({
                         }
                     }, 1_000);
                 }
+            })
+            .finally(() => {
+                if (isCurrent()) setProgress(undefined);
             });
     }
 
@@ -166,7 +191,30 @@ export function BlueprintMathPreviewPanel({
                     )}
                 </Alert>
             )}
-            {state.status === "loading" && <LoadingState label={mode === "saved" ? "Enumerating the saved design…" : "Enumerating the current draft…"} />}
+            {state.status === "loading" && (
+                <>
+                    <LoadingState
+                        label={`${mode === "saved" ? "Enumerating the saved design" : "Enumerating the current draft"}… ${elapsedSeconds}s`}
+                    />
+                    {progress !== undefined && progress.total > 0n ? (
+                        <div>
+                            <Progress
+                                value={Number((progress.processed * 10_000n) / progress.total) / 100}
+                                aria-label="Exact RTP progress"
+                            />
+                            <Text size="xs" c="dimmed" mt={4}>
+                                {progress.processed === progress.total
+                                    ? "All raw combinations enumerated; finalizing the exact analysis…"
+                                    : `${progress.processed.toLocaleString("en-US")} / ${progress.total.toLocaleString("en-US")} raw combinations`}
+                            </Text>
+                        </div>
+                    ) : (
+                        <Text size="xs" c="dimmed">
+                            Preparing the exact enumeration…
+                        </Text>
+                    )}
+                </>
+            )}
             {state.status === "unavailable" && (
                 <Alert color="yellow" title="Exact math preview isn't available" mt="sm">
                     {state.message}

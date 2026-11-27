@@ -182,7 +182,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         }
 
         if (core.maxWin === 0) {
-            warnings.push("Largest observed win is 0 — no round produced a payout.");
+            warnings.push("No paid round produced a payout (largest observed whole-round win is 0).");
         }
 
         if (core.totalBet === 0) {

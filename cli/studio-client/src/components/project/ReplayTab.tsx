@@ -1,7 +1,7 @@
 import {Alert, Anchor, Badge, Button, Checkbox, Group, List, NumberInput, Progress, SegmentedControl, Select, Table, Text, Textarea, TextInput} from "@mantine/core";
 import {useForm} from "@mantine/form";
 import {useMediaQuery} from "@mantine/hooks";
-import {Fragment, useEffect, useRef, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {buildReplayDownloadUrl, getExactMath, getGameModel} from "../../api/apiClient";
 import type {OutcomeSourceReplayDescriptorView, RoundRecord, StudioRuntimeSessionView, StudioSimulationReportListEntry} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -137,6 +137,16 @@ const CAPABILITY_STATUS_COLOR: Record<ReplayCapabilityStatus, string> = {
     mismatch: "red",
 };
 const REPLAY_LIST_PAGE_SIZE = 50;
+
+// A recorded entry is a historical snapshot. Its own logical round is often still "pending" even
+// though the completed round is shown right beside it, so the raw schema word reads like a failure.
+// Label the scope explicitly and use player-facing wording for the state at that screen.
+function describeStatusAtScreen(status: string | undefined): string {
+    if (status === "pending") return "In progress at this screen";
+    if (status === "completed") return "Completed";
+    if (status === "exhausted") return "Stopped at its bound";
+    return status ?? "Unknown";
+}
 
 function downloadJsonBlob(filename: string, data: unknown): void {
     const blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
@@ -773,7 +783,10 @@ export function ReplayTab({
                                         : "No spins recorded for the selected session."} />
                                 ) : (
                                     <>
-                                        <Text size="xs" c="dimmed" mb="xs">Spins from the same paid round are grouped under one header.</Text>
+                                        <Text size="xs" c="dimmed" mb="xs">
+                                            Each paid round is its own bordered group. A multi-spin round also shows a
+                                            header with its spin count and round actions.
+                                        </Text>
                                         <Group gap="md" mb="sm">
                                             <Checkbox
                                                 size="xs"
@@ -788,100 +801,137 @@ export function ReplayTab({
                                                 onChange={(event) => setShowFreeGameSteps(event.currentTarget.checked)}
                                             />
                                         </Group>
-                                        <List listStyleType="none" spacing={4}>
-                                            {filteredSpins.map((entry) => {
+                                        {(() => {
+                                            // Group by the round's own id, preserving the newest-first order. Two
+                                            // rounds from different sessions can share nothing, so the session id
+                                            // is part of the grouping key. Entries without a round id stay on their
+                                            // own, which keeps the visual boundary truthful instead of merging rows
+                                            // that merely happen to sit next to each other.
+                                            const spinGroups: Array<{
+                                                key: string;
+                                                roundId?: string;
+                                                entries: StudioRuntimeSessionView[];
+                                            }> = [];
+                                            const groupIndex = new Map<string, number>();
+                                            for (const entry of filteredSpins) {
                                                 const roundId = entry.logicalRound?.roundId;
+                                                const key = roundId === undefined
+                                                    ? `${entry.sessionId}:single:${entry.studioRound ?? entry.studioRequestId ?? "unknown"}`
+                                                    : `${entry.sessionId}:${roundId}`;
+                                                const existing = groupIndex.get(key);
+                                                if (existing === undefined) {
+                                                    groupIndex.set(key, spinGroups.length);
+                                                    spinGroups.push({key, roundId, entries: [entry]});
+                                                } else {
+                                                    spinGroups[existing]!.entries.push(entry);
+                                                }
+                                            }
+                                            return spinGroups.map((group) => {
+                                                const {roundId} = group;
                                                 // The list is newest-first. Work from the whole group rather than the
                                                 // visible row: the paid trigger is its oldest stake-bearing screen, and
                                                 // the last recorded screen carries the completed-round cursor/status.
-                                                const roundEntries = roundId === undefined
-                                                    ? [entry]
-                                                    : filteredSpins.filter((candidate) => candidate.logicalRound?.roundId === roundId);
-                                                const groupLastEntry = roundEntries[0] ?? entry;
+                                                const roundEntries = group.entries;
+                                                const groupLastEntry = roundEntries[0]!;
                                                 const paidScreens = roundEntries.filter((candidate) => recordedSpinStake(candidate) > 0);
                                                 const paidEntry = paidScreens.length === 0 ? undefined : paidScreens[paidScreens.length - 1];
-                                                const isFreeGameStep = recordedSpinStake(entry) === 0;
-                                                if (!showFreeGameSteps && isFreeGameStep) return null;
-                                                const firstVisibleEntry = showFreeGameSteps ? roundEntries[0] : paidScreens[0];
                                                 const paidRoundSpinCount = groupLastEntry.logicalRound?.mathematicalCursor ?? paidEntry?.logicalRound?.mathematicalCursor;
-                                                // A one-spin round needs no header repeating "Paid round · 1 spin" around
-                                                // every row. Keep the header only when it adds information (a feature
-                                                // round with several screens) or holds the round-level actions.
-                                                const showHeader = entry === firstVisibleEntry && (paidRoundSpinCount ?? 0) > 1;
-                                                // `studioRound` (this session's own stable spin index) keeps the key stable
-                                                // across refreshes. A duplicate (sessionId, studioRequestId) pair is
-                                                // deduplicated by StudioRoundRecorder.record before it reaches this list.
+                                                const multiSpin = (paidRoundSpinCount ?? 0) > 1;
+                                                // Hiding free-game steps must not hide the whole group: the paid trigger
+                                                // remains, and the header still tells the reader how many screens the full
+                                                // round contains.
+                                                const visibleEntries = showFreeGameSteps
+                                                    ? roundEntries
+                                                    : roundEntries.filter((candidate) => recordedSpinStake(candidate) > 0);
+                                                if (visibleEntries.length === 0) return null;
                                                 return (
-                                                    <Fragment key={`${entry.sessionId}-${entry.studioRound ?? entry.studioRequestId ?? "unknown"}`}>
-                                                        {showHeader && (() => {
-                                                            return (
-                                                                <List.Item data-pokie-paid-round-id={roundId} data-pokie-paid-round-spins={paidRoundSpinCount}>
-                                                                    <Group gap="xs" align="center">
-                                                                        <Text size="xs" c="dimmed" fw={600}>
-                                                                            Paid round · {paidRoundSpinCount === undefined ? "?" : formatCount(paidRoundSpinCount, "spin")}
-                                                                        </Text>
-                                                                        {paidEntry !== undefined && (
-                                                                            <Button
-                                                                                size="xs"
-                                                                                variant="default"
-                                                                                title="Inspect the paid trigger screen and this paid round's total stake and payout."
-                                                                                onClick={() => inspectSpin(paidEntry)}
-                                                                            >
-                                                                                Inspect paid round
-                                                                            </Button>
-                                                                        )}
-                                                                        {groupLastEntry.logicalRound?.status === "completed" && (groupLastEntry.logicalRound?.cursor ?? 0) > 1 && groupLastEntry.debug?.recording !== undefined && (
-                                                                            <Button
-                                                                                size="xs"
-                                                                                variant="subtle"
-                                                                                title="Replay the complete recorded paid round. The loaded screen may be a free-game step with stake 0."
-                                                                                onClick={() => openRecordedRound(groupLastEntry, paidEntry)}
-                                                                            >
-                                                                                Replay recorded round
-                                                                            </Button>
-                                                                        )}
-                                                                    </Group>
+                                                    <div
+                                                        key={group.key}
+                                                        data-pokie-paid-round-group={group.key}
+                                                        data-pokie-paid-round-group-kind={multiSpin ? "feature" : "single"}
+                                                        style={multiSpin ? {
+                                                            border: "1px solid var(--mantine-color-gray-3)",
+                                                            borderRadius: "var(--mantine-radius-sm)",
+                                                            background: "var(--mantine-color-gray-0)",
+                                                            padding: "var(--mantine-spacing-xs)",
+                                                            marginTop: "var(--mantine-spacing-xs)",
+                                                        } : {
+                                                            borderTop: "1px solid var(--mantine-color-gray-3)",
+                                                            paddingTop: "var(--mantine-spacing-xs)",
+                                                            marginTop: "var(--mantine-spacing-xs)",
+                                                        }}
+                                                    >
+                                                        {multiSpin && (
+                                                            <div data-pokie-paid-round-id={roundId} data-pokie-paid-round-spins={paidRoundSpinCount}>
+                                                                <Group gap="xs" align="center">
+                                                                    <Text size="xs" c="dimmed" fw={600}>
+                                                                        Paid round · {paidRoundSpinCount === undefined ? "?" : formatCount(paidRoundSpinCount, "spin")}
+                                                                    </Text>
                                                                     {paidEntry !== undefined && (
-                                                                        <Text size="xs" c="dimmed" mt={4}>
-                                                                            {describeSpinSession(paidEntry.sessionId)} · {paidEntry.studioRecordedAt ? new Date(paidEntry.studioRecordedAt).toLocaleString() : "time unavailable"}
-                                                                        </Text>
+                                                                        <Button
+                                                                            size="xs"
+                                                                            variant="default"
+                                                                            title="Inspect the paid trigger screen and this paid round's total stake and payout."
+                                                                            onClick={() => inspectSpin(paidEntry)}
+                                                                        >
+                                                                            Inspect paid round
+                                                                        </Button>
                                                                     )}
-                                                                    {(paidRoundSpinCount ?? 0) > 1 && (
-                                                                        <Text size="xs" c="dimmed" mt={4}>
-                                                                            This paid round contains free-game steps with stake 0. Use Inspect paid round for the round total, or Replay recorded round to reproduce it.
-                                                                        </Text>
+                                                                    {groupLastEntry.logicalRound?.status === "completed" && (groupLastEntry.logicalRound?.cursor ?? 0) > 1 && groupLastEntry.debug?.recording !== undefined && (
+                                                                        <Button
+                                                                            size="xs"
+                                                                            variant="subtle"
+                                                                            title="Replay the complete recorded paid round. The loaded screen may be a free-game step with stake 0."
+                                                                            onClick={() => openRecordedRound(groupLastEntry, paidEntry)}
+                                                                        >
+                                                                            Replay recorded round
+                                                                        </Button>
                                                                     )}
-                                                                </List.Item>
-                                                            );
-                                                        })()}
-                                                        <List.Item>
-                                                            <Anchor
-                                                                component="button"
-                                                                type="button"
-                                                                onClick={() => inspectSpin(entry)}
-                                                                aria-current={isSelectedSpin(entry) ? "true" : undefined}
-                                                                data-pokie-recorded-spin-round-id={roundId}
-                                                                data-pokie-recorded-spin-stake={recordedSpinStake(entry)}
-                                                                style={{
-                                                                    overflowWrap: "anywhere",
-                                                                    whiteSpace: "normal",
-                                                                    textAlign: "left",
-                                                                    fontWeight: isSelectedSpin(entry) ? 700 : undefined,
-                                                                }}
-                                                            >
-                                                                {describeSpinSession(entry.sessionId)} — Spin {entry.studioRound ?? "?"} — {describeStudioRoundOperation(entry.studioOperation ?? "spin")} —
-                                                            win {entry.win ?? 0} — {entry.studioRecordedAt ? new Date(entry.studioRecordedAt).toLocaleString() : "time unavailable"}
-                                                                {isSelectedSpin(entry) && (
-                                                                    <Badge size="xs" variant="light" ml={6}>
-                                                                    Selected
-                                                                    </Badge>
+                                                                </Group>
+                                                                {paidEntry !== undefined && (
+                                                                    <Text size="xs" c="dimmed" mt={4}>
+                                                                        {describeSpinSession(paidEntry.sessionId)} · {paidEntry.studioRecordedAt ? new Date(paidEntry.studioRecordedAt).toLocaleString() : "time unavailable"}
+                                                                    </Text>
                                                                 )}
-                                                            </Anchor>
-                                                        </List.Item>
-                                                    </Fragment>
+                                                                <Text size="xs" c="dimmed" mt={4}>
+                                                                    This paid round contains extra screens with stake 0, such as free-game steps or cascades. Use Inspect paid round for the round total, or Replay recorded round to reproduce it.
+                                                                </Text>
+                                                            </div>
+                                                        )}
+                                                        {visibleEntries.map((entry) => (
+                                                            // `studioRound` (this session's own stable spin index) keeps the
+                                                            // key stable across refreshes. A duplicate (sessionId,
+                                                            // studioRequestId) pair is deduplicated by StudioRoundRecorder.record
+                                                            // before it reaches this list.
+                                                            <div key={`${entry.sessionId}-${entry.studioRound ?? entry.studioRequestId ?? "unknown"}`} style={{marginTop: 4}}>
+                                                                <Anchor
+                                                                    component="button"
+                                                                    type="button"
+                                                                    onClick={() => inspectSpin(entry)}
+                                                                    aria-current={isSelectedSpin(entry) ? "true" : undefined}
+                                                                    data-pokie-recorded-spin-round-id={roundId}
+                                                                    data-pokie-recorded-spin-stake={recordedSpinStake(entry)}
+                                                                    style={{
+                                                                        overflowWrap: "anywhere",
+                                                                        whiteSpace: "normal",
+                                                                        textAlign: "left",
+                                                                        fontWeight: isSelectedSpin(entry) ? 700 : undefined,
+                                                                    }}
+                                                                >
+                                                                    {describeSpinSession(entry.sessionId)} — Spin {entry.studioRound ?? "?"} — {describeStudioRoundOperation(entry.studioOperation ?? "spin")} —
+                                                                win {entry.win ?? 0} — {entry.studioRecordedAt ? new Date(entry.studioRecordedAt).toLocaleString() : "time unavailable"}
+                                                                    {isSelectedSpin(entry) && (
+                                                                        <Badge size="xs" variant="light" ml={6}>
+                                                                        Selected
+                                                                        </Badge>
+                                                                    )}
+                                                                </Anchor>
+                                                            </div>
+                                                        ))}
+                                                    </div>
                                                 );
-                                            })}
-                                        </List>
+                                            });
+                                        })()}
                                     </>
                                 );
                             })()}
@@ -1083,7 +1133,7 @@ export function ReplayTab({
                                             <Table withRowBorders={false} mb="xs" aria-label="Paid-round context">
                                                 <Table.Tbody>
                                                     <Table.Tr><Table.Th>Round id</Table.Th><Table.Td style={{overflowWrap: "anywhere"}}>{selectedSpin.logicalRound.roundId}</Table.Td></Table.Tr>
-                                                    <Table.Tr><Table.Th>Status</Table.Th><Table.Td>{selectedSpin.logicalRound.status}</Table.Td></Table.Tr>
+                                                    <Table.Tr><Table.Th>Status at this screen</Table.Th><Table.Td>{describeStatusAtScreen(selectedSpin.logicalRound.status)}</Table.Td></Table.Tr>
                                                     <Table.Tr><Table.Th>Spins / screens at this step</Table.Th><Table.Td>{selectedSpin.logicalRound.mathematicalCursor} / {selectedSpin.logicalRound.cursor}</Table.Td></Table.Tr>
                                                     <Table.Tr><Table.Th>Total stake</Table.Th><Table.Td>{selectedSpin.logicalRound.totalStake}</Table.Td></Table.Tr>
                                                     <Table.Tr><Table.Th>Total payout</Table.Th><Table.Td>{selectedSpin.logicalRound.totalPayout}</Table.Td></Table.Tr>

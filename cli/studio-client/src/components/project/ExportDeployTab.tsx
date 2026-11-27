@@ -815,7 +815,7 @@ function TargetCard({
                         <fieldset disabled={artifactBuildRun.status === "running"} style={{border: 0, margin: 0, padding: 0}}>
                             <PathInput
                                 label={isFileArtifactTarget(card.artifactTarget) ? "Output file (optional)" : "Output directory (optional)"}
-                                description={`${isFileArtifactTarget(card.artifactTarget) ? "Use a new file path." : "Use a new or empty directory."} Existing files will not be overwritten. Choose with Browse or type a server-filesystem path. Leave blank to use the shown default.`}
+                                description={`${isFileArtifactTarget(card.artifactTarget) ? "Use a new file name." : "Use a new or empty folder."} Existing files will not be overwritten. Choose with Browse or type a path on this computer. Leave blank to use the shown default.`}
                                 kind={isFileArtifactTarget(card.artifactTarget) ? "file" : "directory"}
                                 pathPurpose="destination"
                                 filePickerMode={isFileArtifactTarget(card.artifactTarget) ? "save" : "open"}
@@ -847,7 +847,7 @@ function TargetCard({
                                 <Text size="sm" fw={600} c={artifactPreview.status === "ok" ? "teal" : "red"}>
                                     {artifactPreview.status === "ok" ? "Ready to build" : "Choose a different destination"}
                                 </Text>
-                                <Text className="studio-technical-text" size="sm">Resolved absolute path: {artifactPreview.result.destination}</Text>
+                                <Text size="sm" style={{overflowWrap: "anywhere"}}>Saves to: {artifactPreview.result.destination}</Text>
                                 <AdvancedDisclosure label="Build plan and origin">
                                     <Text size="sm">Target: {card.label}</Text>
                                     <Text size="sm">Selected destination: {artifactDestination.trim() || "Default destination"}</Text>

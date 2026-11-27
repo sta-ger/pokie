@@ -70,12 +70,23 @@ export function ScatterFreeGamesWizard({
         (product, length) => product * Math.max(1, length),
         1,
     );
+    // A new demo must not start above 100% RTP with an unbounded retrigger tail. On the 5-stop starter
+    // with three 10-stop demo reels these awards land in the normal range; the exact preview below
+    // remains the authority and shows the actual total for the current reels.
     const [awards, setAwards] = useState<Record<number, number | string>>(() => ({
-        3: existing?.awardsByCount["3"] ?? 10,
-        4: existing?.awardsByCount["4"] ?? 15,
-        5: existing?.awardsByCount["5"] ?? 20,
+        3: existing?.awardsByCount["3"] ?? 7,
+        4: existing?.awardsByCount["4"] ?? 10,
+        5: existing?.awardsByCount["5"] ?? 13,
     }));
-    const [maxFreeGames, setMaxFreeGames] = useState<number | string | undefined>(() => existing?.maxFreeGames);
+    // A cap is part of the safe demo default for a *new* feature. An existing authored choice is
+    // preserved (including an explicitly uncapped one); clearing the field still opts into the
+    // uncapped path explicitly.
+    const [maxFreeGames, setMaxFreeGames] = useState<number | string | undefined>(() =>
+        existing === undefined ? 50 : existing.maxFreeGames,
+    );
+    // A guided demo still needs an explicit acknowledgement. The copy above explains the values,
+    // but a producer must actively confirm they are not treating this as a balanced production game.
+    const [demoAcknowledged, setDemoAcknowledged] = useState(false);
     const rows = typeof blueprint.rows === "number" && blueprint.rows > 0 ? blueprint.rows : 3;
     const parsedAwards = {
         3: Number(awards[3] ?? 0),
@@ -194,6 +205,9 @@ export function ScatterFreeGamesWizard({
         starterMathNote = `Expected free spins per trigger including retriggers: ${preview.expectedFreeSpins.toFixed(4)}.`;
     }
     const highScatterFrequency = preview.triggerProbability > 0.02;
+    let addDemoTitle: string | undefined;
+    if (exactPreview.status === "loading") addDemoTitle = "Wait for the exact RTP calculation to finish, or cancel it before adding.";
+    else if (!demoAcknowledged) addDemoTitle = "Confirm that you understand this is a demo setup before adding.";
     const reelLengthDescription =
         reelStripLengths.length > 0 && new Set(reelStripLengths).size === 1
             ? `${reelStripLengths[0]} stops on each of ${reelStripLengths.length} reels`
@@ -203,17 +217,16 @@ export function ScatterFreeGamesWizard({
             <Stack gap="sm">
                 <Text size="sm" c="dimmed">
                     Add a new scatter symbol, place it on the reels, and enable free games in one step.
-                    These are <strong>demo values</strong>: 10 free games for three scatters, with the 10-stop demo
-                    reels option enabled. They are a starting point, not a balanced game; the preview below shows
-                    the actual total for the current reels. Tune the awards, paytable or reel weights after adding
-                    the feature. One existing stop on each selected reel is replaced, so the base-game RTP changes
-                    too.
+                    These are <strong>safe demo values</strong>: 7 free games for three scatters, a 50-free-game cap
+                    and the 10-stop demo reels option enabled. The exact preview below shows the actual total for the
+                    current reels; tune the awards, paytable or reel weights after adding the feature. One existing
+                    stop on each selected reel is replaced, so the base-game RTP changes too.
                 </Text>
                 <Text size="xs" c="dimmed">
                     This starter has only {reelLengthDescription}. That is useful for a quick demo, but a scatter
-                    placed on one stop is visible very often; a realistic 10-free-spin game needs a much rarer
-                    scatter. Use the 10-stop demo reels option below for a closer demo, or import a PAR sheet for a
-                    production-like scatter frequency. The optional cap keeps retriggers finite while you
+                    placed on one stop is visible very often; a production game needs a much rarer scatter. Use the
+                    10-stop demo reels option below for a closer demo, or import a PAR sheet for a production-like
+                    scatter frequency. The cap keeps retriggers finite; you can clear it explicitly for an unbounded
                     experiment.
                 </Text>
                 <TextInput
@@ -280,7 +293,7 @@ export function ScatterFreeGamesWizard({
                 <NumberInput
                     label="Maximum free games per feature (optional)"
                     aria-label="Maximum free games per feature"
-                    description="Caps the trigger award and every retrigger. Required when the retrigger factor is 1 or higher."
+                    description="Caps the trigger award and every retrigger. New setups start with a 50-free-game demo cap; clear it only for an unbounded experiment. Required when the retrigger factor is 1 or higher."
                     min={1}
                     value={maxFreeGames}
                     onChange={setMaxFreeGames}
@@ -302,9 +315,10 @@ export function ScatterFreeGamesWizard({
                     <Alert color="yellow" variant="light" title="Scatter frequency is high for a real slot">
                         <Text size="sm">
                             A trigger probability of {(preview.triggerProbability * 100).toFixed(4)}% is still high
-                            for a real slot. The 10-stop demo reels help, but a production game usually needs a rarer
-                            scatter. Import a PAR sheet or lengthen the reels for a realistic game; the cap only keeps
-                            the arithmetic finite, it does not balance the starter.
+                            for a production slot. The safe demo award ladder brings total RTP into a normal range,
+                            but a real game still needs a rarer scatter and reels tuned for its market. Import a PAR
+                            sheet or lengthen the reels for a production-like frequency; the cap guarantees the
+                            feature ends, not that the demo is market-ready.
                         </Text>
                         <Anchor
                             href="#/docs/reel-strip-generation"
@@ -419,15 +433,17 @@ export function ScatterFreeGamesWizard({
                     </Alert>
                 )}
                 {error !== undefined && <Text size="sm" c="red" role="alert">{error}</Text>}
+                <Checkbox
+                    label="I understand this is a demo starting point, not a balanced production game. I will retune the paytable or reels before production."
+                    checked={demoAcknowledged}
+                    onChange={(event) => setDemoAcknowledged(event.currentTarget.checked)}
+                    data-pokie-demo-acknowledgement="scatter-free-games"
+                />
                 <Group justify="flex-end">
                     <Button variant="default" onClick={onClose}>Cancel</Button>
                     <Button
-                        disabled={error !== undefined || exactPreview.status === "loading"}
-                        title={
-                            exactPreview.status === "loading"
-                                ? "Wait for the exact RTP calculation to finish, or cancel it before adding."
-                                : undefined
-                        }
+                        disabled={error !== undefined || exactPreview.status === "loading" || !demoAcknowledged}
+                        title={addDemoTitle}
                         onClick={() => {
                             mutate((draft) => applyToDraft(draft));
                             onClose();

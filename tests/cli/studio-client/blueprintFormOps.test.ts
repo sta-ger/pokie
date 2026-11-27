@@ -1,7 +1,7 @@
 import {addFreeGames, applyScatterFreeGamesSetup, payingScatterSymbols, readFreeGames, repeatSelectedReelStrips, replaceReelStripSymbols, setFreeGamesMaxFreeGames} from "../../../cli/studio-client/src/domain/blueprintFormOps.js";
 
 describe("Studio blueprint form operations", () => {
-    it("starts free games with the engine's exact 3/4/5 scatter defaults", () => {
+    it("starts free games with the safe demo awards and a hard cap", () => {
         const blueprint: Record<string, unknown> = {
             scatters: ["S"],
             mechanics: {},
@@ -12,7 +12,8 @@ describe("Studio blueprint form operations", () => {
         expect(blueprint.mechanics).toEqual({
             freeGames: {
                 scatterSymbol: "S",
-                awardsByCount: {3: 10, 4: 15, 5: 20},
+                awardsByCount: {3: 7, 4: 10, 5: 13},
+                maxFreeGames: 50,
             },
         });
     });
@@ -62,6 +63,7 @@ describe("Studio blueprint form operations", () => {
             freeGames: {
                 scatterSymbol: "S",
                 awardsByCount: {3: 1, 4: 2, 5: 3},
+                maxFreeGames: 50,
             },
         });
     });

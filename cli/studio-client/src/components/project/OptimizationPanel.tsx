@@ -558,6 +558,14 @@ export function OptimizationPanel({
     const targetMetric = target === undefined ? undefined : findOptimizationMetric(target);
     const scope = request?.policy.scope;
     const exactMathView = exactMath?.status === "ok" ? exactMath : undefined;
+    // The initial request is built before the exact table may have loaded, so it can only fall back to
+    // the highest authored award. Once evidence is available, re-seed an untouched request from the
+    // event that actually contributes the most RTP. Any user edit wins: `edited.current` is set by every
+    // request mutation and by Run/Apply.
+    useEffect(() => {
+        if (edited.current || model === undefined || exactMathView === undefined) return;
+        setText(JSON.stringify(buildDefaultOptimizationRequest(model, exactMathView), null, 2));
+    }, [exactMathView, model]);
     const exactPaidRtp = exactMathView?.analysis.rtp;
     const exactFreeGames = exactMathView?.freeGamesRtp?.status === "available" ? exactMathView.freeGamesRtp : undefined;
     const exactTotalRtp = exactFreeGames?.totalRtp;
@@ -1169,6 +1177,11 @@ export function OptimizationPanel({
                             </Text>
                         ) : (
                             <>
+                                <Text size="xs" c="dimmed" mb="sm">
+                                    The default selection starts with the largest exact RTP contributor when exact
+                                    math is available, otherwise the highest authored award. Review the selected
+                                    field and candidates before running.
+                                </Text>
                                 {candidatePaths.length > 8 && (
                                     <TextInput
                                         label="Filter fields"

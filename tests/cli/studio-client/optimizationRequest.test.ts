@@ -20,7 +20,7 @@ import {
     suggestedPaytableValues,
     tunableCurrentValue,
 } from "../../../cli/studio-client/src/domain/optimizationRequest.js";
-import type {GameModelProjection} from "../../../cli/studio-client/src/api/types.js";
+import type {GameModelProjection, StudioExactMathView} from "../../../cli/studio-client/src/api/types.js";
 
 const model: GameModelProjection = {
     basics: {status: "available", data: {id: "game", name: "Game", version: "1.0.0"}},
@@ -104,20 +104,35 @@ describe("optimization request helpers", () => {
         expect(formatOptimizationDistance(rtpTarget, 0.00768)).toBe("0.7680%");
     });
 
-    it("builds a default request around the first real paytable row", () => {
+    it("builds a default request around the highest authored award", () => {
         const request = buildDefaultOptimizationRequest(model);
         expect(request.targets[0]).toMatchObject({metric: "rtp", unit: "ratio", value: 0.95});
-        expect(request.policy.tunables).toEqual([{path: "/paytable/A/3", values: [6, 7, 8, 9, 10]}]);
+        expect(request.policy.tunables).toEqual([{path: "/paytable/A/4", values: [14, 15, 16, 17, 18]}]);
         expect(request.policy.budget).toBe(5);
         expect(request.policy.mode).toBe("base");
         expect(request.policy.scope).toBe("paid-entry");
         expect(optimizationDomainSize(request.policy)).toBe(5);
     });
 
+    it("re-seeds the default around the largest exact RTP contributor when evidence is available", () => {
+        const exact = {
+            status: "ok",
+            events: {
+                entries: [
+                    {kind: "line", key: "K3", label: "K × 3", winType: "line", winId: "K3", symbolId: "K", matchCount: 3, probability: 0.1, rtpContribution: 0.2, outcomeCount: 1},
+                    {kind: "line", key: "A4", label: "A × 4", winType: "line", winId: "A4", symbolId: "A", matchCount: 4, probability: 0.05, rtpContribution: 0.5, outcomeCount: 1},
+                ],
+                truncated: false,
+            },
+        } as unknown as StudioExactMathView;
+        const request = buildDefaultOptimizationRequest(model, exact);
+        expect(request.policy.tunables[0]).toEqual({path: "/paytable/A/4", values: [14, 15, 16, 17, 18]});
+    });
+
     it("defaults a free-games game to the whole paid round, where total RTP lives", () => {
         const request = buildDefaultOptimizationRequest(freeGamesModel);
         expect(request.policy.scope).toBe("logical-round");
-        expect(request.policy.tunables[0]).toEqual({path: "/paytable/A/3", values: [6, 7, 8, 9, 10]});
+        expect(request.policy.tunables[0]).toEqual({path: "/paytable/A/4", values: [14, 15, 16, 17, 18]});
     });
 
     it("recommends whole-round RTP when features exist but a request still targets paid spins", () => {

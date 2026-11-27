@@ -19,6 +19,11 @@ Default map: only scatter `"S"` is pre-registered — `{3: 10, 4: 15, 5: 20}` (3
 games). Any other symbol or count returns `0` until you register it explicitly — a typo'd symbol id fails silently,
 so double-check spelling.
 
+Studio's guided **Set up scatter + free games** path is deliberately safer for a new demo: it starts at 7/10/13 free
+games for 3/4/5 scatters and a 50-free-game cap, requires an explicit acknowledgement that this is a demo starting
+point, then shows the exact total RTP for the current reels before you add the feature. That is an authoring default,
+not a change to the engine default above; clear the cap or edit the awards in Mechanics when you have a reason to.
+
 ```ts
 import {VideoSlotWithFreeGamesConfig} from "@fromstan/pokie";
 

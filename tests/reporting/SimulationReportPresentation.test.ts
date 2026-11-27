@@ -48,7 +48,7 @@ describe("simulation report presentation for math authors", () => {
         expect(html).toContain("Exact math reference");
         expect(html).toContain("96.7680%");
         expect(html).toContain("contains the exact RTP");
-        expect(html).toContain("Largest observed win");
+        expect(html).toContain("Largest observed whole-round win");
         expect(html).not.toContain("Max win:");
         expect(html).toContain("Technical appendix (audit details)");
         expect(html).toContain("<details>");
@@ -60,7 +60,7 @@ describe("simulation report presentation for math authors", () => {
         expect(markdown).toContain("## Exact math reference");
         expect(markdown).toContain("96.7680%");
         expect(markdown).toContain("contains the exact RTP");
-        expect(markdown).toContain("Largest observed win");
+        expect(markdown).toContain("Largest observed whole-round win");
         expect(markdown).not.toContain('"pokie diff"');
         expect(markdown).not.toContain("--out");
         expect(markdown).toContain("Technical appendix (audit details)");

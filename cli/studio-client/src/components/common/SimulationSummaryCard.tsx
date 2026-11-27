@@ -71,7 +71,7 @@ export function SimulationSummaryCard({outcome}: {outcome: SimulationOutcome}) {
                         <Table.Td>{report.volatility === undefined ? "—" : report.volatility.toFixed(2)}</Table.Td>
                     </Table.Tr>
                     <Table.Tr>
-                        <Table.Th scope="row" title="Largest single-round payout observed in this sample, not the theoretical maximum; it can exceed the top paytable entry when several lines win together.">Largest observed win (× bet){scopeSuffix}</Table.Th>
+                        <Table.Th scope="row" title="Largest whole-paid-round payout observed in this sample, not the theoretical maximum; it can exceed the top paytable entry when several lines or a feature win together. The technical report's single-spin maximum is a smaller unit.">Largest observed whole-round win (× bet){scopeSuffix}</Table.Th>
                         <Table.Td>{report.maxWin.toFixed(2)}</Table.Td>
                     </Table.Tr>
                     <Table.Tr>

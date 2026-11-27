@@ -296,11 +296,16 @@ test("free games guides scatter placement and the mechanic setup in one step", a
     await dialog.getByRole("button", {name: "Calculate exact RTP for this setup"}).click();
     await expect(dialog.getByText(/Total RTP/)).toBeVisible({timeout: 120_000});
     await expect(dialog.getByText(/free games\./)).toBeVisible();
-    await expect(dialog.getByText(/Max whole-round win: unbounded without a cap/)).toBeVisible();
-    await dialog.getByRole("button", {name: "Add scatter and free games"}).click();
-    await expect(page.getByLabel("3 scatters free games awarded")).toHaveValue("10");
-    await expect(page.getByLabel("4 scatters free games awarded")).toHaveValue("15");
-    await expect(page.getByLabel("5 scatters free games awarded")).toHaveValue("20");
+    await expect(dialog.getByText(/Max whole-round win: .*upper bound with cap/)).toBeVisible();
+    await expect(dialog.getByLabel("Maximum free games per feature")).toHaveValue("50");
+    const addDemo = dialog.getByRole("button", {name: "Add scatter and free games"});
+    await expect(addDemo).toBeDisabled();
+    await dialog.getByRole("checkbox", {name: /I understand this is a demo starting point/}).check();
+    await expect(addDemo).toBeEnabled();
+    await addDemo.click();
+    await expect(page.getByLabel("3 scatters free games awarded")).toHaveValue("7");
+    await expect(page.getByLabel("4 scatters free games awarded")).toHaveValue("10");
+    await expect(page.getByLabel("5 scatters free games awarded")).toHaveValue("13");
     await expect(page.getByText("Scatter symbol")).toBeVisible();
 });
 
@@ -324,12 +329,16 @@ test("free games wizard offers a cap for a supercritical setup and blocks Add wh
     await dialog.getByLabel("3 scatters free games awarded").fill("10");
     await dialog.getByLabel("4 scatters free games awarded").fill("15");
     await dialog.getByLabel("5 scatters free games awarded").fill("25");
+    // New setups start with a safe 50-free-game cap. Clearing it is the explicit unbounded path this
+    // test is about, so clear it before checking the cap offer and the blocking error.
+    await dialog.getByLabel("Maximum free games per feature").fill("");
     await expect(dialog.getByText(/set a maximum free-games cap below/)).toBeVisible();
     const add = dialog.getByRole("button", {name: "Add scatter and free games"});
     await expect(add).toBeDisabled();
 
     await dialog.getByRole("button", {name: "Use a 50-free-game cap"}).click();
     await expect(dialog.getByLabel("Maximum free games per feature")).toHaveValue("50");
+    await dialog.getByRole("checkbox", {name: /I understand this is a demo starting point/}).check();
     await expect(add).toBeEnabled();
     await dialog.getByRole("button", {name: "Calculate exact RTP for this setup"}).click();
     await expect(add).toBeDisabled();
@@ -353,12 +362,16 @@ test("free games starts with exact 3/4/5 scatter awards and explains that unlist
     await page.getByRole("button", {name: "Add symbol"}).click();
     await page.getByRole("checkbox", {name: "Symbol 5 is scatter"}).check();
     await page.getByRole("tab", {name: /Mechanics/}).click();
-    await page.getByRole("button", {name: "Add free games"}).click();
+    const addDirect = page.getByRole("button", {name: "Add free games"});
+    await expect(addDirect).toBeDisabled();
+    await page.getByRole("checkbox", {name: /I understand this is a demo starting point/}).check();
+    await expect(addDirect).toBeEnabled();
+    await addDirect.click();
 
     await expect(page.getByText(/Each row is an exact scatter count/)).toBeVisible();
-    await expect(page.getByLabel("3 scatters free games awarded")).toHaveValue("10");
-    await expect(page.getByLabel("4 scatters free games awarded")).toHaveValue("15");
-    await expect(page.getByLabel("5 scatters free games awarded")).toHaveValue("20");
+    await expect(page.getByLabel("3 scatters free games awarded")).toHaveValue("7");
+    await expect(page.getByLabel("4 scatters free games awarded")).toHaveValue("10");
+    await expect(page.getByLabel("5 scatters free games awarded")).toHaveValue("13");
 });
 
 test("marking a paying symbol as a scatter warns that it pays anywhere", async ({page}) => {
@@ -905,9 +918,9 @@ test.describe.serial("managed project labels", () => {
         await page.getByRole("button", {name: "Check settings"}).click();
         await expect(page.getByText(/Supported exact search/)).toBeVisible({timeout: 30_000});
         await page.getByRole("button", {name: "Run optimization"}).click();
-        // The starter's default 95% target is deliberately infeasible against its candidates; what
-        // this test owns is that the search reaches a reviewed terminal verdict without leaving a
-        // permanent indeterminate/Finalizing receipt behind.
+        // What this test owns is that the search reaches a reviewed terminal verdict without leaving a
+        // permanent indeterminate/Finalizing receipt behind; the default candidate set may be feasible
+        // or infeasible depending on the exact evidence and tuning row it starts from.
         await expect(page.getByText(/Completed — review the verdict below/)).toBeVisible({timeout: 240_000});
         await expect(page.getByText(/Verdict:/)).toBeVisible();
         await expect(page.getByText(/indeterminate/)).toHaveCount(0);
@@ -924,10 +937,17 @@ test.describe.serial("managed project labels", () => {
         await page.getByRole("button", {name: "Create game design"}).click();
         await expect(page.getByRole("button", {name: "Overview", exact: true})).toBeVisible({timeout: 90_000});
         await page.getByRole("button", {name: "Show Fields to tune details"}).click();
-        const tuneA3 = page.getByLabel("Tune A, 3 symbols payout");
-        await expect(tuneA3).toBeChecked();
-        await tuneA3.click();
-        await expect(tuneA3).toBeChecked();
+        // The default field is now selected from the exact RTP evidence (or the highest authored
+        // award before exact math exists), so name it from the checkbox state rather than assuming
+        // the old first-row default.
+        const checkedField = page.locator('input[aria-label^="Tune "]:checked');
+        await expect(checkedField).toHaveCount(1);
+        const checkedFieldLabel = await checkedField.getAttribute("aria-label");
+        expect(checkedFieldLabel).toBeTruthy();
+        const tuneSelected = page.getByLabel(checkedFieldLabel!);
+        await expect(tuneSelected).toBeChecked();
+        await tuneSelected.click();
+        await expect(tuneSelected).toBeChecked();
         await expect(page.getByText(/Keep at least one field selected/)).toBeVisible();
         await expect(page.getByText("Policy JSON is invalid", {exact: true})).toHaveCount(0);
         await expect(page.getByRole("button", {name: "Run optimization"})).toBeEnabled({timeout: 30_000});
@@ -972,11 +992,28 @@ test.describe.serial("managed project labels", () => {
         await expect(events.getByRole("row", {name: /A × 3/})).toContainText("1.9200%");
     });
 
-    test("apply asks for confirmation and marks the exact library stale immediately", async ({page}) => {
+    test("apply asks for confirmation and automatically refreshes exact math", async ({page}) => {
         // Exact optimization evaluates several complete outcome sets; leave a generous bound for a
         // loaded CI host while still failing a genuinely stuck job.
         test.setTimeout(360_000);
         await page.goto("/");
+        // The default tunable now follows the exact RTP evidence (or the highest authored award before
+        // exact math exists). Keep this regression test deterministic: explicitly tune A, 3 symbols,
+        // remove any other selected field, and use the original candidate ladder so the reviewed
+        // result is the same 7-value candidate this test has always asserted.
+        await page.getByRole("button", {name: "Show Fields to tune details"}).click();
+        const tuneA3 = page.getByLabel("Tune A, 3 symbols payout");
+        if (!(await tuneA3.isChecked())) await tuneA3.click();
+        for (let guard = 0; guard < 20; guard++) {
+            const checkedLabels = await page.locator('input[aria-label^="Tune "]:checked')
+                .evaluateAll((elements) => elements.map((element) => element.getAttribute("aria-label")));
+            const other = checkedLabels.find((label): label is string => label !== null && label !== "Tune A, 3 symbols payout");
+            if (other === undefined) break;
+            await page.getByLabel(other).click();
+        }
+        const candidateValues = page.getByLabel("Candidate values for A, 3 symbols payout");
+        await candidateValues.fill("6, 7, 8, 9, 10");
+        await candidateValues.blur();
         await page.getByRole("button", {name: "Check settings"}).click();
         await expect(page.getByText(/Supported exact search/)).toBeVisible({timeout: 30_000});
         await page.getByRole("button", {name: "Run optimization"}).click();
@@ -996,18 +1033,17 @@ test.describe.serial("managed project labels", () => {
         // show the newly saved payout without a manual reload.
         const tunedRow = page.getByRole("row", {name: /A, 3 symbols payout/});
         await expect(tunedRow.getByRole("cell").nth(2)).toHaveText("7", {timeout: 30_000});
+        // A reviewed Apply invalidates the stored exact table, but Studio now rebuilds it automatically
+        // instead of leaving the author with a stale receipt and a manual Recompute hunt. The transient
+        // progress label can be too fast to catch for a small table; assert the durable end state instead:
+        // exact numbers are back and no stale-table warning remains.
+        await expect(page.getByText("At a glance", {exact: true}).first()).toBeVisible({timeout: 180_000});
+        await expect(page.getByText(/computed from a different saved design/)).toHaveCount(0);
         // Switching tabs unmounts the optimization panel, not the 15-minute server receipt. Undo must
         // remain available when the designer comes back to inspect the applied values.
         await page.getByRole("button", {name: "Game design", exact: true}).click();
-        // The exact table is stale after Apply; Game design itself must say so instead of making the
-        // author discover it only after switching back to Overview.
-        await expect(page.locator("[data-pokie-game-model-exact-stale]")).toBeVisible({timeout: 30_000});
         await page.getByRole("button", {name: "Overview", exact: true}).click();
         await expect(page.getByRole("button", {name: "Undo applied changes"})).toBeVisible({timeout: 30_000});
-        // The exact library was computed above from the pre-apply design. Applying a new paytable
-        // must not leave those old numbers looking current until a manual reload.
-        await expect(page.getByText(/computed from a different saved design/)).toBeVisible({timeout: 30_000});
-        await expect(page.getByRole("button", {name: "Recompute exact outcome table"}).first()).toBeVisible();
         // The reviewed-apply receipt is browser-persisted, not tab-session-only: a reload must still
         // offer the 15-minute Undo rather than losing the escape hatch.
         await page.reload({waitUntil: "domcontentloaded"});
@@ -1042,6 +1078,9 @@ test.describe.serial("managed project labels", () => {
         // not the pre-save validation result and not only after a page reload.
         await expect(page.getByText(/Structure valid, with warnings/)).toBeVisible({timeout: 30_000});
         await expect(page.getByText(/"A" pays more than "K"/)).toBeVisible({timeout: 30_000});
+        // The ordinary Save scheduled the same one-shot exact-table rebuild as an optimization Apply;
+        // wait for the producer/exact summary to settle before starting the next edit.
+        await expect(page.getByText("At a glance", {exact: true}).first()).toBeVisible({timeout: 120_000});
 
         await page.getByRole("button", {name: "Game design", exact: true}).click();
         await page.getByRole("button", {name: "Edit", exact: true}).nth(4).click();
@@ -1050,7 +1089,9 @@ test.describe.serial("managed project labels", () => {
         await page.getByRole("button", {name: "Save", exact: true}).click();
         await expect(page.getByRole("button", {name: "Save", exact: true})).toHaveCount(0, {timeout: 60_000});
         await page.getByRole("button", {name: "Overview", exact: true}).click();
-        await expect(page.getByText(/Structure valid — (no exact outcome table yet|exact outcome table is stale|exact outcome table available)/)).toBeVisible({timeout: 30_000});
+        await expect(page.getByText(/Structure valid/)).toBeVisible({timeout: 30_000});
+        await expect(page.getByText(/"A" pays more than "K"/)).toHaveCount(0, {timeout: 30_000});
+        await expect(page.getByText("At a glance", {exact: true}).first()).toBeVisible({timeout: 120_000});
     });
 
     test("saving a design resets a Play session created from the old design", async ({page}) => {
@@ -1100,6 +1141,18 @@ test.describe.serial("managed project labels", () => {
         await expect(page.getByText(/Simulation completed/).first()).toBeVisible({timeout: 60_000});
         await expect(page.getByText("Exact math reference")).toBeVisible({timeout: 30_000});
         await expect(page.getByText(/Exact for this saved design: RTP/)).toBeVisible();
+    });
+
+    test("Overview defaults to a whole-round producer summary", async ({page}) => {
+        await page.goto("/");
+        const summary = page.locator('[data-pokie-producer-summary="whole-round"]');
+        await expect(summary).toBeVisible({timeout: 60_000});
+        await expect(summary).toHaveAttribute("data-pokie-producer-summary-state", "ready", {timeout: 60_000});
+        await expect(summary.getByText("Whole paid round", {exact: true})).toBeVisible();
+        await expect(summary.getByText("Hit frequency (whole round)", {exact: true})).toBeVisible();
+        await expect(summary.getByText("Volatility (whole paid round)", {exact: true})).toBeVisible();
+        await expect(summary.getByText("Largest observed whole-round win", {exact: true})).toBeVisible();
+        await expect(summary.getByRole("button", {name: "Open Simulation"})).toBeVisible();
     });
 });
 
@@ -1204,6 +1257,7 @@ test("a hard free-games cap makes termination and total RTP explicit", async ({p
     await page.getByLabel("Game name").fill("Cap E2E");
     await page.getByRole("tab", {name: /Mechanics/}).click();
     await page.getByRole("button", {name: "Set up scatter + free games"}).click();
+    await page.getByRole("dialog").getByRole("checkbox", {name: /I understand this is a demo starting point/}).check();
     await page.getByRole("dialog").getByRole("button", {name: "Add scatter and free games"}).click();
     const cap = page.getByLabel("Maximum free games per feature");
     await expect(cap).toBeVisible({timeout: 30_000});

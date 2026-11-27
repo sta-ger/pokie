@@ -1120,6 +1120,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // math card to re-read immediately, instead of leaving an old compatible-looking RTP on screen
     // until the page is reloaded.
     const [exactMathRefreshKey, setExactMathRefreshKey] = useState(0);
+    // Incremented by every successful Save (including an optimization Apply/Undo), so Overview can
+    // rebuild a stale exact table once instead of leaving old numbers on screen until a manual Recompute.
+    // It is a one-shot token, never a loop: the generation it starts does not itself save the design.
+    const [autoRefreshStaleExactMathKey, setAutoRefreshStaleExactMathKey] = useState(0);
     // A completed exact-math generation should refresh the optimizer's RTP hint without resetting
     // the optimizer's own reviewed result or in-progress request.
     const [exactMathHintKey, setExactMathHintKey] = useState(0);
@@ -1130,6 +1134,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const handleBlueprintSaved = (sourceRevision?: string): void => {
         if (projectKey !== undefined) setOptimizerSourceChange({projectRoot: projectKey, sourceRevision});
         setExactMathRefreshKey((value) => value + 1);
+        // Any successful Save can change the saved math, not just an optimization Apply. Rebuild once
+        // after the save settles so Overview never leaves an old exact table looking current until a
+        // manual Recompute. The token is one-shot per save, so it cannot loop with the generation itself.
+        setAutoRefreshStaleExactMathKey((value) => value + 1);
         // Saving a design changes the project-level validation report too. Refresh it here instead of
         // leaving Overview's card on the validation result read before the write (the card could even
         // describe the previous payout after the file already contained the new one).
@@ -1152,6 +1160,12 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         const next = ++contextRefreshGenerationRef.current;
         setPendingNavigation((pending) => pending === undefined ? undefined : {...pending, refreshGeneration: next});
         setContextRefreshGeneration(next);
+    };
+
+    const handleOptimizationApplied = (): void => {
+        // A reviewed Apply is a save too; handleBlueprintSaved already schedules the one-shot rebuild
+        // and invalidates the other screens.
+        handleBlueprintSaved();
     };
 
     const resetProjectState = useCallback(() => {
@@ -1539,7 +1553,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         <>
                             {activeTab === "overview" && header.status === "loaded" && (
                                 <>
-                                    <OverviewTab header={header} validation={validation} onRevalidate={runValidate} onOpenPlay={() => setActiveTab("play")} sourceRevision={optimizerSourceChange?.projectRoot === header.projectRoot ? optimizerSourceChange.sourceRevision : undefined} exactMathRefreshKey={exactMathRefreshKey} autoComputeExactMath={autoComputeExactMath} onExactMathGenerated={() => setExactMathHintKey(value => value + 1)} />
+                                    <OverviewTab header={header} validation={validation} onRevalidate={runValidate} onOpenPlay={() => setActiveTab("play")} onOpenSimulation={() => setActiveTab("simulation")} sourceRevision={optimizerSourceChange?.projectRoot === header.projectRoot ? optimizerSourceChange.sourceRevision : undefined} exactMathRefreshKey={exactMathRefreshKey} autoComputeExactMath={autoComputeExactMath} autoRefreshStaleExactMath={autoRefreshStaleExactMathKey} onExactMathGenerated={() => setExactMathHintKey(value => value + 1)} />
                                     {header.type === "wasm" && (
                                         <WasmManifestInspection
                                             projectRoot={header.projectRoot}
@@ -1564,7 +1578,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                 // accepts its replacement, remounts must follow current work.
                                 setRecoveryJob(job => job?.operation === "optimization" ? undefined : job);
                                 setOptimizerSourceChange(previous => previous?.projectRoot === header.projectRoot && previous.sourceRevision === sourceRevision ? previous : {projectRoot: header.projectRoot, sourceRevision});
-                            }} onApplied={handleBlueprintSaved} />}
+                            }} onApplied={handleOptimizationApplied} />}
                             {activeTab === "gameModel" && (
                                 // GameModelTab owns all of its own fetch state locally (no page-level hook),
                                 // so a genuine project switch needs a full remount, not just a re-render of a

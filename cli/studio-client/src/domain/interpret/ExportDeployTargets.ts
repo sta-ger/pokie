@@ -194,7 +194,7 @@ export function describeArtifactBuildTargetCards(targets: readonly StudioOutputF
 const OUTCOME_LIBRARY_CARD: ExportDeployTargetCard = {
     kind: "outcomeLibrary",
     id: OUTCOME_LIBRARY_TRANSACTION.cardId,
-    label: "Outcome table generator",
+    label: "Outcome table",
     adapter: "pokie's own weighted-outcome-library generator",
     version: "--",
     purpose: "Create or refresh the complete paid-spin outcome table for advanced inspection and delivery workflows.",

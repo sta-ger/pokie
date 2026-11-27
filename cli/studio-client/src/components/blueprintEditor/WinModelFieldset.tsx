@@ -26,6 +26,11 @@ function hasPaylines(blueprint: Record<string, unknown>): boolean {
     return Array.isArray(blueprint.paylines) && blueprint.paylines.length > 0;
 }
 
+function hasPaytable(blueprint: Record<string, unknown>): boolean {
+    const paytable = blueprint.paytable;
+    return paytable !== null && typeof paytable === "object" && !Array.isArray(paytable) && Object.keys(paytable).length > 0;
+}
+
 /** True for the engine's default/line model, including a Blueprint that never authored `winModel`. */
 export function isLineWinModel(blueprint: Record<string, unknown>): boolean {
     return readWinModel(blueprint).type === "lines";
@@ -80,6 +85,22 @@ export function WinModelFieldset({blueprint, mutate}: {blueprint: Record<string,
                     }}
                     mt="sm"
                 />
+            )}
+            {winModel.type !== "lines" && hasPaylines(blueprint) && hasPaytable(blueprint) && (
+                <Alert
+                    color="yellow"
+                    variant="light"
+                    title="Structural demo until you retune the paytable"
+                    mt="sm"
+                    data-pokie-win-model-demo-warning="true"
+                >
+                    <Text size="sm">
+                        This design still has the line-game paytable. {winModel.type === "ways" ? "Ways" : "Clusters"} can
+                        pay that same symbol value on many more combinations, so exact total RTP can jump far above the
+                        line-game number. Calculate exact math, then retune the paytable or reels before treating this as
+                        a balanced game.
+                    </Text>
+                </Alert>
             )}
             {winModel.type !== "lines" && hasPaylines(blueprint) && (
                 <Alert color="yellow" variant="light" title="Paylines are not used by this win model" mt="sm">

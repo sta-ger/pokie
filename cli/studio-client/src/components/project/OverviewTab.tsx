@@ -18,6 +18,7 @@ import {LoadingState} from "../common/LoadingState";
 import {NextStepCallout} from "../common/NextStepCallout";
 import {QuickActions} from "../common/QuickActions";
 import {ExactMathPanel} from "./ExactMathPanel";
+import {ProducerSummary} from "./ProducerSummary";
 import {hasFeatureTerminationWarning, type ProjectMathStatus} from "../../domain/validationScope";
 
 function describeAddedToStudio(origin: StudioProjectOrigin | undefined): string {
@@ -94,21 +95,26 @@ export function OverviewTab({
     validation,
     onRevalidate,
     onOpenPlay,
+    onOpenSimulation,
     sourceRevision,
     exactMathRefreshKey,
     autoComputeExactMath,
+    autoRefreshStaleExactMath,
     onExactMathGenerated,
 }: {
     header: Extract<ProjectHeaderView, {status: "loaded"}>;
     validation: ProjectValidationView;
     onRevalidate: () => void;
     onOpenPlay: () => void;
+    onOpenSimulation: () => void;
     /** Changes whenever an optimization commit changes the saved design, so exact math is refreshed. */
     sourceRevision?: string;
     /** Monotonic local token for saves that cannot report a new source revision. */
     exactMathRefreshKey?: number;
     /** Continue a draft exact-math preview by computing the saved project's own table on first load. */
     autoComputeExactMath?: boolean;
+    /** Recompute a stale table once after any successful save/apply, instead of making the user hunt for the button. */
+    autoRefreshStaleExactMath?: number;
     /** Called after exact-math generation completes, so sibling panels can refresh their RTP hint. */
     onExactMathGenerated?: () => void;
 }) {
@@ -118,10 +124,15 @@ export function OverviewTab({
 
     return (
         <div>
-            {/* The math result is the reason a math author opens a project. Put the exact card first so
-                a 1366x768 laptop shows RTP/hit frequency/volatility before project metadata, rather
-                than after the Play onboarding callout. */}
-            {header.type !== "wasm" && <ExactMathPanel projectRoot={header.projectRoot} sourceRevision={sourceRevision} refreshKey={exactMathRefreshKey} featureCheck={validation.status === "success" ? validation.summary.advanced : undefined} autoCompute={autoComputeExactMath} onGenerated={onExactMathGenerated} onStatusChange={setExactMathStatus} onOpenPlay={playable ? onOpenPlay : undefined} />}
+            {/* A producer reads whole-round behaviour first. The exact card below remains the proven
+                paid-spin reference; this summary defaults to the latest current simulation so the first
+                metrics on the page are the ones a player actually experiences. */}
+            <ProducerSummary
+                projectRoot={header.projectRoot}
+                refreshKey={exactMathRefreshKey}
+                onOpenSimulation={onOpenSimulation}
+            />
+            {header.type !== "wasm" && <ExactMathPanel projectRoot={header.projectRoot} sourceRevision={sourceRevision} refreshKey={exactMathRefreshKey} autoRefreshStale={autoRefreshStaleExactMath} featureCheck={validation.status === "success" ? validation.summary.advanced : undefined} autoCompute={autoComputeExactMath} onGenerated={onExactMathGenerated} onStatusChange={setExactMathStatus} onOpenPlay={playable ? onOpenPlay : undefined} />}
             {playable && header.type === "wasm" && (
                 <NextStepCallout
                     title="Start by playing a round"

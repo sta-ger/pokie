@@ -49,9 +49,9 @@ function blueprintMathBadge(
     if (view.status === "ok" && hasFeatureTerminationWarning(view.advanced)) {
         return {
             scope: "math",
-            label: "Math: expected-value warning",
+            label: "Math: uncapped free games",
             color: "yellow",
-            detail: "The feature is not proven to terminate for every possible round. RTP is an expected value, not a hard bound.",
+            detail: "Free games can retrigger without a hard cap, so one round may never end. The RTP shown is an average, not a guaranteed limit.",
         };
     }
     if (mathStatus === "ok") {
@@ -105,9 +105,9 @@ export function describeProjectValidationScopes(
     if (mathWarning) {
         math = {
             scope: "math",
-            label: "Math: expected-value warning",
+            label: "Math: uncapped free games",
             color: "yellow",
-            detail: "A feature path is not proven to end. Treat the displayed RTP as an expected value, not a hard bound.",
+            detail: "Free games can retrigger without a hard cap, so one round may never end. The displayed RTP is an average, not a guaranteed limit.",
         };
     } else if (mathStatus === "ok") {
         math = {
@@ -119,7 +119,7 @@ export function describeProjectValidationScopes(
     } else if (mathStatus === "stale") {
         math = {
             scope: "math",
-            label: "Math: exact table stale",
+            label: "Math: numbers out of date",
             color: "yellow",
             detail: "The saved design changed after its exact outcome table was generated. Recompute it before treating its numbers as current.",
         };
