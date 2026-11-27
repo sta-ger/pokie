@@ -177,62 +177,82 @@ export class ValidateCommand implements CliCommandHandling {
         // A structural answer that could not be obtained at all remains inconclusive even in the
         // default mode; there is nothing safe to call "valid" yet.
         if (report.advanced?.status === "budget-exhausted" && report.advanced.structuralValid === null) return 2;
-        if (!report.valid || report.advanced?.verdict === "violated") return 1;
+        // Structural validity remains the default gate, exactly as documented: a structurally valid
+        // design with an advanced counterexample is still reported as "valid yes (structural)" and only
+        // fails when the caller explicitly opts into --strict. Returning 1 for that counterexample made
+        // the summary and the process exit code disagree.
+        if (!report.valid) return 1;
         if (report.advanced?.status === "failed") return 3;
-        // Advanced declaration analysis is optional. Structural validity is the useful default gate;
-        // --strict is the explicit opt-in for callers that require the stronger proof and accept that
-        // generated executables and feature-heavy games can remain inconclusive.
         const advancedUnresolved = report.advanced !== undefined && report.advanced.verdict !== "proved-within-assumptions";
         return resultRef.strict && advancedUnresolved ? 2 : 0;
     }
 
     private async validateProject(packageRoot: string, deep: boolean, signal?: AbortSignal): Promise<ValidateReport> {
-        if (this.isBlueprintFile(packageRoot)) {
-            return this.validateBlueprint(packageRoot, signal);
-        }
-        if (this.isPackageDirectory(packageRoot)) {
-            return this.validatePackage(packageRoot, signal);
-        }
-        if (this.isDirectory(packageRoot)) {
-            let project;
-            try {
-                project = await this.resolveProject.resolve(packageRoot);
-            } catch {
-                // An incomplete or malformed Outcome Library still receives its validator's actionable
-                // artifact diagnostics instead of a resolver implementation error.
-                return this.validateOutcomeLibrary(packageRoot, deep);
-            }
-            if (project?.type === "stakeAdapter") {
-                return this.validateStakeEngineExport(packageRoot);
-            }
-            if (project?.type === "outcomeLibrary") {
-                return this.validateOutcomeLibrary(packageRoot, deep);
-            }
-            // A directory without package.json is an outcome-library candidate, including an incomplete
-            // bundle. Let its validator report the canonical missing-manifest diagnostic rather than
-            // misclassifying it as an unloadable package.
-            return this.validateOutcomeLibrary(packageRoot, deep);
-        }
-
         let project;
         try {
-            project = await this.resolveProject.resolve(packageRoot);
+            project = await this.resolveProject.resolve(packageRoot, {readConfigurationProvenance: false});
         } catch (error) {
             if (this.isWasmPath(packageRoot) && this.isWasmResolutionFailure(error)) {
                 return this.wasmValidationFailure(packageRoot, error.message);
             }
-            throw error;
+            // A deliberately Blueprint-shaped malformed file still earns field-level diagnostics.
+            if (this.looksLikeBlueprintIntent(packageRoot)) return this.validateBlueprint(packageRoot, signal);
+            // A non-empty package directory gets the package validator's own actionable entry/build
+            // diagnostics even when a deeper recognition failed.
+            if (this.isPackageDirectory(packageRoot)) return this.validatePackage(packageRoot, signal);
+            if (this.isOutcomeLibraryCandidate(packageRoot)) return this.validateOutcomeLibrary(packageRoot, deep);
+            if (this.isStakeEngineCandidate(packageRoot)) return this.validateStakeEngineExport(packageRoot);
+            if (!fs.existsSync(packageRoot)) return this.validatePackage(packageRoot, signal);
+            return this.notRecognizedReport(packageRoot);
         }
-        if (project?.type === "wasm") {
-            return this.validateWasm(project);
+
+        if (project === undefined) {
+            if (this.looksLikeBlueprintIntent(packageRoot)) return this.validateBlueprint(packageRoot, signal);
+            if (this.isPackageDirectory(packageRoot)) return this.validatePackage(packageRoot, signal);
+            if (this.isOutcomeLibraryCandidate(packageRoot)) return this.validateOutcomeLibrary(packageRoot, deep);
+            if (this.isStakeEngineCandidate(packageRoot)) return this.validateStakeEngineExport(packageRoot);
+            if (!fs.existsSync(packageRoot)) return this.validatePackage(packageRoot, signal);
+            if (path.extname(packageRoot).toLowerCase() === ".xlsx") return this.validatePackage(packageRoot, signal);
+            return this.notRecognizedReport(packageRoot);
         }
-        if (project?.type === "outcomeLibrary") {
-            return this.validateOutcomeLibrary(packageRoot, deep);
+        switch (project.type) {
+            case "blueprint": return this.validateBlueprint(packageRoot, signal);
+            case "tsPackage": return this.validatePackage(packageRoot, signal);
+            case "outcomeLibrary": return this.validateOutcomeLibrary(packageRoot, deep);
+            case "stakeAdapter": return this.validateStakeEngineExport(packageRoot);
+            case "wasm": return this.validateWasm(project);
+            // PAR workbooks are validated through their owned runtime/intermediate, exactly as before.
+            case "parWorkbook": return this.validatePackage(packageRoot, signal);
+            default: return this.notRecognizedReport(packageRoot);
         }
-        if (project?.type === "blueprint") {
-            return this.validateBlueprint(packageRoot, signal);
+    }
+
+    private notRecognizedReport(projectPath: string): ValidateReport {
+        return this.failedReport(
+            projectPath,
+            "unknown",
+            "project-not-recognized",
+            `"${projectPath}" is not a supported POKIE project.`,
+            "Choose a Game Blueprint, POKIE game package, Outcome Library, Stake Engine export, PAR workbook, or compatible WASM component.",
+        );
+    }
+
+    // True only for an explicit Blueprint-shaped path or an already parsed object carrying the
+    // identifying Blueprint fields. A random JSON file (including a pokie sim report) is therefore
+    // reported as "not a supported project", not as a broken Blueprint with five missing fields.
+    private looksLikeBlueprintIntent(projectPath: string): boolean {
+        if (!this.isBlueprintFile(projectPath)) return false;
+        if (path.basename(projectPath).toLowerCase().endsWith(".blueprint.json")) return true;
+        try {
+            const parsed = JSON.parse(fs.readFileSync(projectPath, "utf-8")) as unknown;
+            if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return false;
+            const candidate = parsed as Record<string, unknown>;
+            return typeof candidate.info === "object" && candidate.info !== null &&
+                (typeof candidate.reels === "number" || typeof candidate.rows === "number" ||
+                    Array.isArray(candidate.symbols) || typeof candidate.paytable === "object");
+        } catch {
+            return false;
         }
-        return this.validatePackage(packageRoot, signal);
     }
 
     private isWasmPath(projectPath: string): boolean {
@@ -289,12 +309,16 @@ export class ValidateCommand implements CliCommandHandling {
         return fs.existsSync(projectPath) && fs.statSync(projectPath).isFile() && path.extname(projectPath).toLowerCase() === ".json";
     }
 
-    private isDirectory(projectPath: string): boolean {
-        return fs.existsSync(projectPath) && fs.statSync(projectPath).isDirectory();
-    }
-
     private isPackageDirectory(projectPath: string): boolean {
         return fs.existsSync(projectPath) && fs.statSync(projectPath).isDirectory() && fs.existsSync(path.join(projectPath, "package.json"));
+    }
+
+    private isOutcomeLibraryCandidate(projectPath: string): boolean {
+        return fs.existsSync(projectPath) && fs.statSync(projectPath).isDirectory() && fs.existsSync(path.join(projectPath, "index.json"));
+    }
+
+    private isStakeEngineCandidate(projectPath: string): boolean {
+        return fs.existsSync(projectPath) && fs.statSync(projectPath).isDirectory() && fs.existsSync(path.join(projectPath, "pokie-info.json"));
     }
 
     private async validateBlueprint(blueprintPath: string, signal?: AbortSignal): Promise<ValidateReport> {
@@ -405,7 +429,10 @@ export class ValidateCommand implements CliCommandHandling {
         const errors = diagnostics.filter((issue) => issue.severity === "error");
         const warnings = diagnostics.filter((issue) => issue.severity === "warning");
         const information = diagnostics.filter((issue) => issue.severity === "info");
-        const suggestions = [...new Set([...inheritedSuggestions, ...diagnostics.map((issue) => issue.suggestion)])];
+        const suggestions = [...new Set([
+            ...inheritedSuggestions,
+            ...diagnostics.filter((issue) => issue.severity !== "info").map((issue) => issue.suggestion),
+        ].filter((suggestion) => suggestion.length > 0))];
         return {
             schemaVersion: 1,
             project: {path: projectPath, kind},
@@ -426,7 +453,9 @@ export class ValidateCommand implements CliCommandHandling {
         return {
             ...safeIssue,
             path: safeIssue.path ?? projectPath,
-            suggestion: safeIssue.suggestion ?? "Fix this issue at the indicated location, then run `pokie validate <path>` again.",
+            suggestion: safeIssue.suggestion ?? (safeIssue.severity === "info"
+                ? ""
+                : "Fix this issue at the indicated location, then run `pokie validate <path>` again."),
         };
     }
 
@@ -609,6 +638,10 @@ export class ValidateCommand implements CliCommandHandling {
     }
 
     private printSummary(report: ValidateReport, details = false): void {
+        if (report.project.kind === "unknown") {
+            for (const issue of report.errors) this.printIssue(issue);
+            return;
+        }
         if (report.game) {
             console.log(`Validating "${report.game.name}" (id: "${report.game.id}", v${report.game.version}) at "${report.project.path}"`);
         } else {
@@ -676,6 +709,6 @@ export class ValidateCommand implements CliCommandHandling {
 
     private printIssue(issue: ValidateDiagnostic): void {
         console.log(`  - [${issue.path}] ${issue.code}: ${issue.message}`);
-        console.log(`    Next: ${issue.suggestion}`);
+        if (issue.suggestion.length > 0) console.log(`    Next: ${issue.suggestion}`);
     }
 }

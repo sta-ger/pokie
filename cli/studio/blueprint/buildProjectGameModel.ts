@@ -73,7 +73,7 @@ export async function buildProjectGameModel(
             const model = manifestRead.canonical.model;
             if (model.features) return buildGameModelProjection(model.features.blueprint);
             return buildGameModelProjection({
-                info: {id: manifestRead.manifest.component.id, name: manifestRead.manifest.component.id, version: manifestRead.manifest.component.version},
+                info: {id: manifestRead.manifest.component.id, name: manifestRead.manifest.component.name ?? manifestRead.manifest.component.id, version: manifestRead.manifest.component.version},
                 reels: model.reels,
                 rows: model.rows,
                 symbols: [...new Set(model.reelStrips.flat())],

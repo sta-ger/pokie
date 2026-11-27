@@ -12,6 +12,7 @@ import type {BetForNextSimulationRoundSetting} from "./BetForNextSimulationRound
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
 import type {NextSessionRoundPlayableDetermining} from "./playstrategy/NextSessionRoundPlayableDetermining.js";
 import type {SimulationConfigRepresenting} from "./SimulationConfigRepresenting.js";
+import {fundSimulationSession} from "./internal/fundSimulationSession.js";
 
 export class Simulation implements AsyncSimulationHandling {
     private readonly analytics = new SimulationAccumulator();
@@ -69,6 +70,7 @@ export class Simulation implements AsyncSimulationHandling {
     }
 
     public run(): void {
+        fundSimulationSession(this.session);
         let i: number;
         for (i = 0; i < this.numberOfRounds; i++) {
             if (this.canPlayNextGame()) {
@@ -87,6 +89,7 @@ export class Simulation implements AsyncSimulationHandling {
         if (!Number.isFinite(delayBetweenChunks) || delayBetweenChunks < 0) {
             return Promise.reject(new RangeError("delayBetweenChunks must be a finite non-negative number."));
         }
+        fundSimulationSession(this.session);
         return new Promise((resolve, reject) => {
             let currentRound = 0;
 

@@ -27,7 +27,7 @@ export const POKIE_WASM_ARTIFACT_INSPECT_DECLARATION = "artifact.inspect";
  */
 export type CanonicalPokieWasmComponentDescriptor = {
     readonly schemaVersion: string;
-    readonly component: {readonly id: string; readonly version: string};
+    readonly component: {readonly id: string; readonly name?: string; readonly version: string};
     readonly minPokieVersion?: string;
     readonly serialization: {readonly session: string; readonly play: string; readonly state: string};
     readonly host: {readonly rng: string; readonly services: readonly string[]};
@@ -104,6 +104,7 @@ export async function sha256CanonicalWasmBytes(bytes: BufferSource): Promise<str
 export function assertCanonicalWasmDescriptorMatchesInfo(descriptor: CanonicalPokieWasmComponentDescriptor, manifest: PokieWasmComponentInfo): void {
     const artifact = manifest.artifact;
     if (artifact === undefined || descriptor.schemaVersion !== manifest.schemaVersion || descriptor.component.id !== manifest.component.id ||
+        descriptor.component.name !== manifest.component.name ||
         descriptor.component.version !== manifest.component.version || descriptor.minPokieVersion !== manifest.minPokieVersion ||
         descriptor.serialization.session !== manifest.serialization.session || descriptor.serialization.play !== manifest.serialization.play ||
         descriptor.serialization.state !== manifest.serialization.state || descriptor.host.rng !== manifest.host.rng ||
@@ -117,7 +118,9 @@ export function assertCanonicalWasmDescriptorMatchesInfo(descriptor: CanonicalPo
 function isCanonicalDescriptor(value: unknown): value is CanonicalPokieWasmComponentDescriptor {
     if (typeof value !== "object" || value === null) return false;
     const descriptor = value as Partial<CanonicalPokieWasmComponentDescriptor>;
-    return typeof descriptor.schemaVersion === "string" && typeof descriptor.component?.id === "string" && typeof descriptor.component.version === "string" &&
+    return typeof descriptor.schemaVersion === "string" && typeof descriptor.component?.id === "string" &&
+        (descriptor.component.name === undefined || typeof descriptor.component.name === "string") &&
+        typeof descriptor.component.version === "string" &&
         (descriptor.minPokieVersion === undefined || typeof descriptor.minPokieVersion === "string") &&
         typeof descriptor.serialization?.session === "string" && typeof descriptor.serialization.play === "string" && typeof descriptor.serialization.state === "string" &&
         typeof descriptor.host?.rng === "string" && Array.isArray(descriptor.host.services) && descriptor.host.services.every((service) => typeof service === "string") &&

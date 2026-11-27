@@ -31,6 +31,7 @@ import {StakeEngineCommand} from "./StakeEngineCommand.js";
 import {ParCommand} from "./ParCommand.js";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {quoteShellArgument} from "./internal/quoteShellArgument.js";
 
 // The complete product matrix: every OutputFormat is selectable through
 // one registry.  WASM is deliberately not a second build command.
@@ -199,7 +200,14 @@ export class BuildCommand implements CliCommandHandling {
             if (conversionPlan.status === "unavailable") {
                 if (conversionPlan.packageExtraction) this.printExtraction(conversionPlan.packageExtraction);
                 const compatibility = describeFormatConversionPlanDiagnostic(conversionPlan);
-                throw new Error(`${conversionPlan.diagnostic!.message} Next: ${conversionPlan.diagnostic!.recovery}${compatibility === undefined ? "" : `\n${compatibility}`}`);
+                const message = conversionPlan.diagnostic!.message;
+                // describeFormatConversionPlanDiagnostic already expands an unsupported boundary
+                // into "<message> Next: <recovery>"; appending the same pair again printed every WASM
+                // conversion rejection twice.
+                if (compatibility !== undefined && (compatibility.startsWith(message) || conversionPlan.diagnostic!.code === "missing-capability")) {
+                    throw new Error(compatibility);
+                }
+                throw new Error(`${message} Next: ${conversionPlan.diagnostic!.recovery}${compatibility === undefined ? "" : `\n${compatibility}`}`);
             }
             if (conversionPlan.status === "conflict") {
                 throw new Error(describeDestinationConflict(target, conversionPlan.diagnostic!.message));
@@ -378,15 +386,16 @@ export class BuildCommand implements CliCommandHandling {
         console.log(`  blueprint hash   ${blueprintHash}`);
         console.log(`  source           ${project.rootPath}`);
 
+        const quotedOutputPath = quoteShellArgument(result.outputPath);
         console.log(`\nGame package "${info.name}" (id: "${info.id}") built in "${result.outputPath}".`);
         console.log(`\nNext:`);
-        console.log(`  cd ${result.outputPath} && npm install`);
-        console.log(`  pokie inspect ${result.outputPath}`);
-        console.log(`  pokie validate ${result.outputPath}`);
-        console.log(`  pokie sim ${result.outputPath} --rounds 10000 --seed demo --out sim.json`);
+        console.log(`  cd ${quotedOutputPath} && npm install`);
+        console.log(`  pokie inspect ${quotedOutputPath}`);
+        console.log(`  pokie validate ${quotedOutputPath}`);
+        console.log(`  pokie sim ${quotedOutputPath} --rounds 10000 --seed demo --out sim.json`);
         console.log(`  pokie report sim.json`);
-        console.log(`  pokie replay ${result.outputPath} --seed demo --round 1`);
-        console.log(`  pokie dev ${result.outputPath}`);
+        console.log(`  pokie replay ${quotedOutputPath} --seed demo --round 1`);
+        console.log(`  pokie dev ${quotedOutputPath}`);
 
         return 0;
     }
@@ -478,6 +487,9 @@ export class BuildCommand implements CliCommandHandling {
             }
         };
         process.once("SIGINT", cancel);
+        // SIGTERM (a CI timeout, a supervisor, `kill`) is just as much a cancellation boundary as Ctrl+C;
+        // let the registry remove its owned staging output instead of leaving a multi-hundred-MB partial.
+        process.once("SIGTERM", cancel);
         try {
             return await run({
                 signal: controller.signal,
@@ -503,6 +515,7 @@ export class BuildCommand implements CliCommandHandling {
             });
         } finally {
             process.off("SIGINT", cancel);
+            process.off("SIGTERM", cancel);
         }
     }
 

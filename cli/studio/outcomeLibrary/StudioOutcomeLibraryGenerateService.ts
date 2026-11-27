@@ -254,7 +254,7 @@ export class StudioOutcomeLibraryGenerateService {
         }
 
         try {
-            const outDirRelative = request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR;
+            const outDirRelative = request.outDir ?? await this.defaultBundleDirectory(projectRoot, game.getInfo().id);
             let preparedRequest;
             try {
             // This is deliberately the same prepared request generation will
@@ -517,7 +517,7 @@ export class StudioOutcomeLibraryGenerateService {
         if (wasmDiagnostic !== undefined) {
             return {status: "load-error", error: wasmDiagnostic, plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
-        const outDirRelative = request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR;
+        let outDirRelative: string;
         // Set after domain preparation below: a runtime package with an
         // omitted mode has a declared default which may be `ante`, not base.
         let modeName = "base";
@@ -558,6 +558,7 @@ export class StudioOutcomeLibraryGenerateService {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
         try {
+            outDirRelative = request.outDir ?? await this.defaultBundleDirectory(projectRoot, game.getInfo().id);
             try {
                 domainRequest = this.createDomainRequest(game, request, outDirRelative, projectRoot);
                 domainRequest = {
@@ -1316,6 +1317,30 @@ export class StudioOutcomeLibraryGenerateService {
         } catch (error) {
             return {allowed: false, error: `"${resolvedOutDir}" has an unreadable Outcome Library mode index, so it cannot be safely regenerated: ${error instanceof Error ? error.message : String(error)}`};
         }
+    }
+
+    // The default bundle directory is shared by every design saved in one folder. Keep using the
+    // conventional name when it is free or already belongs to this game, but give a second design its
+    // own sibling (`outcomelibrary-<project>`) instead of silently overwriting the first design's exact
+    // table. Legacy `outcomelibrary` bundles remain discoverable through registry().
+    private async defaultBundleDirectory(projectRoot: string, gameId: string): Promise<string> {
+        const base = StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR;
+        const resolved = resolveProjectDirectory(projectRoot, base);
+        if (resolved.status !== "ok") return base;
+        try {
+            if (!this.directoryExists(resolved.resolvedPath) || !this.isDirectory(resolved.resolvedPath)) return base;
+            const entries = fs.readdirSync(resolved.resolvedPath);
+            if (entries.length === 0) return base;
+            const manifest = await this.bundleReader.readIndex(resolved.resolvedPath);
+            if (manifest.game.id === gameId) return base;
+        } catch {
+            // An unreadable or unrelated directory is not ours to replace.
+        }
+        const slug = path.basename(path.resolve(projectRoot))
+            .replace(/\.blueprint\.json$/i, "")
+            .replace(/[^A-Za-z0-9._-]+/g, "-")
+            .replace(/^[-.]+|[-.]+$/g, "");
+        return `${base}-${slug.length > 0 ? slug : "project"}`;
     }
 
     // registry()'s own discovery set: DEFAULT_BUNDLE_DIR (always checked, generated into or not) plus

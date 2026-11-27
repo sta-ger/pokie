@@ -18,6 +18,19 @@ import {
 } from "@fromstan/pokie";
 
 describe("DefaultGameSessionSimulation", () => {
+    test("simulation funds the session instead of stopping at the demo wallet balance", () => {
+        const session = new VideoSlotSession();
+        const config = new SimulationConfig();
+        config.setNumberOfRounds(2000);
+        const simulation = new Simulation(session, config);
+        simulation.run();
+        expect(simulation.getCurrentRoundNumber()).toBe(2000);
+
+        const aggregateSession = new VideoSlotSession();
+        const stats = new AggregateSimulationRunner(aggregateSession, 2000).run().getStatistics();
+        expect(stats.rounds).toBe(2000);
+    });
+
     test("plain built-in base rounds use the same capability and statistics in every runner", () => {
         const base = new GameSession();
         const runtime = new SessionRuntime(base);

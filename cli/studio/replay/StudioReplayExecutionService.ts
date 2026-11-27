@@ -588,7 +588,7 @@ export class StudioReplayExecutionService {
             }
             if (record.expectedConfigHash !== undefined && runtime.manifest.artifact?.configurationHash !== record.expectedConfigHash) throw new Error("The project model changed since this simulation; run a new simulation before sampling it.");
             this.markRunning(record);
-            record.game = {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version};
+            record.game = {id: runtime.manifest.component.id, name: runtime.manifest.component.name ?? runtime.manifest.component.id, version: runtime.manifest.component.version};
             record.configHash = runtime.manifest.artifact?.configurationHash;
             const canSerialize = runtime.manifest.capabilities.includes("runtime.serialize");
             const observed = await collectPokieWasmReplay(runtime, {seed: record.seed, round: record.round, modeName: record.modeName, unit: record.unit, entryCommands: record.entryCommands, initialCredits: record.initialCredits}, {

@@ -21,6 +21,7 @@ import {SimulationCategoryNameNormalizer} from "./SimulationCategoryNameNormaliz
 import type {SimulationRoundCategoryDetermining} from "./SimulationRoundCategoryDetermining.js";
 import {SimulationAccumulator} from "./SimulationAccumulator.js";
 import {StakeBasedSimulationRoundCategoryDeterminer} from "./StakeBasedSimulationRoundCategoryDeterminer.js";
+import {fundSimulationSession} from "./internal/fundSimulationSession.js";
 
 // A session's own explicit SimulationCategoryDetermining answer (e.g. "bonus", "respins") always
 // takes priority when present; StakeBasedSimulationRoundCategoryDeterminer's base/freeGames inference
@@ -75,6 +76,7 @@ export class AggregateSimulationRunner {
     }
 
     public run(shouldStop?: () => boolean): SimulationAccumulator {
+        fundSimulationSession(this.session);
         const accumulator = new SimulationAccumulator();
         if (this.observationRequest) accumulator.configureObservations(this.observationRequest);
         const observer = new SessionFeatureAnalyticsObserver(this.session);

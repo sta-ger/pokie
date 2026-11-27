@@ -238,14 +238,16 @@ Answers can also be piped/scripted (e.g. `printf '...\n...\n' | pokie create`, o
 each question is answered from the piped input in the same order it would be asked interactively, one line per
 prompt, and the same reprompt-on-invalid-input and EOF-cancellation rules apply.
 
-Without a real terminal to run the wizard in (a script, CI, or any other non-interactive invocation), `pokie
-create`/`pokie create [name]` exits immediately with guidance toward its two non-interactive shortcuts below,
-instead of hanging or silently cancelling:
+Piped answers are accepted from a pipe or a redirected regular file. With neither a terminal nor piped input
+(a CI job with no stdin, `/dev/null`, or an otherwise closed stream), `pokie create`/`pokie create [name]` exits
+immediately with guidance toward its two non-interactive shortcuts below, instead of hanging or silently
+cancelling:
 
 ```
-pokie create needs an interactive terminal to run its Blueprint wizard, and this one is not connected to one.
-Re-run inside a terminal, or use a non-interactive shortcut instead: "pokie create --blank" (a bare-minimum
-blueprint) or "pokie create --random" (an always-valid randomly generated one).
+pokie create needs an interactive terminal (or piped/scripted answers) to run its Blueprint wizard, and this
+one has neither. Re-run inside a terminal, pipe answers into it, or use a non-interactive shortcut instead:
+"pokie create --blank" (a bare-minimum blueprint) or "pokie create --random" (an always-valid randomly
+generated one).
 ```
 
 Options:
@@ -293,8 +295,9 @@ Build it:
  pokie build ./blazing-riches.blueprint.json --target tsPackage --out <dir>
 ```
 
-`<name>`, when given, is used verbatim as the package name (and, via the default output path, the written
-filename); omitted, a generated name/id is used for both instead. The blueprint is validated before writing — a
+`<name>`, when given, becomes the game's display name; its package id (and, via the default output path, the
+written filename) is lowercased and slugified into an npm-safe form, so "My Game" becomes id `my-game` while the
+title stays "My Game". Omitted, a generated name/id is used for both instead. The blueprint is validated before writing — a
 validation error exits non-zero with a printed explanation instead of writing anything — but nothing is ever built
 or smoke-simulated here: `pokie create --random` only ever writes the blueprint file. Feed the result into
 [`pokie build <file> --target tsPackage --out <dir>`](#pokie-build-project) for a real, playable package.
@@ -1743,7 +1746,9 @@ coming from the target directory itself:
  to double as one).
 2. **Write `tsconfig.json`, `README.md`, `src/index.ts` wherever they're missing** — an existing one of these is
  never overwritten, only reported as `skipped`, so re-running `pokie init` in a directory you've already started
- hand-editing never clobbers your changes.
+ hand-editing never clobbers your changes. A `package.json` with `"type": "module"` gets a `NodeNext` tsconfig and
+ an `export default game` entry module instead of the CommonJS shape; an existing CommonJS tsconfig in that
+ project is refused before anything is written, with the exact `module`/`moduleResolution` fix to make.
 3. **Install dependencies** (`npm install`, writing `package-lock.json`) — skip with `--no-install`.
 4. **Build** (`npm run build`, i.e. `tsc`, producing `dist/index.js`) and **verify** the result actually loads (the
  same check [`pokie validate`](#pokie-validate-project) runs) — skipped, along with step 3, by `--no-prepare`.
@@ -2530,13 +2535,14 @@ For a package, `game` is populated whenever its game metadata could be read, eve
 field is invalid. For outcome-library inputs, `issues` is the combined diagnostic list; `errors` and `warnings`
 remain available for CI to make its decision without filtering by severity itself.
 
-Exit code is `0` when `valid` is `true`, even if the optional advanced declaration check is inconclusive or
-unsupported (generated executables and feature-heavy games commonly cannot prove that check), and `1` when
-structural validation fails. `--strict` changes an inconclusive advanced check to exit `2`; an advanced
-counterexample remains exit `1`. `3` means the advanced check itself failed operationally after a structurally
-valid read, and `130` means cancellation. No thrown/printed error is added on top of the report, so scripting
-against `pokie validate` doesn't have to parse stderr. Only usage mistakes (missing `<project>`, an unknown
-option, `--out`/`--format` without a value) throw the usual `Usage: pokie validate...` error.
+Exit code is `0` when `valid` is `true`, even if the optional advanced declaration check is inconclusive,
+unsupported or reports a counterexample (generated executables and feature-heavy games commonly cannot prove
+that check), and `1` when structural validation fails. `--strict` changes any advanced result other than
+`proved-within-assumptions` (including a counterexample) to exit `2`. `3` means the advanced check itself failed
+operationally after a structurally valid read, and `130` means cancellation. No thrown/printed error is added
+on top of the report, so scripting against `pokie validate` doesn't have to parse stderr. Only usage mistakes
+(missing `<project>`, an unknown option, `--out`/`--format` without a value) throw the usual
+`Usage: pokie validate...` error.
 
 ## `pokie inspect <packageRoot>`
 

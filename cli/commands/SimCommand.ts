@@ -393,7 +393,7 @@ export class SimCommand implements CliCommandHandling {
         try {
             const results = await collectPokieWasmSimulation(runtime, seed, options.rounds, {mode: options.mode});
             const authoredInfo = manifestRead.canonical?.model.features?.blueprint.info;
-            const gameInfo = authoredInfo ?? {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version};
+            const gameInfo = authoredInfo ?? {id: runtime.manifest.component.id, name: runtime.manifest.component.name ?? runtime.manifest.component.id, version: runtime.manifest.component.version};
             const reports = results.map(result => this.reportBuilder.build({
                 gameInfo,
                 requestedRounds: options.rounds, seed, statistics: result.statistics, durationMs: Date.now() - startedAt,

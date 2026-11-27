@@ -96,6 +96,14 @@ export class PokieWasmComponentInfoValidator {
                 path: "component.id",
             });
         }
+        if (component.name !== undefined && !isNonEmptyString(component.name)) {
+            issues.push({
+                code: "wasm-component-manifest-component-name-invalid",
+                severity: "error",
+                message: `"component.name" must be a non-empty string when present, got ${JSON.stringify(component.name)}.`,
+                path: "component.name",
+            });
+        }
         if (!isNonEmptyString(component.version)) {
             issues.push({
                 code: "wasm-component-manifest-component-version-invalid",

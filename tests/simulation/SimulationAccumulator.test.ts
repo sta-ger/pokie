@@ -300,12 +300,19 @@ describe("AggregateSimulationRunner", () => {
         expect(stats.totalBet).toBe(10);
     });
 
-    test("stops early if the session can no longer play, without corrupting the accumulator", () => {
+    test("stops early if the session itself can no longer play, without corrupting the accumulator", () => {
         const config = new GameSessionConfig();
         config.setAvailableBets([10]);
         config.setBet(10);
-        config.setCreditsAmount(25); // enough for 2 rounds, not 3
+        config.setCreditsAmount(25);
         const session = new GameSession(config);
+        let played = 0;
+        session.canPlayNextGame = () => played < 2;
+        const originalPlay = session.play.bind(session);
+        session.play = () => {
+            originalPlay();
+            played++;
+        };
         const runner = new AggregateSimulationRunner(session, 10);
 
         const stats = runner.run().getStatistics();

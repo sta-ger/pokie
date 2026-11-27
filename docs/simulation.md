@@ -49,8 +49,10 @@ limits; matching observed totals cannot prove definition equality or arbitrary c
 Historical assessments are saved as engineering history, not current support guidance.
 
 `Simulation` drives any `GameSessionHandling` (e.g. `VideoSlotSession`) through repeated rounds and aggregates
-statistics — the tool for RTP/volatility/hit-frequency work. See
-[Modeling Slot Math with POKIE](math-modeling.md) for a full worked example.
+statistics — the tool for RTP/volatility/hit-frequency work. Both `Simulation` and `AggregateSimulationRunner`
+fund the session with a simulation bankroll before playing, so a demo wallet balance cannot silently cut a
+10,000-round run down to the ~1,000 rounds it happened to afford. Use a play strategy when you intentionally
+want a different stop condition. See [Modeling Slot Math with POKIE](math-modeling.md) for a full worked example.
 
 `Simulation` remains the rich analysis mode that keeps full per-round series. For very large runs where you only want
 aggregates, use the newer foundation classes:

@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import {buildPackageJsonPatch, PackageJsonLike, PokieGameInfo, renderTsconfig} from "@fromstan/pokie";
+import type {PackageModuleFormat} from "../../src/gamepackage/renderTsconfig.js";
 import {deriveManifestDefaults} from "./deriveManifestDefaults.js";
 import {GamePackageMergeConflictError, PackageJsonFieldConflict} from "./GamePackageMergeConflictError.js";
 import {GamePackageMergeOverrides, GamePackageMerging} from "./GamePackageMerging.js";
@@ -62,6 +63,8 @@ export class GamePackageMerger implements GamePackageMerging {
             name: this.firstNonBlank(nameOverride, derived.name),
             version,
         };
+        const moduleFormat = this.resolveModuleFormat(projectRoot, existingPkg);
+        if (moduleFormat === "esm") this.assertEsmEntryModule(projectRoot);
 
         const patchedPackageJson = buildPackageJsonPatch({...existingPkg, name: packageName, version}, this.pokieVersion);
 
@@ -83,17 +86,68 @@ export class GamePackageMerger implements GamePackageMerging {
         fs.writeFileSync(packageJsonPath, `${JSON.stringify(patchedPackageJson, null, 4)}\n`);
         (packageJsonExisted ? updatedFiles : createdFiles).push("package.json");
 
-        this.writeIfAbsent(path.join(projectRoot, "tsconfig.json"), "tsconfig.json", renderTsconfig(), createdFiles, skippedFiles);
+        this.writeIfAbsent(path.join(projectRoot, "tsconfig.json"), "tsconfig.json", renderTsconfig(moduleFormat), createdFiles, skippedFiles);
         this.writeIfAbsent(path.join(projectRoot, "README.md"), "README.md", renderPackageReadme(manifest), createdFiles, skippedFiles);
         this.writeIfAbsent(
             path.join(projectRoot, "src", "index.ts"),
             "src/index.ts",
-            renderEntryModule(manifest),
+            renderEntryModule(manifest, moduleFormat),
             createdFiles,
             skippedFiles,
         );
 
         return {projectRoot, info: manifest, createdFiles, updatedFiles, skippedFiles};
+    }
+
+    // A package.json's own "type": "module" makes Node treat dist/index.js as ESM.  The scaffolded
+    // source and tsconfig must agree with that: rendering the traditional CommonJS `export = game`
+    // source and "module": "CommonJS" config into an ESM host produces a package that compiles but
+    // then fails at load time with "require/exports is not defined in ES module scope".  Detect the
+    // host module shape before writing anything, and refuse an existing incompatible tsconfig with a
+    // concrete remedy rather than leaving a half-working package behind.  Projects without an explicit
+    // package type keep the long-standing CommonJS scaffold, including when they already have a
+    // NodeNext tsconfig (NodeNext compiles a CJS package's `export =` source to CJS correctly).
+    private resolveModuleFormat(projectRoot: string, existingPkg: PackageJsonLike): PackageModuleFormat {
+        const packageIsEsm = existingPkg.type === "module";
+        const tsconfigPath = path.join(projectRoot, "tsconfig.json");
+        if (!fs.existsSync(tsconfigPath)) {
+            return packageIsEsm ? "esm" : "cjs";
+        }
+
+        let text: string;
+        try {
+            text = fs.readFileSync(tsconfigPath, "utf-8");
+        } catch {
+            return packageIsEsm ? "esm" : "cjs";
+        }
+        const declaredModule = (/"module"\s*:\s*"([^"]+)"/i).exec(text)?.[1]?.toLowerCase();
+        if (packageIsEsm) {
+            const explicitlyCommonJs = declaredModule === undefined ? false : (/^(commonjs|node10|node)$/).test(declaredModule);
+            // An "extends" base may supply the module, so a missing local value is not evidence of
+            // CommonJS; let the build/verify phase diagnose that rather than refusing a valid setup.
+            const missingWithoutExtends = declaredModule === undefined && !((/"extends"\s*:/).test(text));
+            if (explicitlyCommonJs || missingWithoutExtends) {
+                throw new Error(
+                    `Cannot initialize "${projectRoot}": package.json declares "type": "module", but ` +
+                        `tsconfig.json ${declaredModule === undefined ? "does not declare an ESM \"module\"" : `declares "module": "${declaredModule}"`}. ` +
+                        `Set "module" and "moduleResolution" to "NodeNext" (or another ES module target), then run "pokie init" again.`,
+                );
+            }
+        }
+        return packageIsEsm ? "esm" : "cjs";
+    }
+
+    private assertEsmEntryModule(projectRoot: string): void {
+        const entryPath = path.join(projectRoot, "src", "index.ts");
+        if (!fs.existsSync(entryPath) || !fs.statSync(entryPath).isFile()) return;
+        const source = fs.readFileSync(entryPath, "utf-8");
+        if ((/(^|[^A-Za-z0-9_$])export\s*=/).test(source)) {
+            throw new Error(
+                `Cannot initialize "${projectRoot}": package.json declares "type": "module", but ` +
+                    "src/index.ts uses the CommonJS `export = game` form. Change it to `export default game` " +
+                    "(and keep the same game object), then run \"pokie init\" again.",
+            );
+        }
     }
 
     // Check every directory we must create into before package.json is patched. In particular, a

@@ -147,7 +147,7 @@ export async function loadProjectDashboardContext(
                         projectRoot: resolvedRoot,
                         game: {
                             id: manifestRead.manifest.component.id,
-                            name: manifestRead.manifest.component.id,
+                            name: manifestRead.manifest.component.name ?? manifestRead.manifest.component.id,
                             version: manifestRead.manifest.component.version,
                         },
                         type: "wasm",

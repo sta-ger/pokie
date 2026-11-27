@@ -83,7 +83,7 @@ where that file lives) shaped as `PokieWasmComponentInfo`:
 ```ts
 type PokieWasmComponentInfo = {
  schemaVersion: string; // which version of *this* contract the manifest targets
- component: {id: string; version: string};
+ component: {id: string; name?: string; version: string};
  minPokieVersion?: string; // lowest POKIE release accepted by the resolver and portable runtime
  serialization: {
  session: string; // format id for a session's own config
@@ -100,7 +100,8 @@ type PokieWasmComponentInfo = {
 
 - **Metadata** — `component.id`/`component.version` identify the component build itself, independent of
  `schemaVersion` (POKIE's own interface version) and `minPokieVersion` (the lowest package release the component
- claims compatibility with — enforced during resolution and before portable runtime instantiation).
+ claims compatibility with — enforced during resolution and before portable runtime instantiation). The optional
+ `component.name` is the human-readable display name; older components omit it and reports fall back to the id.
 - **Session/play/state serialization** — three format ids naming the wire shape the component's own host
  boundary expects for a session's config, one played round, and persisted state. POKIE places no constraint on
  the ids themselves beyond the runtime ABI it validates before execution.

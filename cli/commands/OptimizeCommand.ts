@@ -40,6 +40,7 @@ export class OptimizeCommand implements CliCommandHandling {
         const controller = new AbortController();
         const cancel = (): void => controller.abort();
         process.on("SIGINT", cancel);
+        process.on("SIGTERM", cancel);
         try {
             try {
                 await command.parseAsync(args, {from: "user"});
@@ -66,7 +67,9 @@ export class OptimizeCommand implements CliCommandHandling {
                 if (options.apply && (!approved || approved.sourcePath !== project.rootPath || approved.sourceRevision !== projectRevision(project) || approved.requestRevision !== jsonHash(request))) throw new Error("Reviewed source or policy changed; run a fresh preview.");
                 result = await this.service.optimize(project, request, {
                     signal: controller.signal,
-                    onProgress: options.progress
+                    // A long exact search is indistinguishable from a hang without progress. Stream it
+                    // whenever stderr is a terminal; --progress keeps it on for redirected stderr too.
+                    onProgress: options.progress || process.stderr.isTTY
                         ? (evidence) => console.error(JSON.stringify({type: "progress", evidence}))
                         : undefined,
                 });
@@ -105,6 +108,7 @@ export class OptimizeCommand implements CliCommandHandling {
             };
         } finally {
             process.off("SIGINT", cancel);
+            process.off("SIGTERM", cancel);
         }
         console.log(JSON.stringify({...result, ...(review ? {review} : {})}));
         return OPTIMIZATION_EXIT_CODES[result.status];

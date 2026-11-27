@@ -14,6 +14,7 @@ import {
 } from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {quoteShellArgument} from "./internal/quoteShellArgument.js";
 
 const USAGE = "Usage: pokie inspect <packageRoot>";
 
@@ -118,7 +119,7 @@ export class InspectCommand implements CliCommandHandling {
         if (nextActions.length > 0) {
             console.log("\nAvailable next actions:");
             for (const action of nextActions) {
-                console.log(`  ${action.label}:\n    ${action.command.replace("<path>", `"${project.rootPath}"`)}`);
+                console.log(`  ${action.label}:\n    ${action.command.replace("<path>", quoteShellArgument(project.rootPath))}`);
             }
         }
 
@@ -139,6 +140,7 @@ export class InspectCommand implements CliCommandHandling {
         const {manifest} = manifestRead;
         console.log("\nDeclared component info:");
         console.log(`  component id     ${manifest.component.id}`);
+        if (manifest.component.name !== undefined) console.log(`  component name   ${manifest.component.name}`);
         console.log(`  component version ${manifest.component.version}`);
         console.log(`  schema version   ${manifest.schemaVersion}`);
         console.log(`  serialization    session=${manifest.serialization.session}, play=${manifest.serialization.play}, state=${manifest.serialization.state}`);

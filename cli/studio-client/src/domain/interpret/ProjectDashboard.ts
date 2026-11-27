@@ -141,6 +141,7 @@ export function describeProjectHeader(context: ProjectDashboardContext): Project
 // package) since studio-client is a standalone TS project with no dependency on it -- same convention
 // as StudioProjectCapability's own doc comment in api/types.ts.
 export const BLUEPRINT_BUILD_CAPABILITY: StudioProjectCapability = "blueprint.build";
+export const OUTCOME_LIBRARY_GENERATE_CAPABILITY: StudioProjectCapability = "outcomeLibrary.generate";
 
 // The capability every in-process runtime operation (Simulation, Replay, Runtime, Certification,
 // Fairness, Build/Export, Analysis) requires -- only a project resolved as "tsPackage" grants it on its

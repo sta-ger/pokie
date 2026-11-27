@@ -81,9 +81,14 @@ export class WasmOutputBuilder implements BuildOutputBuilder {
             const model = stableSlotMathJson(resolveCanonicalWasmGameModel(blueprint));
             const parsedModel = JSON.parse(model) as PokieWasmGameModel;
             const configurationHash = `sha256:${crypto.createHash("sha256").update(model).digest("hex")}`;
+            const component = {
+                id: blueprint.info.id,
+                version: blueprint.info.version,
+                ...(blueprint.info.name !== undefined && blueprint.info.name !== blueprint.info.id ? {name: blueprint.info.name} : {}),
+            };
             const descriptor = canonicalDescriptor({
                 schemaVersion: POKIE_WASM_CONTRACT_VERSION,
-                component: {id: blueprint.info.id, version: blueprint.info.version},
+                component,
                 minPokieVersion: this.pokieVersion,
                 serialization: {session: "pokie.session.v2", play: "pokie.play.v2", state: parsedModel.features !== undefined ? "pokie.state.v4" : "pokie.state.v3"},
                 host: {rng: "pokie.rng.v2", services: []},
@@ -94,7 +99,7 @@ export class WasmOutputBuilder implements BuildOutputBuilder {
             const hash = `sha256:${crypto.createHash("sha256").update(moduleBytes).digest("hex")}`;
             const manifest: PokieWasmComponentInfo = {
                 schemaVersion: POKIE_WASM_CONTRACT_VERSION,
-                component: {id: blueprint.info.id, version: blueprint.info.version},
+                component,
                 minPokieVersion: this.pokieVersion,
                 serialization: {session: "pokie.session.v2", play: "pokie.play.v2", state: parsedModel.features !== undefined ? "pokie.state.v4" : "pokie.state.v3"},
                 host: {rng: "pokie.rng.v2", services: []},

@@ -276,7 +276,7 @@ export class StudioWasmBrowserService {
     private result(lease: Lease, output: unknown): StudioJobResultView {
         const {job, artifact} = lease;
         const manifest = artifact.manifest;
-        const game = {id: manifest.component.id, name: manifest.component.id, version: manifest.component.version};
+        const game = {id: manifest.component.id, name: manifest.component.name ?? manifest.component.id, version: manifest.component.version};
         const provenance = {projectRoot: artifact.projectRoot, artifactIdentity: manifest.artifact!.sha256, configHash: manifest.artifact!.configurationHash, execution: "browser-worker"};
         if (job.operation === "simulation") {
             if (!Array.isArray(output) || !output.length || output.some(item => !record(item) || !record(item.statistics) || item.statistics.rounds !== job.request.rounds)) throw new Error("Incomplete WASM Worker simulation result.");
