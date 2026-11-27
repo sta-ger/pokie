@@ -45,6 +45,7 @@ import {isProjectTab, legacyProjectRouteMigration, migrationSearch, type Project
 import {describeReplayActionError} from "../../domain/replayActionError";
 import {getSimulationRoundsError} from "../../domain/simulationRounds";
 import {useConfirm} from "../../hooks/useConfirm";
+import {useNavigationBlockerConfirm} from "../../hooks/useNavigationBlockerConfirm";
 import {useDeploymentManager} from "../../hooks/useDeploymentManager";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {usePlaySession} from "../../hooks/usePlaySession";
@@ -1260,6 +1261,26 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const [copyPathNotice, setCopyPathNotice] = useState<string>();
     const playPending = (play.session.status === "ok" && play.session.session.logicalRound?.status === "pending")
         || ("previousSession" in play.session && play.session.previousSession?.logicalRound?.status === "pending");
+    const bypassPlayNavigationGuardRef = useRef(false);
+    // This page-level guard covers browser Back/Forward and any in-app navigate() that did not go
+    // through the explicit Close/Your-projects confirmations below. Those explicit paths set the
+    // bypass immediately before their own navigation, so the user is never prompted twice. If the
+    // GameModel tab has unsaved edits, its own blocker owns that transition and this one defers.
+    useNavigationBlockerConfirm(
+        ({currentLocation, nextLocation}) => {
+            if (!playPending || gameModelDirty || bypassPlayNavigationGuardRef.current) return false;
+            const projectPrefix = (/^\/project\/[^/]+\//).exec(currentLocation.pathname)?.[0];
+            return projectPrefix !== undefined && !nextLocation.pathname.startsWith(projectPrefix);
+        },
+        {
+            title: "In-progress Play round",
+            children: "An in-progress Play round will be discarded. Leave the project anyway?",
+            labels: {confirm: "Leave", cancel: "Stay"},
+            controlIds: {confirm: "play-navigation-leave", cancel: "play-navigation-stay"},
+            operation: "play-navigation",
+        },
+        () => play.resetForProjectSwitch(),
+    );
     const [jobOutputNotice, setJobOutputNotice] = useState<string>();
     const [jobOutputActionsUnavailableReason, setJobOutputActionsUnavailableReason] = useState<string>();
     const closeGuard = useDoubleSubmitGuard();
@@ -1272,6 +1293,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             .then(() => {
                 // Closing a workspace returns to the list it came from, where the user can reopen it
                 // or choose another project.  Starting a new game remains an explicit Home choice.
+                // This path already asked about an in-progress Play round when applicable.
+                bypassPlayNavigationGuardRef.current = true;
+                play.resetForProjectSwitch();
                 navigate("/home/projects");
             })
             .catch((error: unknown) => {
@@ -1300,7 +1324,11 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // blocker still guards unsaved edits; only explicit Close drains the project.
     const returnToProjects = (): void => {
         if (playPending) {
-            confirm("An in-progress Play round will be discarded. Leave the project anyway?", () => navigate("/home/projects"));
+            confirm("An in-progress Play round will be discarded. Leave the project anyway?", () => {
+                bypassPlayNavigationGuardRef.current = true;
+                play.resetForProjectSwitch();
+                navigate("/home/projects");
+            });
             return;
         }
         navigate("/home/projects");

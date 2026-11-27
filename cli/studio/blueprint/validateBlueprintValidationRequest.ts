@@ -1,6 +1,6 @@
-export type BlueprintValidationRequestInput = {blueprint?: unknown};
+export type BlueprintValidationRequestInput = {blueprint?: unknown; requestId?: unknown};
 
-export type ValidatedBlueprintValidationRequest = {blueprint: unknown};
+export type ValidatedBlueprintValidationRequest = {blueprint: unknown; requestId?: string};
 
 // The one place a POST /api/home/blueprints/validate body is turned into a trusted request — throws a
 // plain, client-safe Error (StudioServer catches this and maps it to 400) only when `blueprint` itself
@@ -10,5 +10,8 @@ export function validateBlueprintValidationRequest(input: BlueprintValidationReq
     if (input.blueprint === undefined) {
         throw new Error('"blueprint" is required.');
     }
-    return {blueprint: input.blueprint};
+    if (input.requestId !== undefined && (typeof input.requestId !== "string" || input.requestId.trim().length === 0)) {
+        throw new Error('"requestId" must be a non-empty string when present.');
+    }
+    return {blueprint: input.blueprint, ...(input.requestId === undefined ? {} : {requestId: input.requestId})};
 }

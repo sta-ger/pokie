@@ -140,10 +140,10 @@ export function ProjectsPanel({
     // dedicated "Review missing" notice below.
     const [statusFilter, setStatusFilter] = useState<ProjectStatusFilter>("ok");
     const [page, setPage] = useState(1);
-    const [selectedMissingLocations, setSelectedMissingLocations] = useState<ReadonlySet<string>>(new Set());
-    const [removingMissing, setRemovingMissing] = useState(false);
+    const [selectedLocations, setSelectedLocations] = useState<ReadonlySet<string>>(new Set());
+    const [removingSelected, setRemovingSelected] = useState(false);
     const [removingAllMissing, setRemovingAllMissing] = useState(false);
-    const [missingRemovalError, setMissingRemovalError] = useState<string | undefined>(undefined);
+    const [bulkRemovalError, setBulkRemovalError] = useState<string | undefined>(undefined);
     const detectGuard = useDoubleSubmitGuard();
     const registerGuard = useDoubleSubmitGuard();
     const openGuard = useDoubleSubmitGuard();
@@ -184,6 +184,7 @@ export function ProjectsPanel({
             };
         }
         setRemoveError(undefined);
+        setBulkRemovalError(undefined);
         // Preserve a just-saved project's optimistic row while this reconciliation request is in
         // flight. Otherwise opening Projects immediately after Save would briefly erase that row.
         setListView((previous) => previous.status === "loaded" ? previous : {status: "loading"});
@@ -260,20 +261,20 @@ export function ProjectsPanel({
         setPage(1);
     };
 
-    const handleBulkRemoveMissing = (): void => {
-        const selectedLocations = [...selectedMissingLocations];
-        if (selectedLocations.length === 0 || removingMissing) {
+    const handleBulkRemoveSelected = (): void => {
+        const locations = [...selectedLocations];
+        if (locations.length === 0 || removingSelected) {
             return;
         }
         confirm(
-            `Remove ${selectedLocations.length} missing project${selectedLocations.length === 1 ? "" : "s"} from Projects? This only forgets them here -- nothing on disk is deleted.`,
+            `Remove ${locations.length} selected project${locations.length === 1 ? "" : "s"} from Projects? This only forgets them here -- nothing on disk is deleted.`,
             () => {
-                setRemovingMissing(true);
-                setMissingRemovalError(undefined);
-                Promise.allSettled(selectedLocations.map((entryLocation) => removeProjectRegistryEntry(fetchImpl, entryLocation)))
+                setRemovingSelected(true);
+                setBulkRemovalError(undefined);
+                Promise.allSettled(locations.map((entryLocation) => removeProjectRegistryEntry(fetchImpl, entryLocation)))
                     .then((results) => {
                         const removedLocations = new Set(
-                            results.flatMap((result, index) => result.status === "fulfilled" ? [selectedLocations[index]] : []),
+                            results.flatMap((result, index) => result.status === "fulfilled" ? [locations[index]] : []),
                         );
                         if (removedLocations.size > 0) {
                             setListView((previous) => {
@@ -283,27 +284,27 @@ export function ProjectsPanel({
                                 const entries = previous.entries.filter((entry) => !removedLocations.has(entry.location));
                                 return entries.length === 0 ? {status: "empty"} : {...previous, entries};
                             });
-                            setSelectedMissingLocations((previous) => new Set([...previous].filter((location) => !removedLocations.has(location))));
+                            setSelectedLocations((previous) => new Set([...previous].filter((location) => !removedLocations.has(location))));
                         }
-                        if (removedLocations.size !== selectedLocations.length) {
-                            setMissingRemovalError("Some missing projects could not be removed. The remaining selections are still available to retry.");
+                        if (removedLocations.size !== locations.length) {
+                            setBulkRemovalError("Some selected projects could not be removed. The remaining selections are still available to retry.");
                         }
                     })
-                    .finally(() => setRemovingMissing(false));
+                    .finally(() => setRemovingSelected(false));
             },
         );
     };
 
     const handleRemoveAllMissing = (): void => {
         const missingLocations = missingEntries.map((entry) => entry.location);
-        if (missingLocations.length === 0 || removingMissing || removingAllMissing) {
+        if (missingLocations.length === 0 || removingAllMissing) {
             return;
         }
         confirm(
             `Remove all ${missingLocations.length} missing project${missingLocations.length === 1 ? "" : "s"} from Projects? This only forgets them here -- nothing on disk is deleted.`,
             () => {
                 setRemovingAllMissing(true);
-                setMissingRemovalError(undefined);
+                setBulkRemovalError(undefined);
                 removeMissingProjectRegistryEntries(fetchImpl)
                     .then(() => {
                         const removedLocations = new Set(missingLocations);
@@ -314,9 +315,9 @@ export function ProjectsPanel({
                             const entries = previous.entries.filter((entry) => !removedLocations.has(entry.location));
                             return entries.length === 0 ? {status: "empty"} : {...previous, entries};
                         });
-                        setSelectedMissingLocations((previous) => new Set([...previous].filter((location) => !removedLocations.has(location))));
+                        setSelectedLocations((previous) => new Set([...previous].filter((location) => !removedLocations.has(location))));
                     })
-                    .catch((error: unknown) => setMissingRemovalError(describeProjectActionError("Removing missing projects", errorMessage(error))))
+                    .catch((error: unknown) => setBulkRemovalError(describeProjectActionError("Removing missing projects", errorMessage(error))))
                     .finally(() => setRemovingAllMissing(false));
             },
         );
@@ -439,9 +440,9 @@ export function ProjectsPanel({
     const missingPageEntries = pageEntries.filter((entry) => entry.status === "missing");
     const unavailablePageEntries = pageEntries.filter((entry) => entry.status === "unavailable");
     const missingEntries = entries.filter((entry) => entry.status === "missing");
-    const selectedMissingOnPage = missingPageEntries.filter((entry) => selectedMissingLocations.has(entry.location));
-    const toggleMissingSelection = (location: string, checked: boolean): void => {
-        setSelectedMissingLocations((previous) => {
+    const selectedOnPage = pageEntries.filter((entry) => selectedLocations.has(entry.location));
+    const toggleSelection = (location: string, checked: boolean): void => {
+        setSelectedLocations((previous) => {
             const next = new Set(previous);
             if (checked) next.add(location);
             else next.delete(location);
@@ -451,13 +452,11 @@ export function ProjectsPanel({
     const renderEntryRow = (entry: StudioProjectRegistryView): ReactNode => (
         <Table.Tr key={entry.location} className="project-registry-entry">
             <Table.Td className="project-registry-selection" data-label="Select">
-                {entry.status === "missing" && (
-                    <Checkbox
-                        aria-label={`Select missing project ${entry.name}`}
-                        checked={selectedMissingLocations.has(entry.location)}
-                        onChange={(event) => toggleMissingSelection(entry.location, event.currentTarget.checked)}
-                    />
-                )}
+                <Checkbox
+                    aria-label={`Select project ${entry.name}`}
+                    checked={selectedLocations.has(entry.location)}
+                    onChange={(event) => toggleSelection(entry.location, event.currentTarget.checked)}
+                />
             </Table.Td>
             <Table.Td data-label="Project">
                 <div className="project-registry-identity">
@@ -570,29 +569,36 @@ export function ProjectsPanel({
                                 }}>Clear filters</Button>
                             )}
                         </QuickActions>
-                        {missingEntries.length > 0 && (statusFilter === "missing" || statusFilter === "all") && (
+                        {selectedLocations.size > 0 && (
                             <QuickActions>
                                 <Button
                                     color="red"
                                     variant="light"
-                                    disabled={selectedMissingLocations.size === 0 || removingAllMissing}
-                                    loading={removingMissing}
-                                    onClick={handleBulkRemoveMissing}
+                                    loading={removingSelected}
+                                    disabled={removingAllMissing}
+                                    onClick={handleBulkRemoveSelected}
                                 >
-                                    Remove selected missing ({selectedMissingLocations.size})
+                                    Remove selected ({selectedLocations.size})
                                 </Button>
+                                <Text size="sm" c="dimmed">
+                                    This only forgets the selected projects here. Project files stay untouched.
+                                </Text>
+                            </QuickActions>
+                        )}
+                        {missingEntries.length > 0 && (statusFilter === "missing" || statusFilter === "all") && (
+                            <QuickActions>
                                 <Button
                                     color="red"
                                     variant="filled"
-                                    disabled={removingMissing}
+                                    disabled={removingSelected}
                                     loading={removingAllMissing}
                                     onClick={handleRemoveAllMissing}
                                 >
                                     Remove all missing ({missingEntries.length})
                                 </Button>
                                 <Text size="sm" c="dimmed">
-                                    Select individual rows, or remove every missing entry in one action. Project files stay
-                                    untouched.
+                                    Use the row checkboxes in the table below to remove any selected projects, or remove
+                                    every missing entry in one action. Project files stay untouched.
                                 </Text>
                             </QuickActions>
                         )}
@@ -614,7 +620,7 @@ export function ProjectsPanel({
                                 </Button>
                             </Alert>
                         )}
-                        {missingRemovalError && <ErrorState message={missingRemovalError} />}
+                        {bulkRemovalError && <ErrorState message={bulkRemovalError} />}
                         {filteredEntries.length === 0 ? (
                             <EmptyState message={statusFilter === "ok" && missingEntries.length > 0 ? "No available projects. Review the missing entries above, or start a game." : "No projects match these filters."} />
                         ) : (
@@ -623,12 +629,12 @@ export function ProjectsPanel({
                                     <Table.Thead>
                                         <Table.Tr>
                                             <Table.Th style={{width: "2.5rem"}}>
-                                                {missingPageEntries.length > 0 && (
+                                                {pageEntries.length > 0 && (
                                                     <Checkbox
-                                                        aria-label="Select missing projects on this page"
-                                                        checked={selectedMissingOnPage.length === missingPageEntries.length}
-                                                        indeterminate={selectedMissingOnPage.length > 0 && selectedMissingOnPage.length < missingPageEntries.length}
-                                                        onChange={(event) => missingPageEntries.forEach((entry) => toggleMissingSelection(entry.location, event.currentTarget.checked))}
+                                                        aria-label="Select projects on this page"
+                                                        checked={selectedOnPage.length === pageEntries.length}
+                                                        indeterminate={selectedOnPage.length > 0 && selectedOnPage.length < pageEntries.length}
+                                                        onChange={(event) => pageEntries.forEach((entry) => toggleSelection(entry.location, event.currentTarget.checked))}
                                                     />
                                                 )}
                                             </Table.Th>

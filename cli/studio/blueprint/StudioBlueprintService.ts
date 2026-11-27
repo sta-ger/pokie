@@ -1023,11 +1023,12 @@ export class StudioBlueprintService {
     // draft, never saving a project or writing an Outcome Library. Kept separate from
     // previewGameModel() (which is synchronous and structural) because exact analysis is the expensive
     // "show me the math" action and gets its own explicit request from the editor.
-    public async previewMath(blueprint: unknown, signal?: AbortSignal): Promise<StudioBlueprintMathPreviewView> {
+    public async previewMath(blueprint: unknown, signal?: AbortSignal, onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void): Promise<StudioBlueprintMathPreviewView> {
         const result = await analyzeBlueprintMath(blueprint, {
             pokieVersion: this.pokieVersion,
             maxOutcomes: DEFAULT_BLUEPRINT_MATH_OUTCOME_CAP,
             ...(signal === undefined ? {} : {signal}),
+            ...(onProgress === undefined ? {} : {onProgress}),
         });
         if (result.status === "unavailable") {
             return {

@@ -602,7 +602,7 @@ export function renderBetInfo(
     renderOptionsRow(
         el,
         "player-bet",
-        currentBet === undefined ? undefined : `Bet: ${currentBet}`,
+        currentBet === undefined ? undefined : `Total bet: ${currentBet}`,
         availableBets.map(String),
         currentBet === undefined ? undefined : String(currentBet),
         (value) => onSelectBet(Number(value)),

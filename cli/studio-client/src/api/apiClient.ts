@@ -744,17 +744,53 @@ export async function previewGameModel(fetchImpl: FetchLike, blueprint: unknown,
 
 // Design Game's on-demand exact math preview -- one complete in-memory enumeration of the draft, never
 // an Outcome Library write and never a sampled estimate. "unavailable" is an ordinary domain state.
-export async function previewBlueprintMath(fetchImpl: FetchLike, blueprint: unknown, signal?: AbortSignal): Promise<StudioBlueprintMathPreviewView> {
-    const response = await fetchImpl("/api/home/blueprints/math-preview", {
-        signal,
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({blueprint}),
-    });
-    if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to preview exact math for this game design"));
+// While the POST is running, a request-scoped progress side channel reports real raw-combination
+// progress so a long feature preview is not an opaque spinner.
+export async function previewBlueprintMath(
+    fetchImpl: FetchLike,
+    blueprint: unknown,
+    signal?: AbortSignal,
+    onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void,
+): Promise<StudioBlueprintMathPreviewView> {
+    const requestId = globalThis.crypto?.randomUUID?.() ?? `math-preview-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    let stopped = false;
+    let progressTimer: ReturnType<typeof setInterval> | undefined;
+    const pollProgress = async (): Promise<void> => {
+        if (stopped || onProgress === undefined) return;
+        try {
+            const response = await fetchImpl(
+                `/api/home/blueprints/math-preview/progress?id=${encodeURIComponent(requestId)}`,
+                {cache: "no-store", signal},
+            );
+            if (!response.ok) return;
+            const body = await response.json() as {status?: unknown; processed?: unknown; total?: unknown};
+            if (stopped || onProgress === undefined || typeof body.processed !== "string" || typeof body.total !== "string") return;
+            onProgress(BigInt(body.processed), BigInt(body.total));
+        } catch {
+            // A progress poll is advisory. The actual preview request owns the error/abort outcome.
+        }
+    };
+    if (onProgress !== undefined) {
+        pollProgress().catch(() => undefined);
+        progressTimer = setInterval(() => {
+            pollProgress().catch(() => undefined);
+        }, 500);
     }
-    return (await response.json()) as StudioBlueprintMathPreviewView;
+    try {
+        const response = await fetchImpl("/api/home/blueprints/math-preview", {
+            signal,
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({blueprint, requestId}),
+        });
+        if (!response.ok) {
+            throw new Error(await extractErrorMessage(response, "Failed to preview exact math for this game design"));
+        }
+        return (await response.json()) as StudioBlueprintMathPreviewView;
+    } finally {
+        stopped = true;
+        if (progressTimer !== undefined) clearInterval(progressTimer);
+    }
 }
 
 export type StartSimulationResult =

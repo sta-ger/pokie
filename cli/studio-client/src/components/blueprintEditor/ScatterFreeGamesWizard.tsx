@@ -1,4 +1,4 @@
-import {Alert, Anchor, Button, Checkbox, Group, Modal, NumberInput, Stack, Text, TextInput} from "@mantine/core";
+import {Alert, Anchor, Button, Checkbox, Group, Modal, NumberInput, Progress, Stack, Text, TextInput} from "@mantine/core";
 import {useEffect, useRef, useState} from "react";
 import {formatAnalysisNumber} from "../../../../../src/internal/formatAnalysisNumber";
 import {describeRtpSanityWarning} from "../../../../../src/reporting/describeRtpSanityWarning";
@@ -94,6 +94,7 @@ export function ScatterFreeGamesWizard({
     });
     const fetchImpl = useStudioApi();
     const [exactPreview, setExactPreview] = useState<ExactPreviewState>({status: "idle"});
+    const [exactProgress, setExactProgress] = useState<{processed: bigint; total: bigint}>();
     const [exactElapsedSeconds, setExactElapsedSeconds] = useState(0);
     const exactLifecycle = useRef({generation: 0, active: undefined as AbortController | undefined});
     useEffect(() => {
@@ -102,6 +103,7 @@ export function ScatterFreeGamesWizard({
         lifecycleRef.active?.abort();
         lifecycleRef.active = undefined;
         setExactPreview({status: "idle"});
+        setExactProgress(undefined);
         return () => {
             lifecycleRef.generation++;
             lifecycleRef.active?.abort();
@@ -155,13 +157,19 @@ export function ScatterFreeGamesWizard({
         const draft = JSON.parse(JSON.stringify(blueprint)) as Record<string, unknown>;
         applyToDraft(draft);
         setExactPreview({status: "loading"});
-        previewBlueprintMath(fetchImpl, draft, controller.signal)
+        setExactProgress(undefined);
+        previewBlueprintMath(fetchImpl, draft, controller.signal, (processed, total) => {
+            if (isCurrent()) setExactProgress({processed, total});
+        })
             .then((view) => {
                 if (!isCurrent()) return;
                 setExactPreview(view.status === "ok" ? {status: "ok", view} : {status: "unavailable", message: view.message});
             })
             .catch((failure: unknown) => {
                 if (isCurrent()) setExactPreview({status: "error", message: errorMessage(failure)});
+            })
+            .finally(() => {
+                if (isCurrent()) setExactProgress(undefined);
             });
     };
     const exactFreeGames = exactPreview.status === "ok" && exactPreview.view.freeGamesRtp.status === "available"
@@ -336,6 +344,22 @@ export function ScatterFreeGamesWizard({
                 {exactPreview.status === "loading" && (
                     <>
                         <LoadingState label={`Enumerating this setup… ${exactElapsedSeconds}s`} />
+                        {exactProgress !== undefined && exactProgress.total > 0n && (
+                            <div>
+                                <Progress
+                                    value={Number((exactProgress.processed * 10_000n) / exactProgress.total) / 100}
+                                    aria-label="Exact RTP progress"
+                                />
+                                <Text size="xs" c="dimmed" mt={4}>
+                                    {exactProgress.processed === exactProgress.total
+                                        ? "All raw combinations enumerated; finalizing the exact analysis…"
+                                        : `${exactProgress.processed.toLocaleString("en-US")} / ${exactProgress.total.toLocaleString("en-US")} raw combinations`}
+                                </Text>
+                            </div>
+                        )}
+                        {exactProgress === undefined && (
+                            <Text size="xs" c="dimmed">Preparing the exact enumeration…</Text>
+                        )}
                         <Text size="xs" c="dimmed" role="status" aria-live="polite">
                             Add is disabled until this exact check finishes, so you can review the RTP first. It can take
                             a while for a 25,000-outcome setup; cancel the check if you want to add the demo values
@@ -350,6 +374,7 @@ export function ScatterFreeGamesWizard({
                                     exactLifecycle.current.active?.abort();
                                     exactLifecycle.current.active = undefined;
                                     setExactPreview({status: "idle"});
+                                    setExactProgress(undefined);
                                 }}
                             >
                                 Cancel calculation

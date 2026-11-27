@@ -286,6 +286,10 @@ export class StudioServer implements StudioServerHandling {
     // has already persisted and registered the project; retaining the completed response by its client
     // operation ID lets the retry continue to Workspace without creating a second managed project.
     private readonly managedSaveOperations = new Map<string, ManagedSaveOperation>();
+    // Live exact-enumeration progress for Design Game's draft math preview. The POST itself still
+    // returns the complete result; this side channel lets the browser show real raw-combination
+    // progress while that request is running.
+    private readonly blueprintMathPreviewProgress = new Map<string, {processed: string; total: string}>();
     private readonly loadGame: typeof loadPokieGame;
     // Crosses from "the projectRoot a direct `pokie <path>`/`pokie studio <path>` launch was given" to
     // "a real, loadable runtime" before startProjectDashboardLoad() ever touches loadGame -- same
@@ -1219,6 +1223,19 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "POST" && url.pathname === "/api/home/blueprints/game-model-preview") {
             await this.handleBlueprintGameModelPreview(req, res);
+            return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/home/blueprints/math-preview/progress") {
+            const id = url.searchParams.get("id");
+            const progress = id === null ? undefined : this.blueprintMathPreviewProgress.get(id);
+            if (progress === undefined) {
+                // A completed or superseded preview is a normal terminal state for this advisory channel;
+                // returning 200 keeps a last in-flight poll from logging as a browser network error.
+                this.sendJson(res, 200, {status: "missing"});
+            } else {
+                this.sendJson(res, 200, {status: "running", processed: progress.processed, total: progress.total});
+            }
             return;
         }
 
@@ -2381,10 +2398,27 @@ export class StudioServer implements StudioServerHandling {
         };
         req.once("aborted", abort);
         res.once("close", abortOnResponseClose);
+        const requestId = validated.requestId;
+        let progressActive = requestId !== undefined;
+        if (requestId !== undefined) {
+            this.blueprintMathPreviewProgress.set(requestId, {processed: "0", total: "0"});
+        }
         try {
-            const view = await this.blueprintService.previewMath(validated.blueprint, controller.signal);
+            const view = await this.blueprintService.previewMath(
+                validated.blueprint,
+                controller.signal,
+                requestId === undefined
+                    ? undefined
+                    : (processed, total) => {
+                        if (progressActive) {
+                            this.blueprintMathPreviewProgress.set(requestId, {processed: processed.toString(), total: total.toString()});
+                        }
+                    },
+            );
             if (!controller.signal.aborted) this.sendJson(res, 200, view);
         } finally {
+            progressActive = false;
+            if (requestId !== undefined) this.blueprintMathPreviewProgress.delete(requestId);
             req.off("aborted", abort);
             res.off("close", abortOnResponseClose);
         }

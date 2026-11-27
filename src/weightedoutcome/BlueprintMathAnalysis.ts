@@ -21,6 +21,8 @@ export type BlueprintMathAnalysisOptions = {
     /** Exact enumeration cap; larger drafts return "unavailable" instead of blocking the caller. */
     readonly maxOutcomes?: number;
     readonly signal?: AbortSignal;
+    /** Raw reel-stop combinations processed so far, and the exact space being enumerated. */
+    readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
     readonly now?: () => Date;
 };
 
@@ -127,6 +129,7 @@ export async function analyzeBlueprintMath(
             maxOutcomeSpaceSize: BigInt(maxOutcomes),
             exact: true,
             ...(options.signal === undefined ? {} : {signal: options.signal}),
+            ...(options.onProgress === undefined ? {} : {onProgress: options.onProgress}),
             now: options.now,
         });
         const analysis = new WeightedOutcomeLibraryAnalyzer().analyze(generated.library);

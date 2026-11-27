@@ -308,6 +308,8 @@ test("free games wizard offers a cap for a supercritical setup and blocks Add wh
     page,
 }) => {
     test.setTimeout(120_000);
+    await page.route("**/api/home/blueprints/math-preview/progress**", (route) =>
+        route.fulfill({status: 200, contentType: "application/json", body: JSON.stringify({status: "running", processed: "1000", total: "25000"})}));
     await page.route("**/api/home/blueprints/math-preview", async (route) => {
         await new Promise<void>((resolve) => {
             setTimeout(resolve, 1500);
@@ -331,6 +333,8 @@ test("free games wizard offers a cap for a supercritical setup and blocks Add wh
     await expect(add).toBeEnabled();
     await dialog.getByRole("button", {name: "Calculate exact RTP for this setup"}).click();
     await expect(add).toBeDisabled();
+    await expect(dialog.getByRole("progressbar", {name: "Exact RTP progress"})).toBeVisible({timeout: 10_000});
+    await expect(dialog.getByText(/1,000 \/ 25,000 raw combinations/)).toBeVisible();
     await expect(dialog.getByText(/Total RTP/)).toBeVisible({timeout: 60_000});
     await expect(dialog.getByText(/upper bound with cap/)).toBeVisible();
     await expect(add).toBeEnabled();
@@ -485,6 +489,34 @@ test("Projects can be sorted by name", async ({page}) => {
     await page.getByRole("option", {name: "Name", exact: true}).click();
     const names = await rows.evaluateAll((items) => items.map((row) => row.querySelector("button.mantine-Anchor-root")?.textContent?.trim() ?? ""));
     expect(names).toEqual(["Alpha", "Bravo", "Charlie"]);
+});
+
+test("selected available projects can be removed in bulk", async ({page}) => {
+    const entries = ["Bulk Alpha", "Bulk Bravo"].map((name, index) => ({
+        location: `/tmp/bulk-${index}.blueprint.json`,
+        name,
+        type: "blueprint",
+        capabilities: ["blueprint.build"],
+        origin: "managed",
+        lastOpenedAt: new Date(Date.now() - index * 1000).toISOString(),
+        status: "ok",
+    }));
+    await page.route("**/api/home/projects/registry**", (route) => {
+        if (route.request().url().includes("/registry/remove")) {
+            return route.fulfill({status: 200, contentType: "application/json", body: JSON.stringify({removed: true})});
+        }
+        return route.request().method() === "GET"
+            ? route.fulfill({status: 200, contentType: "application/json", body: JSON.stringify(entries)})
+            : route.continue();
+    });
+    await page.goto("/#/home/projects");
+    await expect(page.getByRole("row", {name: /Bulk Alpha/})).toBeVisible({timeout: 30_000});
+    await page.getByRole("checkbox", {name: "Select project Bulk Alpha"}).check();
+    await page.getByRole("checkbox", {name: "Select project Bulk Bravo"}).check();
+    await page.getByRole("button", {name: "Remove selected (2)"}).click();
+    await page.getByRole("dialog").getByRole("button", {name: "Confirm"}).click();
+    await expect(page.getByText("No games yet. Start a game or add one you already have.")).toBeVisible({timeout: 15_000});
+    await expect(page.locator("tr.project-registry-entry")).toHaveCount(0);
 });
 
 test("multiple historical failed openings collapse into one reviewable group", async ({page}) => {
@@ -768,7 +800,7 @@ test.describe.serial("managed project labels", () => {
         await expect(page.getByText(/No round played yet — this is the session/)).toBeVisible();
         await spin.click();
         await expect(page.getByText(/This paid round is complete: 1 spin, 1 screen/)).toBeVisible({timeout: 30_000});
-        await expect(page.getByText("Bet: 1", {exact: true})).toBeVisible();
+        await expect(page.getByText("Total bet: 1", {exact: true})).toBeVisible();
         await expect(page.getByText(/1 steps/)).toHaveCount(0);
     });
 
@@ -859,13 +891,13 @@ test.describe.serial("managed project labels", () => {
         // The session's starting credits and real bet list are visible before the first spin. The
         // scenario search must carry that selection instead of settling at a hidden default bet.
         await expect(page.getByText("Credits", {exact: true})).toBeVisible();
-        await expect(page.getByText(/^Bet: /)).toBeVisible();
+        await expect(page.getByText(/^Total bet: /)).toBeVisible();
         await page.getByRole("button", {name: "Select bet 5"}).click();
         await page.getByRole("button", {name: "Find any win", exact: true}).click();
         await expect(
             page.getByText(/This paid round is complete: 1 spin, 1 screen; total stake 5, total payout [1-9]/),
         ).toBeVisible({timeout: 60_000});
-        await expect(page.getByText("Bet: 5", {exact: true})).toBeVisible();
+        await expect(page.getByText("Total bet: 5", {exact: true})).toBeVisible();
     });
 
     test("a completed optimization does not show indeterminate work", async ({page}) => {
@@ -1339,6 +1371,55 @@ test("Play offers a one-click finish and labels a feature screen's own win", asy
     // round's win when the paid-round total is shown separately above it.
     await expect(page.getByText("Win on this screen", {exact: true}).first()).toBeVisible();
     await expect(page.getByText("Screen win multiplier (× bet)", {exact: true}).first()).toBeVisible();
+
+    fs.rmSync(path.dirname(projectPath), {recursive: true, force: true});
+});
+
+test("browser Back during a Play feature is guarded", async ({page}) => {
+    test.setTimeout(180_000);
+    const source = path.join(process.cwd(), "tests/e2e/fixtures/free-games-scope.json");
+    const projectPath = path.join(
+        fs.mkdtempSync(path.join(os.tmpdir(), "pokie-play-history-e2e-")),
+        "free-games-scope.json",
+    );
+    fs.copyFileSync(source, projectPath);
+
+    await page.goto("/#/home/design");
+    await page.getByRole("button", {name: /advanced options/}).click();
+    await page.locator("input:visible").first().fill(projectPath);
+    await page.getByRole("button", {name: "Load", exact: true}).first().click();
+    const save = page.getByRole("button", {name: /^(Create game design|Save to source file)$/});
+    await expect(save).toBeEnabled({timeout: 60_000});
+    await save.click();
+    await expect(page.getByRole("button", {name: "Overview", exact: true})).toBeVisible({timeout: 90_000});
+
+    await page.getByRole("button", {name: "Play", exact: true}).click();
+    await page.getByRole("button", {name: "Start playing"}).click();
+    await page.getByRole("button", {name: "Find free games"}).click();
+    const finish = page.getByRole("button", {name: "Finish whole round", exact: true});
+    await expect(finish).toBeVisible({timeout: 60_000});
+
+    // First Back moves within the same project (session survives). The next Back leaves the project
+    // and must not silently discard the unsettled feature.
+    await page.goBack();
+    await page.waitForTimeout(1000);
+    if (await page.getByRole("dialog").count() === 0) {
+        await page.goBack();
+        await page.waitForTimeout(1000);
+    }
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText(/in-progress Play round/i, {timeout: 15_000});
+    await dialog.getByRole("button", {name: "Stay"}).click();
+    await expect(page.getByRole("button", {name: "Overview", exact: true})).toBeVisible({timeout: 15_000});
+
+    // The explicit Close path already asked about the pending feature. Confirming it must not produce
+    // a second navigation-blocker prompt after the server has closed the project.
+    await page.getByRole("button", {name: "Close project"}).click();
+    const closeDialog = page.getByRole("dialog");
+    await expect(closeDialog).toContainText(/in-progress Play round/i);
+    await closeDialog.getByRole("button", {name: "Confirm"}).click();
+    await expect(page).toHaveURL(/\/home\/projects/, {timeout: 30_000});
+    await expect(page.getByRole("dialog")).toHaveCount(0);
 
     fs.rmSync(path.dirname(projectPath), {recursive: true, force: true});
 });

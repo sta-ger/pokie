@@ -149,6 +149,19 @@ describe("analyzeBlueprintMath", () => {
         expect(result.freeGamesRtp.totalRtp).toBeGreaterThan(result.analysis.rtp);
     });
 
+    it("reports real raw-combination progress while enumerating", async () => {
+        const seen: Array<[bigint, bigint]> = [];
+        const result = await analyzeBlueprintMath(tinyBlueprint(), {
+            pokieVersion: "2.0.0",
+            maxOutcomes: 100,
+            onProgress: (processed, total) => seen.push([processed, total]),
+        });
+
+        expect(result.status).toBe("ok");
+        expect(seen.length).toBeGreaterThan(0);
+        expect(seen.some(([processed, total]) => total === BigInt(27) && processed === total)).toBe(true);
+    });
+
     it("refuses a draft above the exact cap instead of sampling it", async () => {
         const result = await analyzeBlueprintMath(tinyBlueprint(), {pokieVersion: "2.0.0", maxOutcomes: 10});
 
