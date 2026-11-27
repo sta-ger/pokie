@@ -1,8 +1,11 @@
 import {Button, Group, MultiSelect, NumberInput, Select, Stack, Text, TextInput} from "@mantine/core";
+import {useState} from "react";
 import type {ScreenModifierRule, ScreenModifiers} from "../../../../../src/session/videoslot/modifiers/ScreenModifiers";
 import type {BlueprintMutate} from "../../hooks/useBlueprintEditor";
 import {asStringList} from "../../domain/asStringList";
+import {wildModifiersPreset, type MechanicStartingPreset} from "../../domain/mechanicPresets";
 import {PageSection} from "../common/PageSection";
+import {MechanicPresetSelect} from "./MechanicPresetSelect";
 
 /** Only draft mutation here; the Home and Project hosts own explicit apply/save. */
 export function WildModifiersFieldset({
@@ -19,6 +22,7 @@ export function WildModifiersFieldset({
     const raw = mechanics.modifiers;
     const symbols = asStringList(blueprint.symbols);
     const wilds = asStringList(blueprint.wilds);
+    const [preset, setPreset] = useState<MechanicStartingPreset>("safe");
     const set = (value: ScreenModifiers | undefined): void =>
         mutate((b) => {
             const next = {...mechanics};
@@ -58,7 +62,17 @@ export function WildModifiersFieldset({
                 and each winning wild multiplier is applied to that win. A sticky wild stays for the configured number of
                 spins and counts down once per spin.
             </Text>
-            {raw === undefined && <Button onClick={() => set({wilds: [], rules: []})}>Add wild modifiers</Button>}
+            {raw === undefined && <Stack gap="xs">
+                <MechanicPresetSelect
+                    mechanic="wild-modifiers"
+                    value={preset}
+                    onChange={setPreset}
+                    description={wilds.length === 0
+                        ? "No wild symbol is configured yet. The preset keeps the modifier table empty until you add one in Symbols."
+                        : "Safe demo keeps the wild at 1× (no multiplier). Conservative and Generous set a 2× or 3× wild factor. Rules are still added explicitly below."}
+                />
+                <Button onClick={() => set(wildModifiersPreset(wilds, preset))}>Add wild modifiers</Button>
+            </Stack>}
             {raw !== undefined && <Button onClick={() => set(undefined)}>Remove wild modifiers</Button>}
             {raw !== undefined && !editable && (
                 <Text>

@@ -10,9 +10,9 @@ function describeAnalysisStatus(status: AdvancedModelValidationReport["status"])
     return status;
 }
 
-function describeVerdict(verdict: AdvancedModelValidationReport["verdict"]): string {
+function describeVerdict(verdict: AdvancedModelValidationReport["verdict"], hasTerminationViolation: boolean): string {
     if (verdict === "proved-within-assumptions") return "all declared feature paths passed (within assumptions)";
-    if (verdict === "violated") return "a possible feature path may not end";
+    if (verdict === "violated") return hasTerminationViolation ? "a possible feature path may not end" : "not all declared feature checks passed";
     return "not conclusive";
 }
 
@@ -26,7 +26,7 @@ export function AdvancedValidationPanel({report}: {report?: AdvancedModelValidat
     if (!report) return null;
     const freeGamesTermination = report.checks.find((check) => check.id === "termination.free-games" && check.status === "violation");
     return (
-        <Alert color={statusColor(report.status)} variant="light" title={`Feature check: ${describeAnalysisStatus(report.status)} — ${describeVerdict(report.verdict)}`}>
+        <Alert color={statusColor(report.status)} variant="light" title={`Feature check: ${describeAnalysisStatus(report.status)} — ${describeVerdict(report.verdict, freeGamesTermination !== undefined)}`}>
             <Text size="sm" c="dimmed">
                 Optional check of feature termination and accounting; it does not prove RTP, payout probabilities or certification. The design check is separate.
             </Text>

@@ -21,6 +21,7 @@ import {ExactMathPanel} from "./ExactMathPanel";
 import {ProducerSummary} from "./ProducerSummary";
 import {VolatilityBandsControl} from "../common/VolatilityBandsControl";
 import {hasFeatureTerminationWarning, type ProjectMathStatus} from "../../domain/validationScope";
+import type {ExactMathSummary} from "../../domain/exactMathSummary";
 
 function describeAddedToStudio(origin: StudioProjectOrigin | undefined): string {
     if (origin === "managed") {
@@ -122,6 +123,7 @@ export function OverviewTab({
     const editable = header.capabilities.includes(BLUEPRINT_BUILD_CAPABILITY);
     const playable = editable || header.capabilities.includes(RUNTIME_EXECUTE_CAPABILITY);
     const [exactMathStatus, setExactMathStatus] = useState<ProjectMathStatus>(header.type === "wasm" ? "missing" : "loading");
+    const [exactSummary, setExactSummary] = useState<ExactMathSummary>();
 
     return (
         <div>
@@ -135,8 +137,9 @@ export function OverviewTab({
                 projectRoot={header.projectRoot}
                 refreshKey={exactMathRefreshKey}
                 onOpenSimulation={onOpenSimulation}
+                exact={exactSummary}
             />
-            {header.type !== "wasm" && <ExactMathPanel projectRoot={header.projectRoot} sourceRevision={sourceRevision} refreshKey={exactMathRefreshKey} autoRefreshStale={autoRefreshStaleExactMath} featureCheck={validation.status === "success" ? validation.summary.advanced : undefined} autoCompute={autoComputeExactMath} onGenerated={onExactMathGenerated} onStatusChange={setExactMathStatus} onOpenPlay={playable ? onOpenPlay : undefined} />}
+            {header.type !== "wasm" && <ExactMathPanel projectRoot={header.projectRoot} sourceRevision={sourceRevision} refreshKey={exactMathRefreshKey} autoRefreshStale={autoRefreshStaleExactMath} featureCheck={validation.status === "success" ? validation.summary.advanced : undefined} autoCompute={autoComputeExactMath} onGenerated={onExactMathGenerated} onStatusChange={setExactMathStatus} onSummaryChange={setExactSummary} onOpenPlay={playable ? onOpenPlay : undefined} />}
             {playable && header.type === "wasm" && (
                 <NextStepCallout
                     title="Start by playing a round"

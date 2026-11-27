@@ -42,7 +42,8 @@ export function BlueprintValidationPanel({
         >
             {automatic ? (
                 <Text c="dimmed" size="sm" mb="sm">
-                    Checked automatically when the game model changes.
+                    Checked automatically when the game model changes. Editing stays available while the check runs;
+                    saving waits for it to finish.
                 </Text>
             ) : (
                 <QuickActions>
@@ -62,10 +63,10 @@ export function BlueprintValidationPanel({
                 </Text>
             )}
             {view.status === "error" && <ErrorState message={describePathActionError("This validation request", view.message)} />}
-            {(view.status === "ok" || view.status === "invalid" || view.status === "inconclusive") && <Text size="sm" c="dimmed">Design check. The optional feature check is reported separately below.</Text>}
             {(view.status === "invalid" || view.status === "inconclusive") && <IssueList title="Errors" issues={view.errors ?? []} />}
-            {(view.status === "ok" || view.status === "invalid" || view.status === "inconclusive") && <>
-                <IssueList title="Warnings" issues={view.warnings} />
+            {(view.status === "ok" || view.status === "invalid" || view.status === "inconclusive") && <IssueList title="Warnings" issues={view.warnings} />}
+            {(view.status === "ok" || view.status === "inconclusive") && <>
+                <Text size="sm" c="dimmed">Design check. The optional feature check is reported separately below.</Text>
                 <AdvancedValidationPanel report={view.advanced} />
             </>}
         </CollapsiblePageSection>

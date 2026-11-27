@@ -337,15 +337,16 @@ export function PlayTab({
         <Badge
             color="gray"
             variant="light"
-            title="The grid, bets and wins are real. Artwork and sound are not part of this local math preview; add PNG symbol art in Game design → Symbols for a more realistic screen."
+            title="The grid, bets and wins are real. Artwork and sound are not part of this local math preview; add PNG symbol art in Game design → Symbols for a more realistic screen, or use a player client for a stakeholder demo."
         >
             Math preview
         </Badge>
     );
     const mathPreviewNotice = (
         <Text size="xs" c="dimmed" mb="sm">
-            Math preview: the grid, bets and wins are real; artwork and sound are not. Use a built game, not this
-            screen, when you need a stakeholder demo.
+            Math preview: the grid, bets and wins are real; artwork, sound and presentation are not. This screen is
+            for checking the math, not for a stakeholder presentation. For a demo, use a player client with your own
+            artwork; for integration, build the game package in Build/Export.
         </Text>
     );
 

@@ -3,6 +3,11 @@ import path from "path";
 import type {StudioJobProcessState, StudioJobRepository} from "./StudioJobRepository.js";
 import type {StudioJobView} from "./StudioJobView.js";
 
+// Interrupted work is actionable for a short while after a restart, not forever. Keep a week of
+// recovery-required records so an author can inspect what happened, then forget the Studio job record;
+// outputs and files referenced by the job are deliberately left untouched.
+const DEFAULT_INTERRUPTED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+
 /**
  * A small append-free store: each record is independently atomically replaced,
  * which avoids one large jobs file becoming a contention point or losing every
@@ -12,30 +17,26 @@ export class FileStudioJobRepository implements StudioJobRepository {
     private readonly directory: string;
     private readonly retention: number;
 
-    public constructor(directory: string, retention = 100) {
+    public constructor(
+        directory: string,
+        retention = 100,
+        private readonly now: () => number = Date.now,
+        private readonly interruptedRetentionMs = DEFAULT_INTERRUPTED_RETENTION_MS,
+    ) {
         this.directory = directory;
         this.retention = retention;
     }
 
     public list(projectId?: string): readonly StudioJobView[] {
-        let entries: readonly fs.Dirent[];
-        try {
-            entries = fs.readdirSync(this.directory, {withFileTypes: true});
-        } catch {
-            return [];
-        }
-        const jobs: StudioJobView[] = [];
-        for (const entry of entries) {
-            if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
-            const job = this.read(path.join(this.directory, entry.name));
-            if (job !== undefined && (projectId === undefined || job.projectId === projectId)) {
-                jobs.push(job);
-            }
-        }
-        return jobs.sort((left, right) => right.createdAt - left.createdAt);
+        this.pruneExpiredInterrupted();
+        const jobs = this.readAll();
+        return jobs
+            .filter((job) => projectId === undefined || job.projectId === projectId)
+            .sort((left, right) => right.createdAt - left.createdAt);
     }
 
     public get(id: string): StudioJobView | undefined {
+        this.pruneExpiredInterrupted();
         return this.read(this.pathFor(id));
     }
 
@@ -83,6 +84,37 @@ export class FileStudioJobRepository implements StudioJobRepository {
             return isJob(value) ? value : undefined;
         } catch {
             return undefined;
+        }
+    }
+
+    private readAll(): StudioJobView[] {
+        let entries: readonly fs.Dirent[];
+        try {
+            entries = fs.readdirSync(this.directory, {withFileTypes: true});
+        } catch {
+            return [];
+        }
+        const jobs: StudioJobView[] = [];
+        for (const entry of entries) {
+            if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+            const job = this.read(path.join(this.directory, entry.name));
+            if (job !== undefined) jobs.push(job);
+        }
+        return jobs;
+    }
+
+    private pruneExpiredInterrupted(): void {
+        const now = this.now();
+        if (!Number.isFinite(now)) return;
+        for (const job of this.readAll()) {
+            if (job.status === "recovery-required" && now - job.createdAt > this.interruptedRetentionMs) {
+                try {
+                    this.remove(job.id);
+                } catch {
+                    // Best-effort retention: a read-only/corrupt jobs directory must not make Home
+                    // unreadable. The next writable pass can try again.
+                }
+            }
         }
     }
 

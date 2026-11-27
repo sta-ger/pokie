@@ -255,15 +255,24 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
                         {needsAttentionHomeJobs.length === 1 ? (
                             <>
                                 <Text size="sm" c="dimmed">
-                                    This operation stopped before confirming a result. Retry it, or review the details.
+                                    This is an earlier operation that did not finish, usually because Studio restarted.
+                                    Nothing is retried automatically. Retry only if you still need that operation, or
+                                    dismiss this old record. Interrupted records are forgotten after a week; files and
+                                    outputs are not deleted.
                                 </Text>
                                 {needsAttentionHomeJobs.map(renderHomeJob)}
+                                <QuickActions>
+                                    <Button variant="default" size="xs" loading={dismissingHomeJobs.includes(needsAttentionHomeJobs[0]!.id)} onClick={() => dismissHomeJobs(needsAttentionHomeJobs.map(job => job.id))}>
+                                        Dismiss this old record
+                                    </Button>
+                                </QuickActions>
                             </>
                         ) : (
                             <Alert color="orange" variant="light" title={`${needsAttentionHomeJobs.length} earlier operations need attention`} data-pokie-home-attention-summary>
                                 <Text size="sm" mb="xs">
                                     Most often this is an earlier project opening whose source has since moved. Nothing is retried
                                     automatically. Review only the ones you need, or dismiss this whole historical group.
+                                    Interrupted records are forgotten after a week; files and outputs are not deleted.
                                 </Text>
                                 <QuickActions>
                                     <Button variant="default" size="xs" loading={needsAttentionHomeJobs.some(job => dismissingHomeJobs.includes(job.id))} onClick={() => dismissHomeJobs(needsAttentionHomeJobs.map(job => job.id))}>

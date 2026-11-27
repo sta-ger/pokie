@@ -1,4 +1,4 @@
-import {Alert, Anchor, Button, Checkbox, Group, Modal, NumberInput, Progress, Stack, Text, TextInput} from "@mantine/core";
+import {Alert, Anchor, Button, Checkbox, Group, Modal, NumberInput, Progress, SegmentedControl, Stack, Text, TextInput} from "@mantine/core";
 import {useEffect, useRef, useState} from "react";
 import {formatAnalysisNumber} from "../../../../../src/internal/formatAnalysisNumber";
 import {describeRtpSanityWarning} from "../../../../../src/reporting/describeRtpSanityWarning";
@@ -84,6 +84,25 @@ export function ScatterFreeGamesWizard({
     const [maxFreeGames, setMaxFreeGames] = useState<number | string | undefined>(() =>
         existing === undefined ? 50 : existing.maxFreeGames,
     );
+    // Producer-facing starting points. The exact preview still decides whether a choice is safe for
+    // the current reels; these presets only save the author from inventing award/cap numbers first.
+    const [awardPreset, setAwardPreset] = useState<"safe" | "conservative" | "generous" | "custom">(
+        existing === undefined ? "safe" : "custom",
+    );
+    const applyAwardPreset = (value: string): void => {
+        const preset = value as "safe" | "conservative" | "generous" | "custom";
+        setAwardPreset(preset);
+        if (preset === "safe") {
+            setAwards({3: 7, 4: 10, 5: 13});
+            setMaxFreeGames(50);
+        } else if (preset === "conservative") {
+            setAwards({3: 3, 4: 5, 5: 8});
+            setMaxFreeGames(25);
+        } else if (preset === "generous") {
+            setAwards({3: 10, 4: 15, 5: 25});
+            setMaxFreeGames(100);
+        }
+    };
     // A guided demo still needs an explicit acknowledgement. The copy above explains the values,
     // but a producer must actively confirm they are not treating this as a balanced production game.
     const [demoAcknowledged, setDemoAcknowledged] = useState(false);
@@ -243,6 +262,36 @@ export function ScatterFreeGamesWizard({
                     scatter frequency. The cap keeps retriggers finite; you can clear it explicitly for an unbounded
                     experiment.
                 </Text>
+                <Alert color="gray" variant="light" title="What this means for a producer">
+                    <Text size="sm">
+                        About {(preview.triggerProbability * 100).toFixed(2)} in every 100 paid spins trigger the feature
+                        in this demo, awarding {preview.expectedAward.toFixed(2)} free games per trigger on average.
+                        {parsedMaxFreeGames === undefined
+                            ? " No cap is set, so retriggers can run indefinitely."
+                            : ` One feature is capped at ${parsedMaxFreeGames} free games.`}
+                        {exactFreeGames === undefined
+                            ? " Use Calculate exact RTP below to see the whole-round return before adding it."
+                            : ` The exact whole-round return is ${formatAnalysisNumber(exactFreeGames.totalRtp * 100, 4)}%.`}
+                    </Text>
+                </Alert>
+                <div>
+                    <Text size="sm" fw={600} mb={4}>Starting values</Text>
+                    <SegmentedControl
+                        fullWidth
+                        value={awardPreset}
+                        onChange={applyAwardPreset}
+                        data={[
+                            {label: "Safe demo", value: "safe"},
+                            {label: "Conservative", value: "conservative"},
+                            {label: "Generous", value: "generous"},
+                            {label: "Custom", value: "custom"},
+                        ]}
+                    />
+                    <Text size="xs" c="dimmed" mt={4}>
+                        Safe demo: 7/10/13 free games, 50 cap. Conservative: 3/5/8, 25 cap. Generous: 10/15/25,
+                        100 cap. Custom keeps the values you enter below. The exact preview remains the authority.
+                    </Text>
+                </div>
                 <TextInput
                     label="New scatter symbol id"
                     value={symbolId}
@@ -287,21 +336,30 @@ export function ScatterFreeGamesWizard({
                         aria-label="3 scatters free games awarded"
                         min={0}
                         value={awards[3]}
-                        onChange={(value) => setAwards((current) => ({...current, 3: value}))}
+                        onChange={(value) => {
+                            setAwardPreset("custom");
+                            setAwards((current) => ({...current, 3: value}));
+                        }}
                     />
                     <NumberInput
                         label="4 scatters free games awarded"
                         aria-label="4 scatters free games awarded"
                         min={0}
                         value={awards[4]}
-                        onChange={(value) => setAwards((current) => ({...current, 4: value}))}
+                        onChange={(value) => {
+                            setAwardPreset("custom");
+                            setAwards((current) => ({...current, 4: value}));
+                        }}
                     />
                     <NumberInput
                         label="5 scatters free games awarded"
                         aria-label="5 scatters free games awarded"
                         min={0}
                         value={awards[5]}
-                        onChange={(value) => setAwards((current) => ({...current, 5: value}))}
+                        onChange={(value) => {
+                            setAwardPreset("custom");
+                            setAwards((current) => ({...current, 5: value}));
+                        }}
                     />
                 </Group>
                 <NumberInput
@@ -310,11 +368,17 @@ export function ScatterFreeGamesWizard({
                     description="Caps the trigger award and every retrigger. New setups start with a 50-free-game demo cap; clear it only for an unbounded experiment. Required when the retrigger factor is 1 or higher."
                     min={1}
                     value={maxFreeGames}
-                    onChange={setMaxFreeGames}
+                    onChange={(value) => {
+                        setAwardPreset("custom");
+                        setMaxFreeGames(value);
+                    }}
                 />
                 {preview.retriggerFactor >= 1 && parsedMaxFreeGames === undefined && (
                     <Group>
-                        <Button size="xs" variant="default" onClick={() => setMaxFreeGames(50)}>
+                        <Button size="xs" variant="default" onClick={() => {
+                            setAwardPreset("custom");
+                            setMaxFreeGames(50);
+                        }}>
                             Use a 50-free-game cap
                         </Button>
                     </Group>
