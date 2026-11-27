@@ -507,7 +507,9 @@ Options:
  capped-sampling draws and records that choice in the library index.
 - `--out <path>` — where the build output is written; optional, defaulting to a `<target>`-named sibling of
  `<project>` (`game.wasm` for `wasm`, a `.xlsx` file for `parWorkbook`, a `.json` file for `blueprint`, a bare directory for every other target). An explicit `--out`
- always overrides the default and never changes what `--target` means. Must not already exist, or must be an
+ always overrides the default and never changes what `--target` means; for a file target it must keep the
+ target's recognized suffix (`.json`, `.xlsx` or `.wasm`), because `inspect`, `validate` and later conversions
+ reopen the artifact by that suffix. Must not already exist, or must be an
  empty directory (a file target like `wasm` or `parWorkbook` must simply not exist yet) — see [Conflict
  handling](#conflict-handling-an-existing---out-destination) below.
 - `--dry-run` — validate and preview without writing anything.
