@@ -269,6 +269,22 @@ describe("FormatConversionPlanner", () => {
         });
     });
 
+    it("keeps an occupied destination from being described as a missing source capability", () => {
+        const plan = planner.plan(project("blueprint"), "parWorkbook", {destinationPath: "/exports/occupied.par.xlsx"});
+        const conflict = {
+            ...plan,
+            status: "conflict",
+            diagnostic: {
+                code: "destination-conflict",
+                failedEdge: {from: "blueprint", to: "parWorkbook"},
+                message: '"/exports/occupied.par.xlsx" already exists.',
+                recovery: "Choose an empty destination that is not the source or one of its descendants.",
+            },
+        } as typeof plan;
+
+        expect(describeFormatConversionPlanDiagnostic(conflict)).toBe('"/exports/occupied.par.xlsx" already exists.');
+    });
+
     it("reports the exact unsupported boundary rather than a generic source matrix", () => {
         const outcomeToPackage = planner.plan(project("outcomeLibrary"), "tsPackage");
         const wasm = planner.plan(project("wasm"), "outcomeLibrary");

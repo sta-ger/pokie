@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import {ensureDirectoryExists} from "../internal/ensureDirectoryExists.js";
 
 // Optional lifecycle hooks for callers that run artifact work from an interactive surface.  They are deliberately
 // part of the builder contract rather than a CLI-only wrapper, so Studio and CLI observe/cancel the same work.
@@ -73,8 +74,8 @@ export function captureOutputDestinationState(destinationPath: string, kind: "fi
 // parent is deliberately not removed during rollback: it may have existed
 // before this operation (including through a concurrent creator), while the
 // publication cleanup below is limited to operation-owned artifacts.
-export async function ensureArtifactDestinationParent(destinationPath: string): Promise<void> {
-    await fs.promises.mkdir(path.dirname(destinationPath), {recursive: true});
+export function ensureArtifactDestinationParent(destinationPath: string): void {
+    ensureDirectoryExists(path.dirname(destinationPath));
 }
 
 export async function cleanupIncompleteArtifactOutput(destinationPath: string, state: OutputDestinationState): Promise<void> {

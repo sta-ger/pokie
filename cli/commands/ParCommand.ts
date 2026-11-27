@@ -25,6 +25,7 @@ import {
     ValidationIssue,
 } from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {ensureArtifactDestinationParent} from "../../src/project/BuildOutputOptions.js";
 import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOperationError.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {BlueprintFileWriteResult, writeBlueprintFileAtomically} from "./internal/writeBlueprintFileAtomically.js";
@@ -443,11 +444,13 @@ export class ParCommand implements CliCommandHandling {
             },
             canPublish: (read) => read.issues.every((issue) => issue.severity !== "error"),
             assertDestinationAvailable: () => this.assertDestinationIsAvailable(blueprintPath, outPath),
-            publish: (read) => {
+            publish: async (read) => {
                 publication = undefined;
-                return this.exporter.exportToFile(read.blueprint, outPath, blueprintPath, {signal, includeMath: true, onPublication: owned => {
+                ensureArtifactDestinationParent(outPath);
+                const issues = await this.exporter.exportToFile(read.blueprint, outPath, blueprintPath, {signal, includeMath: true, onPublication: owned => {
                     publication = owned;
                 }});
+                return issues;
             },
             rollback,
             cleanup: ({error}: {error?: unknown}) => error === undefined ? undefined : rollback(),

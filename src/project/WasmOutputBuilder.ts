@@ -76,7 +76,7 @@ export class WasmOutputBuilder implements BuildOutputBuilder {
         let manifestStage: string | undefined;
         try {
             await this.validate(source);
-            await ensureArtifactDestinationParent(destinationPath);
+            ensureArtifactDestinationParent(destinationPath);
             const blueprint = loadGameBlueprint(source.rootPath) as GameBlueprint;
             const model = stableSlotMathJson(resolveCanonicalWasmGameModel(blueprint));
             const parsedModel = JSON.parse(model) as PokieWasmGameModel;

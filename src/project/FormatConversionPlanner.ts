@@ -379,8 +379,13 @@ export function describeFormatConversionPlanDiagnostic(plan: FormatConversionPla
     // source-type compatibility story to translate.  Returning the generic
     // matrix wording here used to describe a raw JSON selector as an Outcome
     // Library and obscured the actual recovery boundary supplied by the
-    // planner.  Preserve that structured boundary verbatim for every adapter.
-    if (plan.packageExtraction || diagnostic.code === "unrecognized-source") return diagnostic.message;
+    // planner.  A destination conflict has the same shape: the source can
+    // build the target, but the chosen path is occupied, so appending matrix
+    // "missing prerequisite" wording would describe the wrong problem.
+    // Preserve that structured boundary verbatim for every adapter.
+    if (plan.packageExtraction || diagnostic.code === "unrecognized-source" || diagnostic.code === "destination-conflict") {
+        return diagnostic.message;
+    }
     // A semantic limitation cannot be repaired by opening another artifact of the same kind. Some
     // published boundary phrases already carry their own "Next:" sentence; don't stack a second one.
     if (diagnostic.code === "unsupported-boundary") return diagnostic.message.includes("Next:") ? diagnostic.message : `${diagnostic.message} Next: ${diagnostic.recovery}`;

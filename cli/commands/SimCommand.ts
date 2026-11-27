@@ -234,7 +234,7 @@ export class SimCommand implements CliCommandHandling {
                 }
                 return parsed;
             })
-            .option("--rounds <number>", `historical alias for --plays; kept for reproducible command lines (default: ${SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS})`, (value: string): number => {
+            .option("--rounds <number>", "historical alias for --plays; kept for reproducible command lines", (value: string): number => {
                 const parsed = Number(value);
                 if (!Number.isInteger(parsed) || parsed <= 0) {
                     throw new Error(`--rounds must be a positive integer. ${USAGE}`);

@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import {ensureDirectoryExists} from "../../../src/internal/ensureDirectoryExists.js";
 
 export type BlueprintFileWriteResult = {readonly status: "ok"} | {readonly status: "conflict"};
 
@@ -29,7 +30,7 @@ export function writeBlueprintFileAtomically(
     write: BlueprintStagingWriter = (stagingPath, text) => fs.writeFileSync(stagingPath, text, "utf-8"),
     link: BlueprintDestinationLinker = fs.linkSync,
     unlink: BlueprintPathUnlinker = fs.unlinkSync,
-    mkdir: BlueprintDirectoryCreator = (dirPath) => fs.mkdirSync(dirPath, {recursive: true}),
+    mkdir: BlueprintDirectoryCreator = ensureDirectoryExists,
 ): BlueprintFileWriteResult {
     const dir = path.dirname(filePath);
     if (dir && dir !== ".") {

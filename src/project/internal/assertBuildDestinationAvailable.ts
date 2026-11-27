@@ -16,7 +16,7 @@ export function assertBuildDestinationAvailable(destinationPath: string, kind: "
 
     if (kind === "file") {
         throw new BuildConflictError(
-            `"${destinationPath}" already exists. "pokie build" never overwrites an existing file -- choose a different --out path or remove it first.`,
+            `"${destinationPath}" already exists. POKIE never overwrites an existing file -- choose a different --out path or remove it first.`,
         );
     }
 
@@ -28,7 +28,7 @@ export function assertBuildDestinationAvailable(destinationPath: string, kind: "
 
     if (fs.readdirSync(destinationPath).length > 0) {
         throw new BuildConflictError(
-            `"${destinationPath}" already exists and is not empty. "pokie build" always writes a brand-new output into a missing or empty directory -- choose a different --out path or remove it first.`,
+            `"${destinationPath}" already exists and is not empty. POKIE always writes a brand-new output into a missing or empty directory -- choose a different --out path or remove it first.`,
         );
     }
 }

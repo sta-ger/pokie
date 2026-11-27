@@ -619,7 +619,7 @@ export class BuildOutputBuilderRegistry {
         // before any downstream builder gets a chance to create a directory.
         // Create the explicit output parent at this shared boundary so every
         // registry-backed PAR entry point has identical nested-path behavior.
-        await ensureArtifactDestinationParent(destinationPath);
+        ensureArtifactDestinationParent(destinationPath);
         if (target === "blueprint" || (target === "parWorkbook" && source.type === "parWorkbook")) {
             const builder = this.builders.get(target);
             if (builder === undefined) throw new Error(this.unavailableTargetMessage(target));
@@ -654,7 +654,7 @@ export class BuildOutputBuilderRegistry {
             // calling build() here would silently prepare a second plan.
             selectedPlan = await this.hydrateParDerivedPlan(plan, imported, options);
             const terminalPath = path.join(intermediateDirectory, "terminal", path.basename(destinationPath));
-            await ensureArtifactDestinationParent(terminalPath);
+            ensureArtifactDestinationParent(terminalPath);
             result = await this.executeSelectedPlan(selectedPlan, imported, terminalPath, options);
             // Builders own only private staging paths. The registry owns each actual
             // terminal publication, including the WASM integrity sidecar.
@@ -936,7 +936,8 @@ export class BuildOutputBuilderRegistry {
         const diagnostic = plan.diagnostic;
         if (diagnostic === undefined) throw new Error("Output conversion could not be planned.");
         const compatibility = describeFormatConversionPlanDiagnostic(plan);
-        throw new Error(`${diagnostic.message} Next: ${diagnostic.recovery}${compatibility === undefined ? "" : `\n${compatibility}`}`);
+        const extraDetail = compatibility === undefined || compatibility === diagnostic.message ? "" : `\n${compatibility}`;
+        throw new Error(`${diagnostic.message} Next: ${diagnostic.recovery}${extraDetail}`);
     }
 
     private async buildManagedOutcomeFromRuntime(

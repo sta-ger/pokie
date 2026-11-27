@@ -80,6 +80,13 @@ describe("ParWorkbookOutputBuilder", () => {
         expect(fs.existsSync(destinationFile)).toBe(true);
     });
 
+    it("creates a missing nested parent for an explicit file destination", async () => {
+        const nestedDestination = path.join(dir, "nested", "deeper", "republished.par.xlsx");
+        const result = await new ParWorkbookOutputBuilder("1.3.0").build(blueprintProjectOf(blueprintFile), nestedDestination);
+        expect(result.outputPath).toBe(nestedDestination);
+        expect(fs.existsSync(nestedDestination)).toBe(true);
+    });
+
     it("validates a readable workbook without creating a destination file", async () => {
         const builder = new ParWorkbookOutputBuilder("1.3.0");
 

@@ -125,7 +125,7 @@ export class ClientCommand implements CliCommandHandling {
 
         return createCommanderCliCommand("client")
             .description(this.getDescription())
-            .argument("<packageRoot>", "an existing POKIE game package (unused -- see this class's own doc comment)")
+            .argument("<packageRoot>", "game package path for CLI parity with \"pokie serve\"; the client UI itself is game-agnostic")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
             .option("--port <number>", "port to listen on (default: 3100; pass 0 for an available port)", parsePort("--port"))
             .option("--host <string>", "host to listen on (default: loopback only)")

@@ -430,7 +430,8 @@ export class BuildCommand implements CliCommandHandling {
         }
 
         console.log("Build summary:");
-        console.log(`  output folder    ${result.outputPath}`);
+        const outputLabel = target === "parWorkbook" || target === "wasm" ? "output file" : "output folder";
+        console.log(`  ${outputLabel.padEnd(17)}${result.outputPath}`);
         console.log(`  target           ${target}`);
         console.log(`  source           ${project.rootPath}`);
         if (result.parConversion) this.printParConversion(result.parConversion);

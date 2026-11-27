@@ -147,6 +147,7 @@ describe("SimCommand", () => {
         expect(help).toContain("game design");
         expect(help).toContain("WASM");
         expect(help).toContain("pokie-wasm-simulation");
+        expect(help).not.toContain("(default: 1000) (default: 1000)");
     });
 
     it("throws when run without a packageRoot", async () => {

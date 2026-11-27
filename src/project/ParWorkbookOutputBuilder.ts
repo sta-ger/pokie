@@ -9,6 +9,7 @@ import type {BuildOutputResult} from "./BuildOutputResult.js";
 import {
     assertBuildNotCancelled,
     BuildCancelledError,
+    ensureArtifactDestinationParent,
     reportBuildProgress,
     type BuildOutputOptions,
 } from "./BuildOutputOptions.js";
@@ -70,6 +71,7 @@ export class ParWorkbookOutputBuilder implements BuildOutputBuilder {
         let publication: ParSheetFilePublication | undefined;
 
         try {
+            ensureArtifactDestinationParent(destinationPath);
             reportBuildProgress(options, {status: "running", message: "Reading PAR workbook"});
             if (source.type === "blueprint") {
                 reportBuildProgress(options, {status: "running", message: "Preparing Blueprint reel source for PAR workbook"});

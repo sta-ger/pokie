@@ -59,6 +59,23 @@ describe("ParCommand", () => {
         errorSpy.mockRestore();
     });
 
+    it("creates missing parent directories for an explicit nested export and import destination", async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "par-command-nested-"));
+        const source = path.join(directory, "source.blueprint.json");
+        const workbook = path.join(directory, "nested", "deeper", "source.xlsx");
+        const imported = path.join(directory, "imports", "deeper", "imported.json");
+        fs.writeFileSync(source, JSON.stringify(fullBlueprint));
+        const command = new ParCommand("1");
+        try {
+            expect(await command.run(["export", source, "--out", workbook])).toBe(0);
+            expect(fs.existsSync(workbook)).toBe(true);
+            expect(await command.run(["import", workbook, "--out", imported])).toBe(0);
+            expect(fs.existsSync(imported)).toBe(true);
+        } finally {
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
     it("exports/imports weighted reels through real command services and preserves evidence without overwriting the source", async () => {
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), "weighted-par-command-"));
         const source = path.join(directory, "source.blueprint.json"),
@@ -140,7 +157,11 @@ describe("ParCommand", () => {
                 fs.writeFileSync(occupiedOutputPath, occupiedBytes);
                 const command = new ParCommand("1.3.0");
 
-                await expect(command.run(["import", workbookPath, "--out", occupiedOutputPath])).rejects.toThrow(/already exists/i);
+                const failure = await command.run(["import", workbookPath, "--out", occupiedOutputPath]).catch((error: unknown) => error);
+                expect(failure).toBeInstanceOf(Error);
+                expect((failure as Error).message).toMatch(/already exists/i);
+                expect((failure as Error).message).not.toContain("It cannot build");
+                expect((failure as Error).message.match(/already exists/gi)).toHaveLength(1);
                 expect(fs.readFileSync(occupiedOutputPath)).toEqual(occupiedBytes);
 
                 fs.symlinkSync(workDir, linkedDir, "dir");
@@ -282,7 +303,11 @@ describe("ParCommand", () => {
                 fs.writeFileSync(occupiedOutputPath, occupiedBytes);
                 const command = new ParCommand("1.3.0");
 
-                await expect(command.run(["export", blueprintPath, "--out", occupiedOutputPath])).rejects.toThrow(/already exists/i);
+                const failure = await command.run(["export", blueprintPath, "--out", occupiedOutputPath]).catch((error: unknown) => error);
+                expect(failure).toBeInstanceOf(Error);
+                expect((failure as Error).message).toMatch(/already exists/i);
+                expect((failure as Error).message).not.toContain("It cannot build");
+                expect((failure as Error).message.match(/already exists/gi)).toHaveLength(1);
                 expect(fs.readFileSync(occupiedOutputPath)).toEqual(occupiedBytes);
 
                 fs.symlinkSync(workDir, linkedDir, "dir");

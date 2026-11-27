@@ -50,5 +50,7 @@ export function describeDefinitionComparison(
             };
         case "cancelled":
             return {label: "cancelled", detail: "The comparison was cancelled; run it again when ready."};
+        default:
+            return {label: diff.status};
     }
 }
