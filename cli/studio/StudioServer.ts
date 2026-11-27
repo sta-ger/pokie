@@ -1,6 +1,6 @@
 import {StudioOptimizationService} from "./optimization/StudioOptimizationService.js";
 import {StudioWasmBrowserService} from "./wasm/StudioWasmBrowserService.js";
-import {readValidationSourceRevision} from "../validation/readValidationSourceRevision.js";
+import {describeValidationSourceChanges, readValidationSourceSnapshot} from "../validation/readValidationSourceRevision.js";
 import {AdvancedModelSourceValidator} from "../../src/validation/AdvancedModelSourceValidator.js";
 import {compareMathDefinitions} from "../../src/diff/MathDefinitionSourceReader.js";
 import type {MathDefinitionDiff} from "../../src/diff/MathDefinitionDiff.js";
@@ -2723,9 +2723,16 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         await this.withAdvancedValidation(req, res, async signal => {
-            const revision = readValidationSourceRevision(root);
+            const sourceBefore = readValidationSourceSnapshot(root);
             const assertCurrent = (): void => {
-                if (readValidationSourceRevision(root) !== revision) throw new StudioHttpRequestError(409, "Source changed during validation. Retry against the current source.");
+                const sourceAfter = readValidationSourceSnapshot(root);
+                if (sourceAfter.revision !== sourceBefore.revision) {
+                    const changes = describeValidationSourceChanges(sourceBefore, sourceAfter, root);
+                    throw new StudioHttpRequestError(
+                        409,
+                        `Source changed during validation${changes.length ? `: ${changes.slice(0, 5).join(", ")}` : ""}. Retry against the current source.`,
+                    );
+                }
             };
             const advanced = await new AdvancedModelSourceValidator().validate(root, {signal});
             assertCurrent();
@@ -2734,7 +2741,13 @@ export class StudioServer implements StudioServerHandling {
             };
             if (advanced.adapter === "blueprint-runtime-v1" && advanced.sourceRevision) {
                 const current = loadGameBlueprint(root, {preserveInvalidAuthoredContent: true, maxBytes: 400000});
-                if (computeGameBlueprintHash(current) !== advanced.sourceRevision) throw new StudioHttpRequestError(409, "Source changed during validation. Retry against the current source.");
+                if (computeGameBlueprintHash(current) !== advanced.sourceRevision) {
+                    const changes = describeValidationSourceChanges(sourceBefore, readValidationSourceSnapshot(root), root);
+                    throw new StudioHttpRequestError(
+                        409,
+                        `Source changed during validation${changes.length ? `: ${changes.slice(0, 5).join(", ")}` : ""}. Retry against the current source.`,
+                    );
+                }
                 assertCurrent();
                 return {packageRoot: root, valid: advanced.structuralValid === true, game: readBlueprintGameIdentity(current), errors: advanced.issues.filter(issue => issue.severity === "error"), warnings: advanced.issues.filter(issue => issue.severity === "warning"), information: advanced.issues.filter(issue => issue.severity === "info"), suggestions: advanced.issues.flatMap(issue => issue.suggestion ? [issue.suggestion] : []), advanced};
             }

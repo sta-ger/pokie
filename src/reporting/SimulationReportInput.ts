@@ -12,6 +12,12 @@ export type SimulationReportInput = {
     statistics: SimulationStatistics;
     durationMs: number;
     packageRoot?: string;
+    /**
+     * User-facing source path used in the reproducibility command. `packageRoot` may be a transient
+     * materialization cache (for example when a Blueprint is simulated); the command should still point at the
+     * source the user can reopen later. Defaults to `packageRoot` when omitted.
+     */
+    reproducibilityPath?: string;
     /** Resolved runtime-model identity, not merely the package path or game info. */
     configHash?: string;
     /** Version of the POKIE runtime that executed this simulation, when known. */

@@ -249,6 +249,12 @@ contains.
 - **Legacy custom calculators remain serializable.** If a session is backed by an older calculator without
  `getWinEvaluationResult()`, the session adapts its legacy total so `totalWin` and `winEvaluationResult.totalWin`
  still reflect the real win amount.
+- **Custom `WinComponent` types need a custom serializer.** `VideoSlotSessionSerializer` maps the built-in
+ line/scatter/cluster/value/ways components. A custom `WinAggregationPolicy` or evaluator can add its own
+ `WinComponent` (for example a streak bonus); that amount is included in `totalWin`, but it is not automatically
+ added to `winEvaluationResult`'s typed arrays. Extend the serializer and add an explicit field for the custom
+ component if clients must explain the win, or keep the custom breakdown out of the public payload and expose it
+ through `getRoundDebugData()`.
 - **The free-games round fields are typed optional (`?`) but always populated** by the concrete
  `VideoSlotWithFreeGamesSessionSerializer` — the optionality exists because the underlying interface is meant to be
  reusable by non-video-slot free-games mechanics too.

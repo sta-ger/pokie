@@ -390,6 +390,10 @@ export class CreateCommand implements CliCommandHandling {
         const filePath = out ?? this.defaultBlueprintPath(blueprint.info.id);
         this.writeBlueprintFile(filePath, perReelBlueprint);
         this.printCreated(blueprint, filePath);
+        // Random generation promises structural validity, never production-tuned RTP. Make that visible at the
+        // moment the file is written instead of leaving it only in the reference documentation.
+        console.log(`\nRTP note: this random design is structurally valid but not RTP-tuned.`);
+        console.log(`  Check it before building a release package: pokie sim ${filePath} --plays 10000 --seed ${usedSeed}`);
 
         return 0;
     }

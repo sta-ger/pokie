@@ -81,7 +81,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
             ...(statistics.reelSequences ? {reelSequences: statistics.reelSequences} : {}),
             breakdown,
             jackpot,
-            reproducibility: this.buildReproducibility(core, packageRoot, workerSeedStrategy, configHash, pokieVersion),
+            reproducibility: this.buildReproducibility(core, input.reproducibilityPath ?? packageRoot, workerSeedStrategy, configHash, pokieVersion),
             warnings,
             recommendations: this.buildRecommendations(core),
         };

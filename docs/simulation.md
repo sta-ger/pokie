@@ -593,7 +593,10 @@ runner.getBreakdownStatistics();
 ```
 
 `pokie sim` takes this, adds a `contribution` field per category (share of the report's overall RTP — see
-[`pokie sim`](cli.md#pokie-sim-packageroot)), and puts the result on `SimulationReport.breakdown`.
+[`pokie sim`](cli.md#pokie-sim-packageroot)), and puts the result on `SimulationReport.breakdown`. A category's
+`rtp` is its **own-stake** return (`totalWin / totalBet` inside that category). Free/feature categories that charge
+no stake keep the numeric zero-denominator convention in JSON, but the CLI, Markdown and HTML presentations show
+`n/a`/`—` and explain that `contribution` is the share of the report's total charged stake.
 
 ### Counting logical rounds
 

@@ -137,6 +137,23 @@ class WeightedReelsGenerator implements ReelsSymbolsSequencesGenerating {
 const config = new VideoSlotConfig(new GameSessionConfig(), new WeightedReelsGenerator());
 ```
 
+### Reproducible default strips
+
+A plain `new VideoSlotConfig()` deliberately generates fresh random default reel strips at construction time,
+before the spin RNG is involved. Passing the same `seed` to `SeededRandomNumberGenerator` therefore does **not**
+reproduce a run unless the config also has deterministic strips. When a game relies on the engine's default strip
+generator and still needs `PokieGameContext.seed` to be reproducible, use `VideoSlotConfig.withSeed(...)`:
+
+```ts
+import {VideoSlotConfig} from "@fromstan/pokie";
+
+const config = VideoSlotConfig.withSeed("release-2026-11");
+```
+
+The same seed produces the same default strips; different seeds produce different strips. This is the supported
+convenience factory for hand-authored packages. Generated `pokie build` blueprints already carry literal or
+per-reel configured strips and are unaffected.
+
 ### Example: a custom 5×3 game
 
 ```ts

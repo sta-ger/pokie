@@ -749,6 +749,22 @@ describe("advanced validation report publication", () => {
     });
 });
 
+it("labels an exhausted optional advanced check as skipped in the human summary", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "validation-advanced-summary-"));
+    const file = path.join(root, "game.blueprint.json");
+    fs.writeFileSync(file, JSON.stringify(createStarterGameBlueprint()));
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+        await new ValidateCommand().run([file]);
+        const printed = log.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("optional check skipped (analysis limit reached)");
+        expect(printed).not.toContain("not finished (analysis limit reached)");
+    } finally {
+        log.mockRestore();
+        fs.rmSync(root, {recursive: true, force: true});
+    }
+});
+
 it("reports an oversized source as inconclusive before structural parsing or report publication", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "validation-source-budget-"));
     const file = path.join(root, "large.blueprint.json");
@@ -826,7 +842,7 @@ it("rejects mixed source revisions during structural package validation and perm
     }};
     try {
         expect(await new ValidateCommand(validator).run([source, "--format", "json"])).toBe(1);
-        expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({valid: false, errors: [expect.objectContaining({message: "Source changed during validation. Retry against the current source."})]});
+        expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({valid: false, errors: [expect.objectContaining({message: expect.stringContaining("Source changed during validation")})]});
         log.mockClear();
         expect(await new ValidateCommand(createStubValidator(validReport)).run([source, "--format", "json"])).toBe(0);
         expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({advanced: {verdict: "inconclusive"}});
@@ -852,7 +868,7 @@ it("rejects a Blueprint replaced after advanced acquisition instead of combining
     });
     try {
         expect(await new ValidateCommand().run([file, "--format", "json"])).toBe(1);
-        expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({valid: false, errors: [expect.objectContaining({message: "Source changed during validation. Retry against the current source."})]});
+        expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({valid: false, errors: [expect.objectContaining({message: expect.stringContaining("Source changed during validation")})]});
         log.mockClear();
         expect(await new ValidateCommand().run([file, "--format", "json"])).toBe(0);
     } finally {

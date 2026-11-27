@@ -238,6 +238,22 @@ describe("SimulationReportBuilder", () => {
             expect(report.reproducibility!.command).toBe("pokie sim ./sample-slot --rounds 10000 --seed demo");
         });
 
+        test("uses the original source path instead of a transient materialization cache", () => {
+            const accumulator = new SimulationAccumulator();
+            accumulator.addRound(1, 0);
+            const report = new SimulationReportBuilder().build({
+                gameInfo,
+                requestedRounds: 100,
+                seed: "demo",
+                statistics: accumulator.getStatistics(),
+                durationMs: 10,
+                packageRoot: "/tmp/pokie-runtime-cache/abc123",
+                reproducibilityPath: "./sample-slot.blueprint.json",
+            });
+
+            expect(report.reproducibility!.command).toBe("pokie sim ./sample-slot.blueprint.json --rounds 100 --seed demo");
+        });
+
         test("omits --seed from the re-run command when no seed was given", () => {
             const accumulator = new SimulationAccumulator();
             accumulator.addRound(1, 0);

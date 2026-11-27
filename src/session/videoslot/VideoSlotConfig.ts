@@ -16,6 +16,7 @@ import {Paytable} from "./paytable/Paytable.js";
 import type {PaytableRepresenting} from "./paytable/PaytableRepresenting.js";
 import type {ReelsSymbolsSequencesGenerating} from "./combinations/ReelsSymbolsSequencesGenerating.js";
 import {ReelsSymbolsSequencesGenerator} from "./combinations/ReelsSymbolsSequencesGenerator.js";
+import {SeededRandomNumberGenerator} from "./combinations/SeededRandomNumberGenerator.js";
 import type {SymbolsSequenceDescribing} from "./combinations/SymbolsSequenceDescribing.js";
 import type {VideoSlotConfigRepresenting} from "./VideoSlotConfigRepresenting.js";
 
@@ -60,6 +61,24 @@ export class VideoSlotConfig<T extends string | number | symbol = string> implem
         this.linesDefinitions = new HorizontalLines(this.reelsNumber, this.reelsSymbolsNumber);
         this.linesPatterns = new LeftToRightLinesPatterns(this.reelsNumber);
         this.reelsSymbolsSequences = this.createReelsSymbolsSequences();
+    }
+
+    /**
+     * A default config whose auto-generated reel strips are reproducible from `seed`.
+     *
+     * A plain `new VideoSlotConfig()` intentionally generates fresh random default strips before any spin RNG is
+     * involved. Passing the same seed to a spin generator alone therefore does not reproduce a run: the strips are
+     * already different. Use this factory when a config is not authored with explicit `setSymbolsSequences(...)`
+     * strips and the surrounding session must be reproducible from `PokieGameContext.seed`.
+     */
+    public static withSeed<T extends string | number | symbol = string>(
+        seed: string | number,
+        baseConfig: GameSessionConfig = new GameSessionConfig(),
+    ): VideoSlotConfig<T> {
+        return new VideoSlotConfig<T>(
+            baseConfig,
+            new ReelsSymbolsSequencesGenerator<T>(new SeededRandomNumberGenerator(seed)),
+        );
     }
 
     public getScreenModifiers(): ScreenModifiers<T> | undefined {

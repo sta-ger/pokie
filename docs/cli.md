@@ -304,7 +304,8 @@ or smoke-simulated here: `pokie create --random` only ever writes the blueprint 
 > construction — but it is not production-tuned math: it makes no promise about what RTP, volatility, or win-size
 > distribution a specific generated game will settle at. Run a real [`pokie sim`](#pokie-sim-packageroot) (thousands
 > of rounds) on the built package before treating a randomly generated game as anything more than a structurally
-> sound starting point.
+> sound starting point. `pokie create --random` prints the same reminder and a copy-ready `pokie sim` command after
+> writing the file; the command line does not claim an RTP estimate it has not measured.
 
 `--random` generates a complete `GameBlueprint` in memory using two public, standalone services also available
 programmatically:
@@ -1886,7 +1887,9 @@ The JSON report shape:
 `reproducibility`, `warnings`, and `recommendations` are **optional** fields —
 a `sim.json` produced by an older `pokie` (or handwritten JSON without them) still validates and renders fine with
 [`pokie report`](#pokie-report-projectorsimulationreportjson), it just won't have these sections. `pokie sim` itself always
-populates all three on every report it produces.
+populates all three on every report it produces. `reproducibility.command` names the original user-facing
+Blueprint/package/WASM source, not an internal disposable materialization cache, so the saved report stays
+re-runnable after temporary caches are cleaned.
 
 `breakdown` is optional: a feature-level RTP breakdown split by
 category. `components` is a plain `Record<string,...>` — there's no fixed category list, and its key order is
@@ -4138,8 +4141,16 @@ No history database is created.
 | Complete unchanged, optional advanced check inconclusive | 0 | 2 |
 | Complete mathematical change (including operational order) | 0 | 1 |
 | Representation/provenance/validation-only change with valid complete sources | 0 | 0 |
+| Representation/provenance-only change with the same retained revision, advanced check inconclusive | 0 | 0 |
 | Partial or unsupported definition | 1 | 2 |
 | Invalid input / failed read / cancellation / output failure | 1 | 2 |
+
+The human summary calls a result `representation-only` when no mathematical field changed, and
+collapses provenance-only entries into a count instead of printing every authority/source line.
+An identical retained revision is sufficient to keep that provenance-only result at `--ci` 0 even
+when the optional advanced proof exhausted its budget; the JSON result still retains every change.
+Library callers can use the exported `summarizeMathDefinitionDiff` and `mathDefinitionDiffCiExitCode`
+helpers for the same classification and exit policy.
 
 `--ci` applies only to definition comparisons; using it for statistics is an
 error (2). SIGINT cancels definition acquisition and waits for owned extraction
@@ -4179,7 +4190,10 @@ See [finite same-type math optimization](optimization.md) for MathTarget units, 
 
 `pokie optimize game.blueprint.json --policy targets.json --out candidate.blueprint.json`
 searches the declared finite tuning domain and saves a validated candidate of the same
-project type to a new or empty destination. Omit `--out` to review evidence and the diff;
+project type to a new or empty destination. File-shaped candidates must use the suffix their
+project resolver recognizes: `.json` for a Blueprint, `.xlsx` for a PAR workbook and `.wasm` for a
+WASM component. Directory-shaped candidates (`tsPackage`, `outcomeLibrary`, `stakeAdapter`) use a
+directory. Omit `--out` to review evidence and the diff;
 the temporary candidate is then discarded. Authored input stays separate from explicit
 save/apply. `--format json` is the structured result format; `--progress` writes progress
 records to stderr. Ctrl-C cancels and drains owned work.

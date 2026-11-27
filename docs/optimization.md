@@ -25,8 +25,10 @@ Conversions remain `build SOURCE --target TARGET`.
 }
 ```
 
-Locks must identify existing fields. Omit `/mechanics` when absent. Paths are
-JSON pointers (`~0` encodes `~`, `~1` encodes `/`); array entries use indexes.
+Locks must identify existing fields. Omit `/mechanics` when absent. `locks` itself may be omitted;
+it defaults to `[]` (no additional locks) and still leaves every undeclared model field protected by
+the shared readback comparison. Paths are JSON pointers (`~0` encodes `~`, `~1` encodes `/`); array
+entries use indexes.
 Only explicitly granted existing numeric leaves are writable. Complete parent
 locks protect presence, values, order, and descendants. Overlapping tunables,
 ancestor/descendant lock conflicts, unknown fields, unsupported units,
