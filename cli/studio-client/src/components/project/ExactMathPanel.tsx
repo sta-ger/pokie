@@ -263,26 +263,29 @@ export function ExactMathPanel({
                 });
             };
             let started: StudioOutcomeLibraryGenerateJobView | undefined;
-            try {
-                started = await startGeneration();
-            } catch (failure) {
-                // A reload or a rapid Save can leave a previous generation owning the destination after
-                // this panel lost its job id. Wait for that job to release the resource, then retry the
-                // preflight/start once. Never cancel someone else's explicit generation silently.
-                if (!(failure instanceof OutcomeLibraryGenerationStartError) || failure.outcomeStatus !== "conflict") {
-                    throw failure;
+            // A reload or a rapid Save can leave a previous generation owning the destination after
+            // this panel lost its job id, or make the preflight token stale before the start lands.
+            // Re-read both in a bounded loop; never cancel someone else's explicit generation.
+            for (let attempt = 0; ; attempt++) {
+                try {
+                    started = await startGeneration();
+                    break;
+                } catch (failure) {
+                    if (!(failure instanceof OutcomeLibraryGenerationStartError) || failure.outcomeStatus !== "conflict" || attempt >= 2) {
+                        throw failure;
+                    }
+                    const active = (await listOutcomeLibraryGenerationJobs(fetchImpl)).filter((candidate) => !isTerminal(candidate));
+                    if (active.length > 0) {
+                        setNotice("Waiting for the active exact-math generation to finish before rebuilding this table…");
+                        await Promise.all(active.map((candidate) => waitForGenerationToStop(candidate.id)));
+                    } else {
+                        // Terminal status and destination-owner release are adjacent but not atomic; a
+                        // rapid second Save can also replace the source revision while we wait.
+                        await new Promise<void>((resolve) => {
+                            setTimeout(resolve, 250);
+                        });
+                    }
                 }
-                const active = (await listOutcomeLibraryGenerationJobs(fetchImpl)).filter((candidate) => !isTerminal(candidate));
-                if (active.length > 0) {
-                    setNotice("Waiting for the active exact-math generation to finish before rebuilding this table…");
-                    await Promise.all(active.map((candidate) => waitForGenerationToStop(candidate.id)));
-                } else {
-                    // Terminal status and destination-owner release are adjacent but not atomic.
-                    await new Promise<void>((resolve) => {
-                        setTimeout(resolve, 250);
-                    });
-                }
-                started = await startGeneration();
             }
             if (started === undefined) return;
             setNotice(undefined);
