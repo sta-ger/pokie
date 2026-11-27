@@ -1,4 +1,4 @@
-// Thrown by FixedBetModeForNextSimulationRoundSetting when a simulation run is explicitly locked to a
+// Thrown by FixedBetModeForNextSimulationRoundSetting when a simulation/replay is explicitly locked to a
 // bet mode (e.g. "pokie sim --mode <id>") but the session doesn't support BetModeSelecting at all --
 // either because the game has no configured bet modes, or its createSession() doesn't wrap the
 // session in a bet-mode-aware decorator (e.g. VideoSlotWithBetModesSession). A caller explicitly asked
@@ -11,7 +11,7 @@ export class BetModeSimulationUnsupportedError extends Error {
 
     constructor(modeId: string) {
         super(
-            `Cannot lock this simulation run to bet mode "${modeId}": the session does not support bet mode ` +
+            `Cannot select bet mode "${modeId}": the session does not support bet mode ` +
                 "selection (BetModeSelecting). Either this game has no configured bet modes, or its " +
                 "createSession() doesn't wrap the session in a bet-mode-aware decorator " +
                 "(e.g. VideoSlotWithBetModesSession).",

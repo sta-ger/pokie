@@ -148,6 +148,7 @@ describe("SimCommand", () => {
         expect(help).toContain("WASM");
         expect(help).toContain("pokie-wasm-simulation");
         expect(help).not.toContain("(default: 1000) (default: 1000)");
+        expect(help.replace(/\s+/g, " ")).toContain("consecutive stable checks required (default: 3");
     });
 
     it("throws when run without a packageRoot", async () => {

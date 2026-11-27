@@ -290,7 +290,7 @@ export class SimCommand implements CliCommandHandling {
                 }
                 return parsed;
             })
-            .option("--stable-checks <number>", "adaptive convergence: consecutive stable checks required (default: 1; requires the other three convergence flags)", (value: string): number => {
+            .option("--stable-checks <number>", "adaptive convergence: consecutive stable checks required (default: 3; requires the other three convergence flags)", (value: string): number => {
                 const parsed = Number(value);
                 if (!Number.isInteger(parsed) || parsed <= 0) {
                     throw new Error(`--stable-checks must be a positive integer. ${USAGE}`);
