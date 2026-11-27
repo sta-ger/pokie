@@ -65,7 +65,7 @@ export function BlueprintValidationPanel({
             {view.status === "error" && <ErrorState message={describePathActionError("This validation request", view.message)} />}
             {(view.status === "invalid" || view.status === "inconclusive") && <IssueList title="Errors" issues={view.errors ?? []} />}
             {(view.status === "ok" || view.status === "invalid" || view.status === "inconclusive") && <IssueList title="Warnings" issues={view.warnings} />}
-            {view.status === "ok" && <>
+            {(view.status === "ok" || view.status === "inconclusive") && <>
                 <Text size="sm" c="dimmed">Design check. The optional feature check is reported separately below.</Text>
                 <AdvancedValidationPanel report={view.advanced} />
             </>}
