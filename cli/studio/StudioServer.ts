@@ -2811,11 +2811,11 @@ export class StudioServer implements StudioServerHandling {
         }
     }
 
-    private validatedCanonicalWasmProject(project: PokieProject, manifest: {component: {id: string; version: string}}): PokieGamePackageValidationReport {
+    private validatedCanonicalWasmProject(project: PokieProject, manifest: {component: {id: string; name?: string; version: string}}): PokieGamePackageValidationReport {
         return {
             packageRoot: project.rootPath,
             valid: true,
-            game: {id: manifest.component.id, name: manifest.component.id, version: manifest.component.version},
+            game: {id: manifest.component.id, name: manifest.component.name ?? manifest.component.id, version: manifest.component.version},
             errors: [],
             warnings: [],
             information: [{code: "wasm-integrity-compatibility", severity: "info", message: "Verified module SHA-256 and byte count, embedded descriptor and configuration hash, manifest shape, runtime version, ABI, serialization and host requirements. This validates artifact integrity and compatibility; it does not certify game mathematics."}],

@@ -51,6 +51,10 @@ pokie report assessment/index.json --format pdf --out assessment-copy.pdf
 pokie report assessment/index.json --format html --template presentation.json --out assessment-copy.html
 ```
 
+Render a pack's report to a path **outside** the pack directory. A pack is integrity-bound to its exact
+file set, so writing the rendered copy next to `pack.json` makes verification report an unexpected pack
+file; `pokie report` refuses that destination before writing.
+
 The trusted-sources file contains the **pack object**, with explicit relocated model, report and replay
 paths and the same revision labels. Its paths are relative to that file. Verification never follows
 `index.sourceLibraryDir`, any saved model location, or attachment locations. Supply every attached

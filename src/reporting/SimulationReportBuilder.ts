@@ -7,6 +7,7 @@ import type {SimulationReportBreakdown, SimulationReportBreakdownComponent} from
 import type {SimulationReportBuilding} from "./SimulationReportBuilding.js";
 import type {SimulationReportInput} from "./SimulationReportInput.js";
 import type {SimulationReportJackpot, SimulationReportJackpotPool} from "./SimulationReportJackpot.js";
+import {describeRtpSanityWarning} from "./describeRtpSanityWarning.js";
 
 type CoreMetrics = Omit<SimulationReport, "reproducibility" | "warnings" | "recommendations" | "breakdown" | "jackpot">;
 
@@ -171,11 +172,22 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
             warnings.push("No seed was provided — this run is not reproducible.");
         }
 
-        if (core.rounds < SimulationReportBuilder.LOW_ROUNDS_WARNING_THRESHOLD) {
+        const converged =
+            core.stopReason === "converged" &&
+            core.convergence !== undefined &&
+            core.rounds >= core.convergence.minRounds &&
+            core.convergence.consecutiveStableChecks >= core.convergence.stableChecks;
+        if (!converged && core.rounds < SimulationReportBuilder.LOW_ROUNDS_WARNING_THRESHOLD) {
             warnings.push(
                 `Completed paid rounds (${core.rounds}) is low — RTP/hit-frequency estimates may be noisy regardless of the requested play budget (${core.requestedRounds}).`,
             );
         }
+
+        const rtpWarning = describeRtpSanityWarning(core.rtp, {
+            rounds: core.rounds,
+            ...(core.rtpConfidenceInterval95 === undefined ? {} : {confidenceInterval95: core.rtpConfidenceInterval95}),
+        });
+        if (rtpWarning !== undefined) warnings.push(rtpWarning);
 
         if (core.hitFrequency === 0) {
             warnings.push("Hit frequency is 0 — no round produced a win.");

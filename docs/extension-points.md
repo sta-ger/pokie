@@ -10,6 +10,11 @@ collaborators you need to change. All parameters below are optional with a worki
 | Want to customize... | Implement | Inject into | Details |
 |---|---|---|---|
 | How lines are turned into wins | `LineWinCalculating<T>` | `VideoSlotWinCalculator`'s 2nd constructor arg | [Paytable & Win Calculation](paytable-and-wins.md#replacing-linescatter-win-logic-entirely) |
+
+A custom `VideoSlotWinCalculating` may implement the optional `getWinEvaluationResult()`. When it does,
+`VideoSlotSession` treats that unified total as authoritative and checks it against `getWinAmount()`;
+the round is rejected with a clear diagnostic if the two disagree. Include every custom payout in the
+evaluation result, or omit `getWinEvaluationResult()` so the session settles through `getWinAmount()`.
 | How scatters are turned into wins | `ScatterWinCalculating<T>` | `VideoSlotWinCalculator`'s 3rd constructor arg | [Paytable & Win Calculation](paytable-and-wins.md#replacing-linescatter-win-logic-entirely) |
 | Cluster (adjacency) pays | `ClusterWinCalculating<T>` | `VideoSlotWinCalculator`'s 4th constructor arg (opt-in, no default) | [Paytable & Win Calculation](paytable-and-wins.md#cluster-pays) |
 | Per-symbol value pays | `ValueWinCalculating<T>` | `VideoSlotWinCalculator`'s 5th constructor arg (opt-in, no default) | [Paytable & Win Calculation](paytable-and-wins.md#value-pays) |

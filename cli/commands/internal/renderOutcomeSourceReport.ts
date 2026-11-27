@@ -66,6 +66,11 @@ export function renderOutcomeSourceReport(targetPath: string, report: OutcomeSou
         }
     }
 
+    if (report.warnings !== undefined && report.warnings.length > 0) {
+        lines.push("", "Sanity warnings:");
+        for (const warning of report.warnings) lines.push(`  warning  ${warning}`);
+    }
+
     if (report.modes.length === 0) {
         return lines.join("\n");
     }
@@ -108,6 +113,9 @@ export function renderOutcomeSourceMarkdown(targetPath: string, report: OutcomeS
     if (report.issues.length > 0) {
         lines.push("", "## Warnings", "", ...report.issues.map((issue) => `- **${issue.severity} ${issue.code}**: ${issue.message}`));
     }
+    if (report.warnings !== undefined && report.warnings.length > 0) {
+        lines.push("", "## Sanity warnings", "", ...report.warnings.map((warning) => `- ${warning}`));
+    }
     if (report.modes.length > 0) {
         lines.push("", `## ${analysisHeading(report)}`, "");
         lines.push(...coverageRows(report).map((row) => `- ${row}`));
@@ -144,6 +152,7 @@ export function renderOutcomeSourceHtml(targetPath: string, report: OutcomeSourc
         "        </section>",
         ...(report.descriptor.limitations.length > 0 ? ["        <section><h2>Limitations and recommendations</h2>", ...list(report.descriptor.limitations), "        </section>"] : []),
         ...(report.issues.length > 0 ? ["        <section><h2>Warnings</h2>", ...list(report.issues.map((issue) => `${issue.severity} ${issue.code}: ${issue.message}`)), "        </section>"] : []),
+        ...(report.warnings !== undefined && report.warnings.length > 0 ? ["        <section><h2>Sanity warnings</h2>", ...list(report.warnings), "        </section>"] : []),
         ...(rows.length > 0 ? [
             `        <section><h2>${escapeHtml(analysisHeading(report))}</h2>`,
             "        <h3>Coverage</h3>",

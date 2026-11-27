@@ -691,7 +691,7 @@ export class StudioPlayService {
             const sessionId = crypto.randomUUID();
             const active: ActiveWasmSession = {
                 kind: "wasm",
-                info: {id: manifest.component.id, name: manifest.component.id, version: manifest.component.version},
+                info: {id: manifest.component.id, name: manifest.component.name ?? manifest.component.id, version: manifest.component.version},
                 runtime,
                 session: runtime.createSession(sessionSeed),
                 projectRoot: project.rootPath,

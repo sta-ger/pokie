@@ -86,6 +86,7 @@ export function describeBlueprintValidationScopes(
 export function describeProjectValidationScopes(
     view: ProjectValidationView,
     mathStatus: ProjectMathStatus = "missing",
+    exactMathSupported = true,
 ): ValidationScopeBadge[] {
     let structure: ValidationScopeBadge;
     if (view.status === "success" && view.summary.advanced?.structuralValid === null) {
@@ -136,6 +137,13 @@ export function describeProjectValidationScopes(
             label: "Math: exact table unavailable",
             color: "yellow",
             detail: "Studio could not read the exact outcome table. Retry the read on Overview; a simulation remains only an estimate.",
+        };
+    } else if (!exactMathSupported) {
+        math = {
+            scope: "math",
+            label: "Math: exact math unavailable",
+            color: "gray",
+            detail: "This package does not implement createExactEnumerationSession(), so Studio cannot enumerate an exact outcome table for it. Use Simulation for a sampled estimate; the structural check does not establish RTP or payout balance.",
         };
     } else {
         math = {

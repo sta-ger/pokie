@@ -251,8 +251,7 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
                 const result = this.supportsWinEvaluationResult() ? this.winCalculator.getWinEvaluationResult!() : LegacyWinEvaluationResultAdapter.fromWinCalculator(this.winCalculator);
                 assertEvaluationComponents(result.getWinComponents(), geometry);
             }
-            const payout = this.supportsWinEvaluationResult()
-                ? this.winCalculator.getWinEvaluationResult!().getTotalWin() : this.winCalculator.getWinAmount();
+            const payout = this.resolveWinPayout();
             const expectedBalance = credits - this.getBet() + payout;
             if (!Number.isFinite(payout) || !Number.isFinite(expectedBalance)) throw new Error("Win payout or balance overflow.");
             this.baseSession.play();
@@ -456,5 +455,24 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
 
     private supportsWinEvaluationResult(): boolean {
         return typeof this.winCalculator.getWinEvaluationResult === "function";
+    }
+
+    // The optional unified breakdown is authoritative for settlement.  A custom calculator that
+    // implements it while keeping an independently scaled getWinAmount() used to have that scaling
+    // silently ignored (and vice versa for its line/scatter views).  Reject that contradiction at the
+    // round boundary instead of settling a different amount from the one the calculator reports.
+    private resolveWinPayout(): number {
+        if (!this.supportsWinEvaluationResult()) return this.winCalculator.getWinAmount();
+        const unified = this.winCalculator.getWinEvaluationResult!().getTotalWin();
+        const legacy = this.winCalculator.getWinAmount();
+        const tolerance = 1e-9 * Math.max(1, Math.abs(unified), Math.abs(legacy));
+        if (Number.isFinite(unified) && Number.isFinite(legacy) && Math.abs(unified - legacy) > tolerance) {
+            throw new Error(
+                `Win calculator totals disagree: getWinAmount() returned ${legacy}, but ` +
+                    `getWinEvaluationResult().getTotalWin() returned ${unified}. Include every custom payout in the ` +
+                    "evaluation result, or omit getWinEvaluationResult() so the session uses getWinAmount().",
+            );
+        }
+        return unified;
     }
 }

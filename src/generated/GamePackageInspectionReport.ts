@@ -11,7 +11,7 @@ export type GamePackageInspectionReport = {
     // integrity-bound declaration; legacy sidecar-only components expose only
     // metadata without treating a component as a package.
     wasmManifest?: {
-        component: {id: string; version: string};
+        component: {id: string; name?: string; version: string};
         schemaVersion: string;
         serialization: {session: string; play: string; state: string};
         host: {rng: string; services: string[]};

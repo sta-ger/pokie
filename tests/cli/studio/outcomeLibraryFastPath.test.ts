@@ -37,4 +37,17 @@ describe("StudioOutcomeLibraryGenerateService exact-math source loading", () => 
         expect(view.totalOutcomeSpaceSize).toBe(4);
         expect(loadGame).not.toHaveBeenCalled();
     });
+
+    it("gives a second design in the same folder its own default bundle directory", async () => {
+        const service = new StudioOutcomeLibraryGenerateService("2.0.0", jest.fn() as unknown as typeof loadPokieGame);
+        const resolveDefault = (input: string, id: string) =>
+            (service as unknown as {defaultBundleDirectory(projectRoot: string, gameId: string): Promise<string>}).defaultBundleDirectory(input, id);
+
+        expect(await resolveDefault(projectRoot, "fast-path")).toBe("outcomelibrary");
+
+        fs.mkdirSync(path.join(projectRoot, "outcomelibrary"));
+        fs.writeFileSync(path.join(projectRoot, "outcomelibrary", "index.json"), "{}");
+        const expectedSibling = `outcomelibrary-${path.basename(projectRoot).replace(/[^A-Za-z0-9._-]+/g, "-")}`;
+        expect(await resolveDefault(projectRoot, "fast-path")).toBe(expectedSibling);
+    });
 });

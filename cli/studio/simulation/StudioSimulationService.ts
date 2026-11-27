@@ -519,7 +519,7 @@ export class StudioSimulationService {
                 },
             });
             const reports = results.map(result => this.reportBuilder.build({
-                gameInfo: {id: runtime!.manifest.component.id, name: runtime!.manifest.component.id, version: runtime!.manifest.component.version},
+                gameInfo: {id: runtime!.manifest.component.id, name: runtime!.manifest.component.name ?? runtime!.manifest.component.id, version: runtime!.manifest.component.version},
                 requestedRounds: record.rounds, ...(record.seed === undefined ? {} : {seed: record.seed}), statistics: result.statistics,
                 durationMs: record.durationMs, packageRoot: record.projectRoot, configHash: runtime!.manifest.artifact?.configurationHash,
                 workers: 1, workerSeedStrategy: "portable seeded host stream (single in-process WASM runtime)", pokieVersion: this.pokieVersion, betMode: result.mode, targetRtp: result.targetRtp,

@@ -83,6 +83,16 @@ describe("InspectCommand", () => {
         expect(resolver.calledWith).toBe("./hand-written");
     });
 
+    it("does not advertise an exact outcome-library build for a package without exact enumeration", async () => {
+        const packageWithoutExact = {...projectOf("tsPackage"), capabilities: ["runtime.execute"]} as PokieProject;
+        const command = new InspectCommand(createStubResolver(packageWithoutExact));
+
+        expect(await command.run(["./hand-written"])).toBe(0);
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).not.toContain("Build an Outcome Library");
+        expect(printed).toContain("does not implement createExactEnumerationSession()");
+    });
+
     it("prints a package's public kind and runnable next actions", async () => {
         const command = new InspectCommand(createStubResolver(validProject));
 
@@ -93,7 +103,7 @@ describe("InspectCommand", () => {
         expect(printed).toContain('Inspecting POKIE game package at "./hand-written"');
         expect(printed).toContain("Available next actions:");
         expect(printed).toContain("Validate the game:");
-        expect(printed).toContain('pokie sim "./hand-written" --rounds 10000 --seed demo');
+        expect(printed).toContain('pokie sim ./hand-written --rounds 10000 --seed demo');
         expect(printed).not.toContain("runtime.execute");
     });
 
@@ -155,14 +165,14 @@ describe("InspectCommand", () => {
 
         expect(await outcomeCommand.run([outcomeProject.rootPath])).toBe(0);
         const outcomePrinted = logSpy.mock.calls.map((call) => call[0]).join("\n");
-        expect(outcomePrinted).toContain('pokie report "./outcomes"');
+        expect(outcomePrinted).toContain('pokie report ./outcomes');
         expect(outcomePrinted).not.toContain("pokie outcomesource");
 
         logSpy.mockClear();
         expect(await stakeCommand.run([stakeProject.rootPath])).toBe(0);
         const stakePrinted = logSpy.mock.calls.map((call) => call[0]).join("\n");
-        expect(stakePrinted).toContain('pokie report "./stake-export"');
-        expect(stakePrinted).toContain('pokie diff "./stake-export" <otherPath>');
+        expect(stakePrinted).toContain('pokie report ./stake-export');
+        expect(stakePrinted).toContain('pokie diff ./stake-export <otherPath>');
         expect(stakePrinted).not.toContain("pokie outcomesource");
     });
 });

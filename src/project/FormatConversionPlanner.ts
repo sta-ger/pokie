@@ -381,8 +381,16 @@ export function describeFormatConversionPlanDiagnostic(plan: FormatConversionPla
     // Library and obscured the actual recovery boundary supplied by the
     // planner.  Preserve that structured boundary verbatim for every adapter.
     if (plan.packageExtraction || diagnostic.code === "unrecognized-source") return diagnostic.message;
-    // A semantic limitation cannot be repaired by opening another artifact of the same kind.
-    if (diagnostic.code === "unsupported-boundary") return `${diagnostic.message} Next: ${diagnostic.recovery}`;
+    // A semantic limitation cannot be repaired by opening another artifact of the same kind. Some
+    // published boundary phrases already carry their own "Next:" sentence; don't stack a second one.
+    if (diagnostic.code === "unsupported-boundary") return diagnostic.message.includes("Next:") ? diagnostic.message : `${diagnostic.message} Next: ${diagnostic.recovery}`;
+    if (diagnostic.code === "missing-capability" && diagnostic.failedEdge.from === "tsPackage" &&
+        (diagnostic.failedEdge.to === "outcomeLibrary" || diagnostic.failedEdge.to === "stakeAdapter")) {
+        const sourcePath = plan.source.canonicalLocation;
+        return `${sourcePath === undefined ? "This POKIE game package" : `"${sourcePath}" is a POKIE game package that`} does not implement ` +
+            "createExactEnumerationSession(), so it has no exact paid-spin outcome space to enumerate. " +
+            "Use its own runtime (simulate, replay, serve) or rebuild from an enumerable Blueprint.";
+    }
     const sourceNames: Readonly<Record<ProjectType, string>> = {
         blueprint: "Game Blueprint", tsPackage: "POKIE game package", outcomeLibrary: "Outcome Library",
         stakeAdapter: "Stake Engine export", parWorkbook: "PAR workbook", wasm: WASM_PRODUCT_CONTRACT.kind,
@@ -602,7 +610,10 @@ export class FormatConversionPlanner {
         execution: FormatConversionExecution<ReadResult, PublishedResult>,
     ): Promise<FormatConversionExecutionResult<ReadResult, PublishedResult>> {
         if (plan.status !== "planned") {
-            throw new Error(`${plan.diagnostic?.message ?? "This conversion cannot be planned."} Next: ${plan.diagnostic?.recovery ?? "resolve a supported source and retry."}`);
+            const message = plan.diagnostic?.message ?? "This conversion cannot be planned.";
+            throw new Error(message.includes("Next:")
+                ? message
+                : `${message} Next: ${plan.diagnostic?.recovery ?? "resolve a supported source and retry."}`);
         }
         let read: ReadResult | undefined;
         let publication: PublishedResult | undefined;

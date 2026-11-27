@@ -27,4 +27,6 @@ export type OutcomeSourceProjectReport = {
     readonly descriptor: CanonicalOutcomeSourceDescriptor;
     readonly issues: readonly ValidationIssue[];
     readonly modes: readonly OutcomeSourceProjectModeAnalysis[];
+    /** Non-certifying sanity hints (for example RTP far outside the usual range), never structural issues. */
+    readonly warnings?: readonly string[];
 };

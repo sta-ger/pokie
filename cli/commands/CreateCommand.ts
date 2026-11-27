@@ -20,6 +20,7 @@ import {GameBlueprintWizarding} from "../wizard/GameBlueprintWizarding.js";
 import {PromptAdapting} from "../wizard/PromptAdapting.js";
 import {ReadlinePromptAdapter} from "../wizard/ReadlinePromptAdapter.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {quoteShellArgument} from "./internal/quoteShellArgument.js";
 import {BlueprintFileWriteResult, writeBlueprintFileAtomically as writeBlueprintFileAtomicallyDefault} from "./internal/writeBlueprintFileAtomically.js";
 
 type RandomPreset = "default" | "variant";
@@ -30,9 +31,21 @@ const RANDOM_USAGE = "Usage: pokie create [name] --random [--seed <integer>] [--
 const RANDOM_PRESETS: readonly RandomPreset[] = ["default", "variant"];
 
 const GUIDANCE_NOT_INTERACTIVE =
-    'pokie create needs an interactive terminal to run its Blueprint wizard, and this one is not connected to one. ' +
-    "Re-run inside a terminal, or use a non-interactive shortcut instead: \"pokie create --blank\" (a bare-minimum " +
-    'blueprint) or "pokie create --random" (an always-valid randomly generated one).';
+    'pokie create needs an interactive terminal (or piped/scripted answers) to run its Blueprint wizard, and this ' +
+    "one has neither. Re-run inside a terminal, pipe answers into it, or use a non-interactive shortcut instead: " +
+    '"pokie create --blank" (a bare-minimum blueprint) or "pokie create --random" (an always-valid randomly generated one).';
+
+// A redirected regular file or a pipe is the documented "printf ... | pokie create" workflow; a TTY is the
+// ordinary interactive workflow. /dev/null or a closed stdin is neither, so it still gets the helpful
+// guidance instead of an immediate, confusing "Create cancelled." from readline's EOF.
+function standardInputLooksScripted(): boolean {
+    try {
+        const stat = fs.fstatSync(0);
+        return stat.isFIFO() || stat.isFile();
+    } catch {
+        return false;
+    }
+}
 
 export class CreateCommand implements CliCommandHandling {
     private readonly createStarterBlueprint: () => GameBlueprint;
@@ -67,9 +80,12 @@ export class CreateCommand implements CliCommandHandling {
         // its defaults, the same way the non-interactive paths above already do.
         wizard: GameBlueprintWizarding = new GameBlueprintWizard(undefined, createStarterBlueprint),
         createPrompt: () => PromptAdapting = () => new ReadlinePromptAdapter(),
-        // Real terminals only: both stdin (to actually read answers) and stdout (so the questions
-        // themselves are visible) must be TTYs, matching ReadlinePromptAdapter's own real-terminal use.
-        isInteractiveTerminal: () => boolean = () => Boolean(process.stdin.isTTY) && Boolean(process.stdout.isTTY),
+        // A real terminal (both stdin and stdout are TTYs), or scripted answers piped/redirected into
+        // stdin (documented in docs/cli.md). ReadlinePromptAdapter buffers piped lines deliberately, so
+        // the wizard itself needs no separate code path.
+        isInteractiveTerminal: () => boolean = () =>
+            (Boolean(process.stdin.isTTY) && Boolean(process.stdout.isTTY)) ||
+            (!process.stdin.isTTY && standardInputLooksScripted()),
     ) {
         this.createStarterBlueprint = createStarterBlueprint;
         this.createBlankBlueprint = createBlankBlueprint;
@@ -331,11 +347,12 @@ export class CreateCommand implements CliCommandHandling {
     }
 
     private printCreated(blueprint: GameBlueprint, filePath: string): void {
+        const quotedFilePath = quoteShellArgument(filePath);
         console.log(`  created  ${filePath}`);
         console.log(`\nGame blueprint "${blueprint.info.name}" (id: "${blueprint.info.id}") created at "${filePath}".`);
         console.log(`\nBuild it:`);
-        console.log(`  pokie build ${filePath} --target tsPackage --out <dir> --dry-run`);
-        console.log(`  pokie build ${filePath} --target tsPackage --out <dir>`);
+        console.log(`  pokie build ${quotedFilePath} --target tsPackage --out <dir> --dry-run`);
+        console.log(`  pokie build ${quotedFilePath} --target tsPackage --out <dir>`);
     }
 
     // --blank: writes the filled-in starter template directly, no wizard.
@@ -368,7 +385,7 @@ export class CreateCommand implements CliCommandHandling {
 
         console.log(`Generated random game "${blueprint.info.name}" (id: "${blueprint.info.id}") from seed ${usedSeed}.`);
         console.log(
-            `Reproduce this exact game with: pokie create ${name ?? ""}${name ? " " : ""}--random --seed ${usedSeed} --preset ${preset}`,
+            `Reproduce this exact game with: pokie create ${name === undefined ? "" : `${quoteShellArgument(name)} `}--random --seed ${usedSeed} --preset ${preset}`,
         );
         console.log(`Origin: generator ${provenance.generatorVersion}, strategy "${provenance.strategy}".`);
 
@@ -393,7 +410,7 @@ export class CreateCommand implements CliCommandHandling {
         // Random generation promises structural validity, never production-tuned RTP. Make that visible at the
         // moment the file is written instead of leaving it only in the reference documentation.
         console.log(`\nRTP note: this random design is structurally valid but not RTP-tuned.`);
-        console.log(`  Check it before building a release package: pokie sim ${filePath} --plays 10000 --seed ${usedSeed}`);
+        console.log(`  Check it before building a release package: pokie sim ${quoteShellArgument(filePath)} --plays 10000 --seed ${quoteShellArgument(String(usedSeed))}`);
 
         return 0;
     }

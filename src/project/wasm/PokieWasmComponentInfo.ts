@@ -31,6 +31,8 @@ export type PokieWasmComponentInfo = {
     // ExternalExportTarget.id/.version are (see that type's own doc comment).
     readonly component: {
         readonly id: string;
+        /** Display name; older components omit it and use their id. */
+        readonly name?: string;
         readonly version: string;
     };
 

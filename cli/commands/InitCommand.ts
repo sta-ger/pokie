@@ -10,6 +10,7 @@ import {GamePackageMergeOverrides, GamePackageMerging} from "../scaffold/GamePac
 import {GamePackageMerger} from "../scaffold/GamePackageMerger.js";
 import {ScaffoldResult} from "../scaffold/ScaffoldResult.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {quoteShellArgument} from "./internal/quoteShellArgument.js";
 
 const USAGE =
     "Usage: pokie init [directory] [--package-name <name>] [--game-id <id>] [--game-name <name>] " +
@@ -276,7 +277,7 @@ export class InitCommand implements CliCommandHandling {
                 phase,
                 `"${npmCommand}" failed in "${projectRoot}": ${detail}\n` +
                     `Run "${npmCommand}" manually in "${projectRoot}" to see the full output, fix the underlying ` +
-                    `issue, then re-run "pokie init ${projectRoot}" to retry.`,
+                    `issue, then re-run "pokie init ${quoteShellArgument(projectRoot)}" to retry.`,
                 extractDetails?.(error),
             );
         }
@@ -293,18 +294,19 @@ export class InitCommand implements CliCommandHandling {
             "verify",
             `Prepared package "${projectRoot}" is not a valid POKIE game:\n${details}\n` +
                 `If this is a missing/stale build, run "npm run build" in "${projectRoot}" so "dist/index.js" ` +
-                `matches the current source, then re-run "pokie init ${projectRoot}".`,
+                `matches the current source, then re-run "pokie init ${quoteShellArgument(projectRoot)}".`,
         );
     }
 
     private printPrepared(scaffold: ScaffoldResult, projectRoot: string): void {
+        const quotedProjectRoot = quoteShellArgument(projectRoot);
         console.log(`\nGame package "${scaffold.info.name}" (id: "${scaffold.info.id}") prepared and verified in "${projectRoot}".`);
         console.log(`Starter math is a balanced five-line demo, not a production-certified model; tune it before real-money use.`);
-        console.log(`Load it anywhere with: loadPokieGame("${projectRoot}") from "@fromstan/pokie".`);
+        console.log(`Load it anywhere with: loadPokieGame(${JSON.stringify(projectRoot)}) from "@fromstan/pokie".`);
         console.log(`\nNext:`);
-        console.log(`  pokie validate ${projectRoot}`);
-        console.log(`  pokie sim ${projectRoot} --rounds 10000 --seed demo --out sim.json`);
-        console.log(`  pokie dev ${projectRoot}`);
+        console.log(`  pokie validate ${quotedProjectRoot}`);
+        console.log(`  pokie sim ${quotedProjectRoot} --rounds 10000 --seed demo --out sim.json`);
+        console.log(`  pokie dev ${quotedProjectRoot}`);
         console.log(`  npm start`);
         console.log(`\nNote: while @fromstan/pokie 2.0.0 is unpublished, a bare "npm ci" in a fresh copy needs a published 2.0.0 or another "pokie init" run; the package.json itself stays portable.`);
     }

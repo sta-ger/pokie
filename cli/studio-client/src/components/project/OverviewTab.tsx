@@ -5,6 +5,7 @@ import type {StudioProjectOrigin} from "../../api/types";
 import {
     BLUEPRINT_BUILD_CAPABILITY,
     describeProjectType,
+    OUTCOME_LIBRARY_GENERATE_CAPABILITY,
     RUNTIME_EXECUTE_CAPABILITY,
     type ProjectHeaderView,
     type ProjectValidationView,
@@ -35,11 +36,12 @@ function describeAddedToStudio(origin: StudioProjectOrigin | undefined): string 
 // via `onRevalidate`), so a visitor sees the project's current health without an extra click. Mirrors
 // the removed ValidationTab's own rendering, minus its own standalone "Run Validate" entry point (this
 // one lives inline, next to everything else Overview already reports).
-function describeValidationSummary(view: ProjectValidationView, mathStatus: ProjectMathStatus): string {
+function describeValidationSummary(view: ProjectValidationView, mathStatus: ProjectMathStatus, exactMathSupported: boolean): string {
     if (view.status === "idle" || view.status === "loading") return "Checking project…";
     if (view.status === "error") return "Validation could not be completed.";
     if (view.summary.advanced?.structuralValid === null) return "The design check is inconclusive. Review the analysis limits and retry.";
     if (view.summary.hasIssues) return `${view.summary.valid ? "Structure valid, with warnings" : "Structure invalid"} — ${view.summary.errors.length} error(s), ${view.summary.warnings.length} warning(s).`;
+    if (!exactMathSupported) return "Structure valid — exact math is unavailable for this package; use Simulation.";
     if (view.status === "success" && hasFeatureTerminationWarning(view.summary.advanced)) return "Structure valid — math warning: uncapped free games.";
     if (mathStatus === "ok") return "Structure valid — exact outcome table available; certification is still separate.";
     if (mathStatus === "stale") return "Structure valid — exact outcome table is stale.";
@@ -122,7 +124,8 @@ export function OverviewTab({
 }) {
     const editable = header.capabilities.includes(BLUEPRINT_BUILD_CAPABILITY);
     const playable = editable || header.capabilities.includes(RUNTIME_EXECUTE_CAPABILITY);
-    const [exactMathStatus, setExactMathStatus] = useState<ProjectMathStatus>(header.type === "wasm" ? "missing" : "loading");
+    const canGenerateExact = header.capabilities.includes(OUTCOME_LIBRARY_GENERATE_CAPABILITY);
+    const [exactMathStatus, setExactMathStatus] = useState<ProjectMathStatus>(header.type === "wasm" || !canGenerateExact ? "missing" : "loading");
     const [exactSummary, setExactSummary] = useState<ExactMathSummary>();
 
     return (
@@ -139,7 +142,14 @@ export function OverviewTab({
                 onOpenSimulation={onOpenSimulation}
                 exact={exactSummary}
             />
-            {header.type !== "wasm" && <ExactMathPanel projectRoot={header.projectRoot} sourceRevision={sourceRevision} refreshKey={exactMathRefreshKey} autoRefreshStale={autoRefreshStaleExactMath} featureCheck={validation.status === "success" ? validation.summary.advanced : undefined} autoCompute={autoComputeExactMath} onGenerated={onExactMathGenerated} onStatusChange={setExactMathStatus} onSummaryChange={setExactSummary} onOpenPlay={playable ? onOpenPlay : undefined} />}
+            {header.type !== "wasm" && canGenerateExact && <ExactMathPanel projectRoot={header.projectRoot} sourceRevision={sourceRevision} refreshKey={exactMathRefreshKey} autoRefreshStale={autoRefreshStaleExactMath} featureCheck={validation.status === "success" ? validation.summary.advanced : undefined} autoCompute={autoComputeExactMath} onGenerated={onExactMathGenerated} onStatusChange={setExactMathStatus} onSummaryChange={setExactSummary} onOpenPlay={playable ? onOpenPlay : undefined} />}
+            {header.type !== "wasm" && !canGenerateExact && (
+                <Text size="sm" c="dimmed" mb="md" data-pokie-exact-math-unavailable>
+                    Exact math is unavailable for this package: its entry module does not implement{" "}
+                    <code>createExactEnumerationSession()</code>. Use Simulation for a sampled estimate, or open a
+                    Blueprint Project to author and enumerate a supported model.
+                </Text>
+            )}
             {playable && header.type === "wasm" && (
                 <NextStepCallout
                     title="Start by playing a round"
@@ -178,12 +188,12 @@ export function OverviewTab({
             </Table>
 
             <div style={{marginBottom: "var(--mantine-spacing-sm)"}}>
-                <ProjectValidationScopeBadges view={validation} mathStatus={exactMathStatus} />
+                <ProjectValidationScopeBadges view={validation} mathStatus={exactMathStatus} exactMathSupported={canGenerateExact} />
             </div>
             <CollapsiblePageSection
                 key={validation.status === "success" && !validation.summary.hasIssues && !(validation.status === "success" && hasFeatureTerminationWarning(validation.summary.advanced)) ? "collapsed" : "expanded"}
                 legend="Validation"
-                summary={describeValidationSummary(validation, exactMathStatus)}
+                summary={describeValidationSummary(validation, exactMathStatus, canGenerateExact)}
                 defaultOpened={validation.status !== "success" || (validation.status === "success" && (validation.summary.hasIssues || hasFeatureTerminationWarning(validation.summary.advanced)))}
             >
                 <Text size="md" c="dimmed" mb="sm">The structural check covers the project format. It does not establish mathematical balance or certification. Math is checked separately through exact math and simulation.</Text>

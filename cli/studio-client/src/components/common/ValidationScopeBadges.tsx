@@ -53,11 +53,13 @@ export function BlueprintValidationScopeBadges({
 export function ProjectValidationScopeBadges({
     view,
     mathStatus,
+    exactMathSupported = true,
 }: {
     view: ProjectValidationView;
     mathStatus?: ProjectMathStatus;
+    exactMathSupported?: boolean;
 }) {
-    const badges = describeProjectValidationScopes(view, mathStatus);
+    const badges = describeProjectValidationScopes(view, mathStatus, exactMathSupported);
     return (
         <div data-pokie-validation-scopes>
             <BadgeRow badges={badges} />

@@ -313,7 +313,7 @@ describe("SimulationReportBuilder", () => {
         test("keeps support limitations explicit even for a large seeded amount-only report", () => {
             const report = buildHealthyReport();
 
-            expect(report.warnings!).toEqual([]);
+            expect(report.warnings!).toEqual(expect.arrayContaining([expect.stringContaining("RTP is below 90%")]));
             expect(report.diagnostics!.coverageLimitations.join("\n")).toContain("Component attribution unsupported");
         });
 

@@ -466,9 +466,29 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
         expect(JSON.stringify(report)).not.toMatch(/ENOENT|private|missing-entry/);
     });
 
-    it("routes a directory without package.json through outcome-library validation", async () => {
+    it("does not mistake an empty directory for an incomplete Outcome Library", async () => {
+        const emptyDir = path.join(outDir, "empty-directory");
+        fs.mkdirSync(emptyDir);
+
+        expect(await new ValidateCommand().run([emptyDir, "--format", "json"])).toBe(1);
+        const report = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {
+            schemaVersion: number;
+            valid: boolean;
+            project: {kind: string; path: string};
+            errors: Array<{code: string; path: string; message: string; suggestion: string}>;
+        };
+        expect(report).toMatchObject({
+            schemaVersion: 1,
+            valid: false,
+            project: {kind: "unknown", path: emptyDir},
+        });
+        expect(report.errors).toContainEqual(expect.objectContaining({code: "project-not-recognized"}));
+    });
+
+    it("still routes a directory carrying index.json through outcome-library validation even when it is malformed", async () => {
         const libraryDir = path.join(outDir, "missing-manifest");
         fs.mkdirSync(libraryDir);
+        fs.writeFileSync(path.join(libraryDir, "index.json"), "{ bad JSON");
 
         expect(await new ValidateCommand().run([libraryDir, "--format", "json"])).toBe(1);
         const report = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {
@@ -486,13 +506,7 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
             project: {kind: "outcome-library", path: libraryDir},
             issues: expect.any(Array),
         });
-        expect(report.errors).toContainEqual({
-            code: "outcome-library-folder-manifest-missing",
-            severity: "error",
-            path: "index.json",
-            message: 'The outcome-library build output at "index.json" is missing.',
-            suggestion: "Repair index.json to match the outcome-library bundle format, then run validate again.",
-        });
+        expect(report.errors).toEqual(expect.arrayContaining([expect.objectContaining({code: expect.stringContaining("outcome-library-folder-")})]));
     });
 
     it("validates a resolved Stake Engine export through its own export contract", async () => {
@@ -749,6 +763,22 @@ describe("advanced validation report publication", () => {
     });
 });
 
+it("keeps the default gate structural even when an advanced check finds a counterexample", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "validation-advanced-counterexample-"));
+    const file = path.join(root, "free-games.blueprint.json");
+    fs.copyFileSync(path.join(__dirname, "../../e2e/fixtures/free-games-scope.json"), file);
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+        expect(await new ValidateCommand().run([file, "--format", "json"])).toBe(0);
+        expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({valid: true, advanced: {verdict: "violated"}});
+        log.mockClear();
+        expect(await new ValidateCommand().run([file, "--strict", "--format", "json"])).toBe(2);
+    } finally {
+        log.mockRestore();
+        fs.rmSync(root, {recursive: true, force: true});
+    }
+});
+
 it("labels an exhausted optional advanced check as skipped in the human summary", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "validation-advanced-summary-"));
     const file = path.join(root, "game.blueprint.json");
@@ -811,6 +841,7 @@ it.each([false, true])("retains unsupported-source cancellation and observable c
     const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
     try {
         if (cleanupFails) fs.writeFileSync(path.join(root, "package.json"), "{}");
+        else fs.writeFileSync(path.join(root, "index.json"), "{}");
         const command = cleanupFails
             ? new ValidateCommand(createStubValidator(validReport), undefined, () => {
                 process.emit("SIGINT");

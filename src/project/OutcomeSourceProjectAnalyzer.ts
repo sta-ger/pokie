@@ -10,6 +10,14 @@ import {describeOutcomeLibraryFolderSource} from "../weightedoutcome/folder/desc
 import type {OutcomeSourceProjectAnalyzing} from "./OutcomeSourceProjectAnalyzing.js";
 import type {OutcomeSourceProjectReport} from "./OutcomeSourceProjectReport.js";
 import type {PokieProject} from "./PokieProject.js";
+import {describeRtpSanityWarning} from "../reporting/describeRtpSanityWarning.js";
+
+function outcomeSourceWarnings(modes: readonly {readonly modeName: string; readonly analysis: {readonly rtp: number}}[]): string[] {
+    return modes.flatMap((mode) => {
+        const warning = describeRtpSanityWarning(mode.analysis.rtp);
+        return warning === undefined ? [] : [`mode "${mode.modeName}": ${warning}`];
+    });
+}
 
 // Dispatches a resolved "outcomeLibrary"/"stakeAdapter" PokieProject to its own canonical outcome-source
 // reader -- never loadPokieGame, never a re-derived/regenerated game-model calculation (see
@@ -68,15 +76,18 @@ export class OutcomeSourceProjectAnalyzer implements OutcomeSourceProjectAnalyzi
         }
 
         const manifest = await this.outcomeLibraryReader.readIndex(libraryDir);
+        const modes = manifest.modes.map((mode) => ({
+            modeName: mode.modeName,
+            analysis: mode.analysis,
+            ...(mode.generator === undefined ? {} : {generator: mode.generator}),
+        }));
+        const warnings = outcomeSourceWarnings(modes);
         return {
             rootPath: libraryDir,
             descriptor,
             issues,
-            modes: manifest.modes.map((mode) => ({
-                modeName: mode.modeName,
-                analysis: mode.analysis,
-                ...(mode.generator === undefined ? {} : {generator: mode.generator}),
-            })),
+            modes,
+            ...(warnings.length === 0 ? {} : {warnings}),
         };
     }
 
@@ -88,11 +99,14 @@ export class OutcomeSourceProjectAnalyzer implements OutcomeSourceProjectAnalyzi
         }
 
         const analysis = this.stakeEngineAnalyzer.analyze(result);
+        const modes = analysis.modes.map((mode) => ({modeName: mode.modeName, analysis: mode}));
+        const warnings = outcomeSourceWarnings(modes);
         return {
             rootPath: stakeDir,
             descriptor,
             issues: result.issues,
-            modes: analysis.modes.map((mode) => ({modeName: mode.modeName, analysis: mode})),
+            modes,
+            ...(warnings.length === 0 ? {} : {warnings}),
         };
     }
 }

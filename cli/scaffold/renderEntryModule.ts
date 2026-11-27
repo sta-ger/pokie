@@ -1,6 +1,7 @@
 import {PokieGameInfo} from "@fromstan/pokie";
+import type {PackageModuleFormat} from "../../src/gamepackage/renderTsconfig.js";
 
-export function renderEntryModule(manifest: PokieGameInfo): string {
+export function renderEntryModule(manifest: PokieGameInfo, moduleFormat: PackageModuleFormat = "cjs"): string {
     return `import {
     CustomLinesDefinitions,
     Paytable,
@@ -92,12 +93,17 @@ const game: PokieGame = {
     },
 };
 
-// "export =" (not "export default"): compiled with this package's own tsconfig.json
+${moduleFormat === "esm"
+        ? `// This package.json declares "type": "module", so tsconfig.json compiles this file as ESM.
+// loadPokieGame() accepts the default export directly.
+export default game;
+`
+        : `// "export =" (not "export default"): compiled with this package's own tsconfig.json
 // (module: CommonJS, esModuleInterop: true), "export default" would emit "exports.default = game"
 // instead of "module.exports = game" -- loadPokieGame's own import()-based unwrapping copes with
 // either shape, but a plain require("./dist/index.js") (e.g. from another Node tool that doesn't
 // go through loadPokieGame) needs the module's exports object itself to already satisfy the
 // PokieGame contract.
 export = game;
-`;
+`}`;
 }

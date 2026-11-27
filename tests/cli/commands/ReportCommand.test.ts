@@ -156,6 +156,10 @@ describe("ReportCommand", () => {
             fs.writeFileSync(template, JSON.stringify({schemaVersion: 99}));
             await expect(command.run([path.join(out, "index.json"), "--format", "html", "--template", template, "--out", missingOutput])).rejects.toThrow(/template/);
             expect(fs.existsSync(missingOutput)).toBe(false);
+
+            const insidePack = path.join(out, "report.html");
+            await expect(command.run([path.join(out, "index.json"), "--format", "html", "--out", insidePack])).rejects.toThrow(/inside certification pack/);
+            expect(fs.existsSync(insidePack)).toBe(false);
         } finally {
             log.mockRestore();
             fs.rmSync(root, {recursive: true, force: true});

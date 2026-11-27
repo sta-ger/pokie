@@ -124,7 +124,18 @@ export class ReportCommand implements CliCommandHandling {
         }
 
         if ("pack" in parsed) {
-            const issues = await new CertificationPackValidator().validate(path.dirname(path.resolve(reportPath)));
+            const packDir = path.dirname(path.resolve(reportPath));
+            if (out !== undefined) {
+                const outputPath = path.resolve(out);
+                const relative = path.relative(packDir, outputPath);
+                if (relative !== "" && !relative.startsWith(".." + path.sep) && relative !== ".." && !path.isAbsolute(relative)) {
+                    throw new Error(
+                        `Cannot write "${out}" inside certification pack "${packDir}": a pack's file set is integrity-bound, ` +
+                            "so adding the rendered report there invalidates `pokie certification verify`. Choose an --out path outside the pack.",
+                    );
+                }
+            }
+            const issues = await new CertificationPackValidator().validate(packDir);
             if (issues.some(issue => issue.severity === "error")) throw new Error(`Invalid pack: ${issues.map(issue => issue.message).join("; ")}`);
             let selectedTemplate: CertificationPackTemplate | undefined;
             if (template) selectedTemplate = loadCertificationPackTemplate(template);

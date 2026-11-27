@@ -105,6 +105,9 @@ simulation.getLastRtp();
 simulation.getAverageRtp();
 ```
 
+Simulation runs fund their session with a simulation bankroll instead of stopping at the demo wallet balance;
+the requested round count is a measurement budget, not a risk-of-ruin limit.
+
 Large runs can use `AggregateSimulationRunner`, which keeps only running statistics instead of every
 round:
 

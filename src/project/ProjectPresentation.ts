@@ -1,6 +1,7 @@
 import type {PokieProject} from "./PokieProject.js";
 import type {ProjectType} from "./ProjectType.js";
 import {
+    OUTCOME_LIBRARY_GENERATE_CAPABILITY,
     WASM_CANONICAL_ARTIFACT_CAPABILITY,
     WASM_RUNTIME_PLAY_CAPABILITY,
     WASM_RUNTIME_REPLAY_CAPABILITY,
@@ -94,6 +95,18 @@ export function describeProjectType(type: ProjectType): string {
 export function describeProjectPresentation(project: PokieProject): ProjectPresentation {
     if (project.type === "wasm") {
         return describeWasmProjectPresentation(project);
+    }
+    if (project.type === "tsPackage") {
+        const presentation = PROJECT_PRESENTATIONS.tsPackage;
+        if (project.capabilities.includes(OUTCOME_LIBRARY_GENERATE_CAPABILITY)) return presentation;
+        return {
+            ...presentation,
+            nextActions: presentation.nextActions.filter((action) => !(/--target\s+outcomeLibrary\b/).test(action.command)),
+            prerequisites: [
+                ...presentation.prerequisites,
+                "This package does not implement createExactEnumerationSession(), so exact outcome-library generation and paid-grid Stake conversion are unavailable. Use its own runtime (simulate, replay, serve) or rebuild from an enumerable Blueprint.",
+            ],
+        };
     }
     return PROJECT_PRESENTATIONS[project.type];
 }

@@ -6,6 +6,7 @@ import {OutcomeLibraryProjectTargetAdapter} from "./OutcomeLibraryProjectTargetA
 import {ParWorkbookProjectTargetAdapter} from "./ParWorkbookProjectTargetAdapter.js";
 import type {PokieProject} from "./PokieProject.js";
 import {PROJECT_TYPE_CAPABILITIES, NATIVE_STAKE_PROJECT_CAPABILITIES, wasmProjectCapabilities} from "./ProjectCapabilities.js";
+import {OUTCOME_LIBRARY_GENERATE_CAPABILITY, STAKE_ADAPTER_EXPORT_CAPABILITY} from "./ProjectCapability.js";
 import {ProjectTargetAmbiguousError} from "./ProjectTargetAmbiguousError.js";
 import type {ProjectResolving} from "./ProjectResolving.js";
 import type {ProjectTargetTypeAdapter} from "./ProjectTargetTypeAdapter.js";
@@ -160,6 +161,25 @@ export class ProjectTargetResolver implements ProjectResolving {
 
     private async capabilitiesFor(type: PokieProject["type"], rootPath: string) {
         if (type === "stakeAdapter" && recognizesNativeStakeTuningManifest(rootPath)) return NATIVE_STAKE_PROJECT_CAPABILITIES;
+        if (type === "tsPackage") {
+            // A package without createExactEnumerationSession has no paid-spin outcome space to
+            // enumerate, so it cannot honestly advertise either downstream paid-grid conversion.
+            // Probe the loaded game once here; resolution already loads the package for configuration
+            // provenance, and a failed load simply leaves the full capability set for the package
+            // validator to diagnose with its own entry-module error.
+            let game: Awaited<ReturnType<typeof loadPokieGame>> | undefined;
+            try {
+                game = await loadPokieGame(rootPath);
+                if (typeof game.createExactEnumerationSession === "function") return PROJECT_TYPE_CAPABILITIES.tsPackage;
+            } catch {
+                return PROJECT_TYPE_CAPABILITIES.tsPackage;
+            } finally {
+                if (game !== undefined) await releasePokieGame(game);
+            }
+            return PROJECT_TYPE_CAPABILITIES.tsPackage.filter(
+                (capability) => capability !== OUTCOME_LIBRARY_GENERATE_CAPABILITY && capability !== STAKE_ADAPTER_EXPORT_CAPABILITY,
+            );
+        }
         if (type !== "wasm") return PROJECT_TYPE_CAPABILITIES[type];
         const raw = await fs.promises.readFile(wasmComponentInfoCompanionPath(rootPath), "utf-8");
         return wasmProjectCapabilities(JSON.parse(raw) as Parameters<typeof wasmProjectCapabilities>[0]);

@@ -838,7 +838,9 @@ export function ExactMathPanel({
                     </Button>
                 </Group>
                 <Text size="xs" c="dimmed">
-                    This writes the exact outcome table into the project&apos;s <code>outcomelibrary</code> folder. It
+                    This writes the exact outcome table into the project&apos;s outcome-table folder
+                    (<code>outcomelibrary</code>, or a per-game sibling when another design in the same folder already
+                    owns that name). It
                     can take a while for a large game; progress is shown below.
                 </Text>
                 <AdvancedDisclosure label="technical file name">
