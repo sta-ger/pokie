@@ -435,7 +435,7 @@ export class StudioOutcomeLibraryGenerateService {
                     const preparedRequest = prepareOutcomeLibraryGeneration(this.createDomainRequest(
                         game,
                         request,
-                        request.outDir ?? snapshot.binding.destination,
+                        request.outDir ?? this.preflightDestinationSyntax(projectRoot, snapshot.binding.destination),
                         projectRoot,
                     ));
                     if (
@@ -561,7 +561,9 @@ export class StudioOutcomeLibraryGenerateService {
             // A preflight may have chosen a per-game sibling because the conventional directory already
             // belongs to another design. Keep that exact destination on start/resume; falling back to the
             // conventional default here made every such token look like destination drift and return 409.
-            outDirRelative = request.outDir ?? snapshot?.binding.destination ?? await this.defaultBundleDirectory(projectRoot, game.getInfo().id);
+            outDirRelative = request.outDir ?? (snapshot === undefined
+                ? await this.defaultBundleDirectory(projectRoot, game.getInfo().id)
+                : this.preflightDestinationSyntax(projectRoot, snapshot.binding.destination));
             try {
                 domainRequest = this.createDomainRequest(game, request, outDirRelative, projectRoot);
                 domainRequest = {
@@ -1428,6 +1430,13 @@ export class StudioOutcomeLibraryGenerateService {
         if (snapshot?.validatedGame === undefined) return;
         this.preflightSnapshots.delete(token);
         await releasePokieGame(snapshot.validatedGame).catch(() => undefined);
+    }
+
+    /** Keep a token's absolute preflight destination project-relative when republishing it. */
+    private preflightDestinationSyntax(projectRoot: string, destination: string): string {
+        const relative = path.relative(this.projectStateRoot(projectRoot), destination);
+        if (relative === "" || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return destination;
+        return relative;
     }
 
     private createDomainRequest(

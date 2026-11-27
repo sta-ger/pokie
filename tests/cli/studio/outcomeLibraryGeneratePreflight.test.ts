@@ -54,7 +54,11 @@ describe("StudioOutcomeLibraryGenerateService preflight destinations", () => {
         const result = await service.generate(blueprintPath, request);
         expect(result.status).toBe("ok");
         if (result.status !== "ok") throw new Error("Expected the prepared generation to publish.");
-        expect(result.resolvedBundleDir).toBe(estimate.plan.target.canonicalLocation);
+        const target = estimate.plan.target.canonicalLocation;
+        if (target === undefined) throw new Error("Expected a bound preflight destination.");
+        expect(result.resolvedBundleDir).toBe(target);
+        expect(result.libraryDir).toBe(path.relative(path.dirname(blueprintPath), target));
+        expect(path.isAbsolute(result.libraryDir)).toBe(false);
         expect(fs.existsSync(conventionalLibrary)).toBe(true);
     });
 });
