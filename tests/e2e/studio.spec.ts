@@ -1454,7 +1454,7 @@ test("Replay groups free spins under the paid round's full spin count", async ({
     await expect(page.locator(`[data-pokie-recorded-spin-round-id="${roundId}"][data-pokie-recorded-spin-stake="1"]`)).toHaveCount(1);
     await expect(page.locator(`[data-pokie-recorded-spin-round-id="${roundId}"][data-pokie-recorded-spin-stake="0"]`)).toHaveCount(recordedSpins - 1);
     await multiSpinHeader.getByRole("button", {name: "Inspect paid round"}).click();
-    await expect(page.getByRole("button", {name: "Replay recorded round"})).toBeVisible({timeout: 30_000});
+    await expect(multiSpinHeader.getByRole("button", {name: "Replay recorded round"})).toBeVisible({timeout: 30_000});
     await multiSpinHeader.getByRole("button", {name: "Load & reproduce"}).click();
     await expect(page.getByText("Loaded replay")).toBeVisible({timeout: 30_000});
     await expect(page.getByText(/Source: Recreated/)).toBeVisible({timeout: 60_000});
