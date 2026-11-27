@@ -187,7 +187,6 @@ export function useSimulationPoll() {
         setRestoringJobId(undefined);
         currentJobId.current = undefined;
         setJob(undefined);
-        setResultCurrent(false);
         if (timeoutRef.current !== undefined) {
             clearTimeout(timeoutRef.current);
             timeoutRef.current = undefined;
@@ -196,6 +195,7 @@ export function useSimulationPoll() {
         operationRef.current = startedBy ?? "simulation";
         setOperation(startedBy ?? "simulation");
         setTerminalReceipt(undefined);
+        setResultCurrent(false);
         setError(undefined);
         setConnectionError(undefined);
         setCancellationRequested(false);
@@ -280,6 +280,29 @@ export function useSimulationPoll() {
         setRestoringJobId(undefined);
         setConnectionError(undefined);
         setError(undefined);
+    }
+
+    /** Forget local UI for one server-confirmed dismissed terminal job. */
+    function forget(id: string): void {
+        if (currentJobId.current !== undefined && currentJobId.current !== id) return;
+        generationRef.current++;
+        stopPollRequest();
+        stopCancelRequest();
+        if (timeoutRef.current !== undefined) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = undefined;
+        }
+        currentJobId.current = undefined;
+        attachmentRef.current = "configured";
+        lastRequestRef.current = undefined;
+        setRestoringJobId(undefined);
+        setProgress(undefined);
+        setJob(undefined);
+        setTerminalReceipt(undefined);
+        setResultCurrent(false);
+        setError(undefined);
+        setConnectionError(undefined);
+        setCancellationRequested(false);
     }
 
     // Called from ProjectDashboardPage's own projectKey effect -- a genuinely different project must
@@ -395,5 +418,5 @@ export function useSimulationPoll() {
         }
     }
 
-    return {progress, job, error, connectionError, restoringJobId, cancellationRequested, operation, terminalReceipt, resultCurrent, invalidateResult, run, retry, restore, releaseRestoration, cancel, resetForProjectSwitch, canRestore: attachmentRef.current === "initial", currentJobId: currentJobId.current};
+    return {progress, job, error, connectionError, restoringJobId, cancellationRequested, operation, terminalReceipt, resultCurrent, invalidateResult, run, retry, restore, releaseRestoration, cancel, forget, resetForProjectSwitch, canRestore: attachmentRef.current === "initial", currentJobId: currentJobId.current};
 }

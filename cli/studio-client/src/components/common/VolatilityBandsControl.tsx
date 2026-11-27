@@ -18,10 +18,11 @@ const BAND_COLOR: Record<VolatilityBand, string> = {
  * A small label that only appears after the author defines portfolio boundaries. Studio deliberately
  * never assigns an industry-wide low/medium/high class on its own.
  */
-export function VolatilityBandBadge({value, size = "sm"}: {value: number | undefined; size?: "xs" | "sm" | "md"}) {
+export function VolatilityBandBadge({value, size = "sm", basis}: {value: number | undefined; size?: "xs" | "sm" | "md"; basis?: "paid-spin volatility" | "whole-round volatility"}) {
     const {bands} = useVolatilityBands();
     const band = value === undefined ? undefined : describeVolatilityBand(value, bands);
     if (band === undefined) return null;
+    const scope = basis === undefined ? "the displayed standard deviation" : basis;
     return (
         <Badge
             color={BAND_COLOR[band]}
@@ -29,7 +30,8 @@ export function VolatilityBandBadge({value, size = "sm"}: {value: number | undef
             size={size}
             tt="none"
             data-pokie-volatility-band={band.toLowerCase()}
-            title="This is your portfolio's own volatility band, not an industry-wide standard."
+            data-pokie-volatility-basis={basis}
+            title={`This is your portfolio's own band for ${scope}, not an industry-wide standard.`}
         >
             {band}
         </Badge>
@@ -46,6 +48,8 @@ export function VolatilityBandsControl({compact = false}: {compact?: boolean}) {
     const [lowMax, setLowMax] = useState<number | string>(bands?.lowMax ?? 2);
     const [mediumMax, setMediumMax] = useState<number | string>(bands?.mediumMax ?? 5);
     const [error, setError] = useState<string>();
+    const [syncError, setSyncError] = useState<string>();
+    const [saving, setSaving] = useState(false);
 
     const open = (): void => {
         setLowMax(bands?.lowMax ?? 2);
@@ -63,8 +67,17 @@ export function VolatilityBandsControl({compact = false}: {compact?: boolean}) {
             setError("Enter two non-negative numbers with the medium boundary above the low boundary.");
             return;
         }
-        save(candidate);
-        setOpened(false);
+        setSaving(true);
+        setSyncError(undefined);
+        save(candidate)
+            .then(() => setOpened(false))
+            .catch(() => setError("Studio could not save these bands. Try again."))
+            .finally(() => setSaving(false));
+    };
+
+    const clearBands = (): void => {
+        setSyncError(undefined);
+        clear().catch(() => setSyncError("Studio could not clear the saved bands. Try again."));
     };
 
     return (
@@ -79,17 +92,21 @@ export function VolatilityBandsControl({compact = false}: {compact?: boolean}) {
                     {bands === undefined ? "Set portfolio bands" : "Edit bands"}
                 </Button>
                 {bands !== undefined && (
-                    <Button variant="subtle" color="gray" size={compact ? "compact-xs" : "xs"} onClick={clear}>
+                    <Button variant="subtle" color="gray" size={compact ? "compact-xs" : "xs"} onClick={clearBands}>
                         Clear
                     </Button>
                 )}
             </Group>
+            {syncError !== undefined && (
+                <Text size="xs" c="red" role="alert" mt={4}>{syncError}</Text>
+            )}
             <Modal opened={opened} onClose={() => setOpened(false)} title="Portfolio volatility bands" centered>
                 <Stack gap="sm">
                     <Text size="sm" c="dimmed">
                         These are your team&apos;s reference boundaries for the standard deviation shown as
-                        volatility (σ, × bet). They are not an industry-wide scale and do not change the game&apos;s
-                        math.
+                        volatility (σ, × bet). They label paid-spin and whole-round volatility separately wherever
+                        Studio shows them. They are not an industry-wide scale and do not change the game&apos;s math.
+                        Studio stores them on this computer, not inside the game design.
                     </Text>
                     <NumberInput
                         label="Low is below"
@@ -118,7 +135,7 @@ export function VolatilityBandsControl({compact = false}: {compact?: boolean}) {
                         <Button variant="default" onClick={() => setOpened(false)}>
                             Cancel
                         </Button>
-                        <Button onClick={submit}>Save bands</Button>
+                        <Button onClick={submit} loading={saving} disabled={saving}>Save bands</Button>
                     </Group>
                 </Stack>
             </Modal>

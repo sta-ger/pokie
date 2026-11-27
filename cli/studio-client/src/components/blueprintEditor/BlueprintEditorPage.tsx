@@ -1334,7 +1334,7 @@ export function BlueprintEditorPage({
         <div ref={designRegion} className="studio-design-editor">
             {guided && (
                 <>
-                    <Title id="design-game-heading" order={2}>Design Your Game</Title>
+                    <Title id="design-game-heading" order={2}>{savingBackToSource ? "Edit Game Design" : "Design Your Game"}</Title>
                     <Text c="dimmed" size="sm" mb="md">
                         {savingBackToSource
                             ? "You are editing the saved game design. Studio checks it as you work; Save to source file writes back to the same project."

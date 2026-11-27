@@ -344,6 +344,7 @@ export function ReplayTab({
     const [selectedSpin, setSelectedSpin] = useState<StudioRuntimeSessionView>();
     const [recordedReplayError, setRecordedReplayError] = useState<string>();
     const [pendingRecordedReplay, setPendingRecordedReplay] = useState<string>();
+    const [autoReproduceRequested, setAutoReproduceRequested] = useState(false);
     const [selectedSimulationMode, setSelectedSimulationMode] = useState<string>();
     const [selectedSimEntry, setSelectedSimEntry] = useState<StudioSimulationReportListEntry>();
     const [simRound, setSimRound] = useState(1);
@@ -445,7 +446,7 @@ export function ReplayTab({
     // A recorded screen carries its own audit descriptor and the public session snapshots captured with
     // it. Merge the snapshots into the descriptor before loading so the comparison can verify state, and
     // so a completed last screen can replay the whole paid round rather than looking like a lone step.
-    function openRecordedRound(entry: StudioRuntimeSessionView, paidEntry?: StudioRuntimeSessionView): void {
+    function openRecordedRound(entry: StudioRuntimeSessionView, paidEntry?: StudioRuntimeSessionView, reproduceAfterLoad = false): void {
         const debug = entry.debug;
         if (debug?.recording === undefined) return;
         // A completed last screen's audit covers the whole paid round, but its own stateBefore is the
@@ -456,6 +457,7 @@ export function ReplayTab({
         setSelectedSpin(entry);
         setRecordedReplayError(undefined);
         setPendingRecordedReplay(`${entry.sessionId}:${entry.studioRound ?? entry.studioRequestId}`);
+        setAutoReproduceRequested(reproduceAfterLoad);
         markLoaded("spin", false);
         onLoadExpectedFromPaste(JSON.stringify({
             ...debug.recording,
@@ -476,6 +478,7 @@ export function ReplayTab({
             setFindMethod("artifact");
             markLoaded("artifact", false);
         } else if (expected.status === "error") {
+            setAutoReproduceRequested(false);
             setRecordedReplayError(expected.message);
         }
     }, [expected, markLoaded, pendingRecordedReplay]);
@@ -557,6 +560,23 @@ export function ReplayTab({
     }
     const reproduceDisabled = (findMethod === "artifact" && artifactReproducibility?.status === "blocked") ||
         (findMethod === "simulation" && (selectedSimEntry === undefined || simulationUnavailableReason !== undefined));
+    // "Load & reproduce" is one author action: after the recorded descriptor validates, run the
+    // same Reproduce request the shared action bar would run. A failed load never auto-runs.
+    useEffect(() => {
+        if (!autoReproduceRequested || expected.status !== "loaded" || findMethod !== "artifact" || reproduceTarget === undefined) return;
+        setAutoReproduceRequested(false);
+        if (reproduceDisabled) return;
+        onRun(
+            reproduceTarget.round,
+            reproduceTarget.seed,
+            undefined,
+            true,
+            reproduceTarget.modeName,
+            expected.outcomeSource,
+            expected.recording,
+        );
+        setJobLoaded(true);
+    }, [autoReproduceRequested, expected, findMethod, onRun, reproduceDisabled, reproduceTarget]);
     // What the run result's own "Reproducibility" row (below) reports -- only "Replay record" ever
     // has a known prior result loaded to actually compare a fresh run against (`comparison`, built from
     // `expected`); Recreate from seed/Recent Simulation are always a fresh forward replay with nothing to
@@ -902,14 +922,24 @@ export function ReplayTab({
                                                                         </Button>
                                                                     )}
                                                                     {groupLastEntry.logicalRound?.status === "completed" && (groupLastEntry.logicalRound?.cursor ?? 0) > 1 && groupLastEntry.debug?.recording !== undefined && (
-                                                                        <Button
-                                                                            size="xs"
-                                                                            variant="subtle"
-                                                                            title="Replay the complete recorded paid round. The loaded screen may be a free-game step with stake 0."
-                                                                            onClick={() => openRecordedRound(groupLastEntry, paidEntry)}
-                                                                        >
-                                                                            Replay recorded round
-                                                                        </Button>
+                                                                        <>
+                                                                            <Button
+                                                                                size="xs"
+                                                                                variant="subtle"
+                                                                                title="Replay the complete recorded paid round. The loaded screen may be a free-game step with stake 0."
+                                                                                onClick={() => openRecordedRound(groupLastEntry, paidEntry)}
+                                                                            >
+                                                                                Replay recorded round
+                                                                            </Button>
+                                                                            <Button
+                                                                                size="xs"
+                                                                                variant="subtle"
+                                                                                title="Load this recorded paid round and reproduce it immediately."
+                                                                                onClick={() => openRecordedRound(groupLastEntry, paidEntry, true)}
+                                                                            >
+                                                                                Load & reproduce
+                                                                            </Button>
+                                                                        </>
                                                                     )}
                                                                 </Group>
                                                                 {paidEntry !== undefined && (
@@ -1138,6 +1168,13 @@ export function ReplayTab({
                                         onClick={() => openRecordedRound(selectedSpin)}
                                     >
                                         {selectedSpin.logicalRound?.status === "completed" ? "Replay recorded round" : "Replay paid trigger"}
+                                    </Button>
+                                    <Button
+                                        variant="subtle"
+                                        disabled={!selectedSpinMatchesCurrentGame}
+                                        onClick={() => openRecordedRound(selectedSpin, undefined, true)}
+                                    >
+                                        Load & reproduce
                                     </Button>
                                     {savedExactMathStale && (
                                         <Text size="xs" c="dimmed" mt={4} data-pokie-recorded-replay-stale-note="true">

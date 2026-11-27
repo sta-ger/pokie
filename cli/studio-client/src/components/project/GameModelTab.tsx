@@ -534,10 +534,11 @@ export function GameModelTab({
             {editable && projectRoot !== undefined && (
                 <Alert color="blue" variant="light" title="Import a PAR sheet or edit with the full designer" mb="sm" data-pokie-game-model-open-designer>
                     <Text size="sm">
-                        PAR import, the full section editor and the draft preview live in Start a game. Open this
-                        saved design there, then open <strong>Show advanced options → PAR Sheet Import</strong> to
-                        import and compare a workbook. Saving writes back to this project; nothing is replaced until
-                        you apply the import and save.
+                        Use <strong>Edit</strong> next to a section for a focused change. PAR import, symbols, reels,
+                        mechanics and the draft preview live in the full design editor; open this saved design there,
+                        then open <strong>Show advanced options → PAR Sheet Import</strong> to import and compare a
+                        workbook. Saving writes back to this project; nothing is replaced until you apply the import
+                        and save.
                     </Text>
                     <Button
                         variant="default"
@@ -545,7 +546,7 @@ export function GameModelTab({
                         mt="xs"
                         onClick={() => navigate("/home/design", {state: {initialBlueprintPath: projectRoot}})}
                     >
-                        Open in Start a game
+                        Edit full design
                     </Button>
                 </Alert>
             )}

@@ -94,7 +94,7 @@ export function SimulationSummaryCard({outcome}: {outcome: SimulationOutcome}) {
                         <Table.Td>
                             <Group gap={6} align="center" wrap="nowrap">
                                 <span>{report.volatility === undefined ? "—" : report.volatility.toFixed(2)}</span>
-                                {report.volatility !== undefined && <VolatilityBandBadge value={report.volatility} size="xs" />}
+                                {report.volatility !== undefined && <VolatilityBandBadge value={report.volatility} size="xs" basis="whole-round volatility" />}
                             </Group>
                         </Table.Td>
                     </Table.Tr>

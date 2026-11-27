@@ -125,6 +125,46 @@ describe("Studio HTTP smoke", () => {
         expect(fs.statSync(outputPath).size).toBeGreaterThan(0);
     });
 
+    it("persists portfolio volatility bands across Studio requests and clears them", async () => {
+        const empty = await jsonRequest<{volatilityBands?: unknown}>(`${baseUrl}/api/studio/preferences`);
+        expect(empty.status).toBe(200);
+        expect(await empty.json()).toEqual({});
+
+        const saved = await jsonRequest<{volatilityBands?: {lowMax: number; mediumMax: number}}>(
+            `${baseUrl}/api/studio/preferences/volatility-bands`,
+            {method: "POST", body: JSON.stringify({lowMax: 2, mediumMax: 5})},
+        );
+        expect(saved.status).toBe(200);
+        expect(await saved.json()).toEqual({volatilityBands: {lowMax: 2, mediumMax: 5}});
+
+        const reread = await jsonRequest<{volatilityBands?: {lowMax: number; mediumMax: number}}>(`${baseUrl}/api/studio/preferences`);
+        expect(await reread.json()).toEqual({volatilityBands: {lowMax: 2, mediumMax: 5}});
+
+        const invalid = await jsonRequest<{error?: string}>(
+            `${baseUrl}/api/studio/preferences/volatility-bands`,
+            {method: "POST", body: JSON.stringify({lowMax: 5, mediumMax: 2})},
+        );
+        expect(invalid.status).toBe(400);
+
+        const cleared = await jsonRequest(`${baseUrl}/api/studio/preferences/volatility-bands`, {method: "DELETE"});
+        expect(cleared.status).toBe(200);
+        const after = await jsonRequest<{volatilityBands?: unknown}>(`${baseUrl}/api/studio/preferences`);
+        expect(await after.json()).toEqual({});
+    });
+
+    it("dismisses a finished project job from durable history", async () => {
+        const listed = await jsonRequest<{jobs: Array<{id: string; operation: string; status: string}>}>(`${baseUrl}/api/project/jobs`);
+        expect(listed.status).toBe(200);
+        const completed = (await listed.json()).jobs.find((job) => job.operation === "artifact-build" && job.status === "completed");
+        expect(completed).toBeDefined();
+        if (completed === undefined) throw new Error("completed build job not found");
+
+        const dismissed = await jsonRequest(`${baseUrl}/api/project/jobs/${encodeURIComponent(completed.id)}/dismiss`, {method: "POST"});
+        expect(dismissed.status).toBe(200);
+        const after = await jsonRequest<{jobs: Array<{id: string}>}>(`${baseUrl}/api/project/jobs`);
+        expect((await after.json()).jobs.some((job) => job.id === completed.id)).toBe(false);
+    });
+
     it("refuses a second managed project with the same Game id instead of creating a suffixed duplicate", async () => {
         const saved = await jsonRequest<{status: string; path?: string; error?: string; suggestedGameId?: string}>(
             `${baseUrl}/api/home/blueprints/save-managed`,

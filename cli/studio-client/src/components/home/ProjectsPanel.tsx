@@ -514,16 +514,16 @@ export function ProjectsPanel({
                         <Button type="button" id={`project-open:${entry.location}`} data-pokie-project-location={entry.location} variant="default" size="xs" disabled={openingLocation !== undefined} loading={openingLocation === entry.location} onClick={() => handleOpen(entry)}>{entry.type === "wasm" && entry.wasmPresentation !== undefined ? entry.wasmPresentation.inspectActionLabel : "Open"}</Button>
                     )}
                     {entry.status === "ok" && entry.type === "parWorkbook" && (
-                        <Button variant="default" size="xs" onClick={() => handleGoToDesignGame(entry.location)}>Open in Start a game</Button>
+                        <Button variant="default" size="xs" onClick={() => handleGoToDesignGame(entry.location)}>Edit full design</Button>
                     )}
                     {entry.status === "ok" && entry.type === "blueprint" && (
                         <Button
                             variant="default"
                             size="xs"
                             onClick={() => navigate("/home/design", {state: {initialBlueprintPath: entry.location}})}
-                            title="Open this saved design in the full Start a game editor, including PAR import; saving writes back to this project."
+                            title="Open this saved design in the full design editor, including PAR import; saving writes back to this project."
                         >
-                            Edit in Start a game
+                            Edit design
                         </Button>
                     )}
                     {entry.status === "missing" && (
@@ -564,7 +564,7 @@ export function ProjectsPanel({
                 )}
                 {listView.status === "empty" && (
                     <EmptyState
-                        message="No games yet. Start a game or add one you already have."
+                        message="No games yet. Design a game or add one you already have."
                         actionLabel="Create your first game"
                         onAction={() => navigate("/home/design")}
                     />
@@ -832,7 +832,7 @@ export function ProjectsPanel({
                         </Text>
                         {importView.result.type === "parWorkbook" && (
                             <Text size="sm" c="dimmed" mb="sm">
-                                Add it to open its export tools, or choose Open in Start a game to bring its PAR data into a game design.
+                                Add it to open its export tools, or choose Edit full design to bring its PAR data into a game design.
                             </Text>
                         )}
                         <TextInput
@@ -848,7 +848,7 @@ export function ProjectsPanel({
                             </Button>
                             {importView.result.type === "parWorkbook" && (
                                 <Button variant="default" onClick={() => handleGoToDesignGame(importView.result.location)}>
-                                    Open in Start a game
+                                    Edit full design
                                 </Button>
                             )}
                         </QuickActions>

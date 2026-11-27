@@ -332,6 +332,11 @@ function PrecisionBudgetHint({
     );
 }
 
+function describeInterruptedSimulation(hasCompletedReport: boolean): string {
+    if (hasCompletedReport) return "This earlier simulation was interrupted when Studio restarted, but a completed report is available in Recent runs.";
+    return "This earlier simulation was interrupted when Studio restarted. Your captured settings are restored; start a new run when ready.";
+}
+
 // The single Configure -> Run -> Review -> Export workflow, replacing the old separate Simulation and
 // Reports tabs. All data-fetching is still owned by ProjectDashboardPage (useSimulationPoll, the
 // recent-runs list, the report-detail-by-id fetch) -- this component only owns which step is showing
@@ -364,6 +369,7 @@ export function SimulationTab({
     packageModes = false,
     modeDiscoveryError,
     recoveryRequest,
+    onDismissRecovery,
 }: {
     progress: SimulationProgressView | undefined;
     error: string | undefined;
@@ -399,6 +405,8 @@ export function SimulationTab({
     modeDiscoveryError?: string;
     /** Captured terminal-job or report settings, restored for an explicit Run. */
     recoveryRequest?: Readonly<Record<string, unknown>>;
+    /** Forget one server-confirmed interrupted record after the author has reviewed it. */
+    onDismissRecovery?: (id: string) => void;
 }) {
     const confirm = useConfirm();
     const [capturedConvergence, setCapturedConvergence] = useState<StudioSimulationReportListEntry["convergence"]>();
@@ -466,6 +474,7 @@ export function SimulationTab({
     const comparisonVisible = compareOpened && compareDetail.status === "loaded";
     const [recentRunsPage, setRecentRunsPage] = useState(0);
     const recentRunEntries = recentRuns.status === "loaded" ? recentRuns.entries : [];
+    const latestRecentRun = recentRunEntries[0];
     const visibleRecentRunEntries = recentRunEntries.slice(recentRunsPage * RECENT_RUNS_PAGE_SIZE, (recentRunsPage + 1) * RECENT_RUNS_PAGE_SIZE);
 
     useEffect(() => setRecentRunsPage(0), [recentRuns]);
@@ -1065,10 +1074,38 @@ export function SimulationTab({
                     data-pokie-lifecycle-result-executor={terminalReceipt?.recoveredAfterRestart === true ? "unavailable-after-restart" : undefined}
                 >
                     <Text role="status" aria-live="polite" tabIndex={-1} size="sm" mb={4}>
-                        {receiptOperation === "simulation-retry" ? "Simulation retry" : "Simulation"} {cancellationPending ? "cancelling" : resultStatus}
-                        {progress !== undefined && <> — {progress.roundsCompleted.toLocaleString("en-US")}/{progress.rounds.toLocaleString("en-US")} spins — elapsed {formatElapsedMs(progress.durationMs)}</>}
-                        {terminalReceipt?.recoveredAfterRestart === true && <> — the prior executor is unavailable after restart; submit the captured settings to run a replacement simulation.</>}
+                        {terminalReceipt?.recoveredAfterRestart === true || resultStatus === "recovery-required" ? (
+                            describeInterruptedSimulation(latestRecentRun !== undefined)
+                        ) : (
+                            <>
+                                {receiptOperation === "simulation-retry" ? "Simulation retry" : "Simulation"} {cancellationPending ? "cancelling" : resultStatus}
+                                {progress !== undefined && <> — {progress.roundsCompleted.toLocaleString("en-US")}/{progress.rounds.toLocaleString("en-US")} spins — elapsed {formatElapsedMs(progress.durationMs)}</>}
+                            </>
+                        )}
                     </Text>
+                    {(terminalReceipt?.recoveredAfterRestart === true || resultStatus === "recovery-required") && latestRecentRun !== undefined && (
+                        <Button
+                            data-pokie-lifecycle-artifact="simulation-report"
+                            variant="subtle"
+                            size="xs"
+                            onClick={() => {
+                                onOpenHistoric(latestRecentRun);
+                                setActiveStep(2);
+                            }}
+                        >
+                            Open latest completed report
+                        </Button>
+                    )}
+                    {(terminalReceipt?.recoveredAfterRestart === true || resultStatus === "recovery-required") && latestRecentRun === undefined && onDismissRecovery !== undefined && terminalReceipt?.jobId !== undefined && (
+                        <Button
+                            variant="subtle"
+                            color="gray"
+                            size="xs"
+                            onClick={() => onDismissRecovery(terminalReceipt.jobId)}
+                        >
+                            Dismiss interrupted record
+                        </Button>
+                    )}
                     {resultStatus === "completed" && (!historicalResult || reviewedDetail.status === "loaded") && (
                         <Button data-pokie-lifecycle-artifact="simulation-report" variant="subtle" size="xs" onClick={() => setActiveStep(2)}>
                             Open completed simulation report

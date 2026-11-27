@@ -30,6 +30,14 @@ describe("job labels", () => {
         expect(describeJobDiagnostic(raw)).not.toMatch(/resumable/i);
     });
 
+    it("replaces executor and captured-destination jargon with a producer instruction", () => {
+        const raw = "Studio shutdown could not confirm executor cleanup. Inspect the captured destination and saved files, then restart Studio before retrying.";
+        const human = describeJobDiagnostic(raw);
+        expect(human).toContain("Studio closed before it could confirm this run had finished");
+        expect(human).toContain("Your files are unchanged");
+        expect(human).not.toMatch(/executor|captured destination/i);
+    });
+
     it("keeps the technical Outcome Library name out of the human summary", () => {
         expect(describeJobDiagnostic("Generated an Outcome Library at /tmp/game.")).toBe("Generated an outcome table at /tmp/game.");
     });

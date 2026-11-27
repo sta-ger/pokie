@@ -67,3 +67,17 @@ export function clearStoredVolatilityBands(): void {
     }
     notify();
 }
+
+/** Replace the browser cache with the machine-local preference read from Studio. */
+export function hydrateVolatilityBands(bands: VolatilityBands | undefined): void {
+    if (bands === undefined) return;
+    cached = bands;
+    if (typeof window !== "undefined") {
+        try {
+            window.localStorage.setItem(VOLATILITY_BANDS_STORAGE_KEY, JSON.stringify(bands));
+        } catch {
+            // The in-memory value still applies; the server remains authoritative.
+        }
+    }
+    notify();
+}

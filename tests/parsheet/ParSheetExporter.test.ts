@@ -677,6 +677,17 @@ describe("ParSheetExporter", () => {
         expect(imported.issues.some((issue) => issue.code === "parsheet-manifest-unknown-key")).toBe(false);
     });
 
+    it("explains ragged reel lengths instead of presenting padding as missing data", async () => {
+        const exporter = new ParSheetExporter("1.3.0");
+        const ragged: GameBlueprint = {...blueprint, reelStrips: [["A"], ["W", "A"]]};
+        await exporter.exportToFile(ragged, filePath);
+
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.readFile(filePath);
+        expect(workbook.getWorksheet("ReelStrips")!.getCell(1, 1).note).toContain("Reels may differ in length");
+        expect(workbook.getWorksheet("ReelStrips")!.getCell(1, 1).note).toContain("padding, not missing data");
+    });
+
     describe("write failure (real atomic writer, past preflight)", () => {
         it("propagates the error and leaves an existing target untouched when the underlying write fails", async () => {
             // A file can never be renamed onto an existing directory (EISDIR/ENOTEMPTY on every

@@ -7,6 +7,7 @@ export interface DurableJobsObserving {
     get(id: string, signal: AbortSignal): Promise<StudioJobView>;
     cancel(id: string, signal: AbortSignal): Promise<StudioJobView>;
     recover(id: string, signal: AbortSignal): Promise<StudioJobView>;
+    dismiss(id: string, signal: AbortSignal): Promise<void>;
 }
 
 export type JobDiscoveryStatus = "pending" | "empty" | "retained" | "failed";
@@ -179,6 +180,28 @@ export function useDurableJobs(port: DurableJobsObserving, scope: string | undef
         setJobs(previous => previous.filter(job => !removed.has(job.id)));
         setPendingIds([...pending.current]);
     }, []);
+    const dismiss = useCallback((id: string): void => {
+        if (scope === undefined || pending.current.has(id)) return;
+        const token = owner.current;
+        const revision = (revisions.current.get(id) ?? 0) + 1;
+        revisions.current.set(id, revision);
+        pending.current.add(id);
+        setPendingIds([...pending.current]);
+        setActionError(undefined);
+        request((signal) => port.dismiss(id, signal)).then(() => {
+            if (token !== owner.current) return;
+            // Invalidate any in-flight detail and make sure discovery cannot merge
+            // this server-confirmed removal back into local state.
+            revisions.current.set(id, revision + 1);
+            forget([id]);
+        }).catch((error: unknown) => {
+            if (token === owner.current) setActionError(`Could not dismiss job ${id}. Its record is still retained. ${errorMessage(error)}`);
+        }).finally(() => {
+            if (token !== owner.current) return;
+            pending.current.delete(id);
+            setPendingIds([...pending.current]);
+        });
+    }, [forget, port, request, scope]);
     // Hide the previous scope during the render preceding effect cleanup too:
     // a consumer's restoration effect must never attach the old project's id.
     const visibleJobs = discovery.scope === scope ? jobs : [];
@@ -188,5 +211,5 @@ export function useDurableJobs(port: DurableJobsObserving, scope: string | undef
         else if (discovery.status === "complete") discoveryStatus = visibleJobs.length === 0 ? "empty" : "retained";
         else discoveryStatus = discovery.status;
     }
-    return {jobs: visibleJobs, discoveryStatus, refresh, cancel, recover, forget, connectionError, actionError, pendingIds};
+    return {jobs: visibleJobs, discoveryStatus, refresh, cancel, recover, dismiss, forget, connectionError, actionError, pendingIds};
 }

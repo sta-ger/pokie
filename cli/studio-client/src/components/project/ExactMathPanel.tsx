@@ -883,10 +883,15 @@ export function ExactMathPanel({
                         {progressLabel === undefined ? "" : ` · ${progressLabel}`}
                         {etaLabel === undefined ? "" : ` · ${etaLabel}`}
                     </Text>
+                    <Text size="xs" c="dimmed" mt={4}>
+                        This runs in the background. You can switch tabs or keep editing; the old table stays
+                        out of the current RTP until the replacement is ready.
+                        {autoRefreshStale === undefined ? "" : " Studio started this rebuild because the saved design changed."}
+                    </Text>
                     <Group mt="xs">
                         {!job.cancellationRequested && (
-                            <Button color="red" variant="light" size="xs" onClick={cancel}>
-                                Cancel
+                            <Button color="red" variant="light" size="xs" onClick={cancel} title="Stop waiting for this rebuild. You can recompute the table later from Overview; the old table is not treated as current.">
+                                Cancel and recompute later
                             </Button>
                         )}
                         {job.cancellationRequested && (
@@ -1003,8 +1008,8 @@ function KeyNumbersCard({
                         <KeyStat
                             label={volatilityLabel}
                             value={formatAnalysisNumber(volatility, 4)}
-                            title="Standard deviation of payout per paid round, in bet units."
-                            badge={<VolatilityBandBadge value={volatility} />}
+                            title="Standard deviation of payout per paid spin, in bet units."
+                            badge={<VolatilityBandBadge value={volatility} basis={freeRtp === undefined ? undefined : "paid-spin volatility"} />}
                         />
                         <KeyStat
                             label={maxWinLabel}

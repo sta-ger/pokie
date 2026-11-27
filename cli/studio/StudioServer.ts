@@ -148,6 +148,7 @@ import type {StudioServerHandling} from "./StudioServerHandling.js";
 import {FileStudioJobRepository} from "./jobs/FileStudioJobRepository.js";
 import {canonicalStudioProjectIdentity} from "./jobs/canonicalStudioProjectIdentity.js";
 import {StudioJobService, type StudioJobExecutorContext, type StudioJobExecutorTerminal} from "./jobs/StudioJobService.js";
+import {StudioPreferencesService} from "./preferences/StudioPreferencesService.js";
 import type {StudioJobProgressView, StudioJobView} from "./jobs/StudioJobView.js";
 import {PokiePathResolver} from "../paths/PokiePathResolver.js";
 import {StudioProjectOpeningCancelledError} from "./StudioProjectOpeningCancelledError.js";
@@ -328,6 +329,7 @@ export class StudioServer implements StudioServerHandling {
     private readonly stakeEngineExportService: StudioStakeEngineExportService;
     private readonly artifactBuildService: StudioBuildService;
     private readonly jobService: StudioJobService;
+    private readonly preferencesService: StudioPreferencesService;
     private optimizationService?: StudioOptimizationService;
     private stopping = false;
     private authoredRuntimeRefresh = false;
@@ -359,11 +361,12 @@ export class StudioServer implements StudioServerHandling {
     constructor(options: StudioServerOptions) {
         this.host = options.host ?? DEFAULT_HOST;
         this.port = options.port ?? DEFAULT_PORT;
-        const jobDirectory = path.join(
-            new PokiePathResolver().resolveAppDataDirectory() ?? path.join(process.cwd(), ".pokie"),
-            "studio-jobs",
-        );
+        const appDataDirectory = new PokiePathResolver().resolveAppDataDirectory();
+        const jobDirectory = path.join(appDataDirectory ?? path.join(process.cwd(), ".pokie"), "studio-jobs");
         this.jobService = options.jobService ?? new StudioJobService(new FileStudioJobRepository(jobDirectory));
+        this.preferencesService = options.preferencesService ?? new StudioPreferencesService(
+            appDataDirectory === undefined ? undefined : path.join(appDataDirectory, "studio-preferences.json"),
+        );
         this.configuredTrustedOrigins = new Set((options.trustedOrigins ?? []).map((origin) => this.normalizeTrustedOrigin(origin)));
         this.pokieVersion = options.pokieVersion;
         this.studioRoot = path.resolve(options.studioRoot);
@@ -871,7 +874,7 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 409, {status: "recovery-required", job, error: job.recovery?.reason ?? "This Home operation must be started again from its original action."});
     }
 
-    private async handleCommonJob(method: string, res: ServerResponse, id: string, action: "cancel" | "recover" | undefined): Promise<void> {
+    private async handleCommonJob(method: string, res: ServerResponse, id: string, action: "cancel" | "recover" | "dismiss" | undefined): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
             return;
@@ -880,6 +883,14 @@ export class StudioServer implements StudioServerHandling {
         if (action === undefined && method === "GET") {
             const job = this.jobService.get(projectId, id);
             this.sendJson(res, job === undefined ? 404 : 200, job === undefined ? {error: "Studio job not found."} : this.jobAvailabilityView(job));
+            return;
+        }
+        if (action === "dismiss" && method === "POST") {
+            if (!this.jobService.dismiss(projectId, id)) {
+                this.sendJson(res, 409, {error: "Only a finished job can be dismissed from Studio history. Cancel active work first."});
+                return;
+            }
+            this.sendJson(res, 200, {dismissed: true, id});
             return;
         }
         if (action === "cancel" && method === "POST") {
@@ -1077,6 +1088,29 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (method === "GET" && url.pathname === "/api/studio/preferences") {
+            this.sendJson(res, 200, this.preferencesService.get());
+            return;
+        }
+        if (url.pathname === "/api/studio/preferences/volatility-bands") {
+            if (method === "POST") {
+                try {
+                    const body = await this.readJsonBody(req);
+                    const bands = this.preferencesService.saveVolatilityBands(body);
+                    this.sendJson(res, 200, {volatilityBands: bands});
+                } catch (error: unknown) {
+                    this.sendJson(res, 400, {error: error instanceof Error ? error.message : "Invalid volatility bands."});
+                }
+                return;
+            }
+            if (method === "DELETE") {
+                this.preferencesService.clearVolatilityBands();
+                this.sendJson(res, 200, {});
+                return;
+            }
+            this.sendJson(res, 405, {error: "Method not allowed."});
+            return;
+        }
         if (method === "GET" && url.pathname === "/api/studio/diagnostics") {
             this.sendJson(res, 200, this.buildDiagnostics());
             return;
@@ -1361,9 +1395,9 @@ export class StudioServer implements StudioServerHandling {
             this.handleListJobs(res);
             return;
         }
-        const commonJobRoute = (/^\/api\/project\/jobs\/([A-Za-z0-9_-]+)(?:\/(cancel|recover))?$/).exec(url.pathname);
+        const commonJobRoute = (/^\/api\/project\/jobs\/([A-Za-z0-9_-]+)(?:\/(cancel|recover|dismiss))?$/).exec(url.pathname);
         if (commonJobRoute !== null) {
-            await this.handleCommonJob(method, res, commonJobRoute[1], commonJobRoute[2] as "cancel" | "recover" | undefined);
+            await this.handleCommonJob(method, res, commonJobRoute[1], commonJobRoute[2] as "cancel" | "recover" | "dismiss" | undefined);
             return;
         }
 

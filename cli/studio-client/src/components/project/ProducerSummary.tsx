@@ -177,7 +177,7 @@ export function ProducerSummary({
                         <ProducerMetric
                             label={<>Volatility (whole round)<MathTermHelp term="Volatility">The standard deviation of payout per completed paid round, in bet units. Higher means a bumpier ride; it is not an industry low/medium/high class.</MathTermHelp></>}
                             value={state.report.volatility === undefined ? "—" : state.report.volatility.toFixed(2)}
-                            accessory={state.report.volatility === undefined ? undefined : <VolatilityBandBadge value={state.report.volatility} size="xs" />}
+                            accessory={state.report.volatility === undefined ? undefined : <VolatilityBandBadge value={state.report.volatility} size="xs" basis="whole-round volatility" />}
                         />
                         <ProducerMetric
                             label={<>Largest observed whole-round win<MathTermHelp term="Max win">The largest payout seen in this sample, not the theoretical maximum the game can produce.</MathTermHelp></>}

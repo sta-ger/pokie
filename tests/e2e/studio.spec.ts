@@ -580,7 +580,7 @@ test("selected available projects can be removed in bulk", async ({page}) => {
     await page.getByRole("checkbox", {name: "Select project Bulk Bravo"}).check();
     await page.getByRole("button", {name: "Remove selected (2)"}).click();
     await page.getByRole("dialog").getByRole("button", {name: "Confirm"}).click();
-    await expect(page.getByText("No games yet. Start a game or add one you already have.")).toBeVisible({timeout: 15_000});
+    await expect(page.getByText("No games yet. Design a game or add one you already have.")).toBeVisible({timeout: 15_000});
     await expect(page.locator("tr.project-registry-entry")).toHaveCount(0);
 });
 
@@ -1022,7 +1022,8 @@ test.describe.serial("managed project labels", () => {
         await expect.poll(() => page.getByText(/outcome records/).count(), {timeout: 30_000}).toBeGreaterThan(1);
         await expect(page.getByText(/unknown outcome records/)).toHaveCount(0);
         await expect(page.getByRole("button", {name: "Show all exact math figures", exact: true})).toBeVisible({timeout: 120_000});
-        await expect(page.getByText(/no single industry threshold for low\/medium\/high/)).toBeVisible();
+        await page.getByRole("button", {name: "Show how to read these figures", exact: true}).click();
+        await expect(page.getByText(/no single industry threshold for those labels/)).toBeVisible();
         await page.getByRole("button", {name: "Show all exact math figures", exact: true}).click();
         await expect(page.getByText(/Exact enumeration of/)).toBeVisible();
         await expect(page.getByText(/Outcome table starter-slot/)).toBeVisible();
@@ -1454,8 +1455,9 @@ test("Replay groups free spins under the paid round's full spin count", async ({
     await expect(page.locator(`[data-pokie-recorded-spin-round-id="${roundId}"][data-pokie-recorded-spin-stake="0"]`)).toHaveCount(recordedSpins - 1);
     await multiSpinHeader.getByRole("button", {name: "Inspect paid round"}).click();
     await expect(page.getByRole("button", {name: "Replay recorded round"})).toBeVisible({timeout: 30_000});
-    await multiSpinHeader.getByRole("button", {name: "Replay recorded round"}).click();
+    await multiSpinHeader.getByRole("button", {name: "Load & reproduce"}).click();
     await expect(page.getByText("Loaded replay")).toBeVisible({timeout: 30_000});
+    await expect(page.getByText(/Source: Recreated/)).toBeVisible({timeout: 60_000});
     fs.rmSync(path.dirname(projectPath), {recursive: true, force: true});
 });
 
@@ -1587,7 +1589,7 @@ test("PAR import compares exact math for both drafts before applying", async ({p
     fs.rmSync(workDir, {recursive: true, force: true});
 });
 
-test("PAR import says mathematical fields match when only metadata differs", async ({page}) => {
+test("PAR import says mathematical fields match and keeps technical details available", async ({page}) => {
     test.setTimeout(120_000);
     const source = path.join(process.cwd(), "tests/e2e/fixtures/free-games-scope.json");
     const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-par-same-e2e-"));
@@ -1608,11 +1610,11 @@ test("PAR import says mathematical fields match when only metadata differs", asy
     await page.getByRole("button", {name: "Continue to preview the game model"}).click();
 
     await expect(page.getByText(/Definition comparison: no mathematical differences/)).toBeVisible({timeout: 60_000});
-    await expect(page.getByText(/Some technical metadata could not be compared/)).toBeVisible();
+    await expect(page.getByRole("button", {name: "Show technical comparison details"})).toBeVisible();
     fs.rmSync(workDir, {recursive: true, force: true});
 });
 
-test("a featureless design reports whole-round exact math without uncapped free games", async ({page}) => {
+test("a featureless design reports whole-round exact math without uncapped free games", async ({page, browser, request}) => {
     test.setTimeout(240_000);
     await page.goto("/#/home/design");
     await page.getByRole("button", {name: "Use the starter"}).click();
@@ -1638,6 +1640,16 @@ test("a featureless design reports whole-round exact math without uncapped free 
     await page.getByLabel("Medium is up to").fill("5");
     await page.getByRole("button", {name: "Save bands"}).click();
     await expect(page.locator('[data-pokie-volatility-band="medium"]').first()).toBeVisible();
+    const projectUrl = page.url();
+
+    // A fresh browser context has no localStorage. The bands must come back from Studio's
+    // machine-local preferences, not silently disappear with the old tab.
+    const freshContext = await browser.newContext();
+    const freshPage = await freshContext.newPage();
+    await freshPage.goto(projectUrl);
+    await expect(freshPage.getByText(/Portfolio volatility bands: Low < 2\.00 · Medium 2\.00–5\.00 · High > 5\.00/)).toBeVisible({timeout: 60_000});
+    await freshContext.close();
+    await request.delete("/api/studio/preferences/volatility-bands");
 
     // The long paytable editor must offer the same Save action at the bottom of the table.
     await page.getByRole("button", {name: "Game design", exact: true}).click();
@@ -1682,7 +1694,7 @@ test("a saved game design can be duplicated from Projects with a fresh identity"
     await page.getByRole("button", {name: "Game design", exact: true}).click();
     const designerEntry = page.locator("[data-pokie-game-model-open-designer]");
     await expect(designerEntry).toBeVisible({timeout: 60_000});
-    await designerEntry.getByRole("button", {name: "Open in Start a game"}).click();
+    await designerEntry.getByRole("button", {name: "Edit full design"}).click();
     await expect(page.getByText(/This design is open from/)).toBeVisible({timeout: 90_000});
     await expect(page.getByText(/You are editing the saved game design/)).toBeVisible();
     await expect(page.getByText(/This is a new design draft, not the last saved project/)).toHaveCount(0);
@@ -1704,4 +1716,51 @@ test("Play describes its math preview without promising a stakeholder demo", asy
     await page.getByRole("button", {name: "Play", exact: true}).click();
     await expect(page.getByText(/not for a stakeholder presentation/)).toBeVisible({timeout: 60_000});
     await expect(page.getByText("Use a built game, not this screen")).toHaveCount(0);
+});
+
+test("an interrupted simulation is human-readable and can be dismissed", async ({page}) => {
+    test.setTimeout(240_000);
+    await page.goto("/#/home/design");
+    await page.getByRole("button", {name: "Use the starter"}).click();
+    await page.getByLabel("Game id").fill("recovery-copy-e2e");
+    await page.getByLabel("Game name").fill("Recovery Copy E2E");
+    const create = page.getByRole("button", {name: "Create game design"});
+    await expect(create).toBeEnabled({timeout: 60_000});
+    await create.click();
+    await expect(page.getByRole("button", {name: "Overview", exact: true})).toBeVisible({timeout: 90_000});
+
+    const match = (/#\/project\/([^/]+)\//).exec(page.url());
+    expect(match).not.toBeNull();
+    const projectRoot = decodeURIComponent(match![1]);
+    const id = `recovery-e2e-${Date.now()}`;
+    const jobsDirectory = path.join(process.env.POKIE_E2E_HOME ?? path.join(os.homedir(), ".pokie-e2e-home"), ".config", "pokie", "studio-jobs");
+    fs.mkdirSync(jobsDirectory, {recursive: true});
+    fs.writeFileSync(path.join(jobsDirectory, `${id}.json`), JSON.stringify({
+        id,
+        projectId: projectRoot,
+        operation: "simulation",
+        request: {rounds: 100000, seed: "recovery-copy-e2e", workers: 1},
+        conflictKey: `simulation:${projectRoot}`,
+        status: "recovery-required",
+        createdAt: Date.now(),
+        recoveryOnRestart: {
+            action: "retry",
+            reason: "Studio shutdown could not confirm executor cleanup. Inspect the captured destination and saved files, then restart Studio before retrying.",
+        },
+        recovery: {
+            action: "retry",
+            reason: "Studio shutdown could not confirm executor cleanup. Inspect the captured destination and saved files, then restart Studio before retrying.",
+        },
+        error: "Studio shutdown could not confirm executor cleanup. Inspect the captured destination and saved files, then restart Studio before retrying.",
+    }));
+
+    await page.goto(`${page.url().replace(/\/overview$/, "/simulation")}`);
+    await expect(page.getByText("Studio closed before it could confirm this run had finished", {exact: false})).toBeVisible({timeout: 30_000});
+    // The raw server wording stays available under "Technical detail", but it must not be the visible explanation.
+    await expect(page.locator("[data-job-technical-detail]").first()).toBeHidden();
+    const dismiss = page.getByRole("button", {name: "Dismiss", exact: true}).first();
+    await expect(dismiss).toBeVisible();
+    await dismiss.click();
+    await expect(page.getByText("Running simulation · Interrupted", {exact: true})).toHaveCount(0, {timeout: 15_000});
+    expect(fs.existsSync(path.join(jobsDirectory, `${id}.json`))).toBe(false);
 });
