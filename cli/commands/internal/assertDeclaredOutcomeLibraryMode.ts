@@ -15,7 +15,7 @@ export async function assertDeclaredOutcomeLibraryMode(libraryDir: string, modeN
         const detail = error instanceof Error ? error.message : String(error);
         throw new Error(
             `Could not read the Outcome Library index at "${indexPath}": ${detail} ` +
-                `Run "pokie validate ${JSON.stringify(libraryDir)}" to diagnose the bundle, then retry.`,
+                `Run \`pokie validate ${JSON.stringify(libraryDir)}\` to diagnose the bundle, then retry.`,
         );
     }
     const declared = (parsed as {modes?: unknown})?.modes;

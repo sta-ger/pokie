@@ -466,6 +466,24 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
         expect(JSON.stringify(report)).not.toMatch(/ENOENT|private|missing-entry/);
     });
 
+    it("reports a missing path as missing instead of as a broken package entry", async () => {
+        const missing = path.join(outDir, "not-here");
+
+        expect(await new ValidateCommand().run([missing, "--format", "json"])).toBe(1);
+        const report = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {
+            schemaVersion: number;
+            valid: boolean;
+            project: {kind: string; path: string};
+            errors: Array<{code: string; path: string; message: string; suggestion: string}>;
+        };
+        expect(report).toMatchObject({schemaVersion: 1, valid: false, project: {kind: "unknown", path: missing}});
+        expect(report.errors).toContainEqual(expect.objectContaining({
+            code: "validate-project-unavailable",
+            message: `"${missing}" does not exist.`,
+        }));
+        expect(JSON.stringify(report)).not.toContain("pokie-package-load-failed");
+    });
+
     it("does not mistake an empty directory for an incomplete Outcome Library", async () => {
         const emptyDir = path.join(outDir, "empty-directory");
         fs.mkdirSync(emptyDir);

@@ -202,7 +202,7 @@ export class ValidateCommand implements CliCommandHandling {
             if (this.isPackageDirectory(packageRoot)) return this.validatePackage(packageRoot, signal);
             if (this.isOutcomeLibraryCandidate(packageRoot)) return this.validateOutcomeLibrary(packageRoot, deep);
             if (this.isStakeEngineCandidate(packageRoot)) return this.validateStakeEngineExport(packageRoot);
-            if (!fs.existsSync(packageRoot)) return this.validatePackage(packageRoot, signal);
+            if (!fs.existsSync(packageRoot)) return this.missingProjectReport(packageRoot);
             return this.notRecognizedReport(packageRoot);
         }
 
@@ -211,7 +211,7 @@ export class ValidateCommand implements CliCommandHandling {
             if (this.isPackageDirectory(packageRoot)) return this.validatePackage(packageRoot, signal);
             if (this.isOutcomeLibraryCandidate(packageRoot)) return this.validateOutcomeLibrary(packageRoot, deep);
             if (this.isStakeEngineCandidate(packageRoot)) return this.validateStakeEngineExport(packageRoot);
-            if (!fs.existsSync(packageRoot)) return this.validatePackage(packageRoot, signal);
+            if (!fs.existsSync(packageRoot)) return this.missingProjectReport(packageRoot);
             if (path.extname(packageRoot).toLowerCase() === ".xlsx") return this.validatePackage(packageRoot, signal);
             return this.notRecognizedReport(packageRoot);
         }
@@ -225,6 +225,16 @@ export class ValidateCommand implements CliCommandHandling {
             case "parWorkbook": return this.validatePackage(packageRoot, signal);
             default: return this.notRecognizedReport(packageRoot);
         }
+    }
+
+    private missingProjectReport(projectPath: string): ValidateReport {
+        return this.failedReport(
+            projectPath,
+            "unknown",
+            "validate-project-unavailable",
+            `"${projectPath}" does not exist.`,
+            "Check the path, then run validate again against an existing POKIE project.",
+        );
     }
 
     private notRecognizedReport(projectPath: string): ValidateReport {
