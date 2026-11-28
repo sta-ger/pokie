@@ -569,6 +569,13 @@ describe("CreateCommand", () => {
             await expect(command.run(["--random", "--seed", "abc"])).rejects.toThrow(/--seed requires a safe integer value/);
         });
 
+        it("refuses a Blueprint destination POKIE cannot recognize later", async () => {
+            const {command, writeFile} = createRandomCommand();
+
+            await expect(command.run(["--random", "--seed", "42", "--out", "game"])).rejects.toThrow(/ending in "\.json"/);
+            expect(writeFile).not.toHaveBeenCalled();
+        });
+
         it("rejects a numeric seed that cannot be reproduced exactly", async () => {
             const {command} = createRandomCommand();
 

@@ -22,6 +22,7 @@ import {ReadlinePromptAdapter} from "../wizard/ReadlinePromptAdapter.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {quoteShellArgument} from "./internal/quoteShellArgument.js";
 import {BlueprintFileWriteResult, writeBlueprintFileAtomically as writeBlueprintFileAtomicallyDefault} from "./internal/writeBlueprintFileAtomically.js";
+import {assertBlueprintJsonDestination} from "./internal/assertBlueprintImportDestination.js";
 
 type RandomPreset = "default" | "variant";
 
@@ -448,6 +449,7 @@ export class CreateCommand implements CliCommandHandling {
     }
 
     private commitBlueprintFile(filePath: string, blueprint: GameBlueprint): BlueprintFileWriteResult {
+        assertBlueprintJsonDestination(filePath, "a Blueprint");
         return this.writeBlueprintFileAtomically(filePath, `${JSON.stringify(blueprint, null, 4)}\n`);
     }
 

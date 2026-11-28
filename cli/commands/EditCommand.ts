@@ -17,6 +17,7 @@ import {GameBlueprintWizard} from "../wizard/GameBlueprintWizard.js";
 import {GameBlueprintWizarding} from "../wizard/GameBlueprintWizarding.js";
 import {PromptAdapting} from "../wizard/PromptAdapting.js";
 import {ReadlinePromptAdapter} from "../wizard/ReadlinePromptAdapter.js";
+import {assertBlueprintJsonDestination} from "./internal/assertBlueprintImportDestination.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE = "Usage: pokie edit <blueprint> [--out <file>]";
@@ -193,6 +194,7 @@ export class EditCommand implements CliCommandHandling {
                 return 1;
             }
 
+            assertBlueprintJsonDestination(savePath, "an edited Blueprint");
             await this.writeFile(savePath, `${JSON.stringify(blueprint, null, 4)}\n`);
             console.log(`\n  saved  ${savePath}`);
             console.log(`\nGame blueprint "${blueprint.info.name}" (id: "${blueprint.info.id}") saved at "${savePath}".`);
