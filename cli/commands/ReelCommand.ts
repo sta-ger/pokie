@@ -10,6 +10,7 @@ import {
     writeFileAtomically,
 } from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {assertBlueprintJsonDestination} from "./internal/assertBlueprintImportDestination.js";
 import {parseCanonicalNonNegativeInteger} from "./internal/parseCanonicalNonNegativeInteger.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
@@ -205,6 +206,7 @@ export class ReelCommand implements CliCommandHandling {
                 }
             }
             outPath = options.out ?? blueprintPath;
+            if (options.out !== undefined) assertBlueprintJsonDestination(outPath, "a reel-generated Blueprint");
             // `reelStrips` and `reelStripGeneration` are deliberately mutually exclusive Blueprint
             // sources. A hand-edited input can carry both (and previews are useful for repairing
             // exactly that case), but persisting both after --apply would leave an invalid Blueprint
@@ -261,6 +263,7 @@ export class ReelCommand implements CliCommandHandling {
 
         const writtenBlueprint = writeReelStrips(blueprint, resolution.reelStripGeneration);
         const outPath = out ?? blueprintPath;
+        if (out !== undefined) assertBlueprintJsonDestination(outPath, "a reel-generated Blueprint");
         await this.writeFile(outPath, `${JSON.stringify(writtenBlueprint, null, 4)}\n`);
         const reelCount = writtenBlueprint.reelStrips?.length ?? 0;
 

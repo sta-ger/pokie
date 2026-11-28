@@ -198,6 +198,14 @@ describe("ReelCommand", () => {
         expect(writeFile.mock.calls[0][0]).toBe("custom.json");
     });
 
+    it("refuses an --apply --out path without the .json suffix", async () => {
+        const writeFile = jest.fn();
+        const command = new ReelCommand(loaderFor(baseBlueprint), writeFile);
+
+        await expect(command.run(["generate", "game.json", "--apply", "--out", "custom"])).rejects.toThrow(/ending in "\.json"/);
+        expect(writeFile).not.toHaveBeenCalled();
+    });
+
     it("does not write anything (even with --apply) and returns 1 when a targeted reel's constraints are unsatisfiable", async () => {
         const writeFile = jest.fn();
         const command = new ReelCommand(loaderFor(impossibleBlueprint), writeFile);
@@ -266,6 +274,14 @@ describe("ReelCommand", () => {
 
             expect(writeFile).toHaveBeenCalledTimes(1);
             expect(writeFile.mock.calls[0][0]).toBe("custom.json");
+        });
+
+        it("refuses a --write-reels --out path without the .json suffix", async () => {
+            const writeFile = jest.fn();
+            const command = new ReelCommand(loaderFor(baseBlueprint), writeFile);
+
+            await expect(command.run(["generate", "game.json", "--write-reels", "--out", "custom"])).rejects.toThrow(/ending in "\.json"/);
+            expect(writeFile).not.toHaveBeenCalled();
         });
 
         it("resolves deterministic default reels for a blueprint with no explicit reel source", async () => {
