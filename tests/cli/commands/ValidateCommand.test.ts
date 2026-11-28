@@ -746,11 +746,14 @@ describe("advanced validation report publication", () => {
         fs.writeFileSync(input, JSON.stringify(model));
         fs.writeFileSync(occupied, "keep");
         const alias = path.join(root, "alias.json");
+        const parent = path.join(root, "parent.json");
         fs.symlinkSync(input, alias);
+        fs.writeFileSync(parent, "{}");
         const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
         try {
             for (const output of [input, occupied, alias]) await expect(new ValidateCommand().run([input, "--out", output])).rejects.toThrow(/already exists/);
             await expect(new ValidateCommand().run([root, "--out", path.join(root, "nested.json")])).rejects.toThrow(/outside the source directory/);
+            await expect(new ValidateCommand().run([input, "--out", path.join(parent, "nested.json")])).rejects.toThrow(/is inside a file, not a folder/);
             const link = jest.spyOn(fs, "linkSync").mockImplementation(() => {
                 throw new Error("publication failed");
             });
@@ -759,7 +762,7 @@ describe("advanced validation report publication", () => {
             } finally {
                 link.mockRestore();
             }
-            expect(fs.readdirSync(root).sort()).toEqual(["alias.json", "occupied.json", "source.blueprint.json"]);
+            expect(fs.readdirSync(root).sort()).toEqual(["alias.json", "occupied.json", "parent.json", "source.blueprint.json"]);
             expect(fs.readFileSync(occupied, "utf8")).toBe("keep");
             expect(fs.readFileSync(input, "utf8")).toBe(JSON.stringify(model));
         } finally {

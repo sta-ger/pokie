@@ -5,6 +5,7 @@ import {
 } from "../validation/readValidationSourceRevision.js";
 import {AdvancedModelSourceValidator} from "../../src/validation/AdvancedModelSourceValidator.js";
 import type {AdvancedModelValidationReport} from "../../src/validation/AdvancedModelValidation.js";
+import {assertDestinationIsAFile} from "./internal/assertDestinationIsAFile.js";
 import {writeNewValidationReportAtomically} from "./internal/writeNewValidationReportAtomically.js";
 import {Command} from "commander";
 import {
@@ -588,6 +589,7 @@ export class ValidateCommand implements CliCommandHandling {
     private writeAndPrint(report: ValidateReport, format: ValidateFormat, out: string | undefined, details: boolean): void {
         const json = JSON.stringify(report, null, 4);
         if (out) {
+            assertDestinationIsAFile(out);
             try {
                 this.writeFile(out, json);
             } catch {
