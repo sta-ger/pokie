@@ -1,6 +1,7 @@
 import {BUILT_PACKAGE_FILES, assertPreparedOutputDestinationAvailable, resolveGamePackageDestination} from "@fromstan/pokie";
 import fs from "fs";
 import path from "path";
+import {describeDestinationFilesystemProblem} from "./describeDestinationFilesystemProblem.js";
 
 // Advisory only: execution rechecks the same shared publication guard.
 export type BuildDestinationPreview = {
@@ -49,7 +50,8 @@ export function previewBuildDestination(
         }
         assertPreparedOutputDestinationAvailable(sourcePath === undefined ? undefined : path.resolve(cwd, sourcePath), projectRoot, "directory");
     } catch (error) {
-        destinationError = error instanceof Error ? error.message : String(error);
+        destinationError = describeDestinationFilesystemProblem(projectRoot, error)
+            ?? (error instanceof Error ? error.message : String(error));
         if ((/not a valid directory name|source itself|inside source|internal directory/).test(destinationError)) destinationState = "unsafe";
         else if (destinationState !== "file" && destinationState !== "occupied") destinationState = "unreadable";
     }

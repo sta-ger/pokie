@@ -139,6 +139,40 @@ describe("Studio HTTP smoke", () => {
             message: expect.stringContaining("too long for this filesystem"),
         }));
 
+        const noSuffixSave = path.join(tempHome, "saved-design-noext");
+        const rejectedSuffix = await jsonRequest<{error?: string}>(
+            `${baseUrl}/api/home/blueprints/save`,
+            {method: "POST", body: JSON.stringify({path: noSuffixSave, blueprint: createRecommendedBlueprint(), overwrite: false})},
+        );
+        expect(rejectedSuffix.status).toBe(400);
+        expect(await rejectedSuffix.json()).toEqual(expect.objectContaining({error: expect.stringContaining('file ending in ".json"')}));
+        expect(fs.existsSync(noSuffixSave)).toBe(false);
+
+        const folderDesign = path.join(tempHome, "folder-design.json");
+        fs.mkdirSync(folderDesign);
+        const rejectedFolder = await jsonRequest<{status: string; error?: string}>(
+            `${baseUrl}/api/home/blueprints/save`,
+            {method: "POST", body: JSON.stringify({path: folderDesign, blueprint: createRecommendedBlueprint(), overwrite: true})},
+        );
+        expect(rejectedFolder.status).toBe(200);
+        expect(await rejectedFolder.json()).toEqual(expect.objectContaining({
+            status: "error",
+            error: expect.stringContaining("is a folder, not a file"),
+        }));
+        expect(fs.statSync(folderDesign).isDirectory()).toBe(true);
+        expect(fs.readdirSync(folderDesign)).toEqual([]);
+
+        const underFileSave = path.join(saveBody.path!, "child.json");
+        const rejectedUnderFile = await jsonRequest<{status: string; error?: string}>(
+            `${baseUrl}/api/home/blueprints/save`,
+            {method: "POST", body: JSON.stringify({path: underFileSave, blueprint: createRecommendedBlueprint(), overwrite: false})},
+        );
+        expect(rejectedUnderFile.status).toBe(200);
+        expect(await rejectedUnderFile.json()).toEqual(expect.objectContaining({
+            status: "error",
+            error: expect.stringContaining("is inside a file, not a folder"),
+        }));
+
         const started = await jsonRequest<{status: string; job: {id: string; status: string}}>(
             `${baseUrl}/api/project/build/build`,
             {method: "POST", body: JSON.stringify({target: "parWorkbook"})},

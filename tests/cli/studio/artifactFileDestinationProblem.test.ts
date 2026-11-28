@@ -1,7 +1,8 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {describeDestinationFilesystemProblem, describeFileTargetDestinationProblem} from "../../../cli/studio/build/artifactFileDestinationProblem.js";
+import {describeDestinationFilesystemProblem} from "../../../cli/studio/describeDestinationFilesystemProblem.js";
+import {describeFileTargetDestinationProblem} from "../../../cli/studio/build/artifactFileDestinationProblem.js";
 
 describe("describeFileTargetDestinationProblem", () => {
     let workDir: string;

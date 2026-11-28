@@ -34,7 +34,8 @@ import type {StudioBuildChecking, StudioPreparedArtifactPreview} from "./StudioB
 import type {StudioOutputPreviewView} from "./StudioOutputPreviewView.js";
 import type {StudioOutputFormatView} from "./StudioOutputFormatView.js";
 import {createUnresolvedRuntimePlan} from "./createExternalFormatConversionPlan.js";
-import {describeDestinationFilesystemProblem, describeFileTargetDestinationProblem} from "./artifactFileDestinationProblem.js";
+import {describeFileTargetDestinationProblem} from "./artifactFileDestinationProblem.js";
+import {describeDestinationFilesystemProblem} from "../describeDestinationFilesystemProblem.js";
 import {resolveStudioProjectSource} from "./StudioFormatConversionPlanningService.js";
 import {StudioJobService} from "../jobs/StudioJobService.js";
 import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";

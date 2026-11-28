@@ -1,3 +1,5 @@
+import {extname} from "path";
+
 export type SaveBlueprintRequestInput = {path?: unknown; blueprint?: unknown; overwrite?: unknown; expectedHash?: unknown};
 
 export type ValidatedSaveBlueprintRequest = {path: string; blueprint: unknown; overwrite: boolean; expectedHash?: string};
@@ -10,6 +12,9 @@ export function validateSaveBlueprintRequest(input: SaveBlueprintRequestInput): 
     const {path, blueprint, overwrite, expectedHash} = input;
     if (typeof path !== "string" || path.trim().length === 0) {
         throw new Error('"path" is required.');
+    }
+    if (extname(path).toLowerCase() !== ".json") {
+        throw new Error(`A game design must be saved as a file ending in ".json"; "${path}" does not. Add the suffix so POKIE can reopen it.`);
     }
     if (blueprint === undefined) {
         throw new Error('"blueprint" is required.');

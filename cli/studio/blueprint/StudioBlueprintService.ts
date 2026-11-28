@@ -43,6 +43,7 @@ import os from "os";
 import path from "path";
 import {PokiePathResolver} from "../../paths/PokiePathResolver.js";
 import {isPathWithin} from "../isPathWithin.js";
+import {describeDestinationFilesystemProblem} from "../describeDestinationFilesystemProblem.js";
 import {previewBuildDestination} from "../previewBuildDestination.js";
 import type {StudioHomeService} from "../home/StudioHomeService.js";
 import type {StudioBuildPreviewView} from "../home/StudioBuildPreviewView.js";
@@ -409,6 +410,18 @@ export class StudioBlueprintService {
             return {status: "error", error: outsideStudioRootMessage(rawPath)};
         }
 
+        try {
+            if (fs.statSync(resolved).isDirectory()) {
+                return {status: "error", error: `"${resolved}" is a folder, not a file. Choose a file name for the game design.`};
+            }
+        } catch (error) {
+            // A missing destination is the ordinary new-save case. Other stat failures (a parent that is a file,
+            // an overlong name, permissions) are caller input and must not surface as a raw Node error later.
+            if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+                return {status: "error", error: describeDestinationFilesystemProblem(resolved, error) ?? (error instanceof Error ? error.message : String(error))};
+            }
+        }
+
         const editedHash = computeGameBlueprintHash(blueprint);
         if (fs.existsSync(resolved)) {
             let currentBlueprint: unknown;
@@ -497,7 +510,7 @@ export class StudioBlueprintService {
             }
             return {status: "ok", path: resolved, blueprintHash: editedHash, sourceRevision};
         } catch (error) {
-            return {status: "error", error: error instanceof Error ? error.message : String(error)};
+            return {status: "error", error: describeDestinationFilesystemProblem(resolved, error) ?? (error instanceof Error ? error.message : String(error))};
         }
     }
 

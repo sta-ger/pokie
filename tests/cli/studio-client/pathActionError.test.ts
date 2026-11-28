@@ -45,10 +45,26 @@ describe("describePathActionError", () => {
         );
     });
 
+    it("turns a file without POKIE's JSON suffix into an actionable save-name message", () => {
+        const raw = 'A game design must be saved as a file ending in ".json"; "/tmp/saved-noext" does not. Add the suffix so POKIE can reopen it.';
+        expect(classifyPathActionErrorReason(raw)).toBe("suffix");
+        expect(describePathActionError("The game design file", raw)).toBe(
+            'The game design file needs a file name ending in ".json". Choose a name such as "game.blueprint.json", then try again.',
+        );
+    });
+
     it("keeps ordinary filesystem failures classified as before", () => {
         expect(classifyPathActionErrorReason("ENOENT: no such file or directory")).toBe("absent");
         expect(classifyPathActionErrorReason("EACCES: permission denied")).toBe("permission");
         expect(classifyPathActionErrorReason("Failed to fetch")).toBe("network");
+    });
+
+    it("turns a folder used as a Save file into the wrong-item-kind message", () => {
+        const raw = '"/tmp/folder-design.json" is a folder, not a file. Choose a file name for the game design.';
+        expect(classifyPathActionErrorReason(raw)).toBe("type");
+        expect(describePathActionError("The game design file", raw)).toBe(
+            "The game design file points to the wrong kind of item. Check whether it should be a file or a folder, and try again.",
+        );
     });
 
     it("turns a legacy project's ENOTDIR into recovery copy instead of raw filesystem text", () => {
