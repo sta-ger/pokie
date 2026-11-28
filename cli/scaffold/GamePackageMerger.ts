@@ -45,6 +45,7 @@ export class GamePackageMerger implements GamePackageMerging {
 
     public merge(projectRoot: string, overrides?: GamePackageMergeOverrides): ScaffoldResult {
         this.assertWritableProjectRoot(projectRoot);
+        this.assertNoSymlinkedScaffoldTargets(projectRoot);
         const packageJsonPath = path.join(projectRoot, "package.json");
         const packageJsonExisted = fs.existsSync(packageJsonPath);
         const existingPkg: PackageJsonLike = packageJsonExisted
@@ -154,6 +155,32 @@ export class GamePackageMerger implements GamePackageMerging {
     // pre-existing plain file named "src" used to fail only after package.json had been rewritten,
     // leaving an init attempt half-applied. Existing source files remain safe and are still skipped;
     // only a shape that cannot contain src/index.ts is refused up front with a useful diagnosis.
+    private assertNoSymlinkedScaffoldTargets(projectRoot: string): void {
+        const targets: ReadonlyArray<{relative: string; kind: "file" | "directory"}> = [
+            {relative: "package.json", kind: "file"},
+            {relative: "tsconfig.json", kind: "file"},
+            {relative: "README.md", kind: "file"},
+            {relative: "src", kind: "directory"},
+            {relative: "src/index.ts", kind: "file"},
+        ];
+        for (const target of targets) {
+            const absolute = path.join(projectRoot, target.relative);
+            let stat: fs.Stats;
+            try {
+                stat = fs.lstatSync(absolute);
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+                throw error;
+            }
+            if (stat.isSymbolicLink()) {
+                throw new Error(
+                    `Cannot initialize "${projectRoot}": "${absolute}" is a symbolic link. POKIE init writes only inside the selected project; ` +
+                        `replace it with a regular ${target.kind} before retrying.`,
+                );
+            }
+        }
+    }
+
     private assertWritableProjectRoot(projectRoot: string): void {
         if (fs.existsSync(projectRoot) && !fs.statSync(projectRoot).isDirectory()) {
             throw new Error(`Cannot initialize "${projectRoot}": it is not a directory.`);

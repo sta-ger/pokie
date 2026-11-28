@@ -66,4 +66,37 @@ describe("ESM-aware package scaffolding", () => {
             fs.rmSync(root, {recursive: true, force: true});
         }
     });
+
+    it("refuses to patch a symlinked package.json and never touches its external target", () => {
+        const root = temporaryDirectory();
+        const external = path.join(root, "..", `external-package-${path.basename(root)}.json`);
+        const target = path.join(root, "package.json");
+        const original = JSON.stringify({name: "external-package", version: "9.9.9"});
+        fs.writeFileSync(external, original);
+        fs.symlinkSync(external, target);
+        try {
+            expect(() => new GamePackageMerger("2.0.0").merge(root)).toThrow(/package\.json.*symbolic link/i);
+            expect(fs.readFileSync(external, "utf-8")).toBe(original);
+            expect(fs.existsSync(path.join(root, "tsconfig.json"))).toBe(false);
+            expect(fs.existsSync(path.join(root, "README.md"))).toBe(false);
+            expect(fs.existsSync(path.join(root, "src"))).toBe(false);
+        } finally {
+            fs.rmSync(root, {recursive: true, force: true});
+            fs.rmSync(external, {force: true});
+        }
+    });
+
+    it("refuses to scaffold through a symlinked src directory", () => {
+        const root = temporaryDirectory();
+        const external = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-external-src-"));
+        fs.symlinkSync(external, path.join(root, "src"));
+        try {
+            expect(() => new GamePackageMerger("2.0.0").merge(root)).toThrow(/src.*symbolic link/i);
+            expect(fs.readdirSync(external)).toEqual([]);
+            expect(fs.existsSync(path.join(root, "package.json"))).toBe(false);
+        } finally {
+            fs.rmSync(root, {recursive: true, force: true});
+            fs.rmSync(external, {recursive: true, force: true});
+        }
+    });
 });
