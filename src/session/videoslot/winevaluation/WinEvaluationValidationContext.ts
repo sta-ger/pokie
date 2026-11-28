@@ -1,7 +1,7 @@
 import {ValidationIssue} from "../../../validation/ValidationIssue.js";
 import {ValidationResult} from "../../../validation/ValidationResult.js";
 import {ValidationRule} from "../../../validation/ValidationRule.js";
-import {MultiplierResolver} from "./MultiplierResolver.js";
+import type {MultiplierResolving} from "./MultiplierResolving.js";
 import {WinAggregationPolicy} from "./WinAggregationPolicy.js";
 import {WinEvaluationContext} from "./WinEvaluationContext.js";
 import {WinEvaluator} from "./WinEvaluator.js";
@@ -9,13 +9,13 @@ import {WinEvaluator} from "./WinEvaluator.js";
 export class WinEvaluationValidationContext<T extends string | number | symbol = string> {
     private readonly evaluators: WinEvaluator<T>[];
     private readonly aggregationPolicy: WinAggregationPolicy<T>;
-    private readonly multiplierResolver?: MultiplierResolver<T>;
+    private readonly multiplierResolver?: MultiplierResolving<T>;
     private readonly evaluationContext?: WinEvaluationContext<T>;
 
     constructor(args: {
         evaluators: WinEvaluator<T>[];
         aggregationPolicy: WinAggregationPolicy<T>;
-        multiplierResolver?: MultiplierResolver<T>;
+        multiplierResolver?: MultiplierResolving<T>;
         evaluationContext?: WinEvaluationContext<T>;
     }) {
         this.evaluators = [...args.evaluators];
@@ -32,7 +32,7 @@ export class WinEvaluationValidationContext<T extends string | number | symbol =
         return this.aggregationPolicy;
     }
 
-    public getMultiplierResolver(): MultiplierResolver<T> | undefined {
+    public getMultiplierResolver(): MultiplierResolving<T> | undefined {
         return this.multiplierResolver;
     }
 

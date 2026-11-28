@@ -9,7 +9,14 @@ payout describe/set). Internally a triple-nested map: **bet → symbol → count
 already-computed absolute amount, not a multiplier).
 
 ```ts
-constructor(availableBets: number[], availableSymbols?: string[], wildSymbols?: string[], reelsNumber?: number)
+constructor(
+  availableBets: number[],
+  availableSymbols?: string[],
+  wildSymbols?: string[],
+  reelsNumber?: number,
+  options?: {autoFillPayouts?: boolean}, // default true
+)
+static explicit<T>(availableBets: number[], availableSymbols?: T[], wildSymbols?: T[]): Paytable<T>
 
 getWinAmountForSymbol(symbolId: string, numberOfSymbols: number, bet: number): number // 0 if unknown, never throws
 getAvailableSymbolsForBet(bet: number): string[]
@@ -23,6 +30,13 @@ If `availableSymbols`/`reelsNumber` are passed to the constructor, a default pay
 **except** those in `wildSymbols` (wilds never get payout entries — they only substitute, they never pay on their
 own) gets counts `3..reelsNumber` filled in as `(count - 2) × bet` — i.e. 3-of-a-kind pays `1×bet`, 4-of-a-kind
 `2×bet`, 5-of-a-kind `3×bet`. Counts 1 and 2 are never populated by default.
+
+That legacy filler is convenient for a quick demo but easy to trip over when a symbol is declared only as a
+mystery/bonus marker: `new Paytable(bets, symbols, [], reels)` makes that marker pay the default ladder even if the
+author never intended it to. Use `Paytable.explicit(bets, symbols, wilds)` (or
+`new Paytable(..., {autoFillPayouts: false})`) when the symbol list is a declaration, then author only the paying
+symbols with `setPayoutForSymbol`/`fromMap`. The Blueprint path is already explicit: it installs only authored
+entries.
 
 Authored Blueprint paytables use a different input interface: `paytable[symbol][count]` is a
 **stake multiplier**. Generated runtimes install only those authored entries; they do not fill
@@ -344,16 +358,34 @@ it to `false` to skip validation on the hot path once a configuration is known-g
 
 ## Multipliers
 
-`MultiplierResolver` is the runtime boundary for symbol-driven multipliers. When configured through
-`VideoSlotWinCalculatorOptions`, the applied multiplier breakdown is attached to `WinEvaluationResult`. This is
-distinct from `ValueWinCalculator`, which pays its own independent amount rather than scaling another component.
+`MultiplierResolving<T>` is the runtime boundary for symbol-driven multipliers. `MultiplierResolver` is the
+built-in implementation; a game may supply any structurally compatible object (a weighted mystery table, a
+progressive multiplier, a capped strategy) through `VideoSlotWinCalculatorOptions.multiplierResolver`. When
+configured, the applied multiplier breakdown is attached to `WinEvaluationResult`. This is distinct from
+`ValueWinCalculator`, which pays its own independent amount rather than scaling another component.
 
-`MultiplierResolver` enforces supported component types at runtime:
+The resolver enforces supported component types at runtime:
 
 - omitted/empty `supportedComponentTypes` means "apply to all component types";
 - an explicit `supportedComponentTypes` list means "apply only to those types".
 
 Validation follows the same rule.
+
+```ts
+import {MultiplierResolving} from "@fromstan/pokie";
+
+const mystery: MultiplierResolving = {
+  getSupportedComponentTypes: () => ["line", "scatter"],
+  supportsComponentType: (type) => type === "line" || type === "scatter",
+  resolve: (component) => ({
+    winAmount: component.getWinAmount() * 3,
+    breakdown: [{source: "mystery-3x", positions: component.getWinningPositions(), values: [3], combinedMultiplier: 3}],
+  }),
+};
+```
+
+A custom resolver owns both the multiplied amount and the breakdown it reports. Keep the returned breakdown
+consistent with the amount so reports and compatibility views agree.
 
 ## Cascade status
 

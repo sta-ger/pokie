@@ -2,6 +2,7 @@ import {StudioOptimizationService} from "./optimization/StudioOptimizationServic
 import {StudioWasmBrowserService} from "./wasm/StudioWasmBrowserService.js";
 import {describeValidationSourceChanges, readValidationSourceSnapshot} from "../validation/readValidationSourceRevision.js";
 import {AdvancedModelSourceValidator} from "../../src/validation/AdvancedModelSourceValidator.js";
+import type {AdvancedModelValidationReport} from "../../src/validation/AdvancedModelValidation.js";
 import {compareMathDefinitions} from "../../src/diff/MathDefinitionSourceReader.js";
 import type {MathDefinitionDiff} from "../../src/diff/MathDefinitionDiff.js";
 import {
@@ -292,6 +293,7 @@ export class StudioServer implements StudioServerHandling {
     // progress while that request is running.
     private readonly blueprintMathPreviewProgress = new Map<string, {processed: string; total: string}>();
     private readonly loadGame: typeof loadPokieGame;
+    private readonly disposeRuntime: (() => Promise<void>) | undefined;
     // Crosses from "the projectRoot a direct `pokie <path>`/`pokie studio <path>` launch was given" to
     // "a real, loadable runtime" before startProjectDashboardLoad() ever touches loadGame -- same
     // materializing boundary playService's own resolver crosses (see prepareRuntimePackage.ts),
@@ -350,6 +352,10 @@ export class StudioServer implements StudioServerHandling {
     // just as its signal is observed.
     private validationTransitions = 0;
     private readonly advancedValidations = new Map<AbortController, Promise<unknown>>();
+    // Validation of an unchanged source is deterministic; reuse the last report instead of re-reading
+    // and re-analysing the model on every Overview refresh. readValidationSourceSnapshot's own revision
+    // remains the invalidation key.
+    private readonly advancedValidationCache = new Map<string, {revision: string; report: AdvancedModelValidationReport}>();
     private readonly certificationDownloads = new Map<AbortController, Promise<unknown>>();
     private readonly artifactPreflights = new Map<AbortController, Promise<void>>();
     private readonly definitionPreviews = new Map<AbortController, Promise<MathDefinitionDiff>>();
@@ -377,6 +383,7 @@ export class StudioServer implements StudioServerHandling {
         this.openFolder = options.openFolder ?? openInFileManager;
         this.blueprintService = options.blueprintService;
         this.loadGame = options.loadGame ?? loadPokieGame;
+        this.disposeRuntime = options.disposeRuntime;
         this.resolveRuntimePackageRoot = options.resolveRuntimePackageRoot ?? createPreparingRuntimePackageResolver(this.pokieVersion, STUDIO_OPERATION);
         this.gamePackageInspector = options.gamePackageInspector ?? new GamePackageInspector();
         this.gamePackageValidator = options.gamePackageValidator ?? new PokieGamePackageValidator();
@@ -604,6 +611,9 @@ export class StudioServer implements StudioServerHandling {
         // Never holds an OS port (see StudioPlayService's own doc comment), but still discards whatever
         // session was active.
         await this.playService.reset();
+        // A host-owned cached package snapshot is safe to remove only after every session/executor
+        // above has drained. Cleanup failure must not hide an otherwise graceful shutdown marker.
+        await this.disposeRuntime?.().catch(() => undefined);
         // Every recorded round, from any tab, refers to a session/game this shutdown is about to make
         // unreachable -- see StudioRoundRecorder.clearAll()'s own doc comment.
         this.roundRecorder.clearAll();
@@ -2774,7 +2784,17 @@ export class StudioServer implements StudioServerHandling {
                     );
                 }
             };
-            const advanced = await new AdvancedModelSourceValidator().validate(root, {signal});
+            const cached = this.advancedValidationCache.get(root);
+            const advanced = cached?.revision === sourceBefore.revision
+                ? cached.report
+                : await new AdvancedModelSourceValidator().validate(root, {signal});
+            if (cached?.revision !== sourceBefore.revision && advanced.status !== "cancelled" && advanced.status !== "failed") {
+                this.advancedValidationCache.set(root, {revision: sourceBefore.revision, report: advanced});
+                if (this.advancedValidationCache.size > 10) {
+                    const oldest = this.advancedValidationCache.keys().next().value;
+                    if (oldest !== undefined) this.advancedValidationCache.delete(oldest);
+                }
+            }
             assertCurrent();
             if (advanced.structuralValid === null && advanced.status !== "unsupported" || advanced.status === "cancelled" || advanced.status === "failed") return {
                 packageRoot: root, valid: false, game: null, errors: advanced.issues.filter(issue => issue.severity === "error"), warnings: advanced.issues.filter(issue => issue.severity !== "error"), suggestions: [], advanced,

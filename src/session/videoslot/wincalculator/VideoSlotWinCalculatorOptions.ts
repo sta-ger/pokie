@@ -1,6 +1,6 @@
 import type {SharedSlotMathModel} from "../../../wasm/math/SharedSlotMath.js";
 import type {SharedSlotMathPool} from "../../../wasm/math/internal/SharedSlotMathPool.js";
-import {MultiplierResolver} from "../winevaluation/MultiplierResolver.js";
+import type {MultiplierResolving} from "../winevaluation/MultiplierResolving.js";
 import {WinAggregationPolicy} from "../winevaluation/WinAggregationPolicy.js";
 
 export type VideoSlotWinCalculatorOptions<T extends string | number | symbol = string> = {
@@ -9,7 +9,7 @@ export type VideoSlotWinCalculatorOptions<T extends string | number | symbol = s
     /** Optional game-owned bounded scratch memory; calculator results remain private. */
     sharedMathPool?: SharedSlotMathPool;
     aggregationPolicy?: WinAggregationPolicy<T>;
-    multiplierResolver?: MultiplierResolver<T>;
+    multiplierResolver?: MultiplierResolving<T>;
     minimumClusterSize?: number;
     validateOnEvaluate?: boolean;
 };

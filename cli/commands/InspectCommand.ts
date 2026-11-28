@@ -1,6 +1,8 @@
 import {Command} from "commander";
 import {
     describeProjectPresentation,
+    OutcomeLibraryFolderReader,
+    OutcomeLibraryFolderReading,
     PokieProject,
     ProjectResolving,
     ProjectTargetAmbiguousError,
@@ -21,9 +23,14 @@ const USAGE = "Usage: pokie inspect <packageRoot>";
 
 export class InspectCommand implements CliCommandHandling {
     private readonly resolveProject: ProjectResolving;
+    private readonly outcomeLibraryReader: OutcomeLibraryFolderReading;
 
-    constructor(resolveProject: ProjectResolving = new ProjectTargetResolver()) {
+    constructor(
+        resolveProject: ProjectResolving = new ProjectTargetResolver(),
+        outcomeLibraryReader: OutcomeLibraryFolderReading = new OutcomeLibraryFolderReader(),
+    ) {
         this.resolveProject = resolveProject;
+        this.outcomeLibraryReader = outcomeLibraryReader;
     }
 
     public getName(): string {
@@ -114,6 +121,7 @@ export class InspectCommand implements CliCommandHandling {
         console.log(`  purpose          ${presentation.purpose}`);
 
         const wasmManifest = project.type === "wasm" ? await this.printWasmManifest(project) : undefined;
+        if (project.type === "outcomeLibrary") await this.printOutcomeLibraryModes(project);
 
         // Legacy components never have executable guidance. Canonical guidance itself is already
         // narrowed in describeProjectPresentation() from the resolved per-operation capabilities;
@@ -131,6 +139,25 @@ export class InspectCommand implements CliCommandHandling {
             for (const prerequisite of presentation.prerequisites) {
                 console.log(`  - ${prerequisite}`);
             }
+        }
+    }
+
+    private async printOutcomeLibraryModes(project: Extract<PokieProject, {type: "outcomeLibrary"}>): Promise<void> {
+        try {
+            const index = await this.outcomeLibraryReader.readIndex(project.rootPath);
+            if (index.modes.length === 0) return;
+            console.log("\nAvailable modes:");
+            for (const mode of index.modes) {
+                const outcomes = `${mode.outcomeCount} outcome${mode.outcomeCount === 1 ? "" : "s"}`;
+                const rtp = typeof mode.analysis?.rtp === "number" ? `, RTP ${(mode.analysis.rtp * 100).toFixed(2)}%` : "";
+                console.log(`  ${mode.modeName}  (${outcomes}, stake ${mode.stake}${rtp})`);
+            }
+            console.log(`\nUse --mode <modeName> with sim, sample, serve or replay.`);
+        } catch (error) {
+            // A structurally resolved Outcome Library whose index cannot be read is still a valid
+            // inspection target; keep the ordinary presentation and add a short diagnostic instead
+            // of failing the whole command.
+            console.log(`\nAvailable modes: unavailable (${error instanceof Error ? error.message : String(error)}).`);
         }
     }
 

@@ -21,6 +21,7 @@ import {
     VideoSlotSession,
     VideoSlotWinCalculator,
     MultiplierResolver,
+    MultiplierResolving,
     VideoSlotWithFreeGamesConfig,
     VideoSlotWithFreeGamesSession,
     WaysWinCalculating,
@@ -363,6 +364,35 @@ describe("ExtensionPoints", () => {
         expect(calculator.getWinEvaluationResult().getTotalWin()).toBe(20);
         expect(calculator.getWinEvaluationResult().getMultiplierBreakdown()).toHaveLength(1);
         expect(calculator.getWinningLines()[0].getWinAmount()).toBe(20);
+    });
+
+    test("VideoSlotWinCalculator accepts a structural MultiplierResolving implementation", () => {
+        const fixedLine = new WinningLine(10, [0, 0], [1, 1], "0", [0, 1], [], "A");
+        const lineWinCalculator: LineWinCalculating = {
+            calculateWinningLines: (): Record<string, WinningLineDescribing> => ({0: fixedLine}),
+        };
+        const custom: MultiplierResolving = {
+            getSupportedComponentTypes: () => ["line"],
+            supportsComponentType: (type) => type === "line",
+            resolve: (component) => ({
+                winAmount: component.getWinAmount() + 5,
+                breakdown: [{source: "custom-flat-bonus", positions: [], values: [5], combinedMultiplier: 1}],
+            }),
+        };
+        const calculator = new VideoSlotWinCalculator(
+            new VideoSlotConfig(),
+            lineWinCalculator,
+            {calculateWinningScatters: (): Record<string, WinningScatterDescribing> => ({})},
+            undefined,
+            undefined,
+            undefined,
+            {multiplierResolver: custom},
+        );
+
+        calculator.calculateWin(1, new SymbolsCombination().fromMatrix([["A"], ["A"]]));
+
+        expect(calculator.getWinEvaluationResult().getTotalWin()).toBe(15);
+        expect(calculator.getWinEvaluationResult().getMultiplierBreakdown()).toMatchObject([{source: "custom-flat-bonus"}]);
     });
 
     test("VideoSlotConfig delegates reel-strip generation to injected ReelsSymbolsSequencesGenerating", () => {

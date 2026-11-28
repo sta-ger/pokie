@@ -20,13 +20,14 @@ import {ReadlinePromptAdapter} from "../wizard/ReadlinePromptAdapter.js";
 import {assertBlueprintJsonDestination} from "./internal/assertBlueprintImportDestination.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {parseNonEmptyPathOption} from "./internal/parseNonEmptyPathOption.js";
+import {standardInputLooksScripted} from "./internal/standardInputLooksScripted.js";
 
 const USAGE = "Usage: pokie edit <blueprint> [--out <file>]";
 
 const GUIDANCE_NOT_INTERACTIVE =
-    "pokie edit needs an interactive terminal to run, and this one is not connected to one. Re-run inside a " +
-    'terminal, or edit the Blueprint Project\'s JSON file directly, then check that saved Blueprint with "pokie validate <project>" ' +
-    'or "pokie build <blueprint> --target tsPackage --out <dir> --dry-run".';
+    "pokie edit needs an interactive terminal or piped/scripted answers to run, and this one has neither. Re-run " +
+    'inside a terminal, pipe answers into it, or edit the Blueprint Project\'s JSON file directly, then check that ' +
+    'saved Blueprint with "pokie validate <project>" or "pokie build <blueprint> --target tsPackage --out <dir> --dry-run".';
 
 // General, capability-aware interactive editing of an existing Blueprint Project via the same
 // canonical GameBlueprint model/validation "pokie create"'s wizard and "pokie build" both already use
@@ -64,7 +65,11 @@ export class EditCommand implements CliCommandHandling {
         createWizard: (defaultBlueprint: GameBlueprint) => GameBlueprintWizarding = (defaultBlueprint) =>
             new GameBlueprintWizard(undefined, () => defaultBlueprint),
         createPrompt: () => PromptAdapting = () => new ReadlinePromptAdapter(),
-        isInteractiveTerminal: () => boolean = () => Boolean(process.stdin.isTTY) && Boolean(process.stdout.isTTY),
+        // Same rule as "pokie create": a real terminal, or answers piped/redirected into stdin. Readline
+        // already buffers piped lines, so the wizard itself needs no second code path.
+        isInteractiveTerminal: () => boolean = () =>
+            (Boolean(process.stdin.isTTY) && Boolean(process.stdout.isTTY)) ||
+            (!process.stdin.isTTY && standardInputLooksScripted()),
     ) {
         this.loadBlueprint = loadBlueprint;
         this.validator = validator;
@@ -81,10 +86,11 @@ export class EditCommand implements CliCommandHandling {
 
     public getDescription(): string {
         return (
-            'Edit an existing game design through the same interactive wizard "pokie create" uses ' +
-            '("pokie edit <design.json> [--out <file>]"). Every question pre-fills the current value and Enter ' +
-            "keeps it; a diff is shown and nothing is written until confirmed. --out saves to a different file " +
-            'instead of overwriting. Generated reel strips are left untouched; see "pokie reel generate".'
+            'Edit an existing game design through the same wizard "pokie create" uses ' +
+            '("pokie edit <design.json> [--out <file>]"), interactively or with piped answers. Every question ' +
+            "pre-fills the current value and Enter keeps it; a diff is shown and nothing is written until confirmed. " +
+            "--out saves to a different file instead of overwriting. Generated reel strips are left untouched; see " +
+            '"pokie reel generate".'
         );
     }
 

@@ -689,6 +689,7 @@ export * from "./session/videoslot/winevaluation/LineWinComponent.js";
 export * from "./session/videoslot/winevaluation/LineWinEvaluator.js";
 export * from "./session/videoslot/winevaluation/MixedEvaluatorsPolicyInfoValidationRule.js";
 export * from "./session/videoslot/winevaluation/MultiplierResolver.js";
+export * from "./session/videoslot/winevaluation/MultiplierResolving.js";
 export * from "./session/videoslot/winevaluation/ScatterWinComponent.js";
 export * from "./session/videoslot/winevaluation/ScatterWinEvaluator.js";
 export * from "./session/videoslot/winevaluation/SelectedEvaluatorGroupWinAggregationPolicy.js";

@@ -443,10 +443,12 @@ support editing:
 "edit" is not supported for a "tsPackage" project (missing the "blueprint.build" capability). No project type currently supports it.
 ```
 
-Without a real terminal to run the wizard in (a script, CI, or any other non-interactive invocation), `pokie edit`
-exits immediately with guidance instead of hanging or silently doing nothing — there's no non-interactive shortcut
-here the way `pokie create --blank`/`--random` offer: hand-edit the JSON file directly, then check it with `pokie
-validate`/`pokie build --dry-run`.
+Answers can also be piped/scripted exactly like [`pokie create`](#pokie-create-name): one line per prompt, with
+the same reprompt-on-invalid-input and EOF-cancellation rules, so a CI or scripted edit can keep every default and
+still confirm the final save deliberately. Without a terminal **or** piped/redirected stdin, `pokie edit` exits
+immediately with guidance instead of hanging or silently doing nothing. There is still no flag-only shortcut;
+hand-edit the JSON file directly and check it with `pokie validate`/`pokie build --dry-run` when a script should not
+drive the wizard at all.
 
 ## `pokie build <project>`
 
@@ -529,7 +531,9 @@ exactly. To keep a newcomer-created large Blueprint usable on Node's normal memo
 Blueprint/package export automatically writes a deterministic, labelled capped-coverage library (5,000 draws;
 the package records its strategy and seed). Use `pokie build <project> --target outcomeLibrary --exact` only when
 you specifically need every outcome and have sized memory and storage for the full outcome library; `--sample <n>
---seed <seed>` selects a different deterministic coverage size explicitly. Same-type Outcome, Stake, and PAR cells
+--seed <seed>` selects a different deterministic coverage size explicitly. The preflight warning now includes a
+conservative time estimate and that `--sample` alternative, so a very large exact enumeration is a deliberate choice
+rather than a surprise wait. Same-type Outcome, Stake, and PAR cells
 republish their recognized output to a new destination. Every writer is atomic and validates its input before
 publishing, never attempting to recover a game model from an outcome-based file.
 
@@ -2564,6 +2568,10 @@ if you need to track this relationship.
 missing, unsupported, ambiguous, or malformed project metadata, with actionable diagnostics on stderr.
 Missing arguments and unexpected arguments/options are usage errors.
 
+For an Outcome Library it also lists the bundle's available `modeName` values (with stake, outcome count and
+exact RTP when the bundle carries it), so the `--mode` required by `pokie sim`, `sample`, `serve` and `replay`
+never has to be guessed from raw bundle files.
+
 ## `pokie serve <packageRoot>`
 
 Starts a local HTTP server over a single loaded [game package](game-packages.md), so you can
@@ -3333,6 +3341,11 @@ pokie.
 ```
 POKIE Studio listening on http://127.0.0.1:3200
 ```
+
+While a project stays open, Studio keeps one leased runtime for its unchanged `package.json`/entry pair and reuses
+it for the Overview load, validation and Play instead of creating a fresh isolated package snapshot for each tab
+action. It is released when Studio stops or the entry changes; reopening Studio is still the way to pick up a
+dependency-only rebuild.
 
 A browser tab opens automatically (same best-effort `open`/`start`/`xdg-open` mechanism as `pokie dev`, and the
 same `--no-open` escape hatch) showing the opened package's Project Dashboard. Home is task-oriented, with exactly

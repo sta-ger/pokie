@@ -20,6 +20,7 @@ import {GameBlueprintWizarding} from "../wizard/GameBlueprintWizarding.js";
 import {PromptAdapting} from "../wizard/PromptAdapting.js";
 import {ReadlinePromptAdapter} from "../wizard/ReadlinePromptAdapter.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {standardInputLooksScripted} from "./internal/standardInputLooksScripted.js";
 import {quoteShellArgument} from "./internal/quoteShellArgument.js";
 import {BlueprintFileWriteResult, writeBlueprintFileAtomically as writeBlueprintFileAtomicallyDefault} from "./internal/writeBlueprintFileAtomically.js";
 import {assertBlueprintJsonDestination} from "./internal/assertBlueprintImportDestination.js";
@@ -35,18 +36,6 @@ const GUIDANCE_NOT_INTERACTIVE =
     'pokie create needs an interactive terminal (or piped/scripted answers) to run its Blueprint wizard, and this ' +
     "one has neither. Re-run inside a terminal, pipe answers into it, or use a non-interactive shortcut instead: " +
     '"pokie create --blank" (a bare-minimum blueprint) or "pokie create --random" (an always-valid randomly generated one).';
-
-// A redirected regular file or a pipe is the documented "printf ... | pokie create" workflow; a TTY is the
-// ordinary interactive workflow. /dev/null or a closed stdin is neither, so it still gets the helpful
-// guidance instead of an immediate, confusing "Create cancelled." from readline's EOF.
-function standardInputLooksScripted(): boolean {
-    try {
-        const stat = fs.fstatSync(0);
-        return stat.isFIFO() || stat.isFile();
-    } catch {
-        return false;
-    }
-}
 
 export class CreateCommand implements CliCommandHandling {
     private readonly createStarterBlueprint: () => GameBlueprint;

@@ -518,8 +518,25 @@ function resolveManagedOutcomeGeneration(
     };
 }
 
+// Conservative planning rate, deliberately well below observed local throughput. It turns a raw
+// combination count into an actionable order-of-magnitude warning instead of a bare number; the actual
+// run reports live progress, and the wording makes clear this is not a promise.
+const OUTCOME_GENERATION_PLANNING_RATE_PER_SECOND = 2_000;
+
+export function estimateOutcomeGenerationDuration(estimatedItemCount: bigint): string {
+    if (estimatedItemCount <= BigInt(0)) return "less than a second";
+    const seconds = Number(estimatedItemCount) / OUTCOME_GENERATION_PLANNING_RATE_PER_SECOND;
+    if (seconds < 1) return "less than a second";
+    if (seconds < 60) return `about ${Math.ceil(seconds)} second(s)`;
+    const minutes = Math.ceil(seconds / 60);
+    if (minutes < 60) return `about ${minutes} minute(s)`;
+    const hours = Math.ceil(minutes / 60);
+    return `about ${hours} hour(s)`;
+}
+
 function outcomeGenerationPreflight(preflight: OutcomeLibraryGenerationPreflight): BuildCheck {
     const estimatedItemCount = preflight.expectedRawWork;
+    const eta = estimateOutcomeGenerationDuration(estimatedItemCount);
     return {
         estimatedItemCount,
         // A generated outcome record contains a round record, so this intentionally conservative estimate is
@@ -527,7 +544,7 @@ function outcomeGenerationPreflight(preflight: OutcomeLibraryGenerationPreflight
         estimatedBytes: estimatedItemCount * BigInt(1024),
         ...(estimatedItemCount > BigInt(10_000) || preflight.strategy === "capped-coverage"
             ? {complexityWarning: preflight.strategy === "exact"
-                ? `Exact generation will enumerate ${estimatedItemCount} reel-stop combinations.`
+                ? `Exact generation will enumerate ${estimatedItemCount} reel-stop combinations; at a conservative planning rate that can take ${eta}. Use --sample <n> --seed <seed> for a quick estimate, or keep --exact only when the full artifact fits your memory and storage budget.`
                 : `Large source (${preflight.estimate.totalOutcomeSpaceSize} reel-stop combinations): using ${estimatedItemCount} deterministic capped-coverage draws. Use an explicit exact build only when the full artifact library fits your memory and storage budget.`}
             : {}),
     };

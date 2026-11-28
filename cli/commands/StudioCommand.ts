@@ -5,7 +5,7 @@ import {createPreparingRuntimePackageResolver, RuntimePackageResolving} from "..
 import {openBrowser} from "../openBrowser.js";
 import {StudioBlueprintService} from "../studio/blueprint/StudioBlueprintService.js";
 import {StudioHomeService} from "../studio/home/StudioHomeService.js";
-import {createStudioGameLoader, createStudioGamePackageValidator} from "../studio/loadStudioGame.js";
+import {createStudioEntryModuleLoader, StudioGameRuntimeCache} from "../studio/loadStudioGame.js";
 import {createDefaultStudioProjectRegistrationService} from "../studio/StudioProjectRegistrationService.js";
 import {StudioContextResolver} from "../studio/StudioContextResolver.js";
 import {StudioContextResolving} from "../studio/StudioContextResolving.js";
@@ -57,6 +57,7 @@ export class StudioCommand implements CliCommandHandling {
     private readonly pokiePackageRoot: string;
     private readonly loadGame: NonNullable<StudioServerOptions["loadGame"]>;
     private readonly gamePackageValidator: PokieGamePackageValidator;
+    private readonly gameRuntimeCache: StudioGameRuntimeCache;
     // The one materializing resolver this command builds -- shared, by identity, between homeService's
     // own Open/Recent-Projects flow and the Project Dashboard/Play runtime StudioServer drives once
     // started (see run() below), rather than each independently building its own. Both go through the
@@ -73,8 +74,9 @@ export class StudioCommand implements CliCommandHandling {
         this.contextResolver = dependencies.contextResolver ?? new StudioContextResolver();
         const projectRegistrationService = createDefaultStudioProjectRegistrationService();
         this.resolveRuntimePackageRoot = createPreparingRuntimePackageResolver(pokieVersion, STUDIO_OPERATION, pokiePackageRoot);
-        this.loadGame = createStudioGameLoader(pokiePackageRoot);
-        this.gamePackageValidator = createStudioGamePackageValidator(pokiePackageRoot);
+        this.gameRuntimeCache = new StudioGameRuntimeCache(createStudioEntryModuleLoader(pokiePackageRoot));
+        this.loadGame = this.gameRuntimeCache.load;
+        this.gamePackageValidator = new PokieGamePackageValidator((root) => this.gameRuntimeCache.resolveEntryModule(root));
         this.homeService =
             dependencies.homeService ??
             new StudioHomeService(
@@ -127,6 +129,7 @@ export class StudioCommand implements CliCommandHandling {
             loadGame: this.loadGame,
             gamePackageValidator: this.gamePackageValidator,
             resolveRuntimePackageRoot: this.resolveRuntimePackageRoot,
+            disposeRuntime: () => this.gameRuntimeCache.dispose(),
         });
         const address = await server.start().catch((error: unknown) => {
             // Match `pokie serve`/`pokie client`/`pokie dev`: a busy port is a user-fixable startup condition

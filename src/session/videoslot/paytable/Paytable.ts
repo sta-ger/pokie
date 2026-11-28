@@ -1,10 +1,39 @@
 import type {PaytableRepresenting} from "./PaytableRepresenting.js";
 
+export type PaytableOptions = {
+    /**
+     * Legacy default: fills a provisional `3..reelsNumber` ladder for every non-wild symbol passed to the
+     * constructor. Set false when the symbol list is only a declaration (for example a mystery/bonus
+     * symbol that must never pay) and every payout will be authored explicitly with
+     * `setPayoutForSymbol`/`fromMap`.
+     */
+    readonly autoFillPayouts?: boolean;
+};
+
 export class Paytable<T extends string | number | symbol = string> implements PaytableRepresenting<T> {
     private paytableMap: Record<number, Record<T, Record<number, number>>>;
 
-    constructor(availableBets: number[], availableSymbols?: T[], wildSymbols?: T[], reelsNumber?: number) {
-        this.paytableMap = Paytable.createDefaultPaytableMap(availableBets, availableSymbols, wildSymbols, reelsNumber);
+    constructor(availableBets: number[], availableSymbols?: T[], wildSymbols?: T[], reelsNumber?: number, options: PaytableOptions = {}) {
+        this.paytableMap = Paytable.createDefaultPaytableMap(
+            availableBets,
+            availableSymbols,
+            wildSymbols,
+            reelsNumber,
+            options.autoFillPayouts !== false,
+        );
+    }
+
+    /**
+     * Declares symbols without inventing any payouts for them. Equivalent to the constructor with
+     * `{autoFillPayouts: false}`; authors then call `setPayoutForSymbol`/`fromMap` for exactly the
+     * symbols that should pay.
+     */
+    public static explicit<T extends string | number | symbol = string>(
+        availableBets: number[],
+        availableSymbols?: T[],
+        wildSymbols?: T[],
+    ): Paytable<T> {
+        return new Paytable<T>(availableBets, availableSymbols, wildSymbols, undefined, {autoFillPayouts: false});
     }
 
     private static createDefaultPaytableMap<T extends string | number | symbol = string>(
@@ -12,6 +41,7 @@ export class Paytable<T extends string | number | symbol = string> implements Pa
         availableSymbols?: T[],
         wildSymbols?: T[],
         reelsNumber?: number,
+        autoFillPayouts = true,
     ): Record<number, Record<T, Record<number, number>>> {
         const paytableMap = {} as Record<number, Record<T, Record<number, number>>>;
         for (const bet of availableBets) {
@@ -20,7 +50,7 @@ export class Paytable<T extends string | number | symbol = string> implements Pa
                 for (const symbolId of availableSymbols) {
                     if (!wildSymbols?.some((wildSymbolId) => symbolId === wildSymbolId)) {
                         paytableMap[bet][symbolId] = {};
-                        if (reelsNumber !== undefined) {
+                        if (autoFillPayouts && reelsNumber !== undefined) {
                             for (let k = 3; k <= reelsNumber; k++) {
                                 paytableMap[bet][symbolId][k] = (k - 2) * bet;
                             }

@@ -78,6 +78,9 @@ export type StudioServerOptions = {
     // guessing one. StudioCommand always builds this with readOwnVersion() and passes it in.
     blueprintService: StudioBlueprintService;
     loadGame?: typeof loadPokieGame;
+    // Releases a host-owned cached runtime lease when Studio stops. The CLI supplies this so a cached
+    // package snapshot is removed on a graceful Ctrl+C/SIGTERM; tests and embedders may omit it.
+    disposeRuntime?: () => Promise<void>;
     // Crosses from "the projectRoot a direct `pokie <path>`/`pokie studio <path>` launch was given" to "a
     // real, loadable runtime" before the background Project Dashboard load (and playService's own
     // runtime) ever touch loadGame -- see StudioServer's own field doc comment. Defaults to a real

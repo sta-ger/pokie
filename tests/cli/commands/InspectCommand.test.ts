@@ -176,6 +176,25 @@ describe("InspectCommand", () => {
         expect(printed).not.toContain("capability");
     });
 
+    it("lists an Outcome Library's available modes so --mode is discoverable", async () => {
+        const reader = {
+            readIndex: () => Promise.resolve({
+                modes: [
+                    {modeName: "base", stake: 1, outcomeCount: 1000, analysis: {rtp: 0.96}},
+                    {modeName: "buy", stake: 50, outcomeCount: 10, analysis: {rtp: 0.97}},
+                ],
+            }),
+        } as never;
+        const command = new InspectCommand(createStubResolver(outcomeProject), reader);
+
+        expect(await command.run([outcomeProject.rootPath])).toBe(0);
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("Available modes:");
+        expect(printed).toContain("base  (1000 outcomes, stake 1, RTP 96.00%)");
+        expect(printed).toContain("buy  (10 outcomes, stake 50, RTP 97.00%)");
+        expect(printed).toContain("Use --mode <modeName>");
+    });
+
     it("recommends only registered public commands for Outcome Library and Stake Engine analysis", async () => {
         const outcomeCommand = new InspectCommand(createStubResolver(outcomeProject));
         const stakeCommand = new InspectCommand(createStubResolver(stakeProject));

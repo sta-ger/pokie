@@ -118,6 +118,7 @@ describe("InitCommand", () => {
             expect(printed).toContain(`prepared and verified in "${process.cwd()}"`);
             expect(printed).toContain("balanced five-line demo");
             expect(printed).toContain(`loadPokieGame("${process.cwd()}")`);
+            expect(printed).toContain("Studio opens this code-first package read-only");
             expect(printed).toContain("npm start");
         });
     });

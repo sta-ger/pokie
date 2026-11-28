@@ -19,6 +19,7 @@ import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js
 import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
 import {OutcomeLibraryFolderReader} from "../weightedoutcome/folder/OutcomeLibraryFolderReader.js";
 import {loadPokieGame, releasePokieGame} from "../gamepackage/loadPokieGame.js";
+import {readPokiePackageConfig} from "../gamepackage/readPokiePackageConfig.js";
 import {computeBuildInputHash, computeProjectInputBindingHash, type OutputConfigurationOrigin} from "./FormatConversionPlanner.js";
 import {recognizeParWorkbookFile} from "./internal/looksLikeParWorkbookFile.js";
 import {describeWasmSidecarFailure} from "./WasmProductContract.js";
@@ -46,6 +47,44 @@ const DEFAULT_PROJECT_TARGET_ADAPTERS: readonly ProjectTargetTypeAdapter[] = [
 ];
 
 type ProjectTargetMatch = {readonly adapter: ProjectTargetTypeAdapter; readonly provenance: string};
+
+// Runtime capability probing is the one part of package recognition that used to load and snapshot the
+// whole executable graph. Every resolver instance (Studio creates several) paid that cost again for the
+// same unchanged package. Key on the package manifest + declared entry identity, and share the probe
+// across resolvers; a rebuild that changes the entry gets a new key, while a dependency-only change is
+// picked up by restarting the host (the same lifetime the isolated runtime snapshot has).
+const PACKAGE_CAPABILITY_CACHE_LIMIT = 100;
+const packageCapabilityCache = new Map<string, Promise<readonly string[]>>();
+const failedPackageCapabilityKeys = new Set<string>();
+// The full DTO is also immutable for unchanged manifest/entry bytes. Cache the provenance-free form
+// (the one every Studio validation/Play path requests) so a second resolver does not repeat the
+// capability probe or re-read the package manifest at all.
+const tsPackageResolutionCache = new Map<string, PokieProject>();
+
+function fileFingerprint(filePath: string): string {
+    try {
+        const stats = fs.statSync(filePath);
+        return `${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeMs}:${stats.ctimeMs}`;
+    } catch {
+        return "missing";
+    }
+}
+
+function packageCapabilityKey(rootPath: string): string {
+    let entry = "dist/index.js";
+    try {
+        entry = readPokiePackageConfig(rootPath).entry;
+    } catch {
+        // The ordinary resolver/loader path will report a missing entry; the fallback only keys the
+        // cache and keeps repeated failures from re-probing the same bytes.
+    }
+    return [
+        path.resolve(rootPath),
+        fileFingerprint(path.join(rootPath, "package.json")),
+        entry,
+        fileFingerprint(path.resolve(rootPath, entry)),
+    ].join("|");
+}
 
 // The concrete ProjectResolving: resolves a single given path by checking it against every registered
 // per-type adapter matching its own file/directory kind, and stamping the one adapter that recognizes it (see
@@ -142,6 +181,13 @@ export class ProjectTargetResolver implements ProjectResolving {
         }
 
         const [{adapter, provenance}] = matches;
+        const cacheKey = adapter.type === "tsPackage" && options?.readConfigurationProvenance === false ? packageCapabilityKey(resolvedPath) : undefined;
+        if (cacheKey !== undefined) {
+            const cached = tsPackageResolutionCache.get(cacheKey);
+            // Return a fresh DTO shell so a caller mutating its own project object cannot poison the
+            // cache; the capability list itself is the same read-only constant every caller already got.
+            if (cached !== undefined) return {...cached};
+        }
         // Definition readers must not invoke arbitrary getConfigHash implementations during recognition.
         const configurationProvenance = options?.readConfigurationProvenance === false ? undefined : await this.configurationProvenance(adapter.type, resolvedPath);
         const project = {
@@ -150,6 +196,13 @@ export class ProjectTargetResolver implements ProjectResolving {
             capabilities: await this.capabilitiesFor(adapter.type, resolvedPath),
             provenance,
         } as PokieProject;
+        if (cacheKey !== undefined && configurationProvenance === undefined && !failedPackageCapabilityKeys.has(cacheKey)) {
+            tsPackageResolutionCache.set(cacheKey, project);
+            if (tsPackageResolutionCache.size > PACKAGE_CAPABILITY_CACHE_LIMIT) {
+                const oldest = tsPackageResolutionCache.keys().next().value;
+                if (oldest !== undefined) tsPackageResolutionCache.delete(oldest);
+            }
+        }
         // Keep the established enumerable project DTO stable for older command consumers while making
         // verified configuration facts available to the planner. Public planner/API payloads explicitly
         // project this field, so it is never accidentally lost at the conversion boundary.
@@ -164,21 +217,38 @@ export class ProjectTargetResolver implements ProjectResolving {
         if (type === "tsPackage") {
             // A package without createExactEnumerationSession has no paid-spin outcome space to
             // enumerate, so it cannot honestly advertise either downstream paid-grid conversion.
-            // Probe the loaded game once here; resolution already loads the package for configuration
-            // provenance, and a failed load simply leaves the full capability set for the package
-            // validator to diagnose with its own entry-module error.
-            let game: Awaited<ReturnType<typeof loadPokieGame>> | undefined;
-            try {
-                game = await loadPokieGame(rootPath);
-                if (typeof game.createExactEnumerationSession === "function") return PROJECT_TYPE_CAPABILITIES.tsPackage;
-            } catch {
-                return PROJECT_TYPE_CAPABILITIES.tsPackage;
-            } finally {
-                if (game !== undefined) await releasePokieGame(game);
+            // Probe the loaded game once per unchanged manifest/entry and share it across resolvers;
+            // a failed load retains the full capability set for the package validator to diagnose with
+            // its own entry-module error.
+            const key = packageCapabilityKey(rootPath);
+            const cached = packageCapabilityCache.get(key);
+            if (cached !== undefined) return cached;
+
+            const probing = (async (): Promise<readonly string[]> => {
+                let game: Awaited<ReturnType<typeof loadPokieGame>> | undefined;
+                try {
+                    game = await loadPokieGame(rootPath);
+                    if (typeof game.createExactEnumerationSession === "function") return PROJECT_TYPE_CAPABILITIES.tsPackage;
+                } catch {
+                    // Do not pin a failed probe: installing a dependency can make an unchanged
+                    // manifest/entry loadable later.
+                    packageCapabilityCache.delete(key);
+                    failedPackageCapabilityKeys.add(key);
+                    return PROJECT_TYPE_CAPABILITIES.tsPackage;
+                } finally {
+                    if (game !== undefined) await releasePokieGame(game);
+                }
+                failedPackageCapabilityKeys.delete(key);
+                return PROJECT_TYPE_CAPABILITIES.tsPackage.filter(
+                    (capability) => capability !== OUTCOME_LIBRARY_GENERATE_CAPABILITY && capability !== STAKE_ADAPTER_EXPORT_CAPABILITY,
+                );
+            })();
+            packageCapabilityCache.set(key, probing);
+            if (packageCapabilityCache.size > PACKAGE_CAPABILITY_CACHE_LIMIT) {
+                const oldest = packageCapabilityCache.keys().next().value;
+                if (oldest !== undefined) packageCapabilityCache.delete(oldest);
             }
-            return PROJECT_TYPE_CAPABILITIES.tsPackage.filter(
-                (capability) => capability !== OUTCOME_LIBRARY_GENERATE_CAPABILITY && capability !== STAKE_ADAPTER_EXPORT_CAPABILITY,
-            );
+            return probing;
         }
         if (type !== "wasm") return PROJECT_TYPE_CAPABILITIES[type];
         const raw = await fs.promises.readFile(wasmComponentInfoCompanionPath(rootPath), "utf-8");

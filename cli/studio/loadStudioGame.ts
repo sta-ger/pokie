@@ -1,4 +1,14 @@
-import {loadPokieGame, PokieGamePackageValidator, resolvePokieGameEntryModule, type PokieGameEntryModuleLoading} from "@fromstan/pokie";
+import {
+    loadPokieGame,
+    loadPokieGameRuntime,
+    PokieGamePackageValidator,
+    readPokiePackageConfig,
+    resolvePokieGameEntryModule,
+    type LoadedPokieGame,
+    type PokieGame,
+    type PokieGameEntryModuleLoading,
+    type ResolvedPokieGameEntryModule,
+} from "@fromstan/pokie";
 import fs from "fs";
 import {createRequire} from "module";
 import path from "path";
@@ -66,6 +76,109 @@ function isCommonJsEntry(entryPath: string): boolean {
 export function createStudioGameLoader(pokiePackageRoot: string): typeof loadPokieGame {
     const loadEntryModule = createStudioEntryModuleLoader(pokiePackageRoot);
     return (packageRoot) => loadPokieGame(packageRoot, loadEntryModule);
+}
+
+// A Studio session is one project at a time, but the Dashboard load, validation and Play each used
+// to call loadPokieGame() independently. Every call creates and then tears down an isolated package
+// snapshot (the runtime + its whole dependency graph), so opening a small package could copy the
+// same local checkout several times before the first spin. This cache keeps one leased runtime per
+// unchanged project/entry and reuses it for all of those callers.
+//
+// It deliberately uses loadPokieGameRuntime()'s explicit lease rather than loadPokieGame(): the
+// compatibility releasePokieGame(game) is then a no-op for a cached game, because the cache owns the
+// lease until the project changes or Studio stops. The key is intentionally cheap (package.json and
+// the declared entry's size/mtime/inode) rather than a full byte inventory; a rebuilt entry changes
+// the key, while a dependency-only change is picked up by reopening Studio.
+export type StudioGameRuntimeFingerprint = {
+    readonly key: string;
+    readonly entryPath: string;
+};
+
+function fileIdentity(filePath: string): string {
+    try {
+        const stats = fs.statSync(filePath);
+        return `${stats.ino}:${stats.size}:${stats.mtimeMs}:${stats.ctimeMs}`;
+    } catch {
+        return "missing";
+    }
+}
+
+export function studioGameRuntimeFingerprint(packageRoot: string): StudioGameRuntimeFingerprint {
+    const resolvedRoot = path.resolve(packageRoot);
+    let root = resolvedRoot;
+    try {
+        root = fs.realpathSync(resolvedRoot);
+    } catch {
+        // Missing paths still get a deterministic key; loadPokieGameRuntime() will report the real
+        // failure with its own diagnostic.
+    }
+    let entry = "dist/index.js";
+    try {
+        entry = readPokiePackageConfig(root).entry;
+    } catch {
+        // Preserve the ordinary package-loading error; the fallback only feeds the cache key.
+    }
+    const entryPath = path.resolve(root, entry);
+    return {
+        key: [root, fileIdentity(path.join(root, "package.json")), entry, fileIdentity(entryPath)].join("|"),
+        entryPath,
+    };
+}
+
+export class StudioGameRuntimeCache {
+    private cached: {key: string; game: PokieGame; release: () => Promise<void>} | undefined;
+    private readonly pending = new Map<string, Promise<LoadedPokieGame>>();
+    private disposed = false;
+
+    public constructor(
+        private readonly loadEntryModule: PokieGameEntryModuleLoading,
+        private readonly loadRuntime: typeof loadPokieGameRuntime = loadPokieGameRuntime,
+    ) {}
+
+    public readonly load: typeof loadPokieGame = async (packageRoot: string): Promise<PokieGame> => {
+        if (this.disposed) throw new Error("The Studio game runtime cache has been disposed.");
+        const {key} = studioGameRuntimeFingerprint(packageRoot);
+        if (this.cached?.key === key) return this.cached.game;
+
+        const existing = this.pending.get(key);
+        if (existing !== undefined) return (await existing).game;
+
+        const loading = this.loadRuntime(packageRoot, this.loadEntryModule);
+        this.pending.set(key, loading);
+        try {
+            const loaded = await loading;
+            if (this.disposed) {
+                await loaded.release();
+                throw new Error("The Studio game runtime cache has been disposed.");
+            }
+            if (this.cached?.key === key) {
+                await loaded.release();
+                return this.cached.game;
+            }
+            const previous = this.cached;
+            this.cached = {key, game: loaded.game, release: loaded.release};
+            if (previous !== undefined) await previous.release();
+            return loaded.game;
+        } finally {
+            this.pending.delete(key);
+        }
+    };
+
+    // PokieGamePackageValidator only needs an already-resolved contract candidate. Reusing the cached
+    // game avoids a second isolated snapshot for the same bytes; the no-op lease belongs to the cache.
+    public async resolveEntryModule(packageRoot: string): Promise<ResolvedPokieGameEntryModule> {
+        const {entryPath} = studioGameRuntimeFingerprint(packageRoot);
+        const game = await this.load(packageRoot);
+        return {entryPath, candidate: game, release: () => Promise.resolve()};
+    }
+
+    public async dispose(): Promise<void> {
+        this.disposed = true;
+        const cached = this.cached;
+        this.cached = undefined;
+        if (cached !== undefined) await cached.release();
+        await Promise.allSettled([...this.pending.values()]);
+    }
 }
 
 export function createStudioGamePackageValidator(pokiePackageRoot: string): PokieGamePackageValidator {

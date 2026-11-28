@@ -1,9 +1,10 @@
 import {SymbolsCombinationsAnalyzer} from "../combinations/SymbolsCombinationsAnalyzer.js";
+import type {MultiplierResolving} from "./MultiplierResolving.js";
 import {WinComponent} from "./WinComponent.js";
 import {WinEvaluationContext} from "./WinEvaluationContext.js";
 import {WinMultiplierBreakdown} from "./WinMultiplierBreakdown.js";
 
-export class MultiplierResolver<T extends string | number | symbol = string> {
+export class MultiplierResolver<T extends string | number | symbol = string> implements MultiplierResolving<T> {
     private readonly uniquePositions: boolean;
     private readonly symbolMultipliers: Partial<Record<T, number>>;
     private readonly source: string;

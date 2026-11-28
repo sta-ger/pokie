@@ -303,6 +303,7 @@ export class InitCommand implements CliCommandHandling {
         console.log(`\nGame package "${scaffold.info.name}" (id: "${scaffold.info.id}") prepared and verified in "${projectRoot}".`);
         console.log(`Starter math is a balanced five-line demo, not a production-certified model; tune it before real-money use.`);
         console.log(`Load it anywhere with: loadPokieGame(${JSON.stringify(projectRoot)}) from "@fromstan/pokie".`);
+        console.log(`Studio opens this code-first package read-only; use a Game Blueprint when you want to edit math visually.`);
         console.log(`\nNext:`);
         console.log(`  pokie validate ${quotedProjectRoot}`);
         console.log(`  pokie sim ${quotedProjectRoot} --rounds 10000 --seed demo --out sim.json`);

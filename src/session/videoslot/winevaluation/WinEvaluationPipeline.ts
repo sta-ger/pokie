@@ -7,7 +7,7 @@ import {ErrorOnIncompatibleWinAggregationPolicy} from "./ErrorOnIncompatibleWinA
 import {IncompatibleWinEvaluatorsValidationRule} from "./IncompatibleWinEvaluatorsValidationRule.js";
 import {LineWinComponent} from "./LineWinComponent.js";
 import {MixedEvaluatorsPolicyInfoValidationRule} from "./MixedEvaluatorsPolicyInfoValidationRule.js";
-import {MultiplierResolver} from "./MultiplierResolver.js";
+import type {MultiplierResolving} from "./MultiplierResolving.js";
 import {ScatterWinComponent} from "./ScatterWinComponent.js";
 import {UnusedMultiplierResolverValidationRule} from "./UnusedMultiplierResolverValidationRule.js";
 import {ValueWinComponent} from "./ValueWinComponent.js";
@@ -24,14 +24,14 @@ import {WinEvaluator} from "./WinEvaluator.js";
 export class WinEvaluationPipeline<T extends string | number | symbol = string> {
     private readonly evaluators: WinEvaluator<T>[];
     private readonly aggregationPolicy: WinAggregationPolicy<T>;
-    private readonly multiplierResolver?: MultiplierResolver<T>;
+    private readonly multiplierResolver?: MultiplierResolving<T>;
     private readonly validationRules: ValidationRule<WinEvaluationValidationContext<T>>[];
     private readonly options: WinEvaluationPipelineOptions;
 
     constructor(
         evaluators: WinEvaluator<T>[],
         aggregationPolicy?: WinAggregationPolicy<T>,
-        multiplierResolver?: MultiplierResolver<T>,
+        multiplierResolver?: MultiplierResolving<T>,
         validationRules?: ValidationRule<WinEvaluationValidationContext<T>>[],
         options: WinEvaluationPipelineOptions = {},
     ) {
