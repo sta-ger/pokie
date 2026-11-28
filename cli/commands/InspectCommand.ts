@@ -12,6 +12,7 @@ import {
     WASM_RUNTIME_REPLAY_CAPABILITY,
     WASM_PRODUCT_CONTRACT,
 } from "@fromstan/pokie";
+import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {quoteShellArgument} from "./internal/quoteShellArgument.js";
@@ -87,7 +88,9 @@ export class InspectCommand implements CliCommandHandling {
 
         if (project === undefined) {
             console.error(
-                `"${projectPath}" is not a supported POKIE project. Choose a Game Blueprint, POKIE game package, Outcome Library, Stake Engine export, PAR workbook, or compatible WASM component.`,
+                fs.existsSync(projectPath)
+                    ? `"${projectPath}" is not a supported POKIE project. Choose a Game Blueprint, POKIE game package, Outcome Library, Stake Engine export, PAR workbook, or compatible WASM component.`
+                    : `"${projectPath}" does not exist. Check the path, then run "pokie inspect <path>" again.`,
             );
             return 1;
         }

@@ -107,16 +107,33 @@ describe("InspectCommand", () => {
         expect(printed).not.toContain("runtime.execute");
     });
 
-    it("explains unsupported input concisely in public project terminology", async () => {
+    it("names a missing path as missing", async () => {
         const command = new InspectCommand(createStubResolver(undefined));
 
         const exitCode = await command.run(["./missing"]);
 
         expect(exitCode).toBe(1);
-        expect(errorSpy).toHaveBeenCalledWith(
-            '"./missing" is not a supported POKIE project. Choose a Game Blueprint, POKIE game package, Outcome Library, Stake Engine export, PAR workbook, or compatible WASM component.',
-        );
+        expect(errorSpy).toHaveBeenCalledWith('"./missing" does not exist. Check the path, then run "pokie inspect <path>" again.');
         expect(logSpy).not.toHaveBeenCalled();
+    });
+
+    it("explains unsupported input concisely in public project terminology", async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-inspect-unsupported-"));
+        const notProject = path.join(directory, "not-a-project");
+        fs.writeFileSync(notProject, "{}");
+        try {
+            const command = new InspectCommand(createStubResolver(undefined));
+
+            const exitCode = await command.run([notProject]);
+
+            expect(exitCode).toBe(1);
+            expect(errorSpy).toHaveBeenCalledWith(
+                `"${notProject}" is not a supported POKIE project. Choose a Game Blueprint, POKIE game package, Outcome Library, Stake Engine export, PAR workbook, or compatible WASM component.`,
+            );
+            expect(logSpy).not.toHaveBeenCalled();
+        } finally {
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
     });
 
     it.each([
