@@ -585,6 +585,26 @@ describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
         expect(game.createdWith).toEqual({seed: "demo-seed"});
     });
 
+    it.each([[], "seed", 1, true])("rejects a non-object POST /sessions body (%p) without creating a session", async (body) => {
+        const response = await postJson(`${baseUrl}/sessions`, body);
+
+        expect(response.status).toBe(400);
+        expect(response.body).toEqual({error: 'Request body must be a JSON object with an optional "seed".'});
+        expect(game.createdWith).toBeUndefined();
+    });
+
+    it.each([[], "spin", 1, true])("rejects a non-object spin body (%p) without spinning", async (body) => {
+        const created = await postJson(`${baseUrl}/sessions`);
+        const sessionId = created.body.sessionId as string;
+
+        const response = await postJson(`${baseUrl}/sessions/${sessionId}/spin`, body);
+
+        expect(response.status).toBe(400);
+        expect(response.body).toEqual({code: "invalid-command", error: "Request body must be a JSON object."});
+        const restored = await getJson(`${baseUrl}/sessions/${sessionId}`);
+        expect(restored.body.credits).toBe(1000);
+    });
+
     it("changes session state on POST /sessions/:sessionId/spin", async () => {
         const created = await postJson(`${baseUrl}/sessions`);
         const sessionId = created.body.sessionId as string;
