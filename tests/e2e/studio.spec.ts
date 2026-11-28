@@ -55,6 +55,24 @@ test("Layout exposes the lines, ways and clusters win model", async ({page}) => 
     await expect(page.getByLabel("Minimum cluster size")).toBeVisible();
 });
 
+test("fractional or non-numeric reel and row sizes are rejected without changing the design", async ({page}) => {
+    await page.goto("/#/home/design");
+    await page.getByRole("button", {name: "Use the starter"}).click();
+    await page.getByRole("tab", {name: /Layout/}).click();
+
+    const reels = page.getByRole("textbox", {name: "Reels", exact: true});
+    await reels.fill("1.5");
+    await reels.blur();
+    await expect(reels).toHaveValue("5");
+    await expect(page.getByText("Reels must be a whole number of at least 1.")).toBeVisible();
+
+    const rows = page.getByRole("textbox", {name: "Rows", exact: true});
+    await rows.fill("abc");
+    await rows.blur();
+    await expect(rows).toHaveValue("3");
+    await expect(page.getByText("Rows must be a whole number of at least 1.")).toBeVisible();
+});
+
 test("switching to symbol weights fills a valid table from the current reels", async ({page}) => {
     await page.goto("/#/home/design");
     await page.getByRole("tab", {name: /Reels/}).click();

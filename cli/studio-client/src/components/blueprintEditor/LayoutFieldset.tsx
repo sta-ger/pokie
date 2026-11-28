@@ -29,11 +29,18 @@ export function LayoutFieldset({
     // destructive reduction must put this draft back to the saved value rather than leaving an input
     // that looks applied while the blueprint still has its original reel count.
     const [reelInput, setReelInput] = useState<number | string>(reels ?? "");
+    const [rowInput, setRowInput] = useState<number | string>(rows ?? "");
+    const [reelError, setReelError] = useState<string>();
+    const [rowError, setRowError] = useState<string>();
     const lastBlurredReelValue = useRef<string | undefined>(undefined);
 
     useEffect(() => {
         setReelInput(reels ?? "");
     }, [reels]);
+
+    useEffect(() => {
+        setRowInput(rows ?? "");
+    }, [rows]);
 
     const setReelInputValue = (value: number | string): void => {
         lastBlurredReelValue.current = undefined;
@@ -68,7 +75,10 @@ export function LayoutFieldset({
                         min={1}
                         step={1}
                         value={reelInput}
-                        onChange={setReelInputValue}
+                        onChange={(value) => {
+                            setReelError(undefined);
+                            setReelInputValue(value);
+                        }}
                         onBlur={(event) => {
                             const inputValue = event.currentTarget.value;
                             if (lastBlurredReelValue.current === inputValue) {
@@ -76,9 +86,12 @@ export function LayoutFieldset({
                             }
                             lastBlurredReelValue.current = inputValue;
                             const value = Number(inputValue);
-                            if (!Number.isFinite(value)) {
+                            if (!Number.isInteger(value) || value < 1) {
+                                setReelError("Reels must be a whole number of at least 1.");
+                                setReelInput(reels ?? "");
                                 return;
                             }
+                            setReelError(undefined);
                             if (value === reels) {
                                 return;
                             }
@@ -92,7 +105,7 @@ export function LayoutFieldset({
                             }
                             applyReelCount(value);
                         }}
-                        error={fieldErrorMessage(issues, "reels")}
+                        error={reelError ?? fieldErrorMessage(issues, "reels")}
                     />
                     <FieldWarningText message={fieldWarningMessage(issues, "reels")} />
                 </div>
@@ -101,17 +114,27 @@ export function LayoutFieldset({
                         label="Rows"
                         min={1}
                         step={1}
-                        defaultValue={rows ?? ""}
+                        value={rowInput}
+                        onChange={(value) => {
+                            setRowError(undefined);
+                            setRowInput(value);
+                        }}
                         onBlur={(event) => {
                             const value = Number(event.currentTarget.value);
-                            if (!Number.isFinite(value)) {
+                            if (!Number.isInteger(value) || value < 1) {
+                                setRowError("Rows must be a whole number of at least 1.");
+                                setRowInput(rows ?? "");
+                                return;
+                            }
+                            setRowError(undefined);
+                            if (value === rows) {
                                 return;
                             }
                             mutate((b) => {
                                 b.rows = value;
                             });
                         }}
-                        error={fieldErrorMessage(issues, "rows")}
+                        error={rowError ?? fieldErrorMessage(issues, "rows")}
                     />
                     <FieldWarningText message={fieldWarningMessage(issues, "rows")} />
                 </div>
