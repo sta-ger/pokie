@@ -1942,7 +1942,10 @@ export class StudioServer implements StudioServerHandling {
         if (this.rejectUnconfirmedProjectTransition(res, validated.confirmActiveJobs, validated.projectRoot)) return;
 
         const sourcePath = this.canonicalPathIdentity(validated.projectRoot);
-        const recovery = {action: "retry", reason: "Project preparation is not resumable after restart. Reopen the same project to retry."} as const;
+        const restartRecovery = {action: "retry", reason: "Project preparation is not resumable after restart. Reopen the same project to retry."} as const;
+        // Failed and cancelled executions are not restart-recovery records: their terminal copy tells the user
+        // what to do next without claiming Studio restarted (the job card renders `recovery` as "Next: ...").
+        const recovery = {action: "retry", reason: "Reopen the same project when ready."} as const;
 
         // loadProjectDashboardContext (behind StudioHomeService.openProject()) only ever resolves
         // "loaded", "outcome-source", "artifact", or "error" — "empty"/"loading" are exclusively synthesized
@@ -1961,7 +1964,7 @@ export class StudioServer implements StudioServerHandling {
             execution = await this.executeCommonOperation<ProjectDashboardContext>(
                 res,
                 {
-                    projectId: sourcePath, operation: "project-open-materialization", request: {sourcePath}, conflictKey: `project-open:${sourcePath}`, recoveryOnRestart: recovery,
+                    projectId: sourcePath, operation: "project-open-materialization", request: {sourcePath}, conflictKey: `project-open:${sourcePath}`, recoveryOnRestart: restartRecovery,
                     initialProgress: {stage: "Resolving project", unit: "opening stages", current: 0, total: 3, message: "Resolving the requested project source."},
                     reattachedResponse: (job) => ({statusCode: 409, body: {error: "Project opening is already in progress.", activeJobId: job.id, reattached: true}}),
                 },
@@ -2517,10 +2520,11 @@ export class StudioServer implements StudioServerHandling {
         }
         const sourcePath = this.canonicalPathIdentity(validated.path);
         const sourceContentHash = this.fileContentIdentity(sourcePath);
-        const recovery = {action: "rebuild", reason: "PAR import publication is not resumable after restart. Import the same workbook again."} as const;
+        const restartRecovery = {action: "rebuild", reason: "PAR import publication is not resumable after restart. Import the same workbook again."} as const;
+        const recovery = {action: "rebuild", reason: "Import the same workbook again when ready; a partial import is never applied."} as const;
         const execution = await this.executeCommonOperation(
             res, {
-                projectId: `design:${sourcePath}`, operation: "design-par-import", request: {path: sourcePath, sourceContentHash}, conflictKey: `design-par-import:${sourcePath}`, recoveryOnRestart: recovery,
+                projectId: `design:${sourcePath}`, operation: "design-par-import", request: {path: sourcePath, sourceContentHash}, conflictKey: `design-par-import:${sourcePath}`, recoveryOnRestart: restartRecovery,
                 initialProgress: {stage: "Reading workbook", unit: "worksheets", current: "indeterminate", total: "indeterminate", message: "Reading the source PAR workbook before validation."},
                 // importParSheet has always resolved a StudioParSheetImportView
                 // for domain outcomes.  Keep an exact retry in that DTO family
@@ -2557,10 +2561,11 @@ export class StudioServer implements StudioServerHandling {
         const sourcePath = validated.sourcePath === undefined ? undefined : this.canonicalPathIdentity(validated.sourcePath);
         const destinationPath = this.canonicalPathIdentity(validated.path);
         const blueprintHash = this.blueprintRequestIdentity(validated.blueprint);
-        const recovery = {action: "rebuild", reason: "PAR export publication is not resumable after restart. Export the captured source to the captured destination again."} as const;
+        const restartRecovery = {action: "rebuild", reason: "PAR export publication is not resumable after restart. Export the captured source to the captured destination again."} as const;
+        const recovery = {action: "rebuild", reason: "Export to the captured destination again when ready; a partial workbook is never published."} as const;
         const execution = await this.executeCommonOperation(
             res, {
-                projectId: `design:${sourcePath ?? `draft:${blueprintHash}`}`, operation: "design-par-export", request: {sourcePath, destinationPath, overwrite: validated.overwrite, blueprint: validated.blueprint, blueprintHash}, conflictKey: `design-destination:${destinationPath}`, recoveryOnRestart: recovery,
+                projectId: `design:${sourcePath ?? `draft:${blueprintHash}`}`, operation: "design-par-export", request: {sourcePath, destinationPath, overwrite: validated.overwrite, blueprint: validated.blueprint, blueprintHash}, conflictKey: `design-destination:${destinationPath}`, recoveryOnRestart: restartRecovery,
                 initialProgress: {stage: "Writing workbook", unit: "worksheets", current: "indeterminate", total: "indeterminate", message: "Writing the PAR workbook to its staging destination."},
                 reattachedResponse: (job) => ({statusCode: 409, body: {status: "conflict", path: destinationPath, error: "PAR export is already in progress.", activeJobId: job.id, reattached: true}}),
             },
@@ -2607,10 +2612,11 @@ export class StudioServer implements StudioServerHandling {
         }
         const destinationPath = this.canonicalPathIdentity(preview.projectRoot);
         const blueprintHash = this.blueprintRequestIdentity(validated.blueprint);
-        const recovery = {action: "rebuild", reason: "Design build publication is not resumable after restart. Rebuild the captured source and destination."} as const;
+        const restartRecovery = {action: "rebuild", reason: "Design build publication is not resumable after restart. Rebuild the captured source and destination."} as const;
+        const recovery = {action: "rebuild", reason: "Rebuild from the captured source and destination when ready."} as const;
         const execution = await this.executeCommonOperation(
             res, {
-                projectId: `design:${sourcePath ?? `draft:${blueprintHash}`}`, operation: "design-build", request: {sourcePath, destinationPath, blueprint: validated.blueprint, blueprintHash}, conflictKey: `design-destination:${destinationPath}`, recoveryOnRestart: recovery,
+                projectId: `design:${sourcePath ?? `draft:${blueprintHash}`}`, operation: "design-build", request: {sourcePath, destinationPath, blueprint: validated.blueprint, blueprintHash}, conflictKey: `design-destination:${destinationPath}`, recoveryOnRestart: restartRecovery,
                 initialProgress: {stage: "Building package", unit: "package files", current: "indeterminate", total: "indeterminate", message: "Generating the Design package in its staging destination."},
                 // buildBlueprint treats non-2xx as a transport failure.  An
                 // in-flight exact request is still a normal StudioBuildResult.
@@ -3119,11 +3125,12 @@ export class StudioServer implements StudioServerHandling {
         }
 
         const projectRoot = this.canonicalPathIdentity(this.currentContext.projectRoot);
-        const recovery = {action: "rebuild", reason: "Deployment cannot safely resume after Studio restarts. Rebuild and publish again from the captured request."} as const;
+        const restartRecovery = {action: "rebuild", reason: "Deployment cannot safely resume after Studio restarts. Rebuild and publish again from the captured request."} as const;
+        const recovery = {action: "rebuild", reason: "Publish again from the captured request when ready."} as const;
         const execution = await this.executeCommonOperation(
             res,
             {
-                projectId: projectRoot, operation: "deployment", request: {...validated, sourceProjectId: projectRoot} as unknown as Readonly<Record<string, unknown>>, conflictKey: `deployment-delivery:${validated.targetId}`, recoveryOnRestart: recovery,
+                projectId: projectRoot, operation: "deployment", request: {...validated, sourceProjectId: projectRoot} as unknown as Readonly<Record<string, unknown>>, conflictKey: `deployment-delivery:${validated.targetId}`, recoveryOnRestart: restartRecovery,
                 initialProgress: {stage: "Planning deployment", unit: "pipeline stages", current: 0, total: "indeterminate", message: "Validating outputs and delivery boundaries."},
                 // runDeployment always resolves its planner view for an
                 // operation outcome.  Keep reconnects in that shape too; a
@@ -4522,10 +4529,11 @@ export class StudioServer implements StudioServerHandling {
         }
         if (this.rejectPlayDuringTransition(res)) return;
         const projectRoot = this.canonicalPathIdentity(this.currentContext.projectRoot);
-        const recovery = {action: "new-session", reason: "Scenario search cannot resume after restart because settled wallet state belongs to its original Play session."} as const;
+        const restartRecovery = {action: "new-session", reason: "Scenario search cannot resume after restart because settled wallet state belongs to its original Play session."} as const;
+        const recovery = {action: "new-session", reason: "Start a new Play session and retry the search."} as const;
         const execution = await this.executeCommonOperation(
             res, {
-                projectId: projectRoot, operation: "play-find-any-win", request: {sessionId, ...validated}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery,
+                projectId: projectRoot, operation: "play-find-any-win", request: {sessionId, ...validated}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: restartRecovery,
                 initialProgress: {stage: "Searching rounds", unit: "attempted spins", current: 0, total: "indeterminate", message: "Spinning until a winning round is settled."},
                 // Runtime failure codes distinguish session failures from the HTTP-only project guard.
                 // Preserve its normal result union for exact reattachment.
@@ -4567,10 +4575,11 @@ export class StudioServer implements StudioServerHandling {
 
         if (this.rejectPlayDuringTransition(res)) return;
         const projectRoot = this.canonicalPathIdentity(this.currentContext.projectRoot);
-        const recovery = {action: "new-session", reason: "Scenario search cannot resume after restart because settled wallet state belongs to its original Play session."} as const;
+        const restartRecovery = {action: "new-session", reason: "Scenario search cannot resume after restart because settled wallet state belongs to its original Play session."} as const;
+        const recovery = {action: "new-session", reason: "Start a new Play session and retry the search."} as const;
         const execution = await this.executeCommonOperation(
             res, {
-                projectId: projectRoot, operation: "play-find-symbol-win", request: {sessionId, symbolId: validated.symbolId, ...(validated.bet === undefined ? {} : {bet: validated.bet}), ...(validated.mode === undefined ? {} : {mode: validated.mode})}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery,
+                projectId: projectRoot, operation: "play-find-symbol-win", request: {sessionId, symbolId: validated.symbolId, ...(validated.bet === undefined ? {} : {bet: validated.bet}), ...(validated.mode === undefined ? {} : {mode: validated.mode})}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: restartRecovery,
                 initialProgress: {stage: "Searching rounds", unit: "attempted spins", current: 0, total: "indeterminate", message: "Spinning until the requested symbol win is settled."},
                 reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", error: "Scenario search is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
             },
@@ -4610,10 +4619,11 @@ export class StudioServer implements StudioServerHandling {
         }
         if (this.rejectPlayDuringTransition(res)) return;
         const projectRoot = this.canonicalPathIdentity(this.currentContext.projectRoot);
-        const recovery = {action: "new-session", reason: "Scenario search cannot resume after restart because settled wallet state belongs to its original Play session."} as const;
+        const restartRecovery = {action: "new-session", reason: "Scenario search cannot resume after restart because settled wallet state belongs to its original Play session."} as const;
+        const recovery = {action: "new-session", reason: "Start a new Play session and retry the search."} as const;
         const execution = await this.executeCommonOperation(
             res, {
-                projectId: projectRoot, operation: "play-find-free-games", request: {sessionId, ...validated}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery,
+                projectId: projectRoot, operation: "play-find-free-games", request: {sessionId, ...validated}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: restartRecovery,
                 initialProgress: {stage: "Searching rounds", unit: "attempted spins", current: 0, total: "indeterminate", message: "Spinning until a free-games round is settled."},
                 reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", error: "Scenario search is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
             },

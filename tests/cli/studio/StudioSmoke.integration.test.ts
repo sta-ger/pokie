@@ -151,6 +151,22 @@ describe("Studio HTTP smoke", () => {
         expect(fs.statSync(outputPath).size).toBeGreaterThan(0);
     });
 
+    it("reports a failed PAR import with a corrective next step, not a restart claim", async () => {
+        const missingPath = path.join(tempHome, "missing-par-import.xlsx");
+        const imported = await jsonRequest<{status: string; error?: string}>(
+            `${baseUrl}/api/home/blueprints/par-import`,
+            {method: "POST", body: JSON.stringify({path: missingPath})},
+        );
+        expect(imported.status).toBe(200);
+        expect(await imported.json()).toEqual(expect.objectContaining({status: "load-error", error: expect.stringContaining(missingPath)}));
+
+        const listed = await jsonRequest<{jobs: Array<{operation: string; status: string; request?: {path?: string}; recovery?: {action: string; reason: string}; recoveryOnRestart?: {action: string; reason: string}}>}>(`${baseUrl}/api/home/jobs`);
+        const job = (await listed.json()).jobs.find(candidate => candidate.operation === "design-par-import" && candidate.request?.path === missingPath);
+        expect(job?.status).toBe("failed");
+        expect(job?.recovery).toEqual({action: "rebuild", reason: "Import the same workbook again when ready; a partial import is never applied."});
+        expect(job?.recoveryOnRestart?.reason).toContain("after restart");
+    });
+
     it("refuses a second managed project with the same Game id instead of creating a suffixed duplicate", async () => {
         const saved = await jsonRequest<{status: string; path?: string; error?: string; suggestedGameId?: string}>(
             `${baseUrl}/api/home/blueprints/save-managed`,
