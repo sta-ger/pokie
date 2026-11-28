@@ -757,6 +757,49 @@ describe("ReplayCommand outcome-source routing (integration, real outcome-librar
 });
 
 
+describe("ReplayCommand output preflight", () => {
+    let root: string;
+
+    beforeEach(() => {
+        root = fs.mkdtempSync(path.join(os.tmpdir(), "replay-output-"));
+    });
+
+    afterEach(() => {
+        fs.rmSync(root, {recursive: true, force: true});
+    });
+
+    it("refuses to replace an existing replay descriptor", async () => {
+        const output = path.join(root, "existing.json");
+        fs.writeFileSync(output, "caller-owned bytes");
+        await expect(new ReplayCommand().run([root, "--round", "1", "--out", output])).rejects.toThrow(
+            /already exists.*Choose a new unused --out path/,
+        );
+        expect(fs.readFileSync(output, "utf8")).toBe("caller-owned bytes");
+    });
+
+    it("names a folder --out destination", async () => {
+        const output = path.join(root, "folder.json");
+        fs.mkdirSync(output);
+        await expect(new ReplayCommand().run([root, "--round", "1", "--out", output])).rejects.toThrow(
+            /is a folder, not a file/,
+        );
+    });
+
+    it("names a path whose parent is a file", async () => {
+        const parent = path.join(root, "parent.json");
+        fs.writeFileSync(parent, "{}");
+        await expect(new ReplayCommand().run([root, "--round", "1", "--out", path.join(parent, "child.json")])).rejects.toThrow(
+            /is inside a file, not a folder/,
+        );
+    });
+
+    it("refuses to write the descriptor inside the source package", async () => {
+        await expect(new ReplayCommand().run([root, "--round", "1", "--out", path.join(root, "replay.json")])).rejects.toThrow(
+            /is inside source/,
+        );
+    });
+});
+
 describe("recorded audit CLI", () => {
     it("consumes original recorded state instead of seed-forward funding, and rejects outer tampering", async () => {
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-audit-cli-"));

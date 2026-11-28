@@ -10,7 +10,22 @@ export function assertBuildDestinationAvailable(destinationPath: string, kind: "
     try {
         fs.lstatSync(destinationPath);
     } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === "ENOENT") return;
+        // A destination that cannot even be inspected is caller input, not an internal failure. Keep the
+        // shared conflict type so planners, CLI diagnostics and Studio's preflight all take the same path.
+        if (code === "ENOTDIR") {
+            throw new BuildConflictError(`"${destinationPath}" is inside a file, not a folder. Choose a different output path.`);
+        }
+        if (code === "ENAMETOOLONG") {
+            throw new BuildConflictError(`"${destinationPath}" is too long for this filesystem. Use a shorter output path.`);
+        }
+        if (code === "EACCES" || code === "EPERM") {
+            throw new BuildConflictError(`POKIE doesn't have permission to use "${destinationPath}". Choose a different output path or fix its permissions.`);
+        }
+        if (code === "EROFS") {
+            throw new BuildConflictError(`"${destinationPath}" is on a read-only location. Choose a writable output path.`);
+        }
         throw error;
     }
 

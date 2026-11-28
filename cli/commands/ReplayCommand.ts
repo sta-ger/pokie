@@ -21,10 +21,13 @@ import {
     loadPokieWasmFileRuntime,
 } from "@fromstan/pokie";
 import fs from "fs";
+import path from "path";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../runtime/prepareRuntimePackage.js";
 import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOperationError.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {assertDestinationIsAFile} from "./internal/assertDestinationIsAFile.js";
+import {canonicalPlannedPath} from "./internal/canonicalPlannedPath.js";
 import {describeRuntimePackageLoadError} from "./internal/describeLocalRuntimeError.js";
 import {assertDeclaredOutcomeLibraryMode} from "./internal/assertDeclaredOutcomeLibraryMode.js";
 
@@ -112,6 +115,7 @@ export class ReplayCommand implements CliCommandHandling {
         // all). A path that doesn't resolve to either of those two types -- including one ProjectResolving
         // doesn't recognize as any known project at all -- falls through to the original, unaffected
         // materialize-and-load flow.
+        this.assertReplayOutputAvailable(options.packageRoot, options.out);
         let project: PokieProject | undefined;
         try {
             project = await this.resolveProject.resolve(options.packageRoot);
@@ -296,6 +300,26 @@ export class ReplayCommand implements CliCommandHandling {
         }
     }
 
+
+    // Replay descriptors are derived artifacts published to new files. Refuse an occupied destination, a folder,
+    // and an output inside a package/outcome-library source tree before resolving or loading anything; the same
+    // paths are otherwise a silent data-loss and source-mutation risk on this read-only replay surface.
+    private assertReplayOutputAvailable(packageRoot: string, out: string | undefined): void {
+        if (out === undefined) return;
+        assertDestinationIsAFile(out);
+        if (fs.existsSync(out)) {
+            throw new Error(`Cannot write replay to "${out}" because that destination already exists. Choose a new unused --out path.`);
+        }
+        try {
+            if (!fs.statSync(packageRoot).isDirectory()) return;
+        } catch {
+            return;
+        }
+        const relative = path.relative(canonicalPlannedPath(packageRoot), canonicalPlannedPath(out));
+        if (relative === "" || (!relative.startsWith(".." + path.sep) && relative !== ".." && !path.isAbsolute(relative))) {
+            throw new Error(`Cannot write replay to "${out}" because it is inside source "${packageRoot}". Choose a path outside the source project.`);
+        }
+    }
 
     private parseArgs(args: string[]): ReplayOptions {
         const resultRef: {value?: ReplayOptions} = {};
