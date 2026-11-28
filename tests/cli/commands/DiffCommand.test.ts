@@ -65,4 +65,20 @@ describe("DiffCommand", () => {
             fs.rmSync(directory, {recursive: true, force: true});
         }
     });
+
+    it("names an --out path whose parent is a file instead of printing raw ENOTDIR", async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-diff-out-"));
+        const left = path.join(directory, "left.json");
+        const right = path.join(directory, "right.json");
+        const parent = path.join(directory, "parent.json");
+        fs.writeFileSync(left, JSON.stringify(simulationReport()));
+        fs.writeFileSync(right, JSON.stringify(simulationReport()));
+        fs.writeFileSync(parent, "{}");
+        try {
+            await expect(new DiffCommand().run([left, right, "--format", "json", "--out", path.join(parent, "diff.json")]))
+                .rejects.toThrow(/is inside a file, not a folder/);
+        } finally {
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
 });

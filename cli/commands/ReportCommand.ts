@@ -25,6 +25,8 @@ import {
 import fs from "fs";
 import path from "path";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {assertDestinationIsAFile} from "./internal/assertDestinationIsAFile.js";
+import {canonicalPlannedPath} from "./internal/canonicalPlannedPath.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {isSimulationReport as isCoreSimulationReport} from "./internal/isSimulationReport.js";
 import {renderOutcomeSourceHtml, renderOutcomeSourceMarkdown} from "./internal/renderOutcomeSourceReport.js";
@@ -91,6 +93,9 @@ export class ReportCommand implements CliCommandHandling {
             throw error;
         }
         const {reportPath, format, out, template} = parsedArgs;
+        if (out !== undefined && canonicalPlannedPath(out) === canonicalPlannedPath(reportPath)) {
+            throw new Error(`Cannot write report to "${out}" because it is also the input. Choose a different --out path.`);
+        }
 
         // A certification pack is a directory whose index.json has a "pack" object. Recognize it before
         // generic project resolution: otherwise the standalone-Stake fallback sees any index.json and
@@ -145,9 +150,31 @@ export class ReportCommand implements CliCommandHandling {
             const issues = await new CertificationPackValidator().validate(packDir);
             if (issues.some(issue => issue.severity === "error")) throw new Error(`Invalid pack: ${issues.map(issue => issue.message).join("; ")}`);
             let selectedTemplate: CertificationPackTemplate | undefined;
-            if (template) selectedTemplate = loadCertificationPackTemplate(template);
+            if (template) {
+                try {
+                    selectedTemplate = loadCertificationPackTemplate(template);
+                } catch (error) {
+                    throw new Error(
+                        `Could not read the presentation template file "${template}": ${error instanceof Error ? error.message : String(error)}. ` +
+                            "Check that the file exists and contains a valid version 1 template JSON, then retry.",
+                    );
+                }
+            }
             const result = await new CertificationPackRenderer().render(parsed, format, selectedTemplate ?? parsed.presentation.template);
-            if (out) writeOutputFileAtomically(out, result, true);
+            if (out) {
+                assertDestinationIsAFile(out);
+                try {
+                    writeOutputFileAtomically(out, result, true);
+                } catch (error) {
+                    if ((error as NodeJS.ErrnoException | undefined)?.code === "EEXIST") {
+                        throw new Error(`Cannot write report to "${out}" because that destination already exists. Choose a new unused --out path.`);
+                    }
+                    throw new Error(
+                        `Could not write report to "${out}": ${error instanceof Error ? error.message : String(error)}. ` +
+                            "Choose an existing writable directory and try --out <file> again.",
+                    );
+                }
+            }
             if (Buffer.isBuffer(result)) {
                 if (!out) throw new Error("PDF pack output requires --out <new-file>.");
                 console.log(CERTIFICATION_PREPARATION_NOTICE);
@@ -203,6 +230,7 @@ export class ReportCommand implements CliCommandHandling {
             throw new Error("Report rendering produced no output; try regenerating the simulation with \"pokie sim <packageRoot> --out <file>\".");
         }
         if (out) {
+            assertDestinationIsAFile(out);
             try {
                 this.writeFile(out, rendered);
             } catch (error) {

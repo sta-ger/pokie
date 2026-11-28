@@ -24,6 +24,7 @@ import {CliCommandHandling} from "../CliCommandHandling.js";
 import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOperationError.js";
 import {canonicalPlannedPath} from "./internal/canonicalPlannedPath.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {describeDestinationFilesystemProblem} from "./internal/describeDestinationFilesystemProblem.js";
 import {isSimulationReport} from "./internal/isSimulationReport.js";
 import {renderOutcomeSourceProjectDiff} from "./internal/renderOutcomeSourceProjectDiff.js";
 
@@ -62,7 +63,11 @@ function writeNewDiffFileAtomically(file: string, contents: string): void {
                 "Choose a new unused --out path, or inspect and remove the destination yourself before retrying.",
             );
         }
-        throw error;
+        throw new Error(
+            describeDestinationFilesystemProblem(file, error) ??
+                `Could not write diff to "${file}": ${error instanceof Error ? error.message : String(error)}. ` +
+                    "Choose an existing writable directory and try --out <file> again.",
+        );
     } finally {
         if (temporaryDirectory !== undefined) {
             fs.rmSync(temporaryDirectory, {recursive: true, force: true});
@@ -393,9 +398,8 @@ export class DiffCommand implements CliCommandHandling {
             if ((error as NodeJS.ErrnoException).code === "ENOENT") {
                 return;
             }
-            throw new Error(
-                `Cannot prepare diff output at "${options.out}": ${error instanceof Error ? error.message : String(error)}`,
-            );
+            const problem = describeDestinationFilesystemProblem(options.out, error);
+            throw new Error(problem ?? `Cannot prepare diff output at "${options.out}": ${error instanceof Error ? error.message : String(error)}`);
         }
         throw new Error(
             `Cannot write diff to "${options.out}" because that destination already exists. ` +

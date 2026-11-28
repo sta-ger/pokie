@@ -157,13 +157,18 @@ describe("ReportCommand", () => {
             await command.run([out, "--format", "pdf", "--out", directoryOutput]);
             expect(fs.readFileSync(directoryOutput).toString()).toContain("%PDF-1.4");
 
-            await expect(command.run([path.join(out, "index.json"), "--format", "pdf", "--out", output])).rejects.toThrow();
+            await expect(command.run([path.join(out, "index.json"), "--format", "pdf", "--out", output])).rejects.toThrow(/destination already exists/);
             expect(fs.readFileSync(output)).toEqual(bytes);
             const template = path.join(root, "broken.json"),
                 missingOutput = path.join(root, "missing.html");
             fs.writeFileSync(template, JSON.stringify({schemaVersion: 99}));
-            await expect(command.run([path.join(out, "index.json"), "--format", "html", "--template", template, "--out", missingOutput])).rejects.toThrow(/template/);
+            await expect(command.run([path.join(out, "index.json"), "--format", "html", "--template", template, "--out", missingOutput])).rejects.toThrow(/presentation template file/);
             expect(fs.existsSync(missingOutput)).toBe(false);
+            await expect(command.run([path.join(out, "index.json"), "--format", "html", "--template", path.join(root, "no-template.json"), "--out", missingOutput])).rejects.toThrow(/presentation template file/);
+
+            const packDirectoryOutput = path.join(root, "pack-output");
+            fs.mkdirSync(packDirectoryOutput);
+            await expect(command.run([path.join(out, "index.json"), "--format", "html", "--out", packDirectoryOutput])).rejects.toThrow(/is a folder, not a file/);
 
             const insidePack = path.join(out, "report.html");
             await expect(command.run([path.join(out, "index.json"), "--format", "html", "--out", insidePack])).rejects.toThrow(/inside certification pack/);
@@ -416,6 +421,38 @@ describe("ReportCommand", () => {
             .rejects.toThrow(/Could not write report to "locked\/report\.md".*existing writable directory/);
         expect(logSpy).not.toHaveBeenCalled();
         logSpy.mockRestore();
+    });
+
+    it("refuses to write a report over its own input JSON", async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "report-self-output-"));
+        const input = path.join(root, "sim.json");
+        const original = JSON.stringify(report);
+        fs.writeFileSync(input, original);
+        try {
+            await expect(new ReportCommand().run([input, "--out", input])).rejects.toThrow(
+                `Cannot write report to "${input}" because it is also the input. Choose a different --out path.`,
+            );
+            expect(fs.readFileSync(input, "utf8")).toBe(original);
+        } finally {
+            fs.rmSync(root, {recursive: true, force: true});
+        }
+    });
+
+    it("names a folder --out destination instead of surfacing an EISDIR rename failure", async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "report-output-folder-"));
+        const output = path.join(root, "report.md");
+        fs.mkdirSync(output);
+        const writeFile = jest.fn();
+        const command = new ReportCommand(createStubReadFile({"sim.json": JSON.stringify(report)}), writeFile);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            await expect(command.run(["sim.json", "--out", output])).rejects.toThrow(`"${output}" is a folder, not a file. Choose a different file path.`);
+            expect(writeFile).not.toHaveBeenCalled();
+            expect(logSpy).not.toHaveBeenCalled();
+        } finally {
+            logSpy.mockRestore();
+            fs.rmSync(root, {recursive: true, force: true});
+        }
     });
 
     it("accepts and renders an old report JSON without reproducibility/warnings/recommendations fields", async () => {
