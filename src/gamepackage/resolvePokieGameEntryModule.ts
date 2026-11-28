@@ -93,7 +93,32 @@ async function createRuntimeSnapshot(packageRoot: string, entryPath: string): Pr
     }
 }
 
-type RuntimePackageCopying = (source: string, destination: string) => Promise<void>;
+type RuntimePackageCopying = (source: string, destination: string, files?: readonly string[]) => Promise<void>;
+
+// Npm's "files" field is a publication allow-list. Honor its common prefix form for dependencies:
+// the local POKIE checkout lists dist/src/docs/README/LICENSE and excludes coverage/tests/cli/scripts,
+// so a runtime snapshot no longer copies dev-only trees. Globs and negations fall back to the previous
+// full copy instead of risking a missing runtime asset. package.json is always retained (npm does the
+// same), and the game package itself is still copied in full because a hand-authored package may read
+// files it did not publish.
+export function publishedFilePrefixes(packageRoot: string): string[] | undefined {
+    let raw: unknown;
+    try {
+        raw = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf-8"));
+    } catch {
+        return undefined;
+    }
+    const files = (raw as {files?: unknown} | null)?.files;
+    if (!Array.isArray(files) || files.length === 0) return undefined;
+    const prefixes = new Set<string>(["package.json"]);
+    for (const entry of files) {
+        if (typeof entry !== "string") return undefined;
+        const normalized = entry.trim().replace(/^\.\//, "").replace(/\/+$/, "");
+        if (normalized.length === 0 || (/[*?![\]{}]/).test(normalized)) return undefined;
+        prefixes.add(normalized);
+    }
+    return [...prefixes];
+}
 
 function createRuntimePackageCopier(): {copy: RuntimePackageCopying; close(): Promise<void>} {
     // Keep Node's existing recursive-copy semantics and throughput, off the serving event loop.
@@ -101,9 +126,12 @@ function createRuntimePackageCopier(): {copy: RuntimePackageCopying; close(): Pr
     // their existing owners. One worker serves this invocation's entire graph, then is drained.
     const worker = new Worker(`
 const fs = require('node:fs'), path = require('node:path'), {parentPort} = require('node:worker_threads');
-parentPort.on('message', async ({source, destination}) => {
+parentPort.on('message', async ({source, destination, files}) => {
     const pending = new Set();
     let failure;
+    const selected = Array.isArray(files) && files.length > 0 ? files : undefined;
+    const includes = relative => selected === undefined || selected.some(prefix => relative === prefix || relative.startsWith(prefix + '/'));
+    const mayContain = relative => selected === undefined || relative === '' || selected.some(prefix => relative === prefix || relative.startsWith(prefix + '/') || prefix.startsWith(relative + '/'));
     // Parallelize independent file I/O, but bound both libuv work and retained promises.
     // Observe failures immediately and drain every started write before replying: the
     // owner may remove the snapshot as soon as it receives a rejection.
@@ -122,10 +150,13 @@ parentPort.on('message', async ({source, destination}) => {
         // for every SDK acquisition. Walk each directory once; copy regular files
         // directly, retaining their bytes, modes and timestamps (including stale-
         // build checks). Keep cpSync's link/special-file semantics at that boundary.
-        const copyDirectory = async (from, to) => {
+        const copyDirectory = async (from, to, relative) => {
             for (const entry of fs.readdirSync(from, {withFileTypes: true})) {
                 // TMPDIR may be below node_modules. Exclude before recursion.
                 if (['node_modules', '.git', '.pokie-runtime-cache'].includes(entry.name)) continue;
+                const child = relative.length === 0 ? entry.name : relative + '/' + entry.name;
+                if (entry.isDirectory() && !mayContain(child)) continue;
+                if (!entry.isDirectory() && selected !== undefined && !includes(child)) continue;
                 const input = path.join(from, entry.name), output = path.join(to, entry.name);
                 if (entry.isDirectory()) {
                     const nestedDestination = path.relative(path.join(realSource, path.relative(source, input)), realDestination);
@@ -137,7 +168,7 @@ parentPort.on('message', async ({source, destination}) => {
                     // Read-only installations stay untouched; only owned directories
                     // become writable for dependency links and recursive release.
                     fs.chmodSync(output, mode);
-                    await copyDirectory(input, output);
+                    await copyDirectory(input, output, child);
                 } else if (entry.isFile() && process.platform !== 'win32') {
                     const stats = fs.statSync(input);
                     await schedule(async () => {
@@ -149,7 +180,7 @@ parentPort.on('message', async ({source, destination}) => {
                 }
             }
         };
-        await copyDirectory(source, destination);
+        await copyDirectory(source, destination, '');
         await Promise.all(pending);
         if (failure) throw failure;
         parentPort.postMessage({});
@@ -177,13 +208,13 @@ parentPort.on('message', async ({source, destination}) => {
         pending = undefined;
     });
     return {
-        copy: (source, destination) => new Promise<void>((resolve, reject) => {
+        copy: (source, destination, files) => new Promise<void>((resolve, reject) => {
             if (failure !== undefined) {
                 reject(failure);
                 return;
             }
             pending = {resolve, reject};
-            worker.postMessage({source, destination});
+            worker.postMessage({source, destination, files});
         }),
         close: async () => {
             await worker.terminate();
@@ -204,7 +235,7 @@ async function snapshotPokieGameDependencies(snapshotRoot: string, packageRoot: 
         if (existing !== undefined) return existing;
         const destination = path.join(storage, String(copies.size));
         copies.set(source, destination);
-        await copyRuntimePackage(source, destination);
+        await copyRuntimePackage(source, destination, publishedFilePrefixes(source));
         await linkDependencies(destination, await resolvePokieGameDependencyRoots(source, false));
         return destination;
     };

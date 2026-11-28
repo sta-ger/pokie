@@ -3344,7 +3344,11 @@ POKIE Studio listening on http://127.0.0.1:3200
 
 While a project stays open, Studio keeps one leased runtime for its unchanged `package.json`/entry pair and reuses
 it for the Overview load, validation and Play instead of creating a fresh isolated package snapshot for each tab
-action. It is released when Studio stops or the entry changes; reopening Studio is still the way to pick up a
+action. Runtime snapshots honor a dependency's simple `package.json` `files` prefixes (for example the local POKIE
+checkout's `dist`/`src`/`docs`), so a source checkout does not copy `coverage`, `tests`, `cli` or other unpublished
+developer trees; packages using globs/negations retain the full-copy fallback. Declared-model validation runs in a
+worker thread, so a multi-second check no longer blocks Play, health or other HTTP routes on the event loop. The
+runtime lease is released when Studio stops or the entry changes; reopening Studio is still the way to pick up a
 dependency-only rebuild.
 
 A browser tab opens automatically (same best-effort `open`/`start`/`xdg-open` mechanism as `pokie dev`, and the

@@ -1,8 +1,9 @@
 import {StudioOptimizationService} from "./optimization/StudioOptimizationService.js";
 import {StudioWasmBrowserService} from "./wasm/StudioWasmBrowserService.js";
 import {describeValidationSourceChanges, readValidationSourceSnapshot} from "../validation/readValidationSourceRevision.js";
-import {AdvancedModelSourceValidator} from "../../src/validation/AdvancedModelSourceValidator.js";
+import {AdvancedModelSourceValidator, type AdvancedModelSourceValidating} from "../../src/validation/AdvancedModelSourceValidator.js";
 import type {AdvancedModelValidationReport} from "../../src/validation/AdvancedModelValidation.js";
+import {StudioAdvancedValidationWorker} from "./validation/StudioAdvancedValidationWorker.js";
 import {compareMathDefinitions} from "../../src/diff/MathDefinitionSourceReader.js";
 import type {MathDefinitionDiff} from "../../src/diff/MathDefinitionDiff.js";
 import {
@@ -352,6 +353,7 @@ export class StudioServer implements StudioServerHandling {
     // just as its signal is observed.
     private validationTransitions = 0;
     private readonly advancedValidations = new Map<AbortController, Promise<unknown>>();
+    private readonly advancedModelValidator: AdvancedModelSourceValidating;
     // Validation of an unchanged source is deterministic; reuse the last report instead of re-reading
     // and re-analysing the model on every Overview refresh. readValidationSourceSnapshot's own revision
     // remains the invalidation key.
@@ -387,6 +389,10 @@ export class StudioServer implements StudioServerHandling {
         this.resolveRuntimePackageRoot = options.resolveRuntimePackageRoot ?? createPreparingRuntimePackageResolver(this.pokieVersion, STUDIO_OPERATION);
         this.gamePackageInspector = options.gamePackageInspector ?? new GamePackageInspector();
         this.gamePackageValidator = options.gamePackageValidator ?? new PokieGamePackageValidator();
+        this.advancedModelValidator = options.advancedModelValidator
+            ?? (options.pokiePackageRoot === undefined
+                ? new AdvancedModelSourceValidator()
+                : new StudioAdvancedValidationWorker(options.pokiePackageRoot));
         this.outcomeSourceProjectAnalyzer = options.outcomeSourceProjectAnalyzer ?? new OutcomeSourceProjectAnalyzer();
         // Every default Project execution service loads through the same materializing boundary as
         // Play. This makes a Blueprint save observable on the next simulation/replay/generation
@@ -2787,7 +2793,7 @@ export class StudioServer implements StudioServerHandling {
             const cached = this.advancedValidationCache.get(root);
             const advanced = cached?.revision === sourceBefore.revision
                 ? cached.report
-                : await new AdvancedModelSourceValidator().validate(root, {signal});
+                : await this.advancedModelValidator.validate(root, {signal});
             if (cached?.revision !== sourceBefore.revision && advanced.status !== "cancelled" && advanced.status !== "failed") {
                 this.advancedValidationCache.set(root, {revision: sourceBefore.revision, report: advanced});
                 if (this.advancedValidationCache.size > 10) {

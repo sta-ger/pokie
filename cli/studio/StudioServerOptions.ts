@@ -1,5 +1,6 @@
 import {GamePackageInspecting, loadPokieGame, OutcomeSourceProjectAnalyzing, PokieGamePackageValidating} from "@fromstan/pokie";
 import type {IncomingMessage} from "http";
+import type {AdvancedModelSourceValidating} from "../../src/validation/AdvancedModelSourceValidator.js";
 import type {RuntimePackageResolving} from "../runtime/prepareRuntimePackage.js";
 import {StudioBuildService} from "./build/StudioBuildService.js";
 import {StudioBlueprintService} from "./blueprint/StudioBlueprintService.js";
@@ -93,6 +94,9 @@ export type StudioServerOptions = {
     // Studio never re-implements either.
     gamePackageInspector?: GamePackageInspecting;
     gamePackageValidator?: PokieGamePackageValidating;
+    // Runs the CPU-heavy declared-model analysis. Defaults to a worker thread when pokiePackageRoot can
+    // locate the built worker entry, and to the in-process validator for embedded/test hosts.
+    advancedModelValidator?: AdvancedModelSourceValidating;
     // Provenance/validation for a resolved "outcomeLibrary"/"stakeAdapter" project (the same two GET
     // /api/project/inspect|validate endpoints above) -- StudioServer dispatches to this instead of
     // gamePackageInspector/gamePackageValidator once ProjectTargetResolver resolves `projectRoot` to
