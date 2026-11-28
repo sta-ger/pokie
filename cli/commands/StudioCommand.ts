@@ -13,6 +13,7 @@ import {StudioServer} from "../studio/StudioServer.js";
 import {StudioServerHandling} from "../studio/StudioServerHandling.js";
 import {StudioServerOptions} from "../studio/StudioServerOptions.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {describeLocalServerStartError} from "./internal/describeLocalRuntimeError.js";
 
 type StudioOptions = {
     projectRoot?: string;
@@ -127,7 +128,11 @@ export class StudioCommand implements CliCommandHandling {
             gamePackageValidator: this.gamePackageValidator,
             resolveRuntimePackageRoot: this.resolveRuntimePackageRoot,
         });
-        const address = await server.start();
+        const address = await server.start().catch((error: unknown) => {
+            // Match `pokie serve`/`pokie client`/`pokie dev`: a busy port is a user-fixable startup condition
+            // with a concrete `--port` remedy, not a bare Node listener error in the terminal.
+            throw describeLocalServerStartError(error, "POKIE Studio", "--port");
+        });
 
         console.log(`POKIE Studio listening on http://${address.host}:${address.port}`);
         console.log("Keep this terminal window open while you use Studio. Closing it stops the local server.");
