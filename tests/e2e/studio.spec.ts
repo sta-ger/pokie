@@ -1736,8 +1736,10 @@ test("a saved game design can be duplicated from Projects with a fresh identity"
     const designerEntry = page.locator("[data-pokie-game-model-open-designer]");
     await expect(designerEntry).toBeVisible({timeout: 60_000});
     await designerEntry.getByRole("button", {name: "Open in Start a game"}).click();
-    await expect(page.getByText(/This design is open from/)).toBeVisible({timeout: 90_000});
-    await expect(page.getByText(/You are editing the saved game design/)).toBeVisible();
+    // The Design page deliberately repeats the source path both in the guided action header and near the Build
+    // controls; assert the first visible copy rather than tripping Playwright's strict-mode locator.
+    await expect(page.getByText(/This design is open from/).first()).toBeVisible({timeout: 90_000});
+    await expect(page.getByText(/You are editing the saved game design/).first()).toBeVisible();
     await expect(page.getByText(/This is a new design draft, not the last saved project/)).toHaveCount(0);
     await expect(page.getByText("Saved design is ready to update", {exact: true})).toBeVisible({timeout: 60_000});
     await page.getByRole("button", {name: /Show advanced options/}).click();
