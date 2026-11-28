@@ -503,6 +503,7 @@ export class BuildCommand implements CliCommandHandling {
     private async runWithArtifactLifecycle<T>(run: (options: BuildOutputOptions) => Promise<T>): Promise<T> {
         const controller = new AbortController();
         let lastMessage: string | undefined;
+        let cancellationPrinted = false;
         const cancel = (): void => {
             if (!controller.signal.aborted) {
                 console.log("Cancelling build…");
@@ -533,7 +534,10 @@ export class BuildCommand implements CliCommandHandling {
                                 `${progress.completed !== undefined ? ` (${progress.completed}${progress.total !== undefined ? `/${progress.total}` : ""}${progress.unit === undefined ? "" : ` ${progress.unit}`})` : ""}`,
                         );
                     }
-                    if (progress.status === "cancelled") console.log("Build cancelled.");
+                    if (progress.status === "cancelled" && !cancellationPrinted) {
+                        cancellationPrinted = true;
+                        console.log("Build cancelled.");
+                    }
                 },
             });
         } finally {
