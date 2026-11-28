@@ -33,6 +33,7 @@ import path from "path";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../runtime/prepareRuntimePackage.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {parseNonEmptyPathOption} from "./internal/parseNonEmptyPathOption.js";
 
 class ValidationLeaseCleanupError extends Error {}
 
@@ -623,7 +624,7 @@ export class ValidateCommand implements CliCommandHandling {
                 }
                 return "json" as ValidateFormat;
             })
-            .option("--out <file>", "file path to write the report to")
+            .option("--out <file>", "file path to write the report to", parseNonEmptyPathOption("--out", USAGE))
             .option("--deep", "also validate every outcome in an outcome-library project")
             .option("--strict", "exit 2 when the optional advanced declaration check is inconclusive")
             .option("--details", "print every advanced check, assumption and limit")

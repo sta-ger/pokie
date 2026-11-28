@@ -30,6 +30,7 @@ import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOpe
 import {assertBlueprintImportDestination} from "./internal/assertBlueprintImportDestination.js";
 import {assertParWorkbookDestination} from "./internal/assertParWorkbookDestination.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {parseNonEmptyPathOption} from "./internal/parseNonEmptyPathOption.js";
 import {BlueprintFileWriteResult, writeBlueprintFileAtomically} from "./internal/writeBlueprintFileAtomically.js";
 
 const USAGE =
@@ -192,7 +193,7 @@ export class ParCommand implements CliCommandHandling {
             .description("Import a PAR sheet XLSX workbook into a GameBlueprint JSON file.")
             .argument("<input.xlsx>", "an existing PAR sheet workbook")
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
-            .option("--out <blueprint.json>", "output path (default: <input.xlsx> with a .blueprint.json extension)")
+            .option("--out <blueprint.json>", "output path (default: <input.xlsx> with a .blueprint.json extension)", parseNonEmptyPathOption("--out", IMPORT_USAGE))
             .option("--format <value>", "only \"json\" is supported (default: a human-readable summary)", (value: string): ImportFormat => {
                 if (value !== "json") {
                     throw new Error(`--format only supports "json". ${IMPORT_USAGE}`);
@@ -224,7 +225,7 @@ export class ParCommand implements CliCommandHandling {
             .description("Export a GameBlueprint JSON config to a PAR sheet XLSX workbook.")
             .argument("<config.json>", "an existing GameBlueprint JSON config")
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
-            .option("--out <output.xlsx>", "output path (default: <config.json> with a .par.xlsx extension)")
+            .option("--out <output.xlsx>", "output path (default: <config.json> with a .par.xlsx extension)", parseNonEmptyPathOption("--out", EXPORT_USAGE))
             .option("--dry-run", "preview the prepared export without writing anything")
             .action(async (blueprintPath: string, excess: string[], options: {out?: string; dryRun?: boolean}) => {
                 if (excess.length > 0) {

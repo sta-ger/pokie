@@ -41,6 +41,7 @@ import {
 } from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {parseNonEmptyPathOption} from "./internal/parseNonEmptyPathOption.js";
 import {streamJsonlOutcomes} from "./internal/streamJsonlOutcomes.js";
 
 const USAGE =
@@ -475,7 +476,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             .option("--seed <string>", "deterministic seed for --sample (or legacy --bounded)")
             .option("--estimate", "print the outcome space size/strategy without enumerating or sampling anything")
             .option("--dry-run", "alias for --estimate")
-            .option("--out <file>", "write the generated library JSON to this path")
+            .option("--out <file>", "write the generated library JSON to this path", parseNonEmptyPathOption("--out", GENERATE_USAGE))
             .option("--resume <file>", "resume from a checkpoint written by an earlier cancelled run")
             .option("--progress", "print periodic progress to stderr while generating")
             .option(

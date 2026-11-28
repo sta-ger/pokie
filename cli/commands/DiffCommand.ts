@@ -24,6 +24,7 @@ import {CliCommandHandling} from "../CliCommandHandling.js";
 import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOperationError.js";
 import {canonicalPlannedPath} from "./internal/canonicalPlannedPath.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {parseNonEmptyPathOption} from "./internal/parseNonEmptyPathOption.js";
 import {describeDestinationFilesystemProblem} from "./internal/describeDestinationFilesystemProblem.js";
 import {isSimulationReport} from "./internal/isSimulationReport.js";
 import {renderOutcomeSourceProjectDiff} from "./internal/renderOutcomeSourceProjectDiff.js";
@@ -186,7 +187,7 @@ export class DiffCommand implements CliCommandHandling {
                 return value as DiffOptions["comparison"];
             })
             .option("--ci", "definition exit policy: 0 unchanged/representation, 1 math change, 2 incomplete/error")
-            .option("--out <file>", "write the diff JSON to this path")
+            .option("--out <file>", "write the diff JSON to this path", parseNonEmptyPathOption("--out", USAGE))
             .action((leftPath: string, rightPath: string, excess: string[], options: {format?: DiffFormat; out?: string; comparison?: DiffOptions["comparison"]; ci?: boolean}) => {
                 if (excess.length > 0) {
                     throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);

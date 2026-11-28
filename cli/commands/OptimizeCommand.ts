@@ -49,6 +49,7 @@ export class OptimizeCommand implements CliCommandHandling {
                 throw error;
             }
             const options = command.opts<{policy: string; out?: string; format: string; progress?: boolean; apply?: string}>();
+            if (options.out !== undefined && options.out.trim().length === 0) throw new OptimizationInputError([{path: "out", message: "--out requires a non-empty output path."}]);
             if (options.apply && options.out) throw new OptimizationInputError([{path: "apply", message: "Choose authored apply or separate output."}]);
             if (options.format !== "json") throw new OptimizationInputError([{path: "format", message: "Only json is supported."}]);
             try {

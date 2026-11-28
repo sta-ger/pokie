@@ -36,6 +36,7 @@ import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../runtime/prepareRuntimePackage.js";
 import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOperationError.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {parseNonEmptyPathOption} from "./internal/parseNonEmptyPathOption.js";
 import {writeOutputFileAtomically} from "./internal/writeOutputFile.js";
 import {describeRuntimePackageLoadError} from "./internal/describeLocalRuntimeError.js";
 import {assertDeclaredOutcomeLibraryMode} from "./internal/assertDeclaredOutcomeLibraryMode.js";
@@ -256,7 +257,7 @@ export class SimCommand implements CliCommandHandling {
                 },
                 1,
             )
-            .option("--out <file>", "write the simulation report JSON to this path")
+            .option("--out <file>", "write the simulation report JSON to this path", parseNonEmptyPathOption("--out", USAGE))
             .option(
                 "--format <format>",
                 "only \"json\" is supported (default: a human-readable summary)",

@@ -19,6 +19,7 @@ import {PromptAdapting} from "../wizard/PromptAdapting.js";
 import {ReadlinePromptAdapter} from "../wizard/ReadlinePromptAdapter.js";
 import {assertBlueprintJsonDestination} from "./internal/assertBlueprintImportDestination.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {parseNonEmptyPathOption} from "./internal/parseNonEmptyPathOption.js";
 
 const USAGE = "Usage: pokie edit <blueprint> [--out <file>]";
 
@@ -120,7 +121,7 @@ export class EditCommand implements CliCommandHandling {
             .description(this.getDescription())
             .argument("<blueprint>", "an existing Blueprint Project file to edit")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
-            .option("--out <file>", "save the edited blueprint here instead of overwriting <blueprint> (\"Save As\")")
+            .option("--out <file>", "save the edited blueprint here instead of overwriting <blueprint> (\"Save As\")", parseNonEmptyPathOption("--out", USAGE))
             .action(async (blueprintPath: string, excess: string[], options: {out?: string}) => {
                 if (excess.length > 0) {
                     throw new Error(`Unexpected extra argument "${excess[0]}". ${USAGE}`);

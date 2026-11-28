@@ -31,6 +31,7 @@ import {StakeEngineCommand} from "./StakeEngineCommand.js";
 import {ParCommand} from "./ParCommand.js";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {parseNonEmptyPathOption} from "./internal/parseNonEmptyPathOption.js";
 import {quoteShellArgument} from "./internal/quoteShellArgument.js";
 
 // The complete product matrix: every OutputFormat is selectable through
@@ -145,7 +146,7 @@ export class BuildCommand implements CliCommandHandling {
                     return value as OutputFormat;
                 },
             )
-            .option("--out <path>", "where to write the build output (default: a <target>-named sibling of <project>)")
+            .option("--out <path>", "where to write the build output (default: a <target>-named sibling of <project>)", parseNonEmptyPathOption("--out", USAGE, "output"))
             .option(
                 "--exact",
                 "explicitly request full Outcome Library enumeration; large managed Blueprint/package Outcome builds otherwise use deterministic capped sampling (only valid with --target outcomeLibrary)",

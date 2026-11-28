@@ -22,6 +22,7 @@ import {assertDestinationIsAFile} from "./internal/assertDestinationIsAFile.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {normalizeServerSeedFileContents} from "./internal/normalizeServerSeedFileContents.js";
 import {parseCanonicalNonNegativeInteger} from "./internal/parseCanonicalNonNegativeInteger.js";
+import {parseNonEmptyPathOption} from "./internal/parseNonEmptyPathOption.js";
 import {pathEntryExists} from "./internal/pathEntryExists.js";
 import {readJsonFileWithContext} from "./internal/readJsonFileWithContext.js";
 
@@ -222,7 +223,7 @@ export class FairnessCommand implements CliCommandHandling {
             .description("Publish a server-seed commitment (the first step of the commit-reveal scheme).")
             .argument("<serverSeedPath>", "a text file containing the secret server seed")
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
-            .option("--out <file>", "write the commitment JSON to this path (default: print only)")
+            .option("--out <file>", "write the commitment JSON to this path (default: print only)", parseNonEmptyPathOption("--out", SEED_COMMIT_USAGE))
             .option("--overwrite", "allow --out to replace an existing file")
             .action((serverSeedPath: string, excess: string[], options: {out?: string; overwrite?: boolean}) => {
                 // An empty-string positional is a legal PRESENT argument as far as Commander's own required-
@@ -252,7 +253,7 @@ export class FairnessCommand implements CliCommandHandling {
             })
             .option("--source <folder>", "the outcome library folder this round will be drawn from (required)")
             .option("--mode <modeName>", "the bet mode this round will be drawn from (required)")
-            .option("--out <file>", "write the commitment JSON to this path (default: print only)")
+            .option("--out <file>", "write the commitment JSON to this path (default: print only)", parseNonEmptyPathOption("--out", COMMIT_USAGE))
             .option("--overwrite", "allow --out to replace an existing file")
             .action(
                 async (
@@ -297,7 +298,7 @@ export class FairnessCommand implements CliCommandHandling {
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
             .option("--server-seed <file>", "a text file containing the secret server seed (required)")
             .option("--source <folder>", "the outcome library folder this round was drawn from (required)")
-            .option("--out <file>", "write the proof JSON to this path (default: print only)")
+            .option("--out <file>", "write the proof JSON to this path (default: print only)", parseNonEmptyPathOption("--out", REVEAL_USAGE))
             .option("--overwrite", "allow --out to replace an existing file")
             .action(async (commitmentPath: string, excess: string[], options: {serverSeed?: string; source?: string; out?: string; overwrite?: boolean}) => {
                 if (!commitmentPath) {

@@ -26,6 +26,7 @@ import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../runtime/prepareRuntimePackage.js";
 import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOperationError.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {parseNonEmptyPathOption} from "./internal/parseNonEmptyPathOption.js";
 import {assertDestinationIsAFile} from "./internal/assertDestinationIsAFile.js";
 import {canonicalPlannedPath} from "./internal/canonicalPlannedPath.js";
 import {pathEntryExists} from "./internal/pathEntryExists.js";
@@ -252,7 +253,7 @@ export class ReplayCommand implements CliCommandHandling {
                 if (value !== "step" && value !== "logical-round") throw new Error("--unit must be step or logical-round");
                 return value;
             })
-            .option("--out <file>", "write the replay descriptor JSON to this path")
+            .option("--out <file>", "write the replay descriptor JSON to this path", parseNonEmptyPathOption("--out", USAGE))
             .option("--format <format>", "only \"json\" is supported (validated, but the output is always JSON)", (value: string) => {
                 if (value !== "json") {
                     throw new Error(`--format only supports "json". ${USAGE}`);

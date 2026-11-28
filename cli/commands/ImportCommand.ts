@@ -14,6 +14,7 @@ import {ParCommand} from "./ParCommand.js";
 import {StakeEngineCommand} from "./StakeEngineCommand.js";
 import {assertBlueprintImportDestination} from "./internal/assertBlueprintImportDestination.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {parseNonEmptyPathOption} from "./internal/parseNonEmptyPathOption.js";
 
 const USAGE = "Usage: pokie import <source> [--out <path>] [--format json] [--dry-run]";
 type ImportFormat = "json";
@@ -149,7 +150,7 @@ export class ImportCommand implements CliCommandHandling {
             .description(this.getDescription())
             .argument("<source>", "a PAR workbook or POKIE-produced Stake Engine export directory with pokie-info.json")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
-            .option("--out <path>", "where to write imported files")
+            .option("--out <path>", "where to write imported files", parseNonEmptyPathOption("--out", USAGE, "output"))
             .option("--format <format>", 'only "json" is supported; it selects JSON output')
             .option("--dry-run", "preview the prepared import without writing anything")
             .action(() => undefined);

@@ -26,6 +26,7 @@ import {
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOperationError.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {parseNonEmptyPathOption} from "./internal/parseNonEmptyPathOption.js";
 import {readJsonFileWithContext} from "./internal/readJsonFileWithContext.js";
 
 const USAGE =
@@ -145,7 +146,7 @@ export class CertificationCommand implements CliCommandHandling {
             .argument("<libraryDir>", "an existing outcome-library bundle directory (create one with \"pokie build <config.json> --target outcomeLibrary --out <libraryDir>\")")
             .argument("<config.json>", "lists one sample source per mode -- see docs/certification-pack.md")
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
-            .option("--out <dir>", "output directory (default: a \"certification\" sibling of <config.json>)")
+            .option("--out <dir>", "output directory (default: a \"certification\" sibling of <config.json>)", parseNonEmptyPathOption("--out", BUILD_USAGE, "directory"))
             .action(async (libraryDir: string, configPath: string, excess: string[], options: {out?: string}) => {
                 if (excess.length > 0) {
                     throw new Error(`Unknown option "${excess[0]}". ${BUILD_USAGE}`);

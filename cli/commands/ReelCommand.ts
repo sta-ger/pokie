@@ -13,6 +13,7 @@ import {CliCommandHandling} from "../CliCommandHandling.js";
 import {assertBlueprintJsonDestination} from "./internal/assertBlueprintImportDestination.js";
 import {parseCanonicalNonNegativeInteger} from "./internal/parseCanonicalNonNegativeInteger.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {parseNonEmptyPathOption} from "./internal/parseNonEmptyPathOption.js";
 
 const USAGE =
     "Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply | --write-reels] [--out <file>] [--format json]";
@@ -137,7 +138,7 @@ export class ReelCommand implements CliCommandHandling {
                 'resolve the whole blueprint and collapse it to a plain top-level "reelStrips" array, dropping ' +
                     '"reelStripGeneration" entirely (incompatible with --reel/--apply)',
             )
-            .option("--out <file>", "write the applied blueprint to a different path (default: overwrite <blueprint.json>)")
+            .option("--out <file>", "write the applied blueprint to a different path (default: overwrite <blueprint.json>)", parseNonEmptyPathOption("--out", USAGE))
             .option(
                 "--format <value>",
                 'only "json" is supported (default: a human-readable summary)',

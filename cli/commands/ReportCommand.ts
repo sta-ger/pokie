@@ -28,6 +28,7 @@ import {CliCommandHandling} from "../CliCommandHandling.js";
 import {assertDestinationIsAFile} from "./internal/assertDestinationIsAFile.js";
 import {canonicalPlannedPath} from "./internal/canonicalPlannedPath.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {parseNonEmptyPathOption} from "./internal/parseNonEmptyPathOption.js";
 import {isSimulationReport as isCoreSimulationReport} from "./internal/isSimulationReport.js";
 import {renderOutcomeSourceHtml, renderOutcomeSourceMarkdown} from "./internal/renderOutcomeSourceReport.js";
 import {writeOutputFileAtomically} from "./internal/writeOutputFile.js";
@@ -210,7 +211,7 @@ export class ReportCommand implements CliCommandHandling {
                 return value as ReportFormat;
             })
             .option("--template <json>", "version 1 pack presentation template (local JSON, no resources)")
-            .option("--out <file>", "file path to write the rendered report to")
+            .option("--out <file>", "file path to write the rendered report to", parseNonEmptyPathOption("--out", USAGE))
             .action((path: string, excess: string[], options: {format?: ReportFormat; out?: string; template?: string}) => {
                 // An empty-string positional is "present" as far as Commander's own required-argument
                 // check is concerned, but the pre-Commander behavior this preserves treated it the same
