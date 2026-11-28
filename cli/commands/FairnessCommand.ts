@@ -18,6 +18,7 @@ import {
 } from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {assertDeclaredOutcomeLibraryMode} from "./internal/assertDeclaredOutcomeLibraryMode.js";
+import {assertDestinationIsAFile} from "./internal/assertDestinationIsAFile.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {normalizeServerSeedFileContents} from "./internal/normalizeServerSeedFileContents.js";
 import {parseCanonicalNonNegativeInteger} from "./internal/parseCanonicalNonNegativeInteger.js";
@@ -435,6 +436,9 @@ export class FairnessCommand implements CliCommandHandling {
         const json = `${JSON.stringify(artifact, null, 4)}\n`;
 
         if (out !== undefined) {
+            // A directory is never a valid artifact file, even with --overwrite; report it before the
+            // existing-file check so --overwrite advice is not offered for something it cannot replace.
+            assertDestinationIsAFile(out);
             if (!overwrite && this.fileExists(out)) {
                 throw new Error(`"${out}" already exists. Rerun with --overwrite to replace it.`);
             }
