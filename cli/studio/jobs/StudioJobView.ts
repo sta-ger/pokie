@@ -42,6 +42,14 @@ export type StudioJobView = {
     readonly conflictKey: string;
     readonly status: StudioJobStatus;
     readonly createdAt: number;
+    /**
+     * The Studio process that accepted this job.  The durable job store is shared by every Studio
+     * server started by the same user (different ports, browser tabs, concurrent QA sessions), so a
+     * fresh server must never treat a job owned by a still-running server as an interrupted job.
+     * Absent on records written before this field existed; those keep the legacy process-state
+     * reconciliation behavior.
+     */
+    readonly ownerPid?: number;
     readonly startedAt?: number;
     readonly completedAt?: number;
     readonly durationMs?: number;

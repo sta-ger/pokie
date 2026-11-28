@@ -79,7 +79,10 @@ This page explains the words POKIE uses. If a term is missing, the page that int
   spins, each at the paid-spin maximum. Without a cap, retriggers can chain indefinitely and the
   theoretical whole-round maximum is unbounded, even when expected RTP is finite. In Simulation,
   **Largest observed win** is only the maximum seen in that sample, so it is a lower bound on the
-  theoretical maximum, not a replacement for it.
+  theoretical maximum, not a replacement for it. Studio does not apply a separate cap on the payout
+  itself: the free-games cap limits the number of feature spins, not the size of a win. If a market
+  requires a max-win cap, apply that rule in the game integration and re-check the math; the upper
+  bound shown in Studio is not a market cap.
 - **Reel / reel strip** — one spinning column and the ordered symbols it contains.
 - **Stop position** — the index on a reel strip where the visible window starts.
 - **Payline** — a fixed line across the reels that pays matching symbols.

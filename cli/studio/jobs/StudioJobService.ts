@@ -52,14 +52,13 @@ export class StudioJobService {
         private readonly now: () => number = Date.now,
         private readonly createId: () => string = () => crypto.randomUUID().replace(/-/g, ""),
     ) {
-        // A normal Studio stop awaits executor cleanup and persists its
-        // terminals before saving the graceful marker. A
-        // missing/running marker is deliberately fail-closed: it means the
-        // former process disappeared and its nonterminal jobs need recovery.
-        if (this.repository.getProcessState()?.status !== "gracefully-stopped") {
-            this.reconcileInterruptedJobs();
-        }
-        this.repository.saveProcessState({status: "running", updatedAt: this.now()});
+        // The durable job store is shared by every Studio server started by the same user (two
+        // browser tabs, a CLI session, concurrent QA runs on different ports). A new server must only
+        // recover jobs whose owner process is gone; otherwise starting a second server would mark the
+        // first server's live generation as interrupted and show the user a false "Studio restarted"
+        // warning while that job is still running or has already published its output.
+        this.reconcileInterruptedJobs();
+        this.repository.saveProcessState({status: "running", updatedAt: this.now(), pid: process.pid});
     }
 
     /** Lists every retained job, or only one project when an identity is supplied. */
@@ -105,7 +104,7 @@ export class StudioJobService {
         }
         const job: StudioJobView = {
             id: this.createId(), projectId: input.projectId, operation: input.operation, request: input.request,
-            conflictKey: input.conflictKey, status: "queued", createdAt: this.now(),
+            conflictKey: input.conflictKey, status: "queued", createdAt: this.now(), ownerPid: process.pid,
             recoveryOnRestart: input.recoveryOnRestart ?? {action: "retry", reason: "Studio restarted before this job reached a safe terminal state. Retry from scratch."},
         };
         this.repository.save(job);
@@ -169,7 +168,7 @@ export class StudioJobService {
         this.executorCleanupFailed = true;
         const job: StudioJobView = {id: this.createId(), projectId: input.projectId, operation: input.operation,
             request: input.request, conflictKey: input.conflictKey, status: "recovery-required",
-            createdAt: this.now(), completedAt: this.now(), durationMs: 0, recovery};
+            createdAt: this.now(), completedAt: this.now(), durationMs: 0, ownerPid: process.pid, recovery};
         this.repository.save(job);
         return job;
     }
@@ -265,6 +264,9 @@ export class StudioJobService {
     public cancelAll(): readonly StudioJobView[] {
         const requested: StudioJobView[] = [];
         for (const job of this.repository.list()) {
+            // A second Studio server may own this job; shutdown of this server must not cancel work
+            // that another live server is still draining.
+            if (job.ownerPid !== undefined && job.ownerPid !== process.pid) continue;
             if (isStudioJobTerminal(job.status) || !this.executions.has(job.id)) continue;
             const cancelled = this.cancel(job.projectId, job.id);
             if (cancelled !== undefined) requested.push(cancelled);
@@ -281,21 +283,48 @@ export class StudioJobService {
     /** Persist graceful stop only after every executor has reported its cleanup. */
     public async completeGracefulShutdown(cleanupConfirmed = true): Promise<void> {
         await Promise.all([...this.pendingExecutors]);
-        if (!cleanupConfirmed || this.executorCleanupFailed || this.repository.list().some((job) => !isStudioJobTerminal(job.status))) {
+        // Only this server's unfinished work can block its own graceful-shutdown marker. A different
+        // live Studio server may legitimately still own a job in the same shared store.
+        const unresolved = this.repository.list().some((job) => !isStudioJobTerminal(job.status) && this.isOwnedByThisProcess(job));
+        if (!cleanupConfirmed || this.executorCleanupFailed || unresolved) {
             this.reconcileInterruptedJobs(true);
             throw new Error("Studio shutdown could not confirm executor cleanup. Saved jobs require recovery.");
         }
-        this.repository.saveProcessState({status: "gracefully-stopped", updatedAt: this.now()});
+        this.repository.saveProcessState({status: "gracefully-stopped", updatedAt: this.now(), pid: process.pid});
     }
 
     public reconcileInterruptedJobs(cleanupUnconfirmed = false): void {
         for (const job of this.repository.list()) {
-            if (isStudioJobTerminal(job.status)) continue;
+            if (isStudioJobTerminal(job.status) || this.hasLiveOtherOwner(job)) continue;
             const recovery: StudioJobRecoveryView = job.recoveryOnRestart ?? {action: "retry", reason: "Studio restarted before this job completed. No partial output was published; retry from scratch."};
             this.terminal(job.id, "recovery-required", {recovery: cleanupUnconfirmed
                 ? {...recovery, reason: "Studio shutdown could not confirm executor cleanup. Inspect the captured destination and saved files, then restart Studio before retrying."}
                 : recovery});
         }
+    }
+
+    /** A job written by this process, or a pre-ownerPid record that this process is the only claimant of. */
+    private isOwnedByThisProcess(job: StudioJobView): boolean {
+        if (job.ownerPid !== undefined) return job.ownerPid === process.pid;
+        return !this.hasLiveOtherOwner(job);
+    }
+
+    /**
+     * Another Studio server can share this user's durable job directory. Trust its PID only while that
+     * process is actually alive; a stale record from a killed server must still be reconciled.
+     */
+    private hasLiveOtherOwner(job: StudioJobView): boolean {
+        if (job.ownerPid !== undefined) {
+            return job.ownerPid !== process.pid && isProcessAlive(job.ownerPid);
+        }
+        // Legacy records predate ownerPid. The process marker is the only owner evidence they carry.
+        const processState = this.repository.getProcessState();
+        if (processState?.status !== "running") return false;
+        // A running marker without a PID was written by an older Studio version. It may belong to a
+        // still-live server (including one started by another agent), so never interrupt its records
+        // speculatively. Only a graceful-stop marker authorizes legacy recovery.
+        if (processState.pid === undefined) return true;
+        return processState.pid !== process.pid && isProcessAlive(processState.pid);
     }
 
     private async executeStarted<T>(started: StudioJobStartResult, executor: (context: StudioJobExecutorContext) => Promise<T>,
@@ -362,4 +391,15 @@ export class StudioJobService {
 
 function sameRequest(left: Readonly<Record<string, unknown>>, right: Readonly<Record<string, unknown>>): boolean {
     return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function isProcessAlive(pid: number): boolean {
+    if (!Number.isSafeInteger(pid) || pid <= 0) return false;
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch (error) {
+        // EPERM means the process exists but belongs to another user; it is still a live owner.
+        return (error as NodeJS.ErrnoException).code === "EPERM";
+    }
 }

@@ -70,9 +70,9 @@ function blueprintMathBadge(
     }
     return {
         scope: "math",
-        label: "Math: not checked",
+        label: "Math: draft not checked",
         color: "gray",
-        detail: "Structure does not establish RTP, payout distribution or feature termination. Use Calculate exact math to check the draft.",
+        detail: "This editable draft has no exact preview yet. A saved project's exact table (if any) does not apply to these edits. Use Calculate exact math to check the draft.",
     };
 }
 

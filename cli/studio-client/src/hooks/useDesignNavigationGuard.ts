@@ -73,11 +73,21 @@ export function useDesignNavigationGuard(isDirty: boolean): DesignNavigationGuar
             suppressNextBlockRef.current = false;
             return false;
         }
-        // Recovery replaces the mounted Home draft even though the route stays inside Home.
-        const nextState = nextLocation.state as {recoveryRequest?: unknown} | null;
-        const currentState = currentLocation.state as {recoveryRequest?: unknown} | null;
-        const replacingDraft = nextState?.recoveryRequest !== undefined && nextState.recoveryRequest !== currentState?.recoveryRequest;
-        if (!isDirty || (!leavingHome && !replacingDraft)) {
+        // Other transitions replace the mounted Home draft even though the route stays inside Home:
+        // a retained recovery request, and the Projects list's own "Edit design"/PAR import actions
+        // (which navigate to /home/design with a new initial source). Block those too; otherwise a
+        // producer can edit a saved design, switch to Projects, click Edit design, and silently lose
+        // the unsaved draft because the old predicate only considered leaving /home entirely.
+        const nextState = nextLocation.state as {recoveryRequest?: unknown; initialBlueprintPath?: unknown; initialParSheetPath?: unknown} | null;
+        const currentState = currentLocation.state as {recoveryRequest?: unknown; initialBlueprintPath?: unknown; initialParSheetPath?: unknown} | null;
+        const replacingRecovery = nextState?.recoveryRequest !== undefined
+            && nextState.recoveryRequest !== currentState?.recoveryRequest;
+        const replacingDesignSource =
+            (typeof nextState?.initialBlueprintPath === "string"
+                && nextState.initialBlueprintPath !== currentState?.initialBlueprintPath)
+            || (typeof nextState?.initialParSheetPath === "string"
+                && nextState.initialParSheetPath !== currentState?.initialParSheetPath);
+        if (!isDirty || (!leavingHome && !replacingRecovery && !replacingDesignSource)) {
             return false;
         }
         return true;

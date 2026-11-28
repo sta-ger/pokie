@@ -10,6 +10,7 @@ import {
     getReplay,
     getGameModel,
     getReport,
+    getExactMath,
     inspectProject,
     inspectReplayArtifact,
     checkNativePickerAvailability,
@@ -44,6 +45,7 @@ import {describeRecentSpinsList, type RecentSpinsListView} from "../../domain/in
 import {describeSimulationReport, isSimulationActive} from "../../domain/interpret/Simulation";
 import {isProjectTab, legacyProjectRouteMigration, migrationSearch, type ProjectTab} from "../../domain/projectRouteMigration";
 import {describeReplayActionError} from "../../domain/replayActionError";
+import {isSupersededExactOutcomeLibraryJob} from "../../domain/exactMathRecovery";
 import {getSimulationRoundsError} from "../../domain/simulationRounds";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useNavigationBlockerConfirm} from "../../hooks/useNavigationBlockerConfirm";
@@ -476,6 +478,37 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         setProjectGeneration((previous) => previous + 1);
     }, [projectKey]);
     const commonJobs = useProjectJobs(fetchImpl, projectKey, projectGeneration);
+    const projectJobs = commonJobs.jobs;
+    const dismissProjectJob = commonJobs.dismiss;
+    // An interrupted exact-table receipt can outlive the table it failed to report: the generator may
+    // have published successfully, or another Studio process may have completed the same saved design.
+    // Before leaving an orange "Interrupted" card on every tab, ask whether the saved table is current.
+    // If it is, the receipt is historical noise and can be dismissed; if not, the card (and its Retry)
+    // remains the honest next action.
+    const supersededExactJobCheckedAt = useRef(new Map<string, number>());
+    const supersededExactJobChecks = useRef(new Set<string>());
+    useEffect(() => {
+        const candidates = projectJobs.filter((job) =>
+            job.operation === "outcome-library-generation"
+            && job.status === "recovery-required"
+            && !supersededExactJobChecks.current.has(job.id)
+            && Date.now() - (supersededExactJobCheckedAt.current.get(job.id) ?? 0) >= 30_000);
+        if (candidates.length === 0) return;
+        for (const job of candidates) {
+            supersededExactJobChecks.current.add(job.id);
+            supersededExactJobCheckedAt.current.set(job.id, Date.now());
+        }
+        getExactMath(fetchImpl).then((view) => {
+            if (view.status !== "ok") return;
+            for (const job of candidates) {
+                if (isSupersededExactOutcomeLibraryJob(job, projectKey ?? "", view.libraryDir, view.modeName)) {
+                    dismissProjectJob(job.id);
+                }
+            }
+        }).catch(() => undefined).finally(() => {
+            for (const job of candidates) supersededExactJobChecks.current.delete(job.id);
+        });
+    }, [dismissProjectJob, fetchImpl, projectJobs, projectKey]);
     // A completed simulation is the authoritative successor of an older interrupted run. Keep the
     // recovery record available under Finished operations, but never let it present stale 0/N
     // progress or a "needs attention" banner beside a report that already finished.
@@ -649,13 +682,23 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         validationAbortRef.current = controller;
         const current = () => requestId === validationRequestRef.current && !controller.signal.aborted;
         setValidation({status: "loading"});
+        // A normal local check settles in a few seconds. Never leave the producer staring at an
+        // indefinite "Checking project…" spinner: after this grace period, show an actionable state
+        // while still letting the original request finish and replace it with the real result.
+        const slowCheckTimer = window.setTimeout(() => {
+            if (current()) setValidation({
+                status: "error",
+                message: "The project check is taking longer than usual. You can keep waiting, or use Re-check project to start a fresh check. No files were changed.",
+            });
+        }, 30_000);
         validateProject(fetchImpl, controller.signal)
             .then(report => {
                 if (current()) setValidation({status: "success", summary: describeValidationSummary(report)});
             })
             .catch((error: unknown) => {
                 if (current()) setValidation({status: "error", message: errorMessage(error)});
-            });
+            })
+            .finally(() => window.clearTimeout(slowCheckTimer));
     }, [fetchImpl]);
 
     const restorableSimulation = commonJobs.jobs.find((job) => job.operation === "simulation");

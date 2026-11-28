@@ -9,6 +9,8 @@ import type {StudioJobView} from "./StudioJobView.js";
 export type StudioJobProcessState = {
     readonly status: "running" | "gracefully-stopped";
     readonly updatedAt: number;
+    /** The process that wrote this marker, when the writer recorded it. */
+    readonly pid?: number;
 };
 
 export interface StudioJobRepository {

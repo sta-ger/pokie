@@ -238,7 +238,9 @@ function outcomeLibraryTerminalErrorRun(job: StudioOutcomeLibraryGenerateJobView
         durableStatus: job.status,
         ...(job.recovery === undefined ? {} : {recovery: job.recovery}),
         ...(result === undefined || result.status === "ok" ? {
-            message: "Outcome table generation ended without a result.",
+            message: job.status === "recovery-required"
+                ? "The previous outcome-table run was interrupted before Studio confirmed a result. Review the restored settings, then start a fresh generation."
+                : "Outcome table generation ended without a result.",
         } : {
             result,
             message: describeGenerateResultError(result),
@@ -744,11 +746,37 @@ function TargetCard({
                                     ...(outcomeLibraryRun.pollHttpStatus === undefined ? {} : {"data-pokie-lifecycle-poll-http-status": String(outcomeLibraryRun.pollHttpStatus)}),
                                 })}
                             >
+                                {recoveryRequest !== undefined && outcomeLibraryRun.recovery?.action !== "resume" && (
+                                    <Alert color="blue" variant="light" title="Settings restored from the interrupted run" mb="xs">
+                                        <Text size="sm">
+                                            Review the generation settings below, then start a fresh run. The interrupted
+                                            attempt did not publish a table.
+                                        </Text>
+                                    </Alert>
+                                )}
                                 <ErrorState message={outcomeLibraryRun.message} />
                                 {outcomeLibraryRun.diagnostic !== undefined && <AdvancedDisclosure label="Generation diagnostic"><Text size="sm">{outcomeLibraryRun.diagnostic}</Text></AdvancedDisclosure>}
-                                {outcomeLibraryRun.jobId !== undefined && outcomeLibraryRun.recovery !== undefined && onFeatureOutcomeLibraryRecoveryAction !== undefined && (
+                                {outcomeLibraryRun.recovery?.action === "resume" && outcomeLibraryRun.jobId !== undefined && onFeatureOutcomeLibraryRecoveryAction !== undefined && (
                                     <Button size="xs" variant="light" mt="xs" onClick={() => onFeatureOutcomeLibraryRecoveryAction(outcomeLibraryRun.jobId!)}>
-                                        {outcomeLibraryRun.recovery.action === "resume" ? "Resume" : "Retry"}
+                                        Resume
+                                    </Button>
+                                )}
+                                {outcomeLibraryRun.recovery?.action !== "resume" && recoveryRequest !== undefined && (
+                                    <Button
+                                        size="xs"
+                                        variant="light"
+                                        mt="xs"
+                                        onClick={onGenerateOutcomeLibrary}
+                                        loading={outcomeLibraryPending}
+                                        disabled={outcomeLibraryDisabled}
+                                        title={outcomeLibraryDisabled ? outcomeLibraryDisabledReason : undefined}
+                                    >
+                                        Retry generation with restored settings
+                                    </Button>
+                                )}
+                                {outcomeLibraryRun.recovery?.action !== "resume" && recoveryRequest === undefined && outcomeLibraryRun.jobId !== undefined && onFeatureOutcomeLibraryRecoveryAction !== undefined && (
+                                    <Button size="xs" variant="light" mt="xs" onClick={() => onFeatureOutcomeLibraryRecoveryAction(outcomeLibraryRun.jobId!)}>
+                                        Restore generation settings
                                     </Button>
                                 )}
                                 <PlannerSummary plan={outcomeLibraryRun.plan} />

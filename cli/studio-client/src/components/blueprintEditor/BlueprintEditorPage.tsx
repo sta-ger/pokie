@@ -852,9 +852,19 @@ export function BlueprintEditorPage({
             .finally(() => loadGuard.end());
     };
 
-    const handleLoad = (path: string): void => {
-        if (sequenceDraftDirty) confirm("Load another game design and discard unapplied whole-sequence edits?", () => runLoad(path));
-        else runLoad(path);
+    const handleLoad = (path: string, options?: {skipDirtyConfirm?: boolean}): void => {
+        // The Projects "Edit design" and PAR import actions are already routed through the shared
+        // navigation guard, so their initial load must not ask a second time. An explicit Load from the
+        // advanced file tools has not been through that guard and must protect every kind of unsaved
+        // edit, not only whole-sequence drafts.
+        const dirtyNow = editor.getCurrentState().revision !== cleanRevisionRef.current
+            || jsonDraftDirty
+            || sequenceDraftDirty;
+        if (dirtyNow && options?.skipDirtyConfirm !== true) {
+            confirm("Load another game design? The unsaved design and unapplied JSON edits will be replaced.", () => runLoad(path));
+            return;
+        }
+        runLoad(path);
     };
 
     // Draft recovery -- "Restore" replaces the current starter or loaded source draft with whatever
@@ -967,7 +977,8 @@ export function BlueprintEditorPage({
     });
     useEffect(() => {
         if (initialPath && recoveryRequest?.blueprint === undefined) {
-            handleLoadRef.current(initialPath);
+            // The router guard already asked before allowing this source-replacing navigation.
+            handleLoadRef.current(initialPath, {skipDirtyConfirm: true});
         }
         // A retained Design card can navigate to Home without remounting this
         // permanently mounted editor. Treat its captured source exactly like

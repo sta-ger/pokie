@@ -25,6 +25,41 @@ function observed(previous: StudioJobView | undefined, next: StudioJobView): Stu
     return next;
 }
 
+/**
+ * Merge one successful durable-job discovery into the previously observed list.
+ *
+ * The important edge case is a terminal receipt that the server has already removed (for example, an
+ * interrupted outcome-table record after its current table was published, or a dismissal from another
+ * Studio process). The old merge only ever added/updated, so that receipt could remain visible as a
+ * permanent "Interrupted" card on every tab. Keep active work through a transiently incomplete list,
+ * but let a terminal record that is gone from the authoritative list disappear.
+ */
+export function mergeDurableJobDiscovery(
+    previous: readonly StudioJobView[],
+    discovered: readonly StudioJobView[],
+    options: {now?: number; pending?: ReadonlySet<string>; canApply?: (id: string) => boolean} = {},
+): StudioJobView[] {
+    const now = options.now ?? Date.now();
+    const pending = options.pending ?? new Set<string>();
+    const canApply = options.canApply ?? (() => true);
+    const merged = [...previous];
+    for (const job of discovered) {
+        if (!canApply(job.id)) continue;
+        const index = merged.findIndex((existing) => existing.id === job.id);
+        if (index === -1) merged.push(job);
+        else merged[index] = observed(merged[index], job);
+    }
+    const discoveredIds = new Set(discovered.map((job) => job.id));
+    return merged
+        .filter((job) => discoveredIds.has(job.id)
+            || active(job)
+            || pending.has(job.id)
+            // A just-finished local job can be absent from one in-flight list response. Keep it
+            // briefly so a successful result does not flicker away while discovery catches up.
+            || now - (job.completedAt ?? job.createdAt) < 5_000)
+        .sort((left, right) => right.createdAt - left.createdAt);
+}
+
 /** Shared transport recovery, with project/source scoping left to each API adapter. */
 export function useDurableJobs(port: DurableJobsObserving, scope: string | undefined, generation = 0) {
     const [discovery, setDiscovery] = useState<{scope: string | undefined; status: "pending" | "complete" | "failed"}>({scope, status: "pending"});
@@ -60,17 +95,10 @@ export function useDurableJobs(port: DurableJobsObserving, scope: string | undef
         try {
             const discovered = await request((signal) => port.list(signal));
             if (token !== owner.current || sequence !== listSequence.current) return;
-            setJobs((previous) => {
-                const merged = [...previous];
-                for (const job of discovered) {
-                    if (snapshot.get(job.id) !== revisions.current.get(job.id)) continue;
-                    const index = merged.findIndex((existing) => existing.id === job.id);
-                    if (index === -1) merged.push(job);
-                    else merged[index] = observed(merged[index], job);
-                }
-                // A transiently incomplete list never erases known durable work.
-                return merged.sort((left, right) => right.createdAt - left.createdAt);
-            });
+            setJobs((previous) => mergeDurableJobDiscovery(previous, discovered, {
+                pending: pending.current,
+                canApply: (id) => snapshot.get(id) === revisions.current.get(id),
+            }));
             setDiscovery({scope, status: "complete"});
             setConnectionError(undefined);
         } catch (error: unknown) {

@@ -125,7 +125,7 @@ export class StudioOutcomeLibraryGenerateJobService {
             // An interrupted executor has not produced a checkpoint yet.  Do
             // not advertise resume merely because this operation *could* be
             // exact: restart reconciliation must guide it to a safe retry.
-            recoveryOnRestart: {action: "retry", reason: "Studio restarted before an exact Outcome Library checkpoint was validated. Retry the captured generation from scratch."},
+            recoveryOnRestart: {action: "retry", reason: "The previous exact outcome-table generation stopped before its checkpoint was validated. If Overview already shows a current exact table, this is only an old interrupted record; dismiss it. Otherwise retry the captured generation from scratch."},
         });
         if (common?.status === "reattached") {
             const existing = this.jobs.get(common.job.id);

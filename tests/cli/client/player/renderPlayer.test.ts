@@ -25,6 +25,32 @@ describe("canonical player presentation", () => {
         expect(root.querySelector(".player-wins")?.textContent).toContain("Winning cells are outlined");
     });
 
+    it("shows a paid-round total beside a screen-scoped feature win", () => {
+        const root = document.createElement("div");
+        document.body.appendChild(root);
+        const elements = createPlayerRoundElements(root);
+        renderPlayerRound(elements, {
+            reelsSymbols: [["A", "K"]],
+            highlights: [],
+            totalWin: 0,
+            totalWinLabel: "Win on this screen",
+            roundWin: 8,
+            formatTotalWin: (value) => value.toFixed(2),
+        });
+
+        expect(elements.roundWinRow?.hidden).toBe(false);
+        expect(elements.roundWinRow?.querySelector("dt")?.textContent).toBe("Paid-round win");
+        expect(elements.roundWinRow?.querySelector("dd")?.textContent).toBe("8.00");
+
+        renderPlayerRound(elements, {
+            reelsSymbols: [["A", "K"]],
+            highlights: [],
+            totalWin: 0,
+            totalWinLabel: "Win",
+        });
+        expect(elements.roundWinRow?.hidden).toBe(true);
+    });
+
     it("keeps the legend but hides the wins section when there is no win", () => {
         const root = document.createElement("div");
         document.body.appendChild(root);

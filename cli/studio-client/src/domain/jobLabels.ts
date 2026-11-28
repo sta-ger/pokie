@@ -49,6 +49,9 @@ export function describeJobDiagnostic(message: string): string {
     if ((/audit-identity|different game configuration|config(?:uration)? hash|model differs/i).test(message)) {
         return "The round was recorded with a different game configuration. Open the design/version that produced it, or record a new round against the current design.";
     }
+    if ((/previous exact outcome-table generation stopped before its checkpoint was validated/i).test(message)) {
+        return "The previous exact-table run stopped before Studio confirmed a complete result. If Overview already shows a current exact table, dismiss this old record; otherwise retry the generation.";
+    }
     if ((/not resumable after restart|cannot resume after restart/i).test(message)) {
         return "Studio restarted before this operation finished. Run it again to continue.";
     }

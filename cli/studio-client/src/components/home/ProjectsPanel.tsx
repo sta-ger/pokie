@@ -15,6 +15,7 @@ import {
 } from "../../api/apiClient";
 import type {StudioProjectImportPreviewResult, StudioProjectRegistryView, StudioProjectType} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
+import {useGuardedAction} from "../../context/DesignNavigationGuardContext";
 import {errorMessage} from "../../domain/errorMessage";
 import {formatTimestamp} from "../../domain/formatTimestamp";
 import {describeProjectActionError} from "../../domain/projectActionError";
@@ -118,6 +119,7 @@ export function ProjectsPanel({
     const controlsRegion = useRef<HTMLDivElement>(null);
     useDesignFocusVisibility(controlsRegion, isVisible);
     const openAndNavigate = useOpenProject();
+    const guardedDesignNavigation = useGuardedAction();
     const [listView, setListView] = useState<ListView>({status: "loading"});
     const [refreshVersion, setRefreshVersion] = useState(0);
     const [location, setLocation] = useState("");
@@ -518,13 +520,26 @@ export function ProjectsPanel({
                         <Button type="button" id={`project-open:${entry.location}`} data-pokie-project-location={entry.location} variant="default" size="xs" disabled={openingLocation !== undefined} loading={openingLocation === entry.location} onClick={() => handleOpen(entry)}>{entry.type === "wasm" && entry.wasmPresentation !== undefined ? entry.wasmPresentation.inspectActionLabel : "Open"}</Button>
                     )}
                     {entry.status === "ok" && entry.type === "parWorkbook" && (
-                        <Button variant="default" size="xs" onClick={() => handleGoToDesignGame(entry.location)}>Edit full design</Button>
+                        <Button variant="default" size="xs" onClick={() => {
+                            // Opening a PAR in Design Game replaces the mounted draft. Route it through
+                            // the same unsaved-changes guard as opening a project, instead of silently
+                            // discarding the producer's in-progress edits.
+                            guardedDesignNavigation(() => {
+                                handleGoToDesignGame(entry.location);
+                                return Promise.resolve();
+                            }).catch(() => undefined);
+                        }}>Edit full design</Button>
                     )}
                     {entry.status === "ok" && entry.type === "blueprint" && (
                         <Button
                             variant="default"
                             size="xs"
-                            onClick={() => navigate("/home/design", {state: {initialBlueprintPath: entry.location}})}
+                            onClick={() => {
+                                guardedDesignNavigation(() => {
+                                    navigate("/home/design", {state: {initialBlueprintPath: entry.location}});
+                                    return Promise.resolve();
+                                }).catch(() => undefined);
+                            }}
                             title="Open this saved design in the full design editor, including PAR import; saving writes back to this project."
                         >
                             Edit design

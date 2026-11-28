@@ -71,7 +71,9 @@ function hasFreeGamesTerminationWarning(report: AdvancedModelValidationReport | 
 
 function jobError(job: StudioOutcomeLibraryGenerateJobView): string {
     const result = job.result;
-    let message = `Exact-math generation ended with status "${job.status}".`;
+    let message = job.status === "recovery-required"
+        ? "The previous exact-table run was interrupted, and no current exact table was found. Retry the generation, or dismiss the old record if you no longer need it."
+        : `Exact-math generation ended with status "${job.status}".`;
     if (result !== undefined && "error" in result && typeof result.error === "string") {
         message = result.error;
     } else if (result !== undefined && "errors" in result && Array.isArray(result.errors)) {
@@ -210,6 +212,23 @@ export function ExactMathPanel({
                 onGenerated?.();
             } else if (next.status === "cancelled") {
                 setNotice("Exact-math generation was cancelled. The previous result, if any, is unchanged.");
+            } else if (next.status === "recovery-required") {
+                // A shared durable job store can retain an interrupted receipt after the table itself
+                // was published (or after another Studio process already completed it). Re-read the
+                // saved table before treating the old receipt as a failed generation: the current
+                // result is the actionable truth, not the stale job status.
+                try {
+                    const current = await getExactMath(fetchImpl);
+                    if (generation !== pollGeneration.current) return;
+                    if (current.status === "ok") {
+                        setView(current);
+                        setNotice("The exact outcome table is already complete. This interrupted job record is historical and can be dismissed.");
+                    } else {
+                        setError(jobError(next));
+                    }
+                } catch {
+                    if (generation === pollGeneration.current) setError(jobError(next));
+                }
             } else {
                 const failureMessage = jobError(next);
                 setError(failureMessage);
@@ -1093,6 +1112,14 @@ function KeyNumbersCard({
                             The average RTP is exact, but this game has no hard cap on free games: one round can run
                             indefinitely. The paid-spin maximum above is not the game&apos;s whole-round maximum; use
                             Simulation to see whole-round hit frequency, volatility and the largest observed win.
+                        </Text>
+                    )}
+                    {wholeRoundMaxLabel !== undefined && (
+                        <Text size="xs" c="dimmed" mt="sm" data-pokie-no-payout-cap="true">
+                            Studio does not apply a separate max-win payout cap.{" "}
+                            {uncapped
+                                ? "The whole-round maximum is unbounded because free games have no hard cap. If your market requires a payout cap, apply it in the game integration and re-check the math."
+                                : "The whole-round figure above is a theoretical upper bound from the free-games cap, not a market max-win cap; apply a payout cap in the game integration if your market requires one."}
                         </Text>
                     )}
                     <Group gap="xs" mt="sm">

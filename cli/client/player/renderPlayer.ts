@@ -87,9 +87,11 @@ export type PlayerRoundElements = {
     totals?: HTMLElement;
     creditsRow?: HTMLElement;
     totalWinRow?: HTMLElement;
+    roundWinRow?: HTMLElement;
     payoutMultiplierRow?: HTMLElement;
     credits?: HTMLElement;
     totalWin?: HTMLElement;
+    roundWin?: HTMLElement;
     payoutMultiplier?: HTMLElement;
     gridContainer: HTMLElement;
     winsSection: HTMLElement;
@@ -151,6 +153,7 @@ export function createPlayerRoundElements(root: HTMLElement): PlayerRoundElement
     totals.setAttribute("aria-label", "Round totals");
     const credits = appendValue(totals, "Credits");
     const totalWin = appendValue(totals, "Total win");
+    const roundWin = appendValue(totals, "Paid-round win");
     const payoutMultiplier = appendValue(totals, "Payout multiplier");
     const overview = create("div", "player-round-overview");
     overview.append(gridScroll, totals);
@@ -194,9 +197,11 @@ export function createPlayerRoundElements(root: HTMLElement): PlayerRoundElement
         totals,
         creditsRow: credits.row,
         totalWinRow: totalWin.row,
+        roundWinRow: roundWin.row,
         payoutMultiplierRow: payoutMultiplier.row,
         credits: credits.value,
         totalWin: totalWin.value,
+        roundWin: roundWin.value,
         payoutMultiplier: payoutMultiplier.value,
         gridContainer,
         winsSection,
@@ -220,9 +225,12 @@ export type PlayerRoundView = {
     // independently composed by each host surface.  Undefined is an honest unavailable value, not 0.
     credits?: number;
     totalWin?: number;
+    /** The whole paid-round result, shown alongside a step-scoped screen win when a feature has several screens. */
+    roundWin?: number;
     payoutMultiplier?: number;
     creditsLabel?: string;
     totalWinLabel?: string;
+    roundWinLabel?: string;
     payoutMultiplierLabel?: string;
     payoutMultiplierSuffix?: string;
     formatTotalWin?: (value: number) => string;
@@ -657,6 +665,7 @@ export function renderPlayerRound(elements: PlayerRoundElements, view: PlayerRou
     installPlayerPresentationStyles(elements.gridContainer.ownerDocument);
     renderRoundValue(elements.credits, view.credits, view.creditsLabel);
     renderRoundValue(elements.totalWin, view.totalWin, view.totalWinLabel, "", view.formatTotalWin);
+    renderRoundValue(elements.roundWin, view.roundWin, view.roundWinLabel, "", view.formatTotalWin);
     renderRoundValue(
         elements.payoutMultiplier,
         view.payoutMultiplier,
@@ -666,7 +675,7 @@ export function renderPlayerRound(elements: PlayerRoundElements, view: PlayerRou
     );
     if (elements.totals !== undefined) {
         const hasTotals =
-            view.credits !== undefined || view.totalWin !== undefined || view.payoutMultiplier !== undefined;
+            view.credits !== undefined || view.totalWin !== undefined || view.roundWin !== undefined || view.payoutMultiplier !== undefined;
         elements.totals.hidden = !hasTotals;
         if (!hasTotals) {
             elements.totals.querySelectorAll("dd").forEach((value) => {
@@ -677,6 +686,7 @@ export function renderPlayerRound(elements: PlayerRoundElements, view: PlayerRou
     for (const [row, value, present] of [
         [elements.creditsRow, elements.credits, view.credits !== undefined],
         [elements.totalWinRow, elements.totalWin, view.totalWin !== undefined],
+        [elements.roundWinRow, elements.roundWin, view.roundWin !== undefined],
         [elements.payoutMultiplierRow, elements.payoutMultiplier, view.payoutMultiplier !== undefined],
     ] as const) {
         if (row !== undefined) {
