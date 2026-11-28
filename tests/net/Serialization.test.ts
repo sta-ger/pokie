@@ -8,9 +8,12 @@ import {
     SymbolsCombination,
     SymbolsSequence,
     VideoSlotConfig,
+    WinComponent,
+    WinEvaluationResult,
     VideoSlotSession,
     VideoSlotSessionSerializer,
     VideoSlotWinCalculator,
+    serializeWinEvaluationResult,
     VideoSlotWithBetModesSession,
     VideoSlotWithFreeGamesSession,
     VideoSlotWithFreeGamesConfig,
@@ -97,6 +100,10 @@ describe("VideoSlotSessionSerializer", () => {
 
         expect(roundtripThroughJson(roundData)).toEqual(roundData);
         expect(roundtripThroughJson(initialData)).toEqual(initialData);
+        const components = roundData.winEvaluationResult!.winComponents;
+        expect(components.length).toBeGreaterThan(0);
+        expect(components.reduce((sum, component) => sum + component.winAmount, 0)).toBe(roundData.winEvaluationResult!.totalWin);
+        expect(components.some(component => component.type === "line")).toBe(true);
     });
 
     test("nested win entries are plain data, not class instances, both before and after the roundtrip", () => {
@@ -176,6 +183,36 @@ describe("VideoSlotSessionSerializer", () => {
         const roundData = new VideoSlotSessionSerializer().getRoundData(session);
         expect(roundData.availableBets).toEqual([5, 10]);
         expect(roundtripThroughJson(roundData)).toEqual(roundData);
+    });
+    test("winComponents exposes a custom component that the typed compatibility arrays cannot describe", () => {
+        class StreakWinComponent extends WinComponent<string> {
+            public constructor(amount: number) {
+                super("streak", "lucky-streak", "A", amount, [[0, 1]], [
+                    {source: "lucky-streak", positions: [[0, 1]], values: [2], combinedMultiplier: 2},
+                ], {trigger: "three-losses"});
+            }
+        }
+
+        const result = new WinEvaluationResult<string>({
+            winComponents: [new StreakWinComponent(0.5)],
+            metadata: {policy: "custom"},
+        });
+        const payload = serializeWinEvaluationResult(result);
+
+        expect(payload.totalWin).toBe(0.5);
+        expect(payload.lineWins).toEqual([]);
+        expect(payload.winComponents).toEqual([{
+            type: "streak",
+            id: "lucky-streak",
+            symbolId: "A",
+            winAmount: 0.5,
+            winningPositions: [[0, 1]],
+            multiplierBreakdown: [
+                {source: "lucky-streak", positions: [[0, 1]], values: [2], combinedMultiplier: 2},
+            ],
+            metadata: {trigger: "three-losses"},
+        }]);
+        expect(roundtripThroughJson(payload)).toEqual(payload);
     });
 });
 

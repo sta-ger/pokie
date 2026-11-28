@@ -10,11 +10,6 @@ collaborators you need to change. All parameters below are optional with a worki
 | Want to customize... | Implement | Inject into | Details |
 |---|---|---|---|
 | How lines are turned into wins | `LineWinCalculating<T>` | `VideoSlotWinCalculator`'s 2nd constructor arg | [Paytable & Win Calculation](paytable-and-wins.md#replacing-linescatter-win-logic-entirely) |
-
-A custom `VideoSlotWinCalculating` may implement the optional `getWinEvaluationResult()`. When it does,
-`VideoSlotSession` treats that unified total as authoritative and checks it against `getWinAmount()`;
-the round is rejected with a clear diagnostic if the two disagree. Include every custom payout in the
-evaluation result, or omit `getWinEvaluationResult()` so the session settles through `getWinAmount()`.
 | How scatters are turned into wins | `ScatterWinCalculating<T>` | `VideoSlotWinCalculator`'s 3rd constructor arg | [Paytable & Win Calculation](paytable-and-wins.md#replacing-linescatter-win-logic-entirely) |
 | Cluster (adjacency) pays | `ClusterWinCalculating<T>` | `VideoSlotWinCalculator`'s 4th constructor arg (opt-in, no default) | [Paytable & Win Calculation](paytable-and-wins.md#cluster-pays) |
 | Per-symbol value pays | `ValueWinCalculating<T>` | `VideoSlotWinCalculator`'s 5th constructor arg (opt-in, no default) | [Paytable & Win Calculation](paytable-and-wins.md#value-pays) |
@@ -35,6 +30,61 @@ evaluation result, or omit `getWinEvaluationResult()` so the session settles thr
 | Feature-level breakdown category per simulated round | `SimulationRoundCategoryDetermining` | `AggregateSimulationRunner`'s 4th constructor arg | [Simulation](simulation.md#feature-level-breakdown-simulationroundcategorydetermining) |
 | Declaring a round's breakdown category from the session itself | `SimulationCategoryDetermining` | implement on any `GameSessionHandling` (feature-detected) | [Simulation](simulation.md#declaring-a-category-explicitly-simulationcategorydetermining) |
 | What a serializer's base layer contributes | `GameSessionSerializing` / `VideoSlotSessionSerializing` | the next serializer up's constructor arg | [Network Serialization](serialization.md) |
+
+A custom `VideoSlotWinCalculating` may implement the optional `getWinEvaluationResult()`. When it does,
+`VideoSlotSession` treats that unified total as authoritative and checks it against `getWinAmount()`;
+the round is rejected with a clear diagnostic if the two disagree. Include every custom payout in the
+evaluation result, or omit `getWinEvaluationResult()` so the session settles through `getWinAmount()`.
+
+## Custom payouts and `getWinEvaluationResult()`
+
+`getWinAmount()` is the settlement view. `getWinEvaluationResult()` is the explainability view used by
+simulation analytics, reports and network serializers. If a custom session or decorator changes one, it
+must keep the other consistent.
+
+A decorator that only adds a payout to `getWinAmount()` still plays rounds, but simulation later sees a
+mismatch between the accepted win and the components it can explain. Include the extra payout as a
+`WinComponent` — `LegacyWinComponent` is the ready-made generic one:
+
+```ts
+import {
+ AbstractVideoSlotSessionDecorator,
+ LegacyWinComponent,
+ WinEvaluationResult,
+} from "@fromstan/pokie";
+
+class LuckyStreakSession extends AbstractVideoSlotSessionDecorator<string> {
+ private streakBonus = 0;
+
+ // Your play() override sets streakBonus and credits it. That part is ordinary session code.
+
+ public override getWinAmount(): number {
+ return super.getWinAmount() + this.streakBonus;
+ }
+
+ public override getWinEvaluationResult(): WinEvaluationResult<string> {
+ const base = super.getWinEvaluationResult();
+ if (this.streakBonus <= 0) return base;
+ return new WinEvaluationResult<string>({
+ lineWins: base.getLineWins(),
+ scatterWins: base.getScatterWins(),
+ clusterWins: base.getClusterWins(),
+ waysWins: base.getWaysWins(),
+ valueWins: base.getValueWins(),
+ winComponents: [
+ ...base.getWinComponents(),
+ new LegacyWinComponent<string>(this.streakBonus, {source: "lucky-streak"}),
+ ],
+ metadata: base.getMetadata(),
+ auditTrail: base.getAuditTrail(),
+ });
+ }
+}
+```
+
+The round record, network `winComponents`, replay report and simulation analytics then all explain the
+same total. If the evaluation total and `getWinAmount()` disagree, the diagnostic names both values and
+points back here.
 
 ## `AbstractVideoSlotSessionDecorator` — writing your own session decorator without the boilerplate
 

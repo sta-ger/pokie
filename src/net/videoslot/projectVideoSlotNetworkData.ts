@@ -41,5 +41,13 @@ export function projectWinEvaluationResultNetworkData<T extends string | number 
         clusterWins: evaluation.clusterWins.map(win => ({...win, symbolsPositions: projectPositions(win.symbolsPositions)})),
         valueWins: evaluation.valueWins.map(win => ({...win, symbolsPositions: projectPositions(win.symbolsPositions)})),
         waysWins: evaluation.waysWins.map(win => ({...win, symbolsPositions: projectPositions(win.symbolsPositions)})),
+        winComponents: (evaluation.winComponents ?? []).map(component => ({
+            ...component,
+            winningPositions: projectPositions(component.winningPositions),
+            multiplierBreakdown: component.multiplierBreakdown.map(breakdown => ({
+                ...breakdown,
+                positions: projectPositions(breakdown.positions),
+            })),
+        })),
     };
 }

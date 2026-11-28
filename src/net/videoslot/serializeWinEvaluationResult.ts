@@ -48,6 +48,15 @@ export function serializeWinEvaluationResult<T extends string | number | symbol 
             waysCount: component.getWinningWay().getWaysCount(),
             winAmount: component.getWinAmount(),
         })),
+        winComponents: result.getWinComponents().map((component) => ({
+            type: component.getType(),
+            id: component.getId(),
+            symbolId: component.getSymbolId() ?? null,
+            winAmount: component.getWinAmount(),
+            winningPositions: component.getWinningPositions(),
+            multiplierBreakdown: component.getMultiplierBreakdown(),
+            metadata: component.getMetadata(),
+        })),
         metadata: result.getMetadata(),
     };
     return geometry ? projectWinEvaluationResultNetworkData(data, geometry) : data;

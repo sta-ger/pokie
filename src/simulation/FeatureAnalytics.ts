@@ -484,7 +484,11 @@ export function observeFeatureAnalytics(stake: number, win: number, observation?
         if (c.type === "line") hits.line.add(c.id);
         if (c.type === "scatter") hits.scatter.add(c.symbol ?? c.id);
     }
-    if (!close(componentTotal, win) && observation.components !== undefined) throw new Error("Analytics canonical components do not conserve accepted win.");
+    if (!close(componentTotal, win) && observation.components !== undefined) throw new Error(
+        `Analytics canonical components do not conserve the accepted win (components total ${componentTotal}, accepted win ${win}). ` +
+        "A custom session or decorator that changes getWinAmount() must also include that payout in getWinEvaluationResult() " +
+        "(for example as a LegacyWinComponent), so reports and serializers can explain the whole win.",
+    );
     if (observation.components === undefined) s.partition.unavailable = win;
     for (const kind of ["symbol", "line", "scatter"] as const) for (const key of hits[kind]) increment(s.hits[kind], key, 1);
     boundedKey(observation.source);

@@ -53,6 +53,28 @@ type VideoSlotInitialNetworkData = {
  paytable: Record<number, Record<string, Record<number, number>>>;
  linesDefinitions: Record<string, number[]>;
 } & GameInitialNetworkData & VideoSlotRoundNetworkData;
+
+type WinEvaluationResultNetworkData = {
+ totalWin: number;
+ winningPositions: number[][];
+ lineWins: WinningLineNetworkData[];
+ scatterWins: WinningScatterNetworkData[];
+ clusterWins: WinningClusterNetworkData[];
+ valueWins: WinningValueNetworkData[];
+ waysWins: WinningWayNetworkData[];
+ winComponents: WinComponentNetworkData[];
+ metadata: Record<string, unknown>;
+};
+
+type WinComponentNetworkData = {
+ type: string;
+ id: string;
+ symbolId: string | null;
+ winAmount: number;
+ winningPositions: number[][];
+ multiplierBreakdown: {source: string; positions: number[][]; values: number[]; combinedMultiplier: number}[];
+ metadata: Record<string, unknown>;
+};
 ```
 
 `WinningLineNetworkData`/`WinningScatterNetworkData`/`WinningClusterNetworkData`/`WinningValueNetworkData`/
@@ -60,7 +82,8 @@ type VideoSlotInitialNetworkData = {
 `WinningClusterDescribing`/`WinningValueDescribing`/`WinningWayDescribing` (see
 [Paytable & Win Calculation](paytable-and-wins.md)) — same fields, plain data instead of getters.
 `WinEvaluationResultNetworkData` is the unified round breakdown for reporting/replay/debug: total win, winning
-positions, per-type component arrays, and metadata.
+positions, per-type component arrays, and metadata. `winComponents` is the complete generic projection — it also
+contains custom `WinComponent` types, while the typed arrays stay as compatibility views.
 `VideoSlotWithFreeGamesInitialNetworkData`/`VideoSlotWithFreeGamesRoundNetworkData` add no fields of their own —
 they're pure type intersections of the video-slot and free-games shapes above.
 
@@ -249,12 +272,12 @@ contains.
 - **Legacy custom calculators remain serializable.** If a session is backed by an older calculator without
  `getWinEvaluationResult()`, the session adapts its legacy total so `totalWin` and `winEvaluationResult.totalWin`
  still reflect the real win amount.
-- **Custom `WinComponent` types need a custom serializer.** `VideoSlotSessionSerializer` maps the built-in
- line/scatter/cluster/value/ways components. A custom `WinAggregationPolicy` or evaluator can add its own
- `WinComponent` (for example a streak bonus); that amount is included in `totalWin`, but it is not automatically
- added to `winEvaluationResult`'s typed arrays. Extend the serializer and add an explicit field for the custom
- component if clients must explain the win, or keep the custom breakdown out of the public payload and expose it
- through `getRoundDebugData()`.
+- **Custom `WinComponent` types are covered by `winComponents`.** `VideoSlotSessionSerializer` maps the built-in
+ line/scatter/cluster/value/ways components into their typed arrays, and also projects every component — including
+ a custom `WinComponent` such as a streak bonus — into `winEvaluationResult.winComponents`. The generic entries
+ carry `type`, `id`, `symbolId`, `winAmount`, positions, multiplier breakdown and metadata, so a client can always
+ reconcile the breakdown with `totalWin`. A custom serializer is only needed when you want a richer,
+ game-specific shape than these generic fields.
 - **The free-games round fields are typed optional (`?`) but always populated** by the concrete
  `VideoSlotWithFreeGamesSessionSerializer` — the optionality exists because the underlying interface is meant to be
  reusable by non-video-slot free-games mechanics too.

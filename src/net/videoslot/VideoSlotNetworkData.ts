@@ -80,6 +80,7 @@ export type WinningWayNetworkData<T extends string | number | symbol = string> =
 };
 
 export type WinEvaluationResultNetworkData<T extends string | number | symbol = string> = {
+    /** Authoritative sum of every component, including custom types not covered by the typed arrays below. */
     totalWin: number;
     winningPositions: number[][];
     lineWins: WinningLineNetworkData<T>[];
@@ -87,5 +88,28 @@ export type WinEvaluationResultNetworkData<T extends string | number | symbol = 
     clusterWins: WinningClusterNetworkData<T>[];
     valueWins: WinningValueNetworkData<T>[];
     waysWins: WinningWayNetworkData<T>[];
+    /**
+     * Complete generic projection of the evaluation's own win components, in evaluation order. The typed
+     * line/scatter/cluster/value/ways arrays above stay as compatibility views; this list is the one that
+     * can also describe a custom `WinComponent` subclass and therefore always reconciles with `totalWin`.
+     */
+    winComponents: WinComponentNetworkData<T>[];
+    metadata: Record<string, unknown>;
+};
+
+/** Plain-data mirror of `WinComponent`, including custom component types. */
+export type WinComponentNetworkData<T extends string | number | symbol = string> = {
+    type: string;
+    id: string;
+    /** null when the component is not tied to one symbol (for example a round-level bonus). */
+    symbolId: T | null;
+    winAmount: number;
+    winningPositions: number[][];
+    multiplierBreakdown: {
+        source: string;
+        positions: number[][];
+        values: number[];
+        combinedMultiplier: number;
+    }[];
     metadata: Record<string, unknown>;
 };
