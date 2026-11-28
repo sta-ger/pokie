@@ -624,8 +624,8 @@ export class PokieDevServer implements PokieDevServerHandling {
         } catch {
             throw new Error("Request body is not valid JSON.");
         }
-        if (parsed === null || typeof parsed !== "object") {
-            return {};
+        if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+            throw new Error("Request body must be a JSON object.");
         }
 
         const {seed, initialBalance} = parsed as {seed?: unknown; initialBalance?: unknown};
@@ -770,10 +770,7 @@ export class PokieDevServer implements PokieDevServerHandling {
         } catch {
             throw new Error("Request body is not valid JSON.");
         }
-        if (parsed === null) {
-            return undefined;
-        }
-        if (typeof parsed !== "object" || Array.isArray(parsed)) {
+        if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
             throw new Error('Request body must be a JSON object with an optional "seed".');
         }
 
@@ -807,10 +804,7 @@ export class PokieDevServer implements PokieDevServerHandling {
         } catch {
             throw new Error("Request body is not valid JSON.");
         }
-        if (parsed === null) {
-            return {};
-        }
-        if (typeof parsed !== "object" || Array.isArray(parsed)) {
+        if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
             throw new Error("Request body must be a JSON object.");
         }
 

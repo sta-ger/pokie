@@ -585,7 +585,7 @@ describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
         expect(game.createdWith).toEqual({seed: "demo-seed"});
     });
 
-    it.each([[], "seed", 1, true])("rejects a non-object POST /sessions body (%p) without creating a session", async (body) => {
+    it.each([[], null, "seed", 1, true])("rejects a non-object POST /sessions body (%p) without creating a session", async (body) => {
         const response = await postJson(`${baseUrl}/sessions`, body);
 
         expect(response.status).toBe(400);
@@ -593,7 +593,7 @@ describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
         expect(game.createdWith).toBeUndefined();
     });
 
-    it.each([[], "spin", 1, true])("rejects a non-object spin body (%p) without spinning", async (body) => {
+    it.each([[], null, "spin", 1, true])("rejects a non-object spin body (%p) without spinning", async (body) => {
         const created = await postJson(`${baseUrl}/sessions`);
         const sessionId = created.body.sessionId as string;
 
