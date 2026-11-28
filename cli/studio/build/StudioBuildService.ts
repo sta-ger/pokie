@@ -34,6 +34,7 @@ import type {StudioBuildChecking, StudioPreparedArtifactPreview} from "./StudioB
 import type {StudioOutputPreviewView} from "./StudioOutputPreviewView.js";
 import type {StudioOutputFormatView} from "./StudioOutputFormatView.js";
 import {createUnresolvedRuntimePlan} from "./createExternalFormatConversionPlan.js";
+import {describeFileTargetDestinationProblem} from "./artifactFileDestinationProblem.js";
 import {resolveStudioProjectSource} from "./StudioFormatConversionPlanningService.js";
 import {StudioJobService} from "../jobs/StudioJobService.js";
 import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";
@@ -229,6 +230,19 @@ export class StudioBuildService {
         const destinationKind = destinationKindFor(target);
         const plannedOutputs = plannedOutputsFor(target);
 
+        const destinationProblem = describeFileTargetDestinationProblem(target, destination);
+        if (destinationProblem !== undefined) {
+            // Keep the mandatory plan on the DTO, but answer before any builder-facing capability work: a
+            // destination POKIE cannot reopen will never become a valid build no matter what the source supports.
+            let plan: FormatConversionPlan;
+            try {
+                plan = await this.plan(project, target, destination, {signal});
+            } catch {
+                plan = new FormatConversionPlanner().plan(project, target, {destinationPath: destination});
+            }
+            return {view: {status: "error", message: destinationProblem, plan}};
+        }
+
         const operation = target === "stakeAdapter"
             ? await this.stakeProjection.prepareOperation(project, destination, {signal})
             : undefined;
@@ -364,6 +378,8 @@ export class StudioBuildService {
             return {status: "unsupported", target, message: this.describePlanDiagnostic(plan), plan};
         }
         if (plan.status === "conflict") return {status: "conflict", target, message: plan.diagnostic!.message, plan};
+        const destinationProblem = describeFileTargetDestinationProblem(target, destination);
+        if (destinationProblem !== undefined) return {status: "error", message: destinationProblem, plan};
 
         try {
             const result = target === "stakeAdapter"

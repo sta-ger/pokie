@@ -91,6 +91,32 @@ describe("Studio HTTP smoke", () => {
         );
         expect(opened.status).toBe(200);
 
+        // A Studio build must not produce a file POKIE cannot reopen just because the browser client skipped
+        // BuildCommand's own --out suffix boundary. Preview is the pre-build check the Build/Export tab uses.
+        const badSuffix = path.join(tempHome, "par-without-suffix");
+        const badSuffixPreview = await jsonRequest<{status: string; message?: string}>(
+            `${baseUrl}/api/project/build/preview`,
+            {method: "POST", body: JSON.stringify({target: "parWorkbook", outDir: badSuffix})},
+        );
+        expect(badSuffixPreview.status).toBe(200);
+        expect(await badSuffixPreview.json()).toEqual(expect.objectContaining({
+            status: "error",
+            message: expect.stringContaining('ending in ".xlsx"'),
+        }));
+        expect(fs.existsSync(badSuffix)).toBe(false);
+
+        const folderDestination = path.join(tempHome, "folder-named-like-par.xlsx");
+        fs.mkdirSync(folderDestination);
+        const folderPreview = await jsonRequest<{status: string; message?: string}>(
+            `${baseUrl}/api/project/build/preview`,
+            {method: "POST", body: JSON.stringify({target: "parWorkbook", outDir: folderDestination})},
+        );
+        expect(folderPreview.status).toBe(200);
+        expect(await folderPreview.json()).toEqual(expect.objectContaining({
+            status: "error",
+            message: expect.stringContaining("is a folder, not a file"),
+        }));
+
         const started = await jsonRequest<{status: string; job: {id: string; status: string}}>(
             `${baseUrl}/api/project/build/build`,
             {method: "POST", body: JSON.stringify({target: "parWorkbook"})},

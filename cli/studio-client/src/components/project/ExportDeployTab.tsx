@@ -912,13 +912,24 @@ function TargetCard({
                                             </Alert>
                                         )}
                                         {existingBuildJobLookup === "done" && existingDownloadJobId === undefined && (
-                                            <Alert color="gray" variant="light" title="Existing file, no build record" mb="sm">
+                                            <Alert
+                                                color="gray"
+                                                variant="light"
+                                                title={artifactPreview.result.destinationKind === "file" ? "Existing file, no build record" : "Existing output, no build record"}
+                                                mb="sm"
+                                            >
                                                 <Text size="sm">
-                                                    This destination already contains a file, but Studio could not find its build record. Choose a new destination to build a current copy without touching the existing file.
+                                                    {artifactPreview.result.destinationKind === "file"
+                                                        ? "This destination already contains a file, but Studio could not find its build record. Choose a new destination to build a current copy without touching the existing file."
+                                                        : "This folder already contains files, but Studio could not find their build record. Choose a new or empty folder to build a current copy without touching the existing files."}
                                                 </Text>
                                             </Alert>
                                         )}
-                                        <ErrorState message="An output already exists at this destination. Choose a new destination; Build will not overwrite it." />
+                                        <ErrorState
+                                            message={artifactPreview.result.destinationKind === "file"
+                                                ? "An output already exists at this destination. Choose a new destination; Build will not overwrite it."
+                                                : "This folder already contains files. Choose a new or empty folder; Build will not overwrite them."}
+                                        />
                                         <Text className="studio-technical-text" size="sm" mt={4}>
                                             Existing output: {artifactPreview.result.destination}
                                         </Text>
