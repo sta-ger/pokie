@@ -81,4 +81,17 @@ describe("DiffCommand", () => {
             fs.rmSync(directory, {recursive: true, force: true});
         }
     });
+
+    it("names an unrecognized directory instead of calling it a simulation report", async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-diff-directory-"));
+        const report = path.join(directory, "report.json");
+        fs.writeFileSync(report, JSON.stringify(simulationReport()));
+        try {
+            await expect(new DiffCommand().run([directory, report])).rejects.toThrow(
+                /is a directory but not a recognized Outcome Library or Stake Engine export/,
+            );
+        } finally {
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
 });

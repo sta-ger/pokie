@@ -438,6 +438,15 @@ describe("ReportCommand", () => {
         }
     });
 
+    it("names an unrecognized directory instead of calling it a simulation report", async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "report-unrecognized-directory-"));
+        try {
+            await expect(new ReportCommand().run([root])).rejects.toThrow(/is a directory, not a simulation report.*index\.json/i);
+        } finally {
+            fs.rmSync(root, {recursive: true, force: true});
+        }
+    });
+
     it("names a folder --out destination instead of surfacing an EISDIR rename failure", async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "report-output-folder-"));
         const output = path.join(root, "report.md");

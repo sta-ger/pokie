@@ -385,7 +385,24 @@ export class ReportCommand implements CliCommandHandling {
     // original parsing/read error rather than disguising the underlying source-reader failure as a result.
     // Other recognized project types still receive a precise wrong-target diagnostic.
     private resolveReportPathAlternative(reportPath: string, fallbackError: Error, project: Awaited<ReturnType<ProjectResolving["resolve"]>>): ReportPathAlternative {
-        if (project === undefined || project.type === "outcomeLibrary" || project.type === "stakeAdapter") {
+        if (project === undefined) {
+            // A directory is never a simulation report. Name the recognizable directory inputs instead of leaking
+            // the EISDIR a JSON read produces for an unrecognized/malformed outcome bundle.
+            try {
+                if (fs.statSync(reportPath).isDirectory()) {
+                    return {
+                        error: new Error(
+                            `"${reportPath}" is a directory, not a simulation report. A compatible Stake Engine outcome directory must contain index.json; ` +
+                                'a POKIE-produced export must also contain a valid pokie-info.json. Run "pokie inspect <path>" to identify it, or pass a report file.',
+                        ),
+                    };
+                }
+            } catch {
+                // Fall through to the original read diagnostic; nonexistent paths keep their existing message.
+            }
+            return {error: fallbackError};
+        }
+        if (project.type === "outcomeLibrary" || project.type === "stakeAdapter") {
             return {error: fallbackError};
         }
 
