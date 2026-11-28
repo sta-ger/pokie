@@ -582,7 +582,7 @@ export class BuildCommand implements CliCommandHandling {
     private printPlanSummary(plan: FormatConversionPlan): void {
         if (plan.parConversion) this.printParConversion(plan.parConversion);
         console.log("Conversion plan:");
-        console.log(`  steps            ${plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "no executable steps"}`);
+        console.log(`  steps            ${plan.steps.map((step) => step.choice === step.kind ? step.kind : `${step.choice} ${step.kind}`).join(" → ") || "no executable steps"}`);
         console.log(`  estimated work   ${plan.preflight.estimatedWork}`);
         console.log(`  destination kind ${plan.preflight.destinationKind}`);
         console.log(`  final destination ${plan.target.canonicalLocation ?? "selected destination"}`);

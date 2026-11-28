@@ -734,10 +734,12 @@ observed monetary totals and the analytics subround metrics.
  source outputs retain their original components and metadata unchanged.
  Bet mode is a separate dimension. Each dimension reports RTP contribution
  (amount / actual charged stake) and payout share (amount / total observed win).
-- Symbol, line and scatter hits are component presence per accepted
- subround, deduplicated by symbol/line/scatter ID within that subround. Component
- occurrence totals remain separate. A zero-valued component counts
- as component presence; landed display symbols alone never count as paid wins.
+- Symbol, line and **scatter win** hits are component presence per accepted
+ subround, deduplicated by symbol/line/scatter ID within that subround. A scatter
+ win hit is a paying scatter component, not a feature trigger; free-game entry
+ counts are reported separately. Component occurrence totals remain separate. A
+ zero-valued component counts as component presence; landed display symbols alone
+ never count as paid wins.
 - Dead spins = zero-win accepted subrounds / all accepted subrounds. Maximum-win
  frequency counts the exact maximum, including zero in an all-zero run; empty
  runs have zero occurrences. Maximum contribution = maximum * occurrences /

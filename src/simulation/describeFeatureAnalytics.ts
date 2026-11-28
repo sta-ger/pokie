@@ -47,8 +47,9 @@ export function describeFeatureAnalytics(a?: FeatureAnalytics): string[] {
     if (!a.envelope.components) lines.push("Symbol/line/scatter hits unavailable.");
     else {
         for (const [kind, group] of Object.entries(a.hitRates)) {
-            if (!Object.keys(group).length) lines.push(`${kind} hits / accepted spins: 0 / ${a.subrounds} = 0.`);
-            for (const [id, r] of Object.entries(group)) lines.push(`${kind} ${id} hits / accepted spins (deduplicated): ${ratio(r)}.`);
+            const label = kind === "scatter" ? "scatter win hits" : `${kind} hits`;
+            if (!Object.keys(group).length) lines.push(`${label} / accepted spins: 0 / ${a.subrounds} = 0.`);
+            for (const [id, r] of Object.entries(group)) lines.push(`${label} ${id} / accepted spins (deduplicated): ${ratio(r)}.`);
         }
         const componentLabel = (c: (typeof a.components)[string]): string => {
             const symbol = c.symbol ?? c.id;
