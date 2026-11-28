@@ -25,6 +25,7 @@ import {
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOperationError.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {readJsonFileWithContext} from "./internal/readJsonFileWithContext.js";
 
 const USAGE =
     "Usage: pokie certification build <libraryDir> <config.json> [--out <dir>]\n" +
@@ -235,7 +236,7 @@ export class CertificationCommand implements CliCommandHandling {
 
         let pack: CertificationPackInputs | undefined;
         if (trustedSourcesPath) {
-            const raw = this.loadJson(trustedSourcesPath);
+            const raw = readJsonFileWithContext(this.loadJson, trustedSourcesPath, "the trusted-sources file");
             validateCertificationPackInputs(raw);
             pack = this.resolveTrustedSources(raw, trustedSourcesPath);
         }
@@ -289,7 +290,7 @@ export class CertificationCommand implements CliCommandHandling {
     }
 
     private loadDescriptor(configPath: string): BuildDescriptor {
-        const parsed = this.loadJson(configPath);
+        const parsed = readJsonFileWithContext(this.loadJson, configPath, "the certification config");
         if (typeof parsed !== "object" || parsed === null || !Array.isArray((parsed as {modes?: unknown}).modes)) {
             throw new Error(`"${configPath}" is not a valid certification bundle config. ${CONFIG_HINT}`);
         }

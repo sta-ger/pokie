@@ -21,6 +21,7 @@ import {assertDeclaredOutcomeLibraryMode} from "./internal/assertDeclaredOutcome
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {normalizeServerSeedFileContents} from "./internal/normalizeServerSeedFileContents.js";
 import {parseCanonicalNonNegativeInteger} from "./internal/parseCanonicalNonNegativeInteger.js";
+import {readJsonFileWithContext} from "./internal/readJsonFileWithContext.js";
 
 const VERIFY_USAGE = "Usage: pokie fairness verify <proof.json> --commitment <commitment.json> --source <folder>";
 const SEED_COMMIT_USAGE = "Usage: pokie fairness seed-commit <serverSeed.txt> [--out <file>] [--overwrite]";
@@ -353,7 +354,11 @@ export class FairnessCommand implements CliCommandHandling {
     }
 
     private async runCommit(options: CommitOptions): Promise<number> {
-        const serverSeedCommitment = this.loadJson(options.serverSeedCommitmentPath) as FairnessServerSeedCommitment;
+        const serverSeedCommitment = readJsonFileWithContext<FairnessServerSeedCommitment>(
+            this.loadJson,
+            options.serverSeedCommitmentPath,
+            "the server-seed commitment",
+        );
 
         await assertDeclaredOutcomeLibraryMode(options.sourceLibraryDir, options.modeName);
         let libraryId: string;
@@ -383,7 +388,11 @@ export class FairnessCommand implements CliCommandHandling {
     }
 
     private async runReveal(options: RevealOptions): Promise<number> {
-        const commitment = this.loadJson(options.commitmentPath) as FairnessCommitment;
+        const commitment = readJsonFileWithContext<FairnessCommitment>(
+            this.loadJson,
+            options.commitmentPath,
+            "the round commitment",
+        );
         if (typeof commitment.modeName === "string" && commitment.modeName.length > 0) {
             await assertDeclaredOutcomeLibraryMode(options.sourceLibraryDir, commitment.modeName);
         }
@@ -395,8 +404,8 @@ export class FairnessCommand implements CliCommandHandling {
     }
 
     private async runVerify(options: VerifyOptions): Promise<number> {
-        const proofCandidate = this.loadJson(options.proofPath);
-        const commitmentCandidate = this.loadJson(options.commitmentPath);
+        const proofCandidate = readJsonFileWithContext(this.loadJson, options.proofPath, "the round proof");
+        const commitmentCandidate = readJsonFileWithContext(this.loadJson, options.commitmentPath, "the round commitment");
         const issues = await this.verifier.verify(proofCandidate, {commitment: commitmentCandidate, sourceLibraryDir: options.sourceLibraryDir});
         const errors = issues.filter((issue) => issue.severity === "error");
         const rest = issues.filter((issue) => issue.severity !== "error");
