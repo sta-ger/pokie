@@ -63,7 +63,11 @@ export class FileStudioJobRepository implements StudioJobRepository {
             if (typeof value !== "object" || value === null) return undefined;
             const state = value as Partial<StudioJobProcessState>;
             return (state.status === "running" || state.status === "gracefully-stopped") && typeof state.updatedAt === "number"
-                ? {status: state.status, updatedAt: state.updatedAt}
+                ? {
+                    status: state.status,
+                    updatedAt: state.updatedAt,
+                    ...(typeof state.pid === "number" && Number.isSafeInteger(state.pid) && state.pid > 0 ? {pid: state.pid} : {}),
+                }
                 : undefined;
         } catch {
             return undefined;
@@ -141,5 +145,6 @@ function isJob(value: unknown): value is StudioJobView {
     return typeof job.id === "string" && (/^[A-Za-z0-9_-]+$/).test(job.id)
         && typeof job.projectId === "string" && typeof job.operation === "string"
         && typeof job.conflictKey === "string" && typeof job.status === "string"
-        && typeof job.createdAt === "number" && typeof job.request === "object" && job.request !== null;
+        && typeof job.createdAt === "number" && typeof job.request === "object" && job.request !== null
+        && (job.ownerPid === undefined || (typeof job.ownerPid === "number" && Number.isSafeInteger(job.ownerPid) && job.ownerPid > 0));
 }

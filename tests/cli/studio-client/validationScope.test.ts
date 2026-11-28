@@ -25,6 +25,12 @@ describe("validation scopes", () => {
         expect(badges.find((badge) => badge.scope === "math")?.detail).toMatch(/may never end/i);
     });
 
+    it("labels an uncalculated editor draft as a draft check, not as the saved project's math", () => {
+        const badges = describeBlueprintValidationScopes({status: "ok", warnings: [], advanced: undefined} as never, "idle");
+        expect(badges.find((badge) => badge.scope === "math")?.label).toBe("Math: draft not checked");
+        expect(badges.find((badge) => badge.scope === "math")?.detail).toMatch(/saved project's exact table/i);
+    });
+
     it("does not call a structure-valid project mathematically certified", () => {
         const badges = describeProjectValidationScopes({
             status: "success",

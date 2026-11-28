@@ -74,6 +74,9 @@ export function CanonicalPlayerView({
     const displayedMultiplier = logicalRound?.currentStep
         ? logicalRound.currentStep.totalWin / logicalRound.entry.bet
         : payoutMultiplier;
+    // A feature round shows one screen at a time. Calling the step's own win "Win" next to a
+    // paid-round total above it reads as a contradiction when the last free spin paid nothing.
+    const stepScoped = (logicalRound?.subrounds.length ?? 0) > 1;
     const displayedCoverage = logicalRound?.currentStep?.visibleRowCoverage ?? visibleRowCoverage;
     const artwork = useActiveSymbolArtwork();
     const playerRootRef = useRef<HTMLDivElement>(null);
@@ -97,9 +100,6 @@ export function CanonicalPlayerView({
         if (logicalRound?.currentStep) {
             const winLabel = elements.totalWinRow?.querySelector("dt");
             const multiplierLabel = elements.payoutMultiplierRow?.querySelector("dt");
-            // A feature round shows one screen at a time. Calling the step's own win "Win" next to a
-            // paid-round total above it reads as a contradiction when the last free spin paid nothing.
-            const stepScoped = logicalRound.subrounds.length > 1;
             if (winLabel) winLabel.textContent = stepScoped ? "Win on this screen" : "Win";
             if (multiplierLabel) multiplierLabel.textContent = stepScoped ? "Screen win multiplier (× bet)" : "Win multiplier (× bet)";
         }
@@ -108,6 +108,7 @@ export function CanonicalPlayerView({
             {
                 credits,
                 totalWin: displayedWin,
+                roundWin: stepScoped ? logicalRound?.totalWin : undefined,
                 payoutMultiplier: displayedMultiplier,
                 formatTotalWin: (value) => value.toFixed(2),
                 formatPayoutMultiplier: (value) => value.toFixed(2),
@@ -129,7 +130,7 @@ export function CanonicalPlayerView({
                 },
             },
         );
-    }, [artwork, availableBets, availableModeIds, credits, currentBet, currentModeId, featureCounters, lines, onSelectBet, onSelectMode, paytable, displayedMultiplier, displayedScreen, displayedWin, displayedCoverage, displayedWins, logicalRound?.currentStep, logicalRound?.subrounds.length]);
+    }, [artwork, availableBets, availableModeIds, credits, currentBet, currentModeId, featureCounters, lines, onSelectBet, onSelectMode, paytable, displayedMultiplier, displayedScreen, displayedWin, displayedCoverage, displayedWins, logicalRound?.currentStep, logicalRound?.subrounds.length, logicalRound?.totalWin, stepScoped]);
 
     return <><div className="pokie-player-card" ref={playerRootRef} />{sequenceSelections?.length || sequenceStatistics?.length ? <section aria-label="Reel sequence selections">
         <h4>Reel sequences</h4>

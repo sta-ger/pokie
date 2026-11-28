@@ -30,6 +30,15 @@ describe("job labels", () => {
         expect(describeJobDiagnostic(raw)).not.toMatch(/resumable/i);
     });
 
+    it("does not blame a restart for an exact-table record that may already have a current result", () => {
+        const raw = "The previous exact outcome-table generation stopped before its checkpoint was validated. If Overview already shows a current exact table, this is only an old interrupted record; dismiss it. Otherwise retry the captured generation from scratch.";
+        const human = describeJobDiagnostic(raw);
+        expect(human).toContain("If Overview already shows a current exact table");
+        expect(human).toContain("dismiss this old record");
+        expect(human).not.toMatch(/Studio restarted/i);
+        expect(human).not.toMatch(/Outcome Library/);
+    });
+
     it("replaces executor and captured-destination jargon with a producer instruction", () => {
         const raw = "Studio shutdown could not confirm executor cleanup. Inspect the captured destination and saved files, then restart Studio before retrying.";
         const human = describeJobDiagnostic(raw);
