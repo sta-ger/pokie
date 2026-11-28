@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {describeFileTargetDestinationProblem} from "../../../cli/studio/build/artifactFileDestinationProblem.js";
+import {describeDestinationFilesystemProblem, describeFileTargetDestinationProblem} from "../../../cli/studio/build/artifactFileDestinationProblem.js";
 
 describe("describeFileTargetDestinationProblem", () => {
     let workDir: string;
@@ -45,5 +45,23 @@ describe("describeFileTargetDestinationProblem", () => {
         fs.writeFileSync(destination, "old workbook");
 
         expect(describeFileTargetDestinationProblem("parWorkbook", destination)).toBeUndefined();
+    });
+
+    it.each([
+        ["ENOTDIR", /inside a file, not a folder/],
+        ["ENAMETOOLONG", /too long for this filesystem/],
+        ["EACCES", /doesn't have permission/],
+        ["EROFS", /read-only location/],
+        ["ENOSPC", /not enough space/],
+        ["ELOOP", /too many linked folders/],
+    ] as const)("describes the %s destination failure as caller input", (code, message) => {
+        const destination = path.join(workDir, "artifact.xlsx");
+        const error = Object.assign(new Error(`${code}: filesystem failure`), {code});
+
+        expect(describeDestinationFilesystemProblem(destination, error)).toMatch(message);
+    });
+
+    it("leaves an unrecognized destination failure to the existing diagnostic path", () => {
+        expect(describeDestinationFilesystemProblem("/tmp/artifact.xlsx", new Error("Unexpected"))).toBeUndefined();
     });
 });

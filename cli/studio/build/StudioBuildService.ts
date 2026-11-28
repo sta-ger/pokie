@@ -34,7 +34,7 @@ import type {StudioBuildChecking, StudioPreparedArtifactPreview} from "./StudioB
 import type {StudioOutputPreviewView} from "./StudioOutputPreviewView.js";
 import type {StudioOutputFormatView} from "./StudioOutputFormatView.js";
 import {createUnresolvedRuntimePlan} from "./createExternalFormatConversionPlan.js";
-import {describeFileTargetDestinationProblem} from "./artifactFileDestinationProblem.js";
+import {describeDestinationFilesystemProblem, describeFileTargetDestinationProblem} from "./artifactFileDestinationProblem.js";
 import {resolveStudioProjectSource} from "./StudioFormatConversionPlanningService.js";
 import {StudioJobService} from "../jobs/StudioJobService.js";
 import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";
@@ -234,19 +234,28 @@ export class StudioBuildService {
         if (destinationProblem !== undefined) {
             // Keep the mandatory plan on the DTO, but answer before any builder-facing capability work: a
             // destination POKIE cannot reopen will never become a valid build no matter what the source supports.
-            let plan: FormatConversionPlan;
-            try {
-                plan = await this.plan(project, target, destination, {signal});
-            } catch {
-                plan = new FormatConversionPlanner().plan(project, target, {destinationPath: destination});
-            }
-            return {view: {status: "error", message: destinationProblem, plan}};
+            return {view: {status: "error", message: destinationProblem, plan: new FormatConversionPlanner().plan(project, target)}};
         }
 
-        const operation = target === "stakeAdapter"
-            ? await this.stakeProjection.prepareOperation(project, destination, {signal})
-            : undefined;
-        const plan = operation?.plan ?? await this.plan(project, target, destination, {signal});
+        let operation: PreparedStakeProjectionOperation | undefined;
+        let plan: FormatConversionPlan;
+        try {
+            operation = target === "stakeAdapter"
+                ? await this.stakeProjection.prepareOperation(project, destination, {signal})
+                : undefined;
+            plan = operation?.plan ?? await this.plan(project, target, destination, {signal});
+        } catch (error) {
+            // A path such as an existing file with a child segment is caller input, not an internal failure.
+            // Keep cancellation propagating, but answer every other planning failure through the same DTO the
+            // Build/Export card already renders instead of a bare 500.
+            if (signal?.aborted || error instanceof BuildCancelledError) throw error;
+            return {view: {
+                status: "error",
+                message: describeDestinationFilesystemProblem(destination, error)
+                    ?? `Could not check "${destination}" as a build destination: ${error instanceof Error ? error.message : String(error)}`,
+                plan: new FormatConversionPlanner().plan(project, target),
+            }};
+        }
         if (plan.status === "unavailable") {
             return {view: {status: "unsupported", target, message: this.describePlanDiagnostic(plan), plan}};
         }

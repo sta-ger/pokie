@@ -117,6 +117,28 @@ describe("Studio HTTP smoke", () => {
             message: expect.stringContaining("is a folder, not a file"),
         }));
 
+        // A path with a file as an intermediate segment must be a normal parsed preview error, not a 500.
+        const nestedUnderFile = path.join(saveBody.path!, "child.xlsx");
+        const nestedPreview = await jsonRequest<{status: string; message?: string}>(
+            `${baseUrl}/api/project/build/preview`,
+            {method: "POST", body: JSON.stringify({target: "parWorkbook", outDir: nestedUnderFile})},
+        );
+        expect(nestedPreview.status).toBe(200);
+        expect(await nestedPreview.json()).toEqual(expect.objectContaining({
+            status: "error",
+            message: expect.stringContaining("is inside a file, not a folder"),
+        }));
+
+        const longPreview = await jsonRequest<{status: string; message?: string}>(
+            `${baseUrl}/api/project/build/preview`,
+            {method: "POST", body: JSON.stringify({target: "parWorkbook", outDir: path.join(tempHome, `${"a".repeat(300)}.xlsx`)})},
+        );
+        expect(longPreview.status).toBe(200);
+        expect(await longPreview.json()).toEqual(expect.objectContaining({
+            status: "error",
+            message: expect.stringContaining("too long for this filesystem"),
+        }));
+
         const started = await jsonRequest<{status: string; job: {id: string; status: string}}>(
             `${baseUrl}/api/project/build/build`,
             {method: "POST", body: JSON.stringify({target: "parWorkbook"})},

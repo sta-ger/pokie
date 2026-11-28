@@ -16,6 +16,29 @@ const FILE_TARGET_LABELS: Partial<Record<OutputFormat, string>> = {
     wasm: "WASM module",
 };
 
+// Filesystem failures while inspecting a destination are caller-input outcomes, not server failures. Keep the
+// raw OS code in logs/technical surfaces, but give the Build/Export card an actionable sentence it can show.
+export function describeDestinationFilesystemProblem(destination: string, error: unknown): string | undefined {
+    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    switch (code) {
+        case "ENOTDIR":
+            return `"${destination}" is inside a file, not a folder. Choose a different file name or folder.`;
+        case "ENAMETOOLONG":
+            return `"${destination}" is too long for this filesystem. Use a shorter file name or folder.`;
+        case "EACCES":
+        case "EPERM":
+            return `POKIE doesn't have permission to use "${destination}". Choose a different location or fix its permissions.`;
+        case "EROFS":
+            return `"${destination}" is on a read-only location. Choose a writable location.`;
+        case "ENOSPC":
+            return `There is not enough space to create "${destination}". Free some space or choose another location.`;
+        case "ELOOP":
+            return `"${destination}" has too many linked folders. Choose a different location.`;
+        default:
+            return undefined;
+    }
+}
+
 // Studio bypasses BuildCommand, so this mirrors the same "POKIE must be able to reopen its own artifact"
 // boundary for the file-shaped targets while leaving directory targets untouched. Unlike a generic
 // destination-occupied check, a wrong suffix or a directory named like a file is a caller-input problem, not
