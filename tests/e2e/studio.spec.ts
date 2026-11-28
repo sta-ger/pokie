@@ -1648,6 +1648,10 @@ test("PAR import never presents an invalid definition comparison as a clean matc
     await page.getByRole("button", {name: /advanced options/}).click();
     await page.locator("input:visible").first().fill(source);
     await page.getByRole("button", {name: "Load", exact: true}).first().click();
+    // Loading a design wholesale remounts the editor (including the PAR import panel), so wait for the
+    // loaded design's own Save control before typing a path this remount would otherwise clear.
+    const save = page.getByRole("button", {name: /^(Create game design|Save to source file)$/});
+    await expect(save).toBeEnabled({timeout: 60_000});
     await expect(page.getByRole("textbox", {name: "PAR sheet path"})).toBeVisible({timeout: 60_000});
     await page.getByRole("textbox", {name: "PAR sheet path"}).fill(parPath);
     await page.getByRole("button", {name: "Import", exact: true}).click();
