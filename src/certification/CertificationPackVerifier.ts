@@ -179,6 +179,11 @@ export class CertificationPackVerifier implements CertificationPackVerifying {
                 if (!options.templateFile) throw new Error("Explicit templateFile authority is required for a custom template; pass --template <json>.");
                 const template = loadCertificationPackTemplate(options.templateFile);
                 if (packHash(template) !== index.presentation.templateHash || sha256OfBytes(fs.readFileSync(options.templateFile)) !== index.presentation.templateArtifactHash) throw new Error("Template differs from the explicitly selected raw/semantic authority.");
+            } else if (options.templateFile !== undefined) {
+                // The pack rendered with the default template. An explicitly supplied template is still an
+                // authority claim: validate it instead of silently ignoring a malformed or different file.
+                const template = loadCertificationPackTemplate(options.templateFile);
+                if (packHash(template) !== index.presentation.templateHash) throw new Error("Template differs from the default template this pack was rendered with.");
             } else if (index.presentation.templateHash !== packHash(DEFAULT_CERTIFICATION_PACK_TEMPLATE)) throw new Error("Unselected custom template has no explicit artifact authority.");
             if (index.pack.rules.status === "available" && !options.pack?.modelSource) throw new Error("Explicit pack modelSource authority is required; retained model locations are never followed.");
             if ((options.pack?.reportFiles?.length ?? 0) !== index.pack.statistics.estimates.length || (options.pack?.replayFiles?.length ?? 0) !== index.pack.reproduction.recordings.length) throw new Error("Explicit reportFiles/replayFiles trusted sources must cover every attached item.");
