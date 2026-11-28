@@ -3645,6 +3645,9 @@ grouped by kind (`ExportDeployTargets.ts`):
  with their reasons and recovery guidance. Preview checks the actual destination before publication.
  Success identifies output type/location and offers applicable open, reveal, and registration follow-ups.
  These outputs are local outputs; building a Stake export is not remote delivery.
+ File-shaped outputs keep their recognized suffix (a game design `.json`, PAR sheet `.xlsx`, or WASM module
+ `.wasm`) so POKIE can reopen them later; a folder named like a file, a malformed path, or an occupied
+ destination is reported inline and disables Build before anything is written.
 - **Remote deployment** — a GUI over the `pokie` package's own [External Adapter SDK](external-connector-sdk.md):
  `StudioDeploymentService` (`cli/studio/deployment/StudioDeploymentService.ts`) never projects a `RoundRecord`,
  generates an output, or validates compatibility/output itself; every one of those steps is delegated straight
