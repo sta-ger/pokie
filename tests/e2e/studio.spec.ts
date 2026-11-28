@@ -846,6 +846,20 @@ test.describe.serial("managed project labels", () => {
         await rounds.pressSequentially("10,000");
         await rounds.press("Tab");
         await expect(rounds).toHaveValue("10,000");
+
+        // A fractional budget must stay visible and fail validation. `allowDecimal={false}` used to strip the
+        // decimal point (1.5 -> 1), so the field silently submitted a different whole-number run instead.
+        const runSimulation = page.getByRole("button", {name: "Run Simulation", exact: true});
+        await rounds.fill("1.5");
+        await expect(rounds).toHaveValue("1.5");
+        await expect(page.getByText(/Plays must be a positive integer between 1 and 10,000,000/)).toBeVisible();
+        await expect(runSimulation).toBeDisabled();
+        await rounds.fill("1,500,000.5");
+        await expect(rounds).toHaveValue("1,500,000.5");
+        await expect(runSimulation).toBeDisabled();
+        await rounds.fill("1000");
+        await expect(rounds).toHaveValue("1,000");
+        await expect(runSimulation).toBeEnabled();
     });
 
     test("simulation comparison shows the shared design and metric deltas", async ({page}) => {

@@ -741,7 +741,6 @@ export function SimulationTab({
                             max={MAX_STUDIO_SIMULATION_ROUNDS}
                             clampBehavior="none"
                             step={1}
-                            allowDecimal={false}
                             thousandSeparator=","
                             required
                             data-pokie-lifecycle-field="simulation-rounds"
