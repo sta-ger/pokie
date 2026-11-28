@@ -1,3 +1,8 @@
+import type {
+    WeightedOutcomeWinContributionTable,
+    WeightedOutcomeWinEventTable,
+} from "../weightedoutcome/WeightedOutcomeWinAnalysis.js";
+
 /** All numeric metrics use IEEE-754 binary64 over the explicitly selected population. */
 export type MathTarget = {
     metric: "rtp" | "volatility" | "hitFrequency" | "featureFrequency" | "distribution" | "maxWin";
@@ -52,6 +57,15 @@ export type OptimizationWorkProgress = {
     total?: string;
     unit: "raw draws" | "outcomes" | "checks";
 };
+/** Exact paid-entry attribution for one measured population; feature RTP remains in `measured`. */
+export type OptimizationContributionEvidence = {
+    scope: "paid-entry";
+    paidEntryRtp: number;
+    line: WeightedOutcomeWinContributionTable;
+    symbol: WeightedOutcomeWinContributionTable;
+    events: WeightedOutcomeWinEventTable;
+    truncated: boolean;
+};
 export type OptimizationEvidence = {
     work?: OptimizationWorkProgress;
     phase?: "preparing" | "search" | "assessment" | "finalizing";
@@ -93,6 +107,8 @@ export type OptimizationEvidence = {
     definitionDiff?: Pick<import("../diff/MathDefinitionDiff.js").MathDefinitionDiff, "status" | "scope" | "changes">;
     selected?: Record<string, OptimizationScalar>;
     measured?: number[];
+    /** Exact paid-entry win attribution from the first measured candidate, replaced by the selected one. */
+    contributions?: OptimizationContributionEvidence;
     constraintChecks?: string[];
     outputValidation?: string;
 };

@@ -67,6 +67,17 @@ describe("ProjectOptimizationService.support", () => {
         expect(support.writable).toContain("/paytable/A/2");
     });
 
+    it("reports exact paid-entry RTP contributions for the selected candidate", async () => {
+        const project = await blueprintProject();
+        const result = await service.optimize(project, optimizationRequest());
+
+        expect(result.status).toBe("success");
+        expect(result.evidence?.contributions?.scope).toBe("paid-entry");
+        expect(result.evidence?.contributions?.paidEntryRtp).toBeCloseTo(0.75, 10);
+        expect(result.evidence?.contributions?.symbol.entries.find(entry => entry.symbolId === "A")?.rtpContribution).toBeCloseTo(0.75, 10);
+        expect(result.evidence?.contributions?.truncated).toBe(false);
+    });
+
     it("offers free-game awards as writable fields and tunes total RTP on a whole paid round", async () => {
         const source = path.join(directory, "free-games.blueprint.json");
         fs.writeFileSync(source, JSON.stringify(freeGamesOptimizationBlueprint()));

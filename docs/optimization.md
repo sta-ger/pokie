@@ -150,6 +150,16 @@ Cancellation cannot establish infeasibility. Evidence includes source revision,
 connector/strategy versions, request units/tolerances/population, finite domains,
 seed, caps, work counts, ordered evaluations, metrics, diff and readback checks.
 
+Exact measurements also carry `evidence.contributions`: paid-entry RTP attribution
+by line, symbol and distinct win event for the measured population. The first
+measured candidate provides the baseline; the selected candidate replaces it.
+Rows overlap (a line win also appears under its symbol), so use them to see where
+the paid-entry RTP actually lives when choosing tunables, not as an additive split.
+For a logical-round target, feature settlement remains in `measured` and is not
+allocated into these paid-entry rows. Studio's optimization review renders the same
+symbol and line tables, and an infeasible/exhausted CLI run adds the largest
+paid-entry contributors to its diagnostics.
+
 Library usage:
 
 ```ts

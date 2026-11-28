@@ -102,6 +102,34 @@ export function OptimizationPreview({evidence}: {evidence: OptimizationEvidence}
                     </tr>)}</tbody>
                 </table>
             )}
+            {evidence.contributions !== undefined && (
+                <section aria-label="Paid-entry RTP contributions">
+                    <p>
+                        Exact paid-entry attribution from the measured population. Feature RTP stays in the target
+                        table above; these rows describe the paid entry spin only and overlap (a line win also
+                        appears under its symbol), so do not add them together.
+                    </p>
+                    <table aria-label="RTP contributions by symbol">
+                        <thead><tr>{["Symbol", "RTP contribution", "Hit frequency", "Outcomes"].map(label => <th key={label}>{label}</th>)}</tr></thead>
+                        <tbody>{evidence.contributions.symbol.entries.map(entry => <tr key={entry.key}>
+                            <td>{entry.label}</td>
+                            <td>{(entry.rtpContribution * 100).toFixed(4)} pp</td>
+                            <td>{(entry.hitFrequency * 100).toFixed(4)}%</td>
+                            <td>{entry.outcomeCount}</td>
+                        </tr>)}</tbody>
+                    </table>
+                    <table aria-label="RTP contributions by line">
+                        <thead><tr>{["Line", "RTP contribution", "Hit frequency", "Outcomes"].map(label => <th key={label}>{label}</th>)}</tr></thead>
+                        <tbody>{evidence.contributions.line.entries.map(entry => <tr key={entry.key}>
+                            <td>{entry.label}</td>
+                            <td>{(entry.rtpContribution * 100).toFixed(4)} pp</td>
+                            <td>{(entry.hitFrequency * 100).toFixed(4)}%</td>
+                            <td>{entry.outcomeCount}</td>
+                        </tr>)}</tbody>
+                    </table>
+                    {evidence.contributions.truncated && <p>Contribution tables are limited to their largest rows.</p>}
+                </section>
+            )}
             {nearest !== undefined && firstTarget !== undefined && (
                 <p aria-label="Nearest evaluated candidate">
                     Nearest evaluated candidate: #{nearest.index + 1}

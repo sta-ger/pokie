@@ -111,6 +111,21 @@ export class OptimizeCommand implements CliCommandHandling {
             process.off("SIGINT", cancel);
             process.off("SIGTERM", cancel);
         }
+        if ((result.status === "infeasible" || result.status === "exhausted") && result.evidence?.contributions !== undefined) {
+            const top = result.evidence.contributions.symbol.entries
+                .filter((entry) => entry.rtpContribution > 0)
+                .slice(0, 3)
+                .map((entry) => `${entry.label} ${(entry.rtpContribution * 100).toFixed(2)} pp`);
+            if (top.length > 0) {
+                result = {
+                    ...result,
+                    diagnostics: [...result.diagnostics, {
+                        path: "$",
+                        message: `Largest paid-entry RTP contributors in the baseline measured population: ${top.join(", ")}. Tune a path that changes one of these wins, or widen the target/tunable domain.`,
+                    }],
+                };
+            }
+        }
         console.log(JSON.stringify({...result, ...(review ? {review} : {})}));
         return OPTIMIZATION_EXIT_CODES[result.status];
     }

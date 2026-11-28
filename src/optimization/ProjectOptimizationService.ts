@@ -293,7 +293,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                             assertCurrent();
                             if (options.signal?.aborted) throw new OptimizationCancelledError("Cancelled during candidate measurement.");
                         };
-                        const measured = await adapter.measure(
+                        const measurement = await adapter.measure(
                             file,
                             readback,
                             evaluatedTargets,
@@ -301,6 +301,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                             options.signal,
                             measurementProgress,
                         );
+                        const measured = measurement.metrics;
                         Reflect.deleteProperty(evidence, "work");
                         assertCurrent();
                         if (projectRevision(resolved) !== serializedRevision) throw new Error("Executable evaluation changed candidate bytes.");
@@ -309,12 +310,19 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                         evidence.outputValidation =
                         "same-type resolver, native readback, undeclared-field comparison and recomputed runtime/native metrics";
                         const passesMax = !maxConstraint || measured[measured.length - 1] <= maxConstraint.value;
+                        const candidateMatches = passesMax && targetsMatch(request.targets, measured);
+                        // Keep a baseline attribution from the first measured candidate, then replace it
+                        // with the selected candidate's own population so the final evidence explains
+                        // the values actually chosen.
+                        if (measurement.contributions !== undefined && (evidence.contributions === undefined || candidateMatches)) {
+                            evidence.contributions = measurement.contributions;
+                        }
                     evidence.evaluations!.push({
                         parameters: selection,
                         measured,
-                        verdict: passesMax && targetsMatch(request.targets, measured) ? "selected" : "target-missed",
+                        verdict: candidateMatches ? "selected" : "target-missed",
                     });
-                    if (passesMax && targetsMatch(request.targets, measured)) {
+                    if (candidateMatches) {
                         if (projectRevision(project) !== sourceRevision) throw new Error("Source changed during optimization; discard stale result.");
                         selected = {
                             path: file,
@@ -486,7 +494,8 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
             } else {
                 const maxConstraint = request.policy.constraints?.maxWin;
                 const evaluatedTargets = maxConstraint ? [...request.targets, {metric: "maxWin" as const, unit: maxConstraint.unit, value: maxConstraint.value}] : request.targets;
-                const measured = await adapter.measure(destination, readback, evaluatedTargets, request.policy, options.signal);
+                const measurement = await adapter.measure(destination, readback, evaluatedTargets, request.policy, options.signal);
+                const measured = measurement.metrics;
                 if (maxConstraint && measured[measured.length - 1] > maxConstraint.value) throw new Error("Published runtime violates the reviewed maximum win.");
                 if (!targetsMatch(request.targets, measured)) throw new Error("Published runtime does not demonstrate the reviewed target.");
             }

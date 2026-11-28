@@ -45,7 +45,14 @@ import {
     type CanonicalWasmTuningContract,
     type DeclaredPackageTuningContract,
 } from "../DeclaredTuningContract.js";
-import type {MathTarget, OptimizationPolicy, OptimizationScalar, OptimizationWorkProgress} from "../OptimizationPolicy.js";
+import type {
+    MathTarget,
+    OptimizationContributionEvidence,
+    OptimizationPolicy,
+    OptimizationScalar,
+    OptimizationWorkProgress,
+} from "../OptimizationPolicy.js";
+import {analyzeWeightedOutcomeWins} from "../../weightedoutcome/WeightedOutcomeWinAnalysis.js";
 import {copyPackage, digest, inventory, jsonHash, paytablePaths, readJson, tunablePaths, writeJson} from "./optimizationData.js";
 import {computeFreeGamesExactRtp} from "../../weightedoutcome/computeFreeGamesExactRtp.js";
 
@@ -62,6 +69,10 @@ export class OptimizationCancelledError extends Error {}
 export class OptimizationCleanupError extends Error {}
 export class OptimizationExhaustedError extends Error {}
 type OptimizationSamplingOptions = {signal?: AbortSignal; workerEntryUrl?: URL; onProgress(completed: number): void; onValidationWork(completed: number): void};
+export type OptimizationMeasurement = {
+    metrics: number[];
+    contributions?: OptimizationContributionEvidence;
+};
 export interface ProjectOptimizationAdapting {
     model: unknown;
     writable: string[];
@@ -75,7 +86,7 @@ export interface ProjectOptimizationAdapting {
         policy: OptimizationPolicy,
         signal?: AbortSignal,
         onProgress?: (progress: OptimizationWorkProgress) => void,
-    ): Promise<number[]>;
+    ): Promise<OptimizationMeasurement>;
 }
 function errors(issues: readonly {severity: string; message: string}[]): void {
     const failed = issues.filter((issue) => issue.severity === "error");
@@ -142,13 +153,13 @@ async function readNative(project: PokieProject): Promise<NativeModel> {
     }
     return model;
 }
-function selectLibraryMetrics(
+function measureLibrary(
     outcomes: WeightedOutcomeInput[],
     id: string,
     targets: MathTarget[],
     policy: OptimizationPolicy,
     maxFreeGames?: number,
-): number[] {
+): OptimizationMeasurement {
     const library = buildWeightedOutcomeLibrary({libraryId: id, outcomes});
     const analysis = new WeightedOutcomeLibraryAnalyzer().analyze(library);
     const events = computeWeightedOutcomeLibraryFeatureBreakdown(library);
@@ -160,7 +171,7 @@ function selectLibraryMetrics(
         if (freeGames?.status === "unsupported") throw new OptimizationUnsupportedError(`Exact total RTP is unavailable: ${freeGames.reason}`);
         if (freeGames?.status !== "available") throw new OptimizationUnsupportedError("Exact total RTP is unavailable for this feature population.");
     }
-    return targets.map((target) => {
+    const metrics = targets.map((target) => {
         if (logicalRound && target.metric !== "rtp") throw new OptimizationUnsupportedError(
             "Exact whole-round search supports RTP only. Use paid-entry scope for other exact metrics, or use Simulation for whole-round estimates.",
         );
@@ -189,6 +200,18 @@ function selectLibraryMetrics(
                 throw new OptimizationUnsupportedError("Unknown metric.");
         }
     });
+    const wins = analyzeWeightedOutcomeWins(library, {maxContributionRows: 12, maxEventRows: 12});
+    return {
+        metrics,
+        contributions: {
+            scope: "paid-entry",
+            paidEntryRtp: analysis.rtp,
+            line: wins.line,
+            symbol: wins.symbol,
+            events: wins.events,
+            truncated: wins.truncated,
+        },
+    };
 }
 async function measureGame(
     game: PokieGame,
@@ -198,7 +221,7 @@ async function measureGame(
     signal?: AbortSignal,
     onValidationWork?: (count: number) => void,
     onProgress?: (progress: OptimizationWorkProgress) => void,
-): Promise<number[]> {
+): Promise<OptimizationMeasurement> {
     try {
         cancelled(signal);
         if (game.getConfigHash?.() !== computeGameBlueprintHash(blueprint)) throw new OptimizationUnsupportedError("Executable getConfigHash does not bind the declared tuning model.");
@@ -221,7 +244,7 @@ async function measureGame(
         });
         if (result.diagnostics.strategy !== "exact") throw new OptimizationUnsupportedError("Sampled analysis cannot prove an exact target.");
         onProgress?.({stage: "Generating outcomes", current: String(result.library.outcomes.length), total: String(result.library.outcomes.length), unit: "outcomes"});
-        return selectLibraryMetrics([...result.library.outcomes], "optimization", targets, policy, blueprint.mechanics?.freeGames?.maxFreeGames);
+        return measureLibrary([...result.library.outcomes], "optimization", targets, policy, blueprint.mechanics?.freeGames?.maxFreeGames);
     } finally {
         if (game.release) await releaseOwnedRuntime(() => game.release!());
     }
@@ -353,7 +376,7 @@ export async function acquireOptimizationAdapter(
                         "Native library stake must match every selected record.",
                     );
                     return Promise.resolve(
-                        selectLibraryMetrics(
+                        measureLibrary(
                             outcomes.map(([id, outcome]) => ({
                                 id,
                                 weight: outcome.weight as number,
@@ -382,8 +405,8 @@ export async function acquireOptimizationAdapter(
                 const analysis = new StakeEngineStandaloneAnalyzer({
                     classify: (event) => ({category: event.type}),
                 }).analyze(source).modes[0];
-                return Promise.resolve(
-                    targets.map((target) => {
+                return Promise.resolve({
+                    metrics: targets.map((target) => {
                         switch (target.metric) {
                             case "rtp":
                                 return analysis.rtp;
@@ -414,7 +437,7 @@ export async function acquireOptimizationAdapter(
                                 throw new OptimizationUnsupportedError("Unknown metric.");
                         }
                     }),
-                );
+                });
             },
         };
     }
@@ -572,7 +595,7 @@ export async function acquireOptimizationAdapter(
             if (project.type === "tsPackage") {
                 const runtime = await loadPokieGameRuntime(file);
                 try {
-                    [returnBound] = await measureGame(runtime.game, model, [{metric: "maxWin", unit: "betMultiple", value: 0}], requested, options.signal, validationProgress);
+                    [returnBound] = (await measureGame(runtime.game, model, [{metric: "maxWin", unit: "betMultiple", value: 0}], requested, options.signal, validationProgress)).metrics;
                 } finally {
                     await releaseOwnedRuntime(() => runtime.release());
                 }
