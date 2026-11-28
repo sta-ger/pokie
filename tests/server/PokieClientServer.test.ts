@@ -58,6 +58,16 @@ describe("PokieClientServer", () => {
         expect(status).toBe(404);
     });
 
+    it("answers a malformed percent escape with 400 and keeps serving the player UI", async () => {
+        const response = await fetch(`${baseUrl}/%E0%A4%A`);
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({error: "Malformed URL encoding in request path."});
+        const after = await get(`${baseUrl}/`);
+        expect(after.status).toBe(200);
+        expect(after.body).toBe("<html>preview</html>");
+    });
+
     it("returns 404 instead of leaking a file outside clientRoot via path traversal", async () => {
         const outsideFile = path.join(os.tmpdir(), "pokie-client-server-traversal-marker.txt");
         fs.writeFileSync(outsideFile, "should never be served");

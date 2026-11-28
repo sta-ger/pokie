@@ -549,6 +549,14 @@ describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
         expect(errorResponse.headers.get("access-control-allow-origin")).toBe("*");
     });
 
+    it("answers a malformed percent escape in the path with 400, not a server error", async () => {
+        const response = await fetch(`${baseUrl}/sessions/%E0%A4%A`);
+
+        expect(response.status).toBe(400);
+        expect(response.headers.get("access-control-allow-origin")).toBe("*");
+        expect(await response.json()).toEqual({error: "Malformed URL encoding in request path."});
+    });
+
     it("responds to an OPTIONS preflight request with 204 and CORS headers", async () => {
         const response = await fetch(`${baseUrl}/sessions`, {method: "OPTIONS"});
 

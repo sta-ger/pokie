@@ -85,7 +85,18 @@ export class PokieClientServer implements PokieClientServerHandling {
             return;
         }
 
-        const filePath = this.resolveStaticFilePath(url.pathname);
+        let filePath: string | undefined;
+        try {
+            filePath = this.resolveStaticFilePath(url.pathname);
+        } catch (error) {
+            if (error instanceof URIError) {
+                // A malformed percent escape is caller input. Letting it escape the request callback
+                // would terminate the whole client server, taking the player UI down with it.
+                this.sendJson(res, 400, {error: "Malformed URL encoding in request path."});
+                return;
+            }
+            throw error;
+        }
         if (filePath === undefined) {
             this.sendJson(res, 404, {error: `Not found: ${url.pathname}`});
             return;

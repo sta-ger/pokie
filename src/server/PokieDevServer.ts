@@ -267,8 +267,6 @@ export class PokieDevServer implements PokieDevServerHandling {
     private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const method = req.method ?? "GET";
         const url = new URL(req.url ?? "/", "http://localhost");
-        const spinSessionId = this.matchSpinRoute(url.pathname);
-        const sessionId = this.matchSessionRoute(url.pathname);
 
         // Unconditional, on every response (including errors): a browser-based client — e.g.
         // `pokie client`, served from a different origin/port by design (see docs/cli.md) — needs
@@ -279,6 +277,18 @@ export class PokieDevServer implements PokieDevServerHandling {
         if (method === "OPTIONS") {
             res.writeHead(204);
             res.end();
+            return;
+        }
+
+        let spinSessionId: string | undefined;
+        let sessionId: string | undefined;
+        try {
+            spinSessionId = this.matchSpinRoute(url.pathname);
+            sessionId = this.matchSessionRoute(url.pathname);
+        } catch {
+            // Request-path decoding is caller input, not a server failure. Keep the CORS envelope above
+            // and answer a malformed percent escape with 400 instead of the outer 500 handler.
+            this.sendJson(res, 400, {error: "Malformed URL encoding in request path."});
             return;
         }
 
