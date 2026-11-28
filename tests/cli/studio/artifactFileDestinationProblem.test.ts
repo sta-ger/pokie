@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {describeDestinationFilesystemProblem} from "../../../cli/studio/describeDestinationFilesystemProblem.js";
+import {describeDestinationFilesystemProblem} from "../../../cli/commands/internal/describeDestinationFilesystemProblem.js";
 import {describeFileTargetDestinationProblem} from "../../../cli/studio/build/artifactFileDestinationProblem.js";
 
 describe("describeFileTargetDestinationProblem", () => {

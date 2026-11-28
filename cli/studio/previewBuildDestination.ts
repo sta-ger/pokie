@@ -1,7 +1,7 @@
 import {BUILT_PACKAGE_FILES, assertPreparedOutputDestinationAvailable, resolveGamePackageDestination} from "@fromstan/pokie";
 import fs from "fs";
 import path from "path";
-import {describeDestinationFilesystemProblem} from "./describeDestinationFilesystemProblem.js";
+import {describeDestinationFilesystemProblem} from "../commands/internal/describeDestinationFilesystemProblem.js";
 
 // Advisory only: execution rechecks the same shared publication guard.
 export type BuildDestinationPreview = {

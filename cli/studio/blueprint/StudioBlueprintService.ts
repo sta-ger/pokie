@@ -43,7 +43,7 @@ import os from "os";
 import path from "path";
 import {PokiePathResolver} from "../../paths/PokiePathResolver.js";
 import {isPathWithin} from "../isPathWithin.js";
-import {describeDestinationFilesystemProblem} from "../describeDestinationFilesystemProblem.js";
+import {describeDestinationFilesystemProblem} from "../../commands/internal/describeDestinationFilesystemProblem.js";
 import {previewBuildDestination} from "../previewBuildDestination.js";
 import type {StudioHomeService} from "../home/StudioHomeService.js";
 import type {StudioBuildPreviewView} from "../home/StudioBuildPreviewView.js";

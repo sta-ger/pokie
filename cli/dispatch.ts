@@ -1,6 +1,7 @@
 import {CliCommandHandling} from "./CliCommandHandling.js";
 import {BlueprintPreparationError} from "./runtime/BlueprintPreparationError.js";
 import {GamePackagePreparationError} from "./prepare/GamePackagePreparationError.js";
+import {describeDestinationFilesystemProblem} from "./commands/internal/describeDestinationFilesystemProblem.js";
 import {isTopLevelHelpRequest, isTopLevelVersionRequest, resolveCliInvocation} from "./resolveCliInvocation.js";
 import {buildUsageText} from "./usageText.js";
 
@@ -102,7 +103,12 @@ export async function dispatch(commands: CliCommandHandling[], argv: string[], v
         const exitCode = await command.run(invocation.args);
         return exitCode ?? 0;
     } catch (error) {
-        console.error(error instanceof Error ? error.message : String(error));
+        // A filesystem failure while inspecting a user-supplied destination is ordinary caller input. Name the
+        // actionable remedy here as the final safety net for commands that surface a raw Node error before their
+        // own domain writer can translate it; unrelated errors keep their existing message unchanged.
+        const failedPath = (error as {path?: unknown} | null)?.path;
+        const described = typeof failedPath === "string" ? describeDestinationFilesystemProblem(failedPath, error) : undefined;
+        console.error(described ?? (error instanceof Error ? error.message : String(error)));
         // A BlueprintPreparationError's or GamePackagePreparationError's own "details" (a failed
         // "npm install"'s raw npm stderr) is deliberately never folded into the human-readable message
         // above -- printed here, after it and clearly labeled, so the human explanation always leads and
