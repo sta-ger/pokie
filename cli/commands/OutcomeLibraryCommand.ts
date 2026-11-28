@@ -623,6 +623,14 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 console.error(`Could not generate an outcome library from "${packageRoot}" (${error.getCode()}): ${error.message}`);
                 return 1;
             }
+            if (controller.signal.aborted) {
+                // A SIGINT can land during runtime preparation or the planner's pre-publication rebind, before the
+                // streaming generator has produced a checkpoint. That is still a cancellation, not a failed build.
+                console.error(
+                    `Generation of "${packageRoot}" was cancelled before durable publication. No incomplete library was written.`,
+                );
+                return 130;
+            }
             throw error;
         } finally {
             if (preflightGame !== undefined) await releasePokieGame(preflightGame).catch(() => undefined);

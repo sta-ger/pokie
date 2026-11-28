@@ -3,7 +3,7 @@ import {loadPokieWasmFileRuntime, SeededPokieWasmHost} from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
-const USAGE = "Usage: pokie run <game.wasm> [--seed <string>]";
+const USAGE = "Usage: pokie run <game.wasm> [--seed <string>] [--bet <number>] [--mode <id>] [--delivery stepwise|composite] [--round-id <id>] [--format text|json]";
 
 /** Starts one portable round directly from a canonical artifact, with no project package or compiler. */
 export class RunWasmCommand implements CliCommandHandling {
@@ -35,6 +35,7 @@ export class RunWasmCommand implements CliCommandHandling {
         return createCommanderCliCommand("run")
             .description(this.getDescription())
             .argument("<game.wasm>", "a POKIE WASM build")
+            .argument("[excess...]", "rejected if present -- this command takes no further positionals")
             .option("--seed <string>", "deterministic host RNG seed", "pokie-wasm-cli")
             .option("--bet <number>", "available entry denomination", (value: string) => {
                 const bet = Number(value);
@@ -51,8 +52,10 @@ export class RunWasmCommand implements CliCommandHandling {
                 if (value !== "text" && value !== "json") throw new Error("--format must be text or json.");
                 return value;
             }, "text")
-            .action(async (artifactPath: string, options: {seed: string; bet?: number; mode?: string; delivery?: "stepwise" | "composite"; roundId?: string; format: string}) => {
+            .action(async (artifactPath: string, excess: string[], options: {seed: string; bet?: number; mode?: string; delivery?: "stepwise" | "composite"; roundId?: string; format: string}) => {
                 if (!artifactPath) throw new Error(USAGE);
+                if (excess.length > 0) throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
+                if (options.roundId !== undefined && options.roundId.trim().length === 0) throw new Error(`--round-id must be a non-empty string. ${USAGE}`);
                 const runtime = await loadPokieWasmFileRuntime(artifactPath, new SeededPokieWasmHost(options.seed));
                 try {
                     const session = runtime.createSession(options.seed);

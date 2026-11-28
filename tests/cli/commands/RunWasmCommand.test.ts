@@ -44,4 +44,12 @@ describe("RunWasmCommand", () => {
             log.mockRestore();
         }
     });
+
+    it("rejects an empty --round-id instead of silently dropping it", async () => {
+        await expect(new RunWasmCommand().run([wasmPath, "--round-id", ""])).rejects.toThrow(/--round-id must be a non-empty string/);
+    });
+
+    it("rejects excess positional arguments with the command usage", async () => {
+        await expect(new RunWasmCommand().run([wasmPath, "extra"])).rejects.toThrow(/Unknown option "extra"\. Usage: pokie run/);
+    });
 });
