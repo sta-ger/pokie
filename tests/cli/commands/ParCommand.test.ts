@@ -318,8 +318,10 @@ describe("ParCommand", () => {
                 expect((failure as Error).message.match(/already exists/gi)).toHaveLength(1);
                 expect(fs.readFileSync(occupiedOutputPath)).toEqual(occupiedBytes);
 
+                // Keep the .xlsx suffix required by the command while still aliasing the Blueprint source.
+                fs.symlinkSync(blueprintPath, path.join(workDir, "source.par.xlsx"));
                 fs.symlinkSync(workDir, linkedDir, "dir");
-                await expect(command.run(["export", blueprintPath, "--out", path.join(linkedDir, "source.blueprint.json")])).rejects.toThrow(
+                await expect(command.run(["export", blueprintPath, "--out", path.join(linkedDir, "source.par.xlsx")])).rejects.toThrow(
                     /source itself/i,
                 );
                 expect(fs.readFileSync(blueprintPath, "utf-8")).toBe(sourceContents);
