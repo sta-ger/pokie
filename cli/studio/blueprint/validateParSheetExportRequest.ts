@@ -1,3 +1,5 @@
+import {extname} from "path";
+
 export type ParSheetExportRequestInput = {blueprint?: unknown; path?: unknown; overwrite?: unknown; sourcePath?: unknown};
 
 export type ValidatedParSheetExportRequest = {blueprint: unknown; path: string; overwrite: boolean; sourcePath?: string};
@@ -14,6 +16,9 @@ export function validateParSheetExportRequest(input: ParSheetExportRequestInput)
     }
     if (typeof path !== "string" || path.trim().length === 0) {
         throw new Error('"path" is required.');
+    }
+    if (extname(path).toLowerCase() !== ".xlsx") {
+        throw new Error(`A PAR workbook must be saved as a file ending in ".xlsx"; "${path}" does not. Add the suffix so POKIE can reopen it.`);
     }
     if (overwrite !== undefined && typeof overwrite !== "boolean") {
         throw new Error('"overwrite" must be a boolean when given.');

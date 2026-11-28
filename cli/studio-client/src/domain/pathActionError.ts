@@ -4,7 +4,7 @@
 // StudioFsBrowseService's own `StudioFsBrowseErrorReason` naming so a caller's remediation copy stays
 // consistent with PathInput's own resolved-path hint. `schema` covers the one category browse never
 // produces: a missing/malformed value rejected before any filesystem access is even attempted.
-export type PathActionErrorReason = "network" | "absent" | "permission" | "type" | "schema" | "destination" | "name" | "workbook" | "suffix" | "other";
+export type PathActionErrorReason = "network" | "absent" | "permission" | "type" | "schema" | "destination" | "name" | "workbook" | "suffix" | "workbook-suffix" | "other";
 
 type PathActionIssue = {status: string; remediation: string};
 
@@ -29,6 +29,9 @@ export function classifyPathActionErrorReason(message: string): PathActionErrorR
     }
     if ((/must be saved as a file ending in "\.json"|ending in "\.json"/i).test(message)) {
         return "suffix";
+    }
+    if ((/must be saved as a file ending in "\.xlsx"|ending in "\.xlsx"/i).test(message)) {
+        return "workbook-suffix";
     }
     if ((/no free managed project name|no available managed project name|Game id .* already exists|already exists.*Choose a different Game id/i).test(message)) {
         return "name";
@@ -65,6 +68,10 @@ const PATH_ACTION_ISSUE_COPY: Record<PathActionErrorReason, (subject: string) =>
     suffix: (subject) => ({
         status: `${subject} needs a file name ending in ".json".`,
         remediation: 'Choose a name such as "game.blueprint.json", then try again.',
+    }),
+    "workbook-suffix": (subject) => ({
+        status: `${subject} needs a file name ending in ".xlsx".`,
+        remediation: 'Choose a name such as "game.par.xlsx", then try again.',
     }),
     other: (subject) => ({
         status: `${subject} could not be completed.`,

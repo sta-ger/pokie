@@ -831,6 +831,15 @@ export class StudioBlueprintService {
         if (isPathWithin(this.studioRoot, resolved)) {
             return {status: "error", error: outsideStudioRootMessage(rawOutPath)};
         }
+        try {
+            if (fs.statSync(resolved).isDirectory()) {
+                return {status: "error", error: `"${resolved}" is a folder, not a file. Choose a workbook file name for the PAR export.`};
+            }
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+                return {status: "error", error: describeDestinationFilesystemProblem(resolved, error) ?? (error instanceof Error ? error.message : String(error))};
+            }
+        }
         const source = this.blueprintSourceIdentity(blueprint, sourcePath);
         const plan = this.planner.planIdentity(source, "parWorkbook", {destinationPath: resolved});
         if (plan.status !== "planned") {
@@ -891,7 +900,7 @@ export class StudioBlueprintService {
             const rendered = message instanceof Error ? message.message : String(message);
             return message instanceof BuildConflictError
                 ? {status: "conflict", path: resolved, error: rendered}
-                : {status: "error", error: rendered};
+                : {status: "error", error: describeDestinationFilesystemProblem(resolved, message) ?? rendered};
         }
     }
 

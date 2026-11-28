@@ -53,6 +53,14 @@ describe("describePathActionError", () => {
         );
     });
 
+    it("turns a PAR export name without the workbook suffix into an actionable name message", () => {
+        const raw = 'A PAR workbook must be saved as a file ending in ".xlsx"; "/tmp/game.par" does not. Add the suffix so POKIE can reopen it.';
+        expect(classifyPathActionErrorReason(raw)).toBe("workbook-suffix");
+        expect(describePathActionError("The PAR sheet export destination", raw)).toBe(
+            'The PAR sheet export destination needs a file name ending in ".xlsx". Choose a name such as "game.par.xlsx", then try again.',
+        );
+    });
+
     it("keeps ordinary filesystem failures classified as before", () => {
         expect(classifyPathActionErrorReason("ENOENT: no such file or directory")).toBe("absent");
         expect(classifyPathActionErrorReason("EACCES: permission denied")).toBe("permission");

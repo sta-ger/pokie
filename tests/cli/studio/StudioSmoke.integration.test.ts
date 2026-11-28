@@ -173,6 +173,48 @@ describe("Studio HTTP smoke", () => {
             error: expect.stringContaining("is inside a file, not a folder"),
         }));
 
+        const parNoSuffix = path.join(tempHome, "par-export-noext");
+        const rejectedParSuffix = await jsonRequest<{error?: string}>(
+            `${baseUrl}/api/home/blueprints/par-export`,
+            {method: "POST", body: JSON.stringify({path: parNoSuffix, blueprint: createRecommendedBlueprint(), overwrite: false})},
+        );
+        expect(rejectedParSuffix.status).toBe(400);
+        expect(await rejectedParSuffix.json()).toEqual(expect.objectContaining({error: expect.stringContaining('file ending in ".xlsx"')}));
+        expect(fs.existsSync(parNoSuffix)).toBe(false);
+
+        const parFolder = path.join(tempHome, "par-export-folder.xlsx");
+        fs.mkdirSync(parFolder);
+        const rejectedParFolder = await jsonRequest<{status: string; error?: string}>(
+            `${baseUrl}/api/home/blueprints/par-export`,
+            {method: "POST", body: JSON.stringify({path: parFolder, blueprint: createRecommendedBlueprint(), overwrite: true})},
+        );
+        expect(rejectedParFolder.status).toBe(200);
+        expect(await rejectedParFolder.json()).toEqual(expect.objectContaining({
+            status: "error",
+            error: expect.stringContaining("is a folder, not a file"),
+        }));
+        expect(fs.statSync(parFolder).isDirectory()).toBe(true);
+        expect(fs.readdirSync(parFolder)).toEqual([]);
+
+        const parExisting = path.join(tempHome, "par-export-existing.xlsx");
+        fs.writeFileSync(parExisting, "sentinel workbook");
+        const rejectedParExisting = await jsonRequest<{status: string; error?: string}>(
+            `${baseUrl}/api/home/blueprints/par-export`,
+            {method: "POST", body: JSON.stringify({path: parExisting, blueprint: createRecommendedBlueprint(), overwrite: true})},
+        );
+        expect(rejectedParExisting.status).toBe(409);
+        expect(await rejectedParExisting.json()).toEqual(expect.objectContaining({status: "conflict", error: expect.stringContaining("already exists")}));
+        expect(fs.readFileSync(parExisting, "utf8")).toBe("sentinel workbook");
+
+        const parValid = path.join(tempHome, "par-export-valid.xlsx");
+        const exportedPar = await jsonRequest<{status: string; path?: string}>(
+            `${baseUrl}/api/home/blueprints/par-export`,
+            {method: "POST", body: JSON.stringify({path: parValid, blueprint: createRecommendedBlueprint(), overwrite: false})},
+        );
+        expect(exportedPar.status).toBe(201);
+        expect(await exportedPar.json()).toEqual(expect.objectContaining({status: "ok", path: parValid}));
+        expect(fs.statSync(parValid).size).toBeGreaterThan(0);
+
         const started = await jsonRequest<{status: string; job: {id: string; status: string}}>(
             `${baseUrl}/api/project/build/build`,
             {method: "POST", body: JSON.stringify({target: "parWorkbook"})},
