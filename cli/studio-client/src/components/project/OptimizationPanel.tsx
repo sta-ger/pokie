@@ -66,7 +66,7 @@ const OPTIMIZATION_STATUS_LABEL: Record<StudioJobView["status"], string> = {
     completed: "Completed",
     failed: "Failed",
     cancelled: "Cancelled",
-    "recovery-required": "Recovery required",
+    "recovery-required": "Interrupted",
 };
 
 const OPTIMIZATION_VERDICT_EXPLANATION: Partial<Record<StudioOptimizationResult["status"], string>> = {

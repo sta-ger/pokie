@@ -25,7 +25,7 @@ import {groupHomeJobs} from "../../domain/interpret/HomeJobs";
 export type HomeTab = "design" | "projects";
 
 const HOME_TABS: NavTabItem<HomeTab>[] = [
-    {value: "design", label: "Start a game", auditControlId: "home-tab:design", panelId: "home-design-panel"},
+    {value: "design", label: "Design a game", auditControlId: "home-tab:design", panelId: "home-design-panel"},
     {value: "projects", label: "Projects", auditControlId: "home-tab:projects", panelId: "home-projects-panel"},
 ];
 
@@ -86,7 +86,7 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
     const navigate = useNavigate();
     const {tab} = useParams<{tab: string}>();
     const activeTab: HomeTab = isHomeTab(tab) ? tab : "design";
-    const activeTabLabel = HOME_TABS.find((item) => item.value === activeTab)?.label ?? "Start a game";
+    const activeTabLabel = HOME_TABS.find((item) => item.value === activeTab)?.label ?? "Design a game";
     useDocumentTitle(`${activeTabLabel} · POKIE Studio`);
 
     // Keep the address bar aligned with the fallback view too. Without this replacement an invalid
@@ -361,7 +361,7 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
                             Return to a game you already started, or add a game you made elsewhere. Open a game to play, test, and export it.
                         </Text>
                         <Text c="dimmed" size="sm">
-                            New here? Go to Start a game to begin with a ready-to-edit starter, a blank design, or a generated template.
+                            New here? Go to Design a game to begin with a ready-to-edit starter, a blank design, or a generated template.
                         </Text>
                         <ProjectsPanel
                             registryVersion={projectRegistryVersion}

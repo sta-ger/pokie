@@ -1,4 +1,5 @@
 import {WASM_EXECUTION_BOUNDARY} from "../../../../../src/wasm/PokieWasmRuntimeApi";
+import {isSupersededSimulationRecovery, latestCompletedSimulationAt} from "../../domain/interpret/SimulationRecovery";
 import {Alert, Anchor, Button, Stack, Table, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
 import {useCallback, useEffect, useLayoutEffect, useRef, useState} from "react";
@@ -475,6 +476,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         setProjectGeneration((previous) => previous + 1);
     }, [projectKey]);
     const commonJobs = useProjectJobs(fetchImpl, projectKey, projectGeneration);
+    // A completed simulation is the authoritative successor of an older interrupted run. Keep the
+    // recovery record available under Finished operations, but never let it present stale 0/N
+    // progress or a "needs attention" banner beside a report that already finished.
+    const latestCompletedAt = latestCompletedSimulationAt(commonJobs.jobs);
     const simulation = useSimulationPoll();
     const releaseSimulationRestoration = simulation.releaseRestoration;
     const refreshJobs = commonJobs.refresh;
@@ -672,10 +677,12 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     useEffect(() => {
         if (projectKey === undefined || !simulation.canRestore) return;
         if (restorableSimulation !== undefined) {
-            if (restorableSimulation.status === "recovery-required") setRecoveryJob(restorableSimulation);
+            if (restorableSimulation.status === "recovery-required" && !isSupersededSimulationRecovery(restorableSimulation, latestCompletedAt)) {
+                setRecoveryJob(restorableSimulation);
+            }
             simulation.restore(restorableSimulation.id);
         }
-    }, [restorableSimulation, projectKey, simulation]);
+    }, [latestCompletedAt, restorableSimulation, projectKey, simulation]);
 
     const [reportsView, setReportsView] = useState<ReportListView>({status: "empty"});
     const [reportsError, setReportsError] = useState<string>();
@@ -1124,9 +1131,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // until the page is reloaded.
     const [exactMathRefreshKey, setExactMathRefreshKey] = useState(0);
     // Incremented by every successful Save (including an optimization Apply/Undo), so Overview can
-    // rebuild a stale exact table once instead of leaving old numbers on screen until a manual Recompute.
-    // It is a one-shot token, never a loop: the generation it starts does not itself save the design.
-    const [autoRefreshStaleExactMathKey, setAutoRefreshStaleExactMathKey] = useState(0);
+    // offer a stale-table rebuild once instead of leaving old numbers on screen until a manual Recompute.
+    // It is a one-shot token, never a loop: choosing Rebuild does not itself save the design.
+    const [autoRefreshStaleExactMathKey, setAutoRefreshStaleExactMathKey] = useState<number | undefined>(undefined);
     // A completed exact-math generation should refresh the optimizer's RTP hint without resetting
     // the optimizer's own reviewed result or in-progress request.
     const [exactMathHintKey, setExactMathHintKey] = useState(0);
@@ -1137,10 +1144,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const handleBlueprintSaved = (sourceRevision?: string): void => {
         if (projectKey !== undefined) setOptimizerSourceChange({projectRoot: projectKey, sourceRevision});
         setExactMathRefreshKey((value) => value + 1);
-        // Any successful Save can change the saved math, not just an optimization Apply. Rebuild once
-        // after the save settles so Overview never leaves an old exact table looking current until a
-        // manual Recompute. The token is one-shot per save, so it cannot loop with the generation itself.
-        setAutoRefreshStaleExactMathKey((value) => value + 1);
+        // Any successful Save can change the saved math, not just an optimization Apply. Offer one
+        // rebuild after the save settles so Overview never leaves an old exact table looking current
+        // until a manual Recompute. The token is one-shot per save, so it cannot loop with generation.
+        setAutoRefreshStaleExactMathKey((value) => (value ?? 0) + 1);
         // Saving a design changes the project-level validation report too. Refresh it here instead of
         // leaving Overview's card on the validation result read before the write (the card could even
         // describe the previous payout after the file already contained the new one).
@@ -1253,8 +1260,8 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // Keep work that can still change or needs attention visible; tuck completed/cancelled receipts
     // into one collapsed disclosure instead of stacking them under every tab.
     const attentionCommonJobs = visibleCommonJobs.filter((job) =>
-        job.status === "queued" || job.status === "running" || job.status === "cancelling"
-        || job.status === "recovery-required" || job.status === "failed");
+        (job.status === "queued" || job.status === "running" || job.status === "cancelling"
+        || job.status === "recovery-required" || job.status === "failed") && !isSupersededSimulationRecovery(job, latestCompletedAt));
     const finishedCommonJobs = visibleCommonJobs.filter((job) => !attentionCommonJobs.includes(job));
     const projectName = describeProjectName(header);
     useDocumentTitle(`${projectName} · ${activeTabLabel} · POKIE Studio`);
@@ -1425,6 +1432,12 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         navigationMessage = simulationRestorationMessage;
     }
 
+    const dismissCommonJob = (id: string): void => {
+        const job = commonJobs.jobs.find((candidate) => candidate.id === id);
+        commonJobs.dismiss(id);
+        if (recoveryJob?.id === id) setRecoveryJob(undefined);
+        if (job?.operation === "simulation") simulation.forget(id);
+    };
     const renderCommonJob = (job: StudioJobView) => {
         // This is display-only guidance; retain the durable job, request,
         // provenance and original report bytes unchanged.
@@ -1444,7 +1457,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                 return;
             }
             commonJobs.cancel(id);
-        }} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={job.operation === "project-open-materialization" ? reopenJobProject : openJobOutput} onRevealOutput={job.operation === "project-open-materialization" && jobOutputActionsUnavailableReason !== undefined ? undefined : revealJobOutput} onInspectOutput={inspectJobOutput} outputActionsUnavailableReason={job.operation === "project-open-materialization" ? undefined : jobOutputActionsUnavailableReason} key={job.id} />;
+        }} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={job.operation === "project-open-materialization" ? reopenJobProject : openJobOutput} onRevealOutput={job.operation === "project-open-materialization" && jobOutputActionsUnavailableReason !== undefined ? undefined : revealJobOutput} onInspectOutput={inspectJobOutput} onDismiss={dismissCommonJob} outputActionsUnavailableReason={job.operation === "project-open-materialization" ? undefined : jobOutputActionsUnavailableReason} key={job.id} />;
     };
 
     if (header.status === "empty") {
@@ -1668,6 +1681,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     availableModes={simulationModes}
                                     packageModes={header.status === "loaded"}
                                     modeDiscoveryError={simulationModesError}
+                                    onDismissRecovery={dismissCommonJob}
                                 />
                             )}
                             {activeTab === "replay" && (

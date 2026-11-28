@@ -112,6 +112,31 @@ export async function dismissHomeSourceJob(fetchImpl: FetchLike, id: string, sou
     if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to dismiss Home Studio job"));
 }
 
+export type StudioPreferencesView = {
+    volatilityBands?: {lowMax: number; mediumMax: number};
+};
+
+export async function getStudioPreferences(fetchImpl: FetchLike, signal?: AbortSignal): Promise<StudioPreferencesView> {
+    const response = await fetchImpl("/api/studio/preferences", {cache: "no-store", signal});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to load Studio preferences"));
+    return await response.json() as StudioPreferencesView;
+}
+
+export async function saveStudioVolatilityBands(fetchImpl: FetchLike, bands: {lowMax: number; mediumMax: number}, signal?: AbortSignal): Promise<void> {
+    const response = await fetchImpl("/api/studio/preferences/volatility-bands", {
+        method: "POST",
+        headers: {"content-type": "application/json"},
+        body: JSON.stringify(bands),
+        signal,
+    });
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to save portfolio volatility bands"));
+}
+
+export async function clearStudioVolatilityBands(fetchImpl: FetchLike, signal?: AbortSignal): Promise<void> {
+    const response = await fetchImpl("/api/studio/preferences/volatility-bands", {method: "DELETE", signal});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to clear portfolio volatility bands"));
+}
+
 export async function getProjectJob(fetchImpl: FetchLike, id: string, signal?: AbortSignal): Promise<StudioJobView> {
     const response = await fetchImpl(`/api/project/jobs/${encodeURIComponent(id)}`, {cache: "no-store", signal});
     if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to load Studio job"));
@@ -129,6 +154,12 @@ export async function recoverProjectJob(fetchImpl: FetchLike, id: string, signal
     const response = await fetchImpl(`/api/project/jobs/${encodeURIComponent(id)}/recover`, {method: "POST", signal});
     if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to recover Studio job"));
     return await response.json() as StudioJobView;
+}
+
+/** Forget a finished project job. Active work must be cancelled first; files are untouched. */
+export async function dismissProjectJob(fetchImpl: FetchLike, id: string, signal?: AbortSignal): Promise<void> {
+    const response = await fetchImpl(`/api/project/jobs/${encodeURIComponent(id)}/dismiss`, {method: "POST", signal});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to dismiss Studio job"));
 }
 
 // Same minimal Fetch subset as cli/client/apiClient.ts's FetchLike — kept structurally compatible

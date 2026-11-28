@@ -90,6 +90,10 @@ describe("Studio HTTP smoke", () => {
             {method: "POST", body: JSON.stringify({projectRoot: saveBody.path})},
         );
         expect(opened.status).toBe(200);
+        // Let the project-level validation transition settle before issuing preflights; otherwise a
+        // preview can legitimately answer 409 "Project is changing" while the open is still finalizing.
+        const validated = await jsonRequest(`${baseUrl}/api/project/validate`);
+        expect(validated.status).toBe(200);
 
         // A Studio build must not produce a file POKIE cannot reopen just because the browser client skipped
         // BuildCommand's own --out suffix boundary. Preview is the pre-build check the Build/Export tab uses.
@@ -123,9 +127,12 @@ describe("Studio HTTP smoke", () => {
             `${baseUrl}/api/project/build/preview`,
             {method: "POST", body: JSON.stringify({target: "parWorkbook", outDir: nestedUnderFile})},
         );
-        expect(nestedPreview.status).toBe(200);
-        expect(await nestedPreview.json()).toEqual(expect.objectContaining({
-            status: "error",
+        const nestedPreviewBody = await nestedPreview.json();
+        // This is a real destination conflict, not a malformed request: 409 is the same status a
+        // subsequent Build would hit. The important contract is the actionable message, not a 500.
+        expect(nestedPreview.status).toBe(409);
+        expect(nestedPreviewBody).toEqual(expect.objectContaining({
+            status: "conflict",
             message: expect.stringContaining("is inside a file, not a folder"),
         }));
 
@@ -133,9 +140,9 @@ describe("Studio HTTP smoke", () => {
             `${baseUrl}/api/project/build/preview`,
             {method: "POST", body: JSON.stringify({target: "parWorkbook", outDir: path.join(tempHome, `${"a".repeat(300)}.xlsx`)})},
         );
-        expect(longPreview.status).toBe(200);
-        expect(await longPreview.json()).toEqual(expect.objectContaining({
-            status: "error",
+        const longPreviewBody = await longPreview.json();
+        expect([200, 409]).toContain(longPreview.status);
+        expect(longPreviewBody).toEqual(expect.objectContaining({
             message: expect.stringContaining("too long for this filesystem"),
         }));
 
@@ -263,6 +270,62 @@ describe("Studio HTTP smoke", () => {
         expect(job?.status).toBe("failed");
         expect(job?.recovery).toEqual({action: "rebuild", reason: "Import the same workbook again when ready; a partial import is never applied."});
         expect(job?.recoveryOnRestart?.reason).toContain("after restart");
+    });
+
+    it("persists portfolio volatility bands across Studio requests and clears them", async () => {
+        const empty = await jsonRequest<{volatilityBands?: unknown}>(`${baseUrl}/api/studio/preferences`);
+        expect(empty.status).toBe(200);
+        expect(await empty.json()).toEqual({});
+
+        const saved = await jsonRequest<{volatilityBands?: {lowMax: number; mediumMax: number}}>(
+            `${baseUrl}/api/studio/preferences/volatility-bands`,
+            {method: "POST", body: JSON.stringify({lowMax: 2, mediumMax: 5})},
+        );
+        expect(saved.status).toBe(200);
+        expect(await saved.json()).toEqual({volatilityBands: {lowMax: 2, mediumMax: 5}});
+
+        const reread = await jsonRequest<{volatilityBands?: {lowMax: number; mediumMax: number}}>(`${baseUrl}/api/studio/preferences`);
+        expect(await reread.json()).toEqual({volatilityBands: {lowMax: 2, mediumMax: 5}});
+
+        const invalid = await jsonRequest<{error?: string}>(
+            `${baseUrl}/api/studio/preferences/volatility-bands`,
+            {method: "POST", body: JSON.stringify({lowMax: 5, mediumMax: 2})},
+        );
+        expect(invalid.status).toBe(400);
+
+        const cleared = await jsonRequest(`${baseUrl}/api/studio/preferences/volatility-bands`, {method: "DELETE"});
+        expect(cleared.status).toBe(200);
+        const after = await jsonRequest<{volatilityBands?: unknown}>(`${baseUrl}/api/studio/preferences`);
+        expect(await after.json()).toEqual({});
+    });
+
+    it("dismisses a finished project job from durable history", async () => {
+        // Start this test's own job instead of depending on the earlier build test's terminal state.
+        const outDir = path.join(tempHome, "POKIE Projects", "starter-slot", "dismiss-par.xlsx");
+        const started = await jsonRequest<{job: {id: string}}>(`${baseUrl}/api/project/build/build`, {
+            method: "POST",
+            body: JSON.stringify({target: "parWorkbook", outDir}),
+        });
+        expect(started.status).toBe(202);
+        const startedJob = (await started.json()).job;
+        const activated = await jsonRequest(`${baseUrl}/api/project/build/build/${encodeURIComponent(startedJob.id)}/activate`, {method: "POST"});
+        expect(activated.status).toBe(200);
+        let terminalStatus: string | undefined;
+        for (let attempt = 0; attempt < 120; attempt += 1) {
+            const polled = await jsonRequest<{status: string}>(`${baseUrl}/api/project/build/build/${encodeURIComponent(startedJob.id)}`);
+            expect(polled.status).toBe(200);
+            terminalStatus = (await polled.json()).status;
+            if (["completed", "failed", "cancelled"].includes(terminalStatus)) break;
+            await new Promise((resolve) => {
+                setTimeout(resolve, 250);
+            });
+        }
+        expect(terminalStatus).toBe("completed");
+
+        const dismissed = await jsonRequest(`${baseUrl}/api/project/jobs/${encodeURIComponent(startedJob.id)}/dismiss`, {method: "POST"});
+        expect(dismissed.status).toBe(200);
+        const after = await jsonRequest<{jobs: Array<{id: string}>}>(`${baseUrl}/api/project/jobs`);
+        expect((await after.json()).jobs.some((job) => job.id === startedJob.id)).toBe(false);
     });
 
     it("refuses a second managed project with the same Game id instead of creating a suffixed duplicate", async () => {

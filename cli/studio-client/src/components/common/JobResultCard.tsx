@@ -49,7 +49,7 @@ function selectorLabel(selector: RecordValue): string {
 function terminalPresentation(status: Exclude<StudioJobView["status"], "queued" | "running" | "cancelling">): {color: "green" | "gray" | "orange" | "red"; label: string; fallback: string} {
     if (status === "completed") return {color: "green", label: "Completed", fallback: "This operation completed."};
     if (status === "cancelled") return {color: "gray", label: "Cancelled", fallback: "This operation was cancelled safely."};
-    if (status === "recovery-required") return {color: "orange", label: "Recovery required", fallback: "This operation needs an explicit recovery action."};
+    if (status === "recovery-required") return {color: "orange", label: "Interrupted", fallback: "This earlier run did not finish. Start it again when ready."};
     return {color: "red", label: "Failed", fallback: "This operation failed before it could complete."};
 }
 

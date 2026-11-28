@@ -15,6 +15,7 @@ import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionServic
 import {StudioPlayService} from "./runtime/StudioPlayService.js";
 import {StudioRoundRecorder} from "./runtime/StudioRoundRecorder.js";
 import {StudioJobService} from "./jobs/StudioJobService.js";
+import type {StudioPreferencesService} from "./preferences/StudioPreferencesService.js";
 import {StudioSimulationService} from "./simulation/StudioSimulationService.js";
 import {StudioStakeEngineExportService} from "./stakeengine/StudioStakeEngineExportService.js";
 import type {StudioContext} from "./StudioContext.js";
@@ -42,6 +43,8 @@ export type StudioServerOptions = {
     initialContext?: StudioContext;
     /** Server-owned durable lifecycle store; tests may inject an isolated store. */
     jobService?: StudioJobService;
+    /** Machine-local authoring preferences (for example portfolio volatility bands). */
+    preferencesService?: StudioPreferencesService;
     // Drives every Home nav flow (POST/GET /api/home/*: recent projects, create, init, build
     // preview/build, open) — see StudioHomeService. Required rather than defaulted: a default
     // instance would need a `pokie` version to embed into scaffolded/generated package.json files

@@ -52,11 +52,20 @@ export function describeJobDiagnostic(message: string): string {
     if ((/not resumable after restart|cannot resume after restart/i).test(message)) {
         return "Studio restarted before this operation finished. Run it again to continue.";
     }
+    if ((/could not confirm executor cleanup|captured destination|prior executor|executor is unavailable/i).test(message)) {
+        return "Studio closed before it could confirm this run had finished. Your files are unchanged. Review any completed result, then start a new run if you still need it.";
+    }
+    if ((/only a finished job can be dismissed/i).test(message)) {
+        return "This job is still running. Cancel it first, then dismiss its saved record.";
+    }
     // "Outcome Library" is the API/persistence name. The main UI deliberately says outcome table; keep
     // that one vocabulary in the human summary while the raw message remains under Technical detail.
     return message.replace(/\bOutcome Library\b/g, "outcome table");
 }
 
 export function describeJobRecoveryReason(reason: string): string {
+    if ((/could not confirm executor cleanup|captured destination|prior executor|executor is unavailable/i).test(reason)) {
+        return "Start a new run when ready; files and completed reports are unchanged.";
+    }
     return describeJobDiagnostic(reason);
 }

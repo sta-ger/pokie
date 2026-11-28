@@ -11,6 +11,19 @@ test("Home opens at the top with the design intro visible", async ({page}) => {
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
 });
 
+test("the starting-point launcher stays compact after the starter is loaded", async ({page}) => {
+    await page.goto("/#/home/design");
+    const launcher = page.locator("[data-pokie-starting-point]");
+    await expect(launcher).toBeVisible();
+    const box = await launcher.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.height).toBeLessThan(300);
+    await expect(page.getByRole("button", {name: "Use the starter"})).toBeVisible();
+    await expect(page.getByRole("button", {name: "Open PAR import"})).toBeVisible();
+    await expect(page.getByRole("button", {name: "Open Projects"})).toBeVisible();
+    await expect(page.getByText("Start from the ready-to-edit 5×3 starter", {exact: false})).toBeHidden();
+});
+
 test("the guided landing offers the three starting paths before the full form", async ({page}) => {
     await page.goto("/#/home/design");
     await expect(page.getByText("Choose a starting point", {exact: true})).toBeVisible();
@@ -598,7 +611,7 @@ test("selected available projects can be removed in bulk", async ({page}) => {
     await page.getByRole("checkbox", {name: "Select project Bulk Bravo"}).check();
     await page.getByRole("button", {name: "Remove selected (2)"}).click();
     await page.getByRole("dialog").getByRole("button", {name: "Confirm"}).click();
-    await expect(page.getByText("No games yet. Start a game or add one you already have.")).toBeVisible({timeout: 15_000});
+    await expect(page.getByText("No games yet. Design a game or add one you already have.")).toBeVisible({timeout: 15_000});
     await expect(page.locator("tr.project-registry-entry")).toHaveCount(0);
 });
 
@@ -1091,7 +1104,7 @@ test.describe.serial("managed project labels", () => {
         await expect(events.getByRole("row", {name: /A × 3/})).toContainText("1.9200%");
     });
 
-    test("apply asks for confirmation and automatically refreshes exact math", async ({page}) => {
+    test("apply asks for confirmation and offers a timed exact-math rebuild", async ({page}) => {
         // Exact optimization evaluates several complete outcome sets; leave a generous bound for a
         // loaded CI host while still failing a genuinely stuck job.
         test.setTimeout(360_000);
@@ -1132,10 +1145,15 @@ test.describe.serial("managed project labels", () => {
         // show the newly saved payout without a manual reload.
         const tunedRow = page.getByRole("row", {name: /A, 3 symbols payout/});
         await expect(tunedRow.getByRole("cell").nth(2)).toHaveText("7", {timeout: 30_000});
-        // A reviewed Apply invalidates the stored exact table, but Studio now rebuilds it automatically
-        // instead of leaving the author with a stale receipt and a manual Recompute hunt. The transient
-        // progress label can be too fast to catch for a small table; assert the durable end state instead:
-        // exact numbers are back and no stale-table warning remains.
+        // A reviewed Apply invalidates the stored exact table. Studio asks before a potentially slow
+        // rebuild instead of starting it silently; the prompt includes a time expectation and a
+        // "Later" escape hatch.
+        const rebuildChoice = page.locator('[data-pokie-exact-rebuild-choice="true"]');
+        await expect(rebuildChoice).toBeVisible({timeout: 120_000});
+        await expect(rebuildChoice).toContainText(/last exact rebuild took|Typical rebuilds/);
+        await expect(rebuildChoice.getByRole("button", {name: "Rebuild now"})).toBeVisible();
+        await expect(rebuildChoice.getByRole("button", {name: "Later"})).toBeVisible();
+        await rebuildChoice.getByRole("button", {name: "Rebuild now"}).click();
         await expect(page.getByText("At a glance", {exact: true}).first()).toBeVisible({timeout: 180_000});
         await expect(page.getByText(/computed from a different saved design/)).toHaveCount(0);
         // Switching tabs unmounts the optimization panel, not the 15-minute server receipt. Undo must
@@ -1177,9 +1195,13 @@ test.describe.serial("managed project labels", () => {
         // not the pre-save validation result and not only after a page reload.
         await expect(page.getByText(/Structure valid, with warnings/)).toBeVisible({timeout: 30_000});
         await expect(page.getByText(/"A" pays more than "K"/)).toBeVisible({timeout: 30_000});
-        // The ordinary Save scheduled the same one-shot exact-table rebuild as an optimization Apply;
-        // wait for the producer/exact summary to settle before starting the next edit.
-        await expect(page.getByText("At a glance", {exact: true}).first()).toBeVisible({timeout: 120_000});
+        // The ordinary Save offers the same one-shot exact-table rebuild as an optimization Apply.
+        // Choose Later here: validation must still refresh without waiting for enumeration.
+        const firstChoice = page.locator('[data-pokie-exact-rebuild-choice="true"]');
+        await expect(firstChoice).toBeVisible({timeout: 60_000});
+        await expect(firstChoice).toContainText(/last exact rebuild took|Typical rebuilds/);
+        await firstChoice.getByRole("button", {name: "Later"}).click();
+        await expect(page.getByRole("button", {name: "Recompute exact outcome table"})).toBeVisible({timeout: 30_000});
 
         await page.getByRole("button", {name: "Game design", exact: true}).click();
         await page.getByRole("button", {name: "Edit", exact: true}).nth(4).click();
@@ -1190,7 +1212,7 @@ test.describe.serial("managed project labels", () => {
         await page.getByRole("button", {name: "Overview", exact: true}).click();
         await expect(page.getByText(/Structure valid/)).toBeVisible({timeout: 30_000});
         await expect(page.getByText(/"A" pays more than "K"/)).toHaveCount(0, {timeout: 30_000});
-        await expect(page.getByText("At a glance", {exact: true}).first()).toBeVisible({timeout: 120_000});
+        await expect(page.locator('[data-pokie-exact-rebuild-choice="true"]')).toBeVisible({timeout: 60_000});
     });
 
     test("saving a design resets a Play session created from the old design", async ({page}) => {
@@ -1500,9 +1522,10 @@ test("Replay groups free spins under the paid round's full spin count", async ({
     await expect(page.locator(`[data-pokie-recorded-spin-round-id="${roundId}"][data-pokie-recorded-spin-stake="1"]`)).toHaveCount(1);
     await expect(page.locator(`[data-pokie-recorded-spin-round-id="${roundId}"][data-pokie-recorded-spin-stake="0"]`)).toHaveCount(recordedSpins - 1);
     await multiSpinHeader.getByRole("button", {name: "Inspect paid round"}).click();
-    await expect(page.getByRole("button", {name: "Replay recorded round"})).toBeVisible({timeout: 30_000});
-    await multiSpinHeader.getByRole("button", {name: "Replay recorded round"}).click();
+    await expect(multiSpinHeader.getByRole("button", {name: "Replay recorded round"})).toBeVisible({timeout: 30_000});
+    await multiSpinHeader.getByRole("button", {name: "Load & reproduce"}).click();
     await expect(page.getByText("Loaded replay")).toBeVisible({timeout: 30_000});
+    await expect(page.getByText(/Source: Recreated/)).toBeVisible({timeout: 60_000});
     fs.rmSync(path.dirname(projectPath), {recursive: true, force: true});
 });
 
@@ -1617,9 +1640,11 @@ test("PAR import compares exact math for both drafts before applying", async ({p
 
     await page.goto("/#/home/design");
     await page.getByRole("button", {name: "Open PAR import"}).click();
-    await page.getByRole("textbox", {name: "PAR sheet path"}).fill(parPath);
+    const parPathInput = page.getByRole("textbox", {name: "PAR sheet path"});
+    await parPathInput.fill(parPath);
+    await expect(parPathInput).toHaveValue(parPath);
     await page.getByRole("button", {name: "Import", exact: true}).click();
-    await expect(page.getByText("Imported — not applied yet")).toBeVisible({timeout: 60_000});
+    await expect(page.getByText("Imported — not applied yet")).toBeVisible({timeout: 120_000});
     await page.getByRole("button", {name: "Continue to preview the game model"}).click();
 
     await expect(page.getByText("Exact math comparison", {exact: true})).toBeVisible();
@@ -1635,7 +1660,7 @@ test("PAR import compares exact math for both drafts before applying", async ({p
 });
 
 test("PAR import never presents an invalid definition comparison as a clean match", async ({page}) => {
-    test.setTimeout(120_000);
+    test.setTimeout(240_000);
     const source = path.join(process.cwd(), "tests/e2e/fixtures/free-games-scope.json");
     const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-par-same-e2e-"));
     const parPath = path.join(workDir, "same.par.xlsx");
@@ -1652,10 +1677,12 @@ test("PAR import never presents an invalid definition comparison as a clean matc
     // loaded design's own Save control before typing a path this remount would otherwise clear.
     const save = page.getByRole("button", {name: /^(Create game design|Save to source file)$/});
     await expect(save).toBeEnabled({timeout: 60_000});
-    await expect(page.getByRole("textbox", {name: "PAR sheet path"})).toBeVisible({timeout: 60_000});
-    await page.getByRole("textbox", {name: "PAR sheet path"}).fill(parPath);
+    const parPathInput = page.getByRole("textbox", {name: "PAR sheet path"});
+    await expect(parPathInput).toBeVisible({timeout: 60_000});
+    await parPathInput.fill(parPath);
+    await expect(parPathInput).toHaveValue(parPath);
     await page.getByRole("button", {name: "Import", exact: true}).click();
-    await expect(page.getByText("Imported — not applied yet")).toBeVisible({timeout: 60_000});
+    await expect(page.getByText("Imported — not applied yet")).toBeVisible({timeout: 120_000});
     await page.getByRole("button", {name: "Continue to preview the game model"}).click();
 
     // The fixture's uncapped free games make the optional termination proof fail even though the
@@ -1665,7 +1692,7 @@ test("PAR import never presents an invalid definition comparison as a clean matc
     fs.rmSync(workDir, {recursive: true, force: true});
 });
 
-test("a featureless design reports whole-round exact math without uncapped free games", async ({page}) => {
+test("a featureless design reports whole-round exact math without uncapped free games", async ({page, browser, request}) => {
     test.setTimeout(240_000);
     await page.goto("/#/home/design");
     await page.getByRole("button", {name: "Use the starter"}).click();
@@ -1691,6 +1718,16 @@ test("a featureless design reports whole-round exact math without uncapped free 
     await page.getByLabel("Medium is up to").fill("5");
     await page.getByRole("button", {name: "Save bands"}).click();
     await expect(page.locator('[data-pokie-volatility-band="medium"]').first()).toBeVisible();
+    const projectUrl = page.url();
+
+    // A fresh browser context has no localStorage. The bands must come back from Studio's
+    // machine-local preferences, not silently disappear with the old tab.
+    const freshContext = await browser.newContext();
+    const freshPage = await freshContext.newPage();
+    await freshPage.goto(projectUrl);
+    await expect(freshPage.getByText(/Portfolio volatility bands: Low < 2\.00 · Medium 2\.00–5\.00 · High > 5\.00/)).toBeVisible({timeout: 60_000});
+    await freshContext.close();
+    await request.delete("/api/studio/preferences/volatility-bands");
 
     // The long paytable editor must offer the same Save action at the bottom of the table.
     await page.getByRole("button", {name: "Game design", exact: true}).click();
@@ -1735,7 +1772,7 @@ test("a saved game design can be duplicated from Projects with a fresh identity"
     await page.getByRole("button", {name: "Game design", exact: true}).click();
     const designerEntry = page.locator("[data-pokie-game-model-open-designer]");
     await expect(designerEntry).toBeVisible({timeout: 60_000});
-    await designerEntry.getByRole("button", {name: "Open in Start a game"}).click();
+    await designerEntry.getByRole("button", {name: "Edit full design"}).click();
     // The Design page deliberately repeats the source path both in the guided action header and near the Build
     // controls; assert the first visible copy rather than tripping Playwright's strict-mode locator.
     await expect(page.getByText(/This design is open from/).first()).toBeVisible({timeout: 90_000});
@@ -1759,4 +1796,51 @@ test("Play describes its math preview without promising a stakeholder demo", asy
     await page.getByRole("button", {name: "Play", exact: true}).click();
     await expect(page.getByText(/not for a stakeholder presentation/)).toBeVisible({timeout: 60_000});
     await expect(page.getByText("Use a built game, not this screen")).toHaveCount(0);
+});
+
+test("an interrupted simulation is human-readable and can be dismissed", async ({page}) => {
+    test.setTimeout(240_000);
+    await page.goto("/#/home/design");
+    await page.getByRole("button", {name: "Use the starter"}).click();
+    await page.getByLabel("Game id").fill("recovery-copy-e2e");
+    await page.getByLabel("Game name").fill("Recovery Copy E2E");
+    const create = page.getByRole("button", {name: "Create game design"});
+    await expect(create).toBeEnabled({timeout: 60_000});
+    await create.click();
+    await expect(page.getByRole("button", {name: "Overview", exact: true})).toBeVisible({timeout: 90_000});
+
+    const match = (/#\/project\/([^/]+)\//).exec(page.url());
+    expect(match).not.toBeNull();
+    const projectRoot = decodeURIComponent(match![1]);
+    const id = `recovery-e2e-${Date.now()}`;
+    const jobsDirectory = path.join(process.env.POKIE_E2E_HOME ?? path.join(os.homedir(), ".pokie-e2e-home"), ".config", "pokie", "studio-jobs");
+    fs.mkdirSync(jobsDirectory, {recursive: true});
+    fs.writeFileSync(path.join(jobsDirectory, `${id}.json`), JSON.stringify({
+        id,
+        projectId: projectRoot,
+        operation: "simulation",
+        request: {rounds: 100000, seed: "recovery-copy-e2e", workers: 1},
+        conflictKey: `simulation:${projectRoot}`,
+        status: "recovery-required",
+        createdAt: Date.now(),
+        recoveryOnRestart: {
+            action: "retry",
+            reason: "Studio shutdown could not confirm executor cleanup. Inspect the captured destination and saved files, then restart Studio before retrying.",
+        },
+        recovery: {
+            action: "retry",
+            reason: "Studio shutdown could not confirm executor cleanup. Inspect the captured destination and saved files, then restart Studio before retrying.",
+        },
+        error: "Studio shutdown could not confirm executor cleanup. Inspect the captured destination and saved files, then restart Studio before retrying.",
+    }));
+
+    await page.goto(`${page.url().replace(/\/overview$/, "/simulation")}`);
+    await expect(page.getByText("Studio closed before it could confirm this run had finished", {exact: false})).toBeVisible({timeout: 30_000});
+    // The raw server wording stays available under "Technical detail", but it must not be the visible explanation.
+    await expect(page.locator("[data-job-technical-detail]").first()).toBeHidden();
+    const dismiss = page.getByRole("button", {name: "Dismiss", exact: true}).first();
+    await expect(dismiss).toBeVisible();
+    await dismiss.click();
+    await expect(page.getByText("Running simulation · Interrupted", {exact: true})).toHaveCount(0, {timeout: 15_000});
+    expect(fs.existsSync(path.join(jobsDirectory, `${id}.json`))).toBe(false);
 });

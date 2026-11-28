@@ -300,6 +300,13 @@ export class ParSheetExporter implements ParSheetExporting {
                 this.reelStripsMapper.sheetName,
                 this.reelStripsMapper.toRows(typedBlueprint.reelStrips as string[][]),
             );
+            // Reels may differ in length. The mapper pads shorter columns with blank cells so the
+            // sheet remains rectangular; without a note those blanks look like missing symbols.
+            const reelStripsSheet = workbook.getWorksheet(this.reelStripsMapper.sheetName);
+            if (reelStripsSheet !== undefined) {
+                reelStripsSheet.getCell(1, 1).note =
+                    "Each column is one reel strip. Reels may differ in length; blank cells after a strip's last symbol are padding, not missing data.";
+            }
         }
         if (typedBlueprint.paylines) {
             addSheet(workbook, this.paylinesMapper.sheetName, this.paylinesMapper.toRows(typedBlueprint.paylines));
