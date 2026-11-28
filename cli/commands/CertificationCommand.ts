@@ -20,6 +20,7 @@ import {
     PokieOperation,
     ProjectResolving,
     ProjectTargetResolver,
+    validateCertificationPackTemplate,
     ValidationIssue,
 } from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
@@ -239,6 +240,11 @@ export class CertificationCommand implements CliCommandHandling {
             const raw = readJsonFileWithContext(this.loadJson, trustedSourcesPath, "the trusted-sources file");
             validateCertificationPackInputs(raw);
             pack = this.resolveTrustedSources(raw, trustedSourcesPath);
+        }
+        if (templateFile !== undefined) {
+            // Validate the caller's explicit authority before verification so a missing, directory-shaped or
+            // malformed template names itself instead of surfacing as a raw ENOENT/EISDIR/JSON error.
+            validateCertificationPackTemplate(readJsonFileWithContext(this.loadJson, templateFile, "the presentation template file"));
         }
         const issues = await this.verifier.verify(certDir, {sourceLibraryDir, ...(pack ? {pack} : {}), ...(signal ? {signal} : {}), ...(templateFile ? {templateFile} : {})});
         const errors = issues.filter((issue) => issue.severity === "error");
