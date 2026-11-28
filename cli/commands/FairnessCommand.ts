@@ -22,6 +22,7 @@ import {assertDestinationIsAFile} from "./internal/assertDestinationIsAFile.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {normalizeServerSeedFileContents} from "./internal/normalizeServerSeedFileContents.js";
 import {parseCanonicalNonNegativeInteger} from "./internal/parseCanonicalNonNegativeInteger.js";
+import {pathEntryExists} from "./internal/pathEntryExists.js";
 import {readJsonFileWithContext} from "./internal/readJsonFileWithContext.js";
 
 const VERIFY_USAGE = "Usage: pokie fairness verify <proof.json> --commitment <commitment.json> --source <folder>";
@@ -95,7 +96,7 @@ export class FairnessCommand implements CliCommandHandling {
         computeServerSeedCommitment: (input: FairnessServerSeedCommitmentInput) => FairnessServerSeedCommitment = computeFairnessServerSeedCommitment,
         computeCommitment: (input: FairnessCommitmentInput) => FairnessCommitment = computeFairnessCommitment,
         readTextFile: (filePath: string) => string = (filePath) => fs.readFileSync(filePath, "utf-8"),
-        fileExists: (filePath: string) => boolean = (filePath) => fs.existsSync(filePath),
+        fileExists: (filePath: string) => boolean = (filePath) => pathEntryExists(filePath),
         writeFile: (filePath: string, contents: string) => void = (filePath, contents) => fs.writeFileSync(filePath, contents, "utf-8"),
     ) {
         this.verifier = verifier;

@@ -777,6 +777,22 @@ describe("ReplayCommand output preflight", () => {
         expect(fs.readFileSync(output, "utf8")).toBe("caller-owned bytes");
     });
 
+    it("treats a dangling --out symlink as occupied and never writes its target", async () => {
+        const targetDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "replay-output-target-"));
+        const target = path.join(targetDirectory, "external.json");
+        const output = path.join(root, "dangling.json");
+        fs.symlinkSync(target, output);
+        try {
+            await expect(new ReplayCommand().run([root, "--round", "1", "--out", output])).rejects.toThrow(
+                /already exists.*Choose a new unused --out path/,
+            );
+            expect(fs.existsSync(target)).toBe(false);
+            expect(fs.readlinkSync(output)).toBe(target);
+        } finally {
+            fs.rmSync(targetDirectory, {recursive: true, force: true});
+        }
+    });
+
     it("names a folder --out destination", async () => {
         const output = path.join(root, "folder.json");
         fs.mkdirSync(output);

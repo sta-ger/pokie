@@ -35,4 +35,22 @@ describe("FairnessCommand --out diagnostics", () => {
         );
         expect(writeFile).not.toHaveBeenCalled();
     });
+
+    it("treats a dangling --out symlink as occupied and never writes its target", async () => {
+        const seed = path.join(workDir, "server-seed.txt");
+        fs.writeFileSync(seed, "correct horse battery staple");
+        const target = path.join(workDir, "external.json");
+        const out = path.join(workDir, "dangling.json");
+        fs.symlinkSync(target, out);
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            await expect(new FairnessCommand().run(["seed-commit", seed, "--out", out])).rejects.toThrow(
+                `"${out}" already exists. Rerun with --overwrite to replace it.`,
+            );
+            expect(fs.existsSync(target)).toBe(false);
+            expect(fs.readlinkSync(out)).toBe(target);
+        } finally {
+            log.mockRestore();
+        }
+    });
 });

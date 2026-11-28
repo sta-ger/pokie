@@ -28,6 +28,7 @@ import {UnsupportedProjectOperationError} from "../runtime/UnsupportedProjectOpe
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {assertDestinationIsAFile} from "./internal/assertDestinationIsAFile.js";
 import {canonicalPlannedPath} from "./internal/canonicalPlannedPath.js";
+import {pathEntryExists} from "./internal/pathEntryExists.js";
 import {describeRuntimePackageLoadError} from "./internal/describeLocalRuntimeError.js";
 import {assertDeclaredOutcomeLibraryMode} from "./internal/assertDeclaredOutcomeLibraryMode.js";
 
@@ -307,7 +308,7 @@ export class ReplayCommand implements CliCommandHandling {
     private assertReplayOutputAvailable(packageRoot: string, out: string | undefined): void {
         if (out === undefined) return;
         assertDestinationIsAFile(out);
-        if (fs.existsSync(out)) {
+        if (pathEntryExists(out)) {
             throw new Error(`Cannot write replay to "${out}" because that destination already exists. Choose a new unused --out path.`);
         }
         try {

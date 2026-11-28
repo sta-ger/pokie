@@ -770,6 +770,24 @@ describe("advanced validation report publication", () => {
             fs.rmSync(root, {recursive: true, force: true});
         }
     });
+
+    it("reports a dangling --out symlink as occupied and never writes its target", async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "validation-dangling-out-"));
+        const model = {...createStarterGameBlueprint(), reels: 1, rows: 1, reelStrips: [["A"]], paytable: {}};
+        const input = path.join(root, "source.blueprint.json");
+        const target = path.join(root, "external.json");
+        const out = path.join(root, "dangling.json");
+        fs.writeFileSync(input, JSON.stringify(model));
+        fs.symlinkSync(target, out);
+        try {
+            await expect(new ValidateCommand().run([input, "--out", out])).rejects.toThrow(/already exists/);
+            expect(fs.existsSync(target)).toBe(false);
+            expect(fs.readlinkSync(out)).toBe(target);
+        } finally {
+            fs.rmSync(root, {recursive: true, force: true});
+        }
+    });
+
     it("keeps a lease cleanup failure observable", async () => {
         const release = jest.fn(() => Promise.reject(new Error("cleanup failure")));
         const log = jest.spyOn(console, "log").mockImplementation(() => undefined);

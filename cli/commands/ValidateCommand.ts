@@ -6,6 +6,7 @@ import {
 import {AdvancedModelSourceValidator} from "../../src/validation/AdvancedModelSourceValidator.js";
 import type {AdvancedModelValidationReport} from "../../src/validation/AdvancedModelValidation.js";
 import {assertDestinationIsAFile} from "./internal/assertDestinationIsAFile.js";
+import {pathEntryExists} from "./internal/pathEntryExists.js";
 import {writeNewValidationReportAtomically} from "./internal/writeNewValidationReportAtomically.js";
 import {Command} from "commander";
 import {
@@ -136,7 +137,7 @@ export class ValidateCommand implements CliCommandHandling {
             const relative = path.relative(fs.realpathSync(packageRoot), output);
             if (!relative.startsWith(".." + path.sep) && relative !== ".." && !path.isAbsolute(relative)) throw new Error("Validation output must be outside the source directory.");
         }
-        if (out && fs.existsSync(out)) throw new Error(`Cannot write validation to "${out}" because that destination already exists. Choose a new unused --out path.`);
+        if (out && pathEntryExists(out)) throw new Error(`Cannot write validation to "${out}" because that destination already exists. Choose a new unused --out path.`);
         const controller = new AbortController();
         const cancel = (): void => controller.abort();
         process.on("SIGINT", cancel);
